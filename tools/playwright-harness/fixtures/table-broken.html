@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>geometry fixture: deliberately broken table</title>
+<style>
+  body { margin: 0; font-family: sans-serif; background: #fff; }
+  table {
+    table-layout: fixed;
+    border-collapse: collapse;
+    width: 100%;
+    max-width: 1200px;
+  }
+  /* Bug #1: the header row is pulled out of native table layout and given
+     its own flex geometry with widths that do NOT match the colgroup the
+     body obeys. This is the exact historically-reported regression:
+     "header and body styled independently" (IMPLEMENTATION_PLAN.md §2). */
+  thead, thead tr {
+    display: flex;
+  }
+  thead th {
+    display: block;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    padding: 6px 8px;
+  }
+  thead th:nth-child(1) { width: 120px; }
+  thead th:nth-child(2) { width: 60px; }
+  thead th:nth-child(3) { width: 100px; }
+  thead th:nth-child(4) { width: 300px; }
+  thead th:nth-child(5) { width: 100px; }
+  thead th:nth-child(6) { width: 120px; }
+  thead th:nth-child(7) { width: 40px; }
+
+  td {
+    border: 1px solid #ccc;
+    padding: 6px 8px;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Bug #3: an oversized element forces the page itself to scroll
+     horizontally, instead of the overflow being contained around the
+     table (CLAUDE.md §4: "the page never overflows horizontally"). */
+  .oversized-decoration {
+    width: 3000px;
+    height: 1px;
+  }
+</style>
+</head>
+<body>
+  <div class="oversized-decoration"></div>
+  <table id="results">
+    <colgroup>
+      <col style="width: 160px;">
+      <col style="width: 80px;">
+      <col style="width: 140px;">
+      <col style="width: 400px;">
+      <col style="width: 140px;">
+      <col style="width: 160px;">
+      <col style="width: 60px;">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Level</th>
+        <th>Service</th>
+        <th>What happened</th>
+        <th>User/Customer</th>
+        <th>Correlation/Trace</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>2026-01-01 00:00:00.123</td>
+        <td>INFO</td>
+        <td>gateway</td>
+        <td>Routed request to downstream service</td>
+        <td>—</td>
+        <td>demo-trace-000001</td>
+        <td>…</td>
+      </tr>
+      <!-- Bug #2: this row omits the "User/Customer" cell entirely instead
+           of rendering `—`, shifting every later column — the exact
+           "conditional cell omission" regression (CLAUDE.md §4). -->
+      <tr>
+        <td>2026-01-01 00:00:00.456</td>
+        <td>ERROR</td>
+        <td>payments-api</td>
+        <td>Payment authorization failed</td>
+        <td>demo-trace-000002</td>
+        <td>…</td>
+      </tr>
+    </tbody>
+  </table>
+</body>
+</html>

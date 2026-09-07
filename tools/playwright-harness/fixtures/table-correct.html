@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>geometry fixture: correct table</title>
+<style>
+  body { margin: 0; font-family: sans-serif; background: #fff; }
+  table {
+    table-layout: fixed;
+    border-collapse: collapse;
+    width: 100%;
+    max-width: 1200px;
+  }
+  th, td {
+    border: 1px solid #ccc;
+    padding: 6px 8px;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+  <table id="results">
+    <colgroup>
+      <col style="width: 160px;">
+      <col style="width: 80px;">
+      <col style="width: 140px;">
+      <col style="width: 400px;">
+      <col style="width: 140px;">
+      <col style="width: 160px;">
+      <col style="width: 60px;">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Level</th>
+        <th>Service</th>
+        <th>What happened</th>
+        <th>User/Customer</th>
+        <th>Correlation/Trace</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>2026-01-01 00:00:00.123</td>
+        <td>INFO</td>
+        <td>gateway</td>
+        <td>Routed request to downstream service</td>
+        <td>—</td>
+        <td>demo-trace-000001</td>
+        <td>…</td>
+      </tr>
+      <tr>
+        <td>2026-01-01 00:00:00.456</td>
+        <td>ERROR</td>
+        <td>payments-api</td>
+        <td>Payment authorization failed</td>
+        <td>protected</td>
+        <td>demo-trace-000002</td>
+        <td>…</td>
+      </tr>
+      <tr>
+        <td>2026-01-01 00:00:00.789</td>
+        <td>WARN</td>
+        <td>accounts-api</td>
+        <td>(empty message)</td>
+        <td>—</td>
+        <td>—</td>
+        <td>…</td>
+      </tr>
+    </tbody>
+  </table>
+</body>
+</html>
