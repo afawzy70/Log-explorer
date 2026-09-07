@@ -50,12 +50,14 @@ Open a PR with only these documents. Then stop.
 
 ---
 
-## Phase A2 — Verification harness
+## Phase A2a — Verification harness (standalone components)
+
+*Split from the original single "Phase A2" — see IMPLEMENTATION_PLAN.md §2 "Verification harness sequencing". H3 and H4's real-app wiring move to Phase A2b, run after Phase B.*
 
 ```text
-Execute Phase A2 of IMPLEMENTATION_PLAN.md on branch phase/a2-harness.
+Execute Phase A2a of IMPLEMENTATION_PLAN.md on branch phase/a2a-harness.
 
-Build:
+Build, entirely standalone (no dependency on backend/ or frontend/, which do not exist yet):
 - tools/demo-log-generator: emits canonical Spring Boot JSON across several fake services,
   deterministic given a seed, and deliberately includes every edge case listed in the plan
   (literal dotted event.correlationId key, hyphenated X-Correlation-id, cross-service journeys
@@ -63,12 +65,40 @@ Build:
   malformed non-JSON lines, an unknown MDC field, stderr output, and bursts). Fake values only.
 - tools/mock-loki: query_range fixtures plus 401/403/429/timeout/5xx scenarios, exercising
   configurable gateway prefix, tenant, and label keys.
-- An in-process fixture LogSource, dev/test profiles only, never presented as a production source.
-- A Playwright harness with helpers: setViewport, setZoom, assertTableGeometry(tolerance 2px),
-  assertNoHorizontalOverflow, and screenshot capture into docs/verification/<phase>/.
+- tools/playwright-harness: an app-agnostic Playwright helper library with setViewport, setZoom,
+  assertTableGeometry(tolerance 2px), assertNoHorizontalOverflow, and screenshot capture into
+  docs/verification/<phase>/. Validate the geometry helpers against two small static HTML
+  fixtures committed alongside the harness: one table with correct shared header/body geometry
+  (must PASS) and one deliberately broken table — header and body built with different layout
+  systems, plus a row with an omitted cell — that must make the assertion FAIL. Do not defer
+  this: an assertion that has never caught a regression is not proven to work.
 
 Add a self-test proving the generated corpus contains at least one instance of each required
 edge case. Each harness component must run from one documented command.
+
+Report PASS/FAIL/BLOCKED per component, then stop.
+```
+
+---
+
+## Phase A2b — Fixture source & Playwright app wiring
+
+*Run immediately after Phase B and before Phase C — not "sometime after B". Phase C's verification depends on the fixture source existing.*
+
+```text
+Execute Phase A2b of IMPLEMENTATION_PLAN.md on branch phase/a2b-harness-app-wiring.
+
+Prerequisite: confirm Phase B has passed verification. If it has not, stop and report — do not
+start this phase early.
+
+Build:
+- backend/.../source/fixture: an in-process deterministic LogSource implementing Phase B's
+  LogSource SPI, dev/test profiles only, never presented as a production source. Same
+  deterministic corpus shape as Phase A2a's demo log generator.
+- frontend/e2e + frontend/playwright.config.ts: relocate/import Phase A2a's app-agnostic
+  Playwright helper library (tools/playwright-harness/) into the real frontend project, and
+  point the config at the Phase B/F dev server. Prove `npx playwright test --list` resolves
+  against the real running app.
 
 Report PASS/FAIL/BLOCKED per component, then stop.
 ```
@@ -110,6 +140,7 @@ Phase list and slugs:
 | Letter | Name | Slug |
 |---|---|---|
 | B | Canonical model, parser, masking, guardrails | `core-correctness` |
+| A2b | Fixture source & Playwright app wiring (dedicated prompt above; runs after B, before C) | `a2b-harness-app-wiring` |
 | C | Docker source (local + optional remote) | `docker-source` |
 | D | OpenShift Loki source | `loki-source` |
 | E | Query engine | `query-engine` |

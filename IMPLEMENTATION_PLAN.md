@@ -2,7 +2,7 @@
 
 **Repository:** `https://github.com/afawzy70/Log-explorer`
 **Execution environment:** Google Cloud VM, `gh` installed and authenticated
-**Source of truth for requirements:** `LOG_EXPLORER_CLAUDE_CODE_HANDOVER.md` (referred to below as *the handover*)
+**Source of truth for requirements:** `HANDOVER.md` (referred to below as *the handover*; see §2 "Companion doc filenames" for why this differs from the name used elsewhere in this document)
 **Status of this document:** the plan the handover asked for. Claude Code executes it; it does not need to re-derive it.
 
 ---
@@ -47,6 +47,9 @@ Applied throughout this plan (handover §29). Claude Code must not "restore" the
 | Raw LogQL | Prominent UI capability | Off by default, config-gated, Loki-only, and must not dominate the UI as a large disabled control. |
 | Table layout | Header and body styled independently | One semantic `<table>`, one `<colgroup>`, `table-layout: fixed`, shared geometry, ≤2px verified. |
 | Time range | Generic "Custom range" label | Committed interval is displayed literally, in the display zone, converted to UTC exactly once. |
+| Repo baseline (added Phase A, 2026-09-07) | This plan's Phase A prose assumes existing code to reconcile against handover §30 | Phase A audit (`docs/AUDIT.md`) found **no application code exists** — the repo held only planning Markdown. Phase B scaffolds `backend/` and `frontend/` from empty rather than reconciling partial existing code. Nothing else in this plan changes. |
+| Companion doc filenames (added Phase A, 2026-09-07) | This plan and `CLAUDE.md`/`PHASE_PROMPTS.md` refer to `LOG_EXPLORER_CLAUDE_CODE_HANDOVER.md`, `IMPLEMENTATION_PLAN.md`, `REQUIREMENTS_TRACEABILITY.md` at repo root | Repo files renamed to the underscore forms this plan already assumes (`IMPLEMENTATION_PLAN.md`, `PHASE_PROMPTS.md`, `REQUIREMENTS_TRACEABILITY.md`). `HANDOVER.md` was deliberately **not** renamed to the `LOG_EXPLORER_CLAUDE_CODE_` prefix — it stays `HANDOVER.md`; read this plan's own cross-references to that longer name as referring to `HANDOVER.md`. |
+| Verification harness sequencing (added Phase A2, 2026-09-07) | Phase A2 delivers H1–H4 as one phase, entirely before Phase B | **Split into Phase A2a and Phase A2b** — see the dedicated "Phase A2a / Phase A2b" sections below, which replace the single "Phase A2" section. H3 (fixture `LogSource`) needs `backend/` and H4's app-driven run needs `frontend/`; neither exists until Phase B scaffolds them. A2a (H1, H2, an app-agnostic Playwright helper library validated against static HTML fixtures) runs before Phase B, unchanged in spirit from the original A2. **A2b (H3, H4 wired to the real app) runs immediately after Phase B and before Phase C — not "sometime after B."** Phase C's Docker-source verification depends on the fixture source and demo-log-generator both being available; do not start Phase C before A2b's PASS. |
 
 ---
 
@@ -133,6 +136,8 @@ These are chosen so Claude Code does not stall on open questions. Deviating requ
 
 Because the corporate Docker daemon and OpenShift are unreachable from the VM, the plan depends on a local harness. Building it early is what makes Phases C, F–K verifiable at all.
 
+H1, H2, and the app-agnostic half of H4 are delivered in **Phase A2a** (before Phase B, self-contained). H3 and the real-app half of H4 are delivered in **Phase A2b** (immediately after Phase B, before Phase C) — see §2 "Verification harness sequencing" and the dedicated phase sections below for why.
+
 **H1 — Demo log generator container.** A tiny image that continuously emits canonical Spring Boot JSON to stdout across several fake services (`gateway`, `accounts-api`, `payments-api`, `notification-worker`), deterministic given a seed. It must emit, on purpose:
 
 - every canonical top-level field and every MDC field listed in handover §5;
@@ -210,27 +215,34 @@ Each phase: **Goal → Scope → Out of scope → Files → Automated tests → 
 
 ---
 
-## Phase A2 — Deterministic verification harness
+## Phase A2a — Deterministic verification harness (standalone components)
 
 *Additive to the handover's suggested structure. Justification: without it, Phases C–K cannot be honestly verified on a VM with no corporate Docker or OpenShift access.*
 
-**Goal.** Make every later phase locally provable.
+*Split from the original single "Phase A2" on 2026-09-07 (see §2 "Verification harness sequencing" above). H3 (fixture `LogSource`) and H4's app-driven Playwright run depend on `backend/` and `frontend/`, which do not exist until Phase B scaffolds them. This phase, A2a, builds only what is genuinely self-contained. **Phase A2b (below, positioned after Phase B and before Phase C) finishes H3 and wires H4 into the real frontend.***
 
-**Scope.** Build H1 (demo log generator), H2 (mock Loki), H3 (fixture source, dev/test profiles only), H4 (Playwright harness + geometry/overflow helpers + screenshot capture). Wire a `make`/npm/maven entry point for each so later phases invoke one command.
+**Goal.** Make demo/fixture log data and a validated geometry-testing capability available before any product code exists, without presupposing `backend/` or `frontend/`.
 
-**Out of scope.** Product features; any use of the fixture source outside dev/test profiles.
+**Scope.**
+- **H1 — demo log generator** (`tools/demo-log-generator/`): emits canonical Spring Boot JSON to stdout across several fake services, deterministic given a seed, including every required edge case (§5 of this plan).
+- **H2 — mock Loki server** (`tools/mock-loki/`): serves `query_range` fixtures plus 401/403/429/timeout/5xx scenarios, gateway prefix/tenant/label keys all configurable. Implemented standalone (no dependency on the real backend, which does not exist yet).
+- **H4a — app-agnostic Playwright helper library** (`tools/playwright-harness/`): `setViewport`, `setZoom`, `assertTableGeometry(tolerancePx=2)`, `assertNoHorizontalOverflow`, screenshot capture — implemented and self-tested against small static HTML fixtures (one correct table, one deliberately broken table), **not** against the real app yet. This proves the assertions actually catch the regressions they exist to catch (handover §23) before Phase G ever depends on them.
 
-**Files.** `tools/demo-log-generator/**`, `tools/mock-loki/**`, `backend/.../source/fixture/**`, `frontend/e2e/**`, `frontend/playwright.config.ts`.
+Wire a documented entry point for each so later phases invoke one command per component (H3 and H4's real-app wiring are explicitly out of scope here — see A2b).
 
-**Automated tests.** Generator self-test: emitted corpus contains at least one instance of each required shape (dotted key, hyphenated key, malformed line, empty message, multiline exception, unknown MDC field, stderr line, burst). Mock-Loki contract test.
+**Out of scope.** H3 (fixture `LogSource` — needs `backend/`); H4's execution against a real running app (needs `frontend/`); product features; any use of fixture/demo data outside dev/test contexts.
 
-**Manual checks.** `docker compose --profile demo up` produces log lines; `npx playwright test --list` resolves.
+**Files.** `tools/demo-log-generator/**`, `tools/mock-loki/**`, `tools/playwright-harness/**`.
 
-**PASS.** Each of H1–H4 runs from one documented command; generator corpus self-test green.
-**FAIL.** Any harness component requires manual hand-holding to run, or the generator lacks a required edge case.
+**Automated tests.** Generator self-test: emitted corpus contains at least one instance of each required shape (dotted key, hyphenated key, malformed line, empty message, multiline exception, unknown MDC field, stderr line, burst). Mock-Loki contract test. Playwright helper self-test: `assertTableGeometry`/`assertNoHorizontalOverflow` PASS against the correct static fixture and FAIL (assertion actually throws) against the deliberately broken one (mismatched header/body layout systems, a row with an omitted cell).
+
+**Manual checks.** `node tools/demo-log-generator/generate.js --selftest` (or documented equivalent) produces log lines and passes; `node tools/mock-loki/server.js` serves fixtures; `npx playwright test` in `tools/playwright-harness/` resolves and passes both geometry meta-tests.
+
+**PASS.** Each of H1, H2, H4a runs from one documented command; generator corpus self-test green; geometry helper correctly passes the good fixture and fails the broken one.
+**FAIL.** Any component requires manual hand-holding to run; the generator lacks a required edge case; the geometry helper passes the deliberately broken fixture (proves the assertion doesn't actually catch regressions).
 **BLOCKED.** Playwright browser deps cannot install on the VM → report, and propose a container-based Playwright runner as the fix.
 
-**Regression.** Repo build still green.
+**Regression.** Repo build still green (no build exists yet at this point — trivial).
 
 **Recovery.** Fix only the failing harness component; re-run its self-test.
 
@@ -274,6 +286,34 @@ Each phase: **Goal → Scope → Out of scope → Files → Automated tests → 
 **Regression.** Full backend suite.
 
 **Recovery.** Fix only failing invariants; re-run the exact failed tests plus the leak tests; never relax an assertion to pass.
+
+---
+
+## Phase A2b — Fixture source & Playwright app wiring
+
+*Second half of the original "Phase A2", deliberately positioned here — after Phase B, before Phase C — rather than "sometime after B". Phase C's Docker-source verification (§ below) uses the demo generator (A2a) and depends on the fixture source existing; do not start Phase C before this phase passes.*
+
+**Goal.** Finish the verification harness now that `backend/` and `frontend/` exist (from Phase B), so every phase from C onward is locally provable end to end.
+
+**Scope.**
+- **H3 — fixture source** (`backend/.../source/fixture/**`): in-process deterministic `LogSource` implementing the SPI Phase B just built, dev/test profiles only, clearly labelled, never presented as a production source. Backed by the same deterministic corpus shape as A2a's demo log generator (H1) so fixture-based and demo-generator-based tests exercise the same edge cases.
+- **H4b — Playwright/app wiring** (`frontend/e2e/**`, `frontend/playwright.config.ts`): relocate/import A2a's app-agnostic helper library (`tools/playwright-harness/`) into the real frontend project, point `playwright.config.ts` at the Phase B/F dev server, and prove `npx playwright test --list` resolves against the real app (even before Phase F builds the actual results table — a trivial smoke page is enough to prove wiring, not to prove product correctness).
+
+**Out of scope.** Product features; any UI beyond what's needed to prove Playwright is wired to a real running app.
+
+**Files.** `backend/.../source/fixture/**`, `frontend/e2e/**`, `frontend/playwright.config.ts`.
+
+**Automated tests.** Fixture source unit tests (deterministic corpus, capability flags report `historicalSearch` etc. correctly, never selectable outside dev/test profile). Playwright config resolution test (`npx playwright test --list`).
+
+**Manual checks.** `docker compose --profile demo up` produces log lines (A2a, re-confirmed once Compose exists in Phase K — until then, direct process run); fixture source reachable via `/api/v1/sources` once Phase B's endpoint exists.
+
+**PASS.** H3 passes its unit tests and is registered as a dev/test-only source; H4b's Playwright config resolves against the real (even if minimal) frontend app.
+**FAIL.** Fixture source reachable/selectable in a non-dev/test profile; Playwright wiring requires manual hand-holding.
+**BLOCKED.** N/A — this phase runs only once its Phase B dependency is met; if Phase B has not passed, this phase does not start (not a BLOCKED verification, a sequencing precondition).
+
+**Regression.** Phase B suite.
+
+**Recovery.** Fix only the failing harness component; re-run its self-test.
 
 ---
 
