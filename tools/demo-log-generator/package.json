@@ -1,0 +1,14 @@
+{
+  "name": "demo-log-generator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "H1 (Phase A2a) - deterministic demo Spring Boot JSON log generator for Log Explorer verification.",
+  "main": "generate.js",
+  "scripts": {
+    "start": "node generate.js",
+    "selftest": "node generate.js --selftest"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

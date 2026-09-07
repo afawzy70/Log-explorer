@@ -1,0 +1,18 @@
+{
+  "name": "playwright-harness",
+  "version": "0.1.0",
+  "private": true,
+  "description": "H4a (Phase A2a) - app-agnostic Playwright helper library for Log Explorer verification.",
+  "scripts": {
+    "test": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "20.14.0",
+    "typescript": "5.5.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -8,6 +8,38 @@ Scope: audit only. No behavior changes, dependency bumps, test fixes, or refacto
 
 ---
 
+## Addendum — plan amendments confirmed/applied (2026-09-07, during Phase A2a)
+
+Phase A's PR (#1) merged. Three amendments are now in force, applying the "later decision wins" rule (`HANDOVER.md` §29). All three are also recorded in `IMPLEMENTATION_PLAN.md` §2 ("Conflict resolution").
+
+1. **Repo baseline.** Confirmed: the repository has no application code (§2, §7 below). Phase B scaffolds `backend/` and `frontend/` from empty rather than reconciling existing code. Nothing else in the plan changes.
+2. **Companion doc filenames.** Confirmed applied on `main` (commit `6348031`, "docs: normalize companion doc filenames"): `IMPLEMENTATION-PLAN.md` → `IMPLEMENTATION_PLAN.md`, `PHASE-PROMPTS.md` → `PHASE_PROMPTS.md`, `REQUIRMENTS-TRACEABILITY.md` → `REQUIREMENTS_TRACEABILITY.md`. `HANDOVER.md` was deliberately **not** renamed to `LOG_EXPLORER_CLAUDE_CODE_HANDOVER.md` — verified via `git ls-tree -r origin/main --name-only` (§ below). `IMPLEMENTATION_PLAN.md` line 5 has been corrected to point at `HANDOVER.md` directly rather than the longer unused name.
+3. **Verification harness sequencing (new this session).** The original single "Phase A2" scoped H3 (fixture `LogSource`, lives under `backend/`) and H4 (Playwright harness, needs `frontend/` to run against) into a phase positioned entirely before Phase B — but amendment #1 means neither `backend/` nor `frontend/` exists yet at that point. Raised with the project owner before writing any code; decision: **split Phase A2 into Phase A2a** (H1 demo-log-generator, H2 mock-loki, an app-agnostic Playwright helper library validated against static HTML fixtures — all self-contained, no backend/frontend dependency) **and Phase A2b** (H3 fixture source, H4 wired to the real app — runs immediately after Phase B and before Phase C, since Phase C's Docker-source verification depends on the fixture source being available). Recorded in `IMPLEMENTATION_PLAN.md` §2 and as dedicated phase sections; `PHASE_PROMPTS.md` and `REQUIREMENTS_TRACEABILITY.md` (rows 2, 4, 5, 6, 7, 31, 32, 33 — every row whose owning phase includes C) updated accordingly. This document (Phase A2a's audit trail) continues below.
+
+Verification of amendment #2, run this session:
+
+```
+$ git fetch origin && git log --oneline -15 origin/main
+1d1d6e9 Phase A: repository audit and baseline (#1)
+6348031 docs: normalize companion doc filenames
+93dec0b Create HANDOVER.md
+...
+$ git ls-tree -r origin/main --name-only | sort
+CLAUDE.md
+HANDOVER.md
+IMPLEMENTATION_PLAN.md
+PHASE_PROMPTS.md
+README.md
+REQUIREMENTS_TRACEABILITY.md
+docs/AUDIT.md
+$ npx playwright install-deps --dry-run chromium
+All system dependencies are installed.
+```
+
+Playwright browser binaries (Chromium 1243, headless shell, ffmpeg) were also found already cached under `~/.cache/ms-playwright` — confirmed via `ls -la`, not assumed.
+
+---
+
 ## 1. Repo state
 
 - **Repository:** `https://github.com/afawzy70/Log-explorer.git`

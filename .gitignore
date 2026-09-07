@@ -1,0 +1,16 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Java / Maven (added ahead of Phase B for when backend/ exists)
+target/
+*.class
+
+# OS
+.DS_Store

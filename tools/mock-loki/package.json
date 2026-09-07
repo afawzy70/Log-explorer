@@ -1,0 +1,14 @@
+{
+  "name": "mock-loki",
+  "version": "0.1.0",
+  "private": true,
+  "description": "H2 (Phase A2a) - standalone mock OpenShift Loki gateway server for Log Explorer verification.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "contract-test": "node contract-test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
