@@ -12,11 +12,13 @@ import java.util.Map;
  * depending on this type at all.
  *
  * <p>{@code sourceId}, {@code composeProject}, {@code containerId}, {@code
- * containerName}, {@code stream} are adapter enrichment fields (added
- * Phase C, IMPLEMENTATION_PLAN.md "Phase C" scope item 5) — none of them
- * sensitive, populated by a {@code source.docker}-style adapter, left
- * {@code null} by anything that doesn't have them (the fixture source,
- * Loki in Phase D, etc.).
+ * containerName}, {@code stream} are Docker adapter enrichment fields
+ * (added Phase C, IMPLEMENTATION_PLAN.md "Phase C" scope item 5); {@code
+ * namespace}, {@code pod} are Loki adapter enrichment fields (added Phase
+ * D, IMPLEMENTATION_PLAN.md "Phase D" scope item 4 — {@code containerName}
+ * is reused for Loki's own container label, since pods have containers
+ * too). None of these are sensitive; each is left {@code null} by
+ * anything that doesn't have it (the fixture source has none of them).
  */
 public record CanonicalLogEvent(
     Instant timestamp,
@@ -51,7 +53,9 @@ public record CanonicalLogEvent(
     String composeProject,
     String containerId,
     String containerName,
-    String stream
+    String stream,
+    String namespace,
+    String pod
 ) {
 
   public CanonicalLogEvent {
@@ -104,7 +108,9 @@ public record CanonicalLogEvent(
         .composeProject(composeProject)
         .containerId(containerId)
         .containerName(containerName)
-        .stream(stream);
+        .stream(stream)
+        .namespace(namespace)
+        .pod(pod);
   }
 
   /** Builder for a large immutable record — plain positional construction would be error-prone. */
@@ -142,6 +148,8 @@ public record CanonicalLogEvent(
     private String containerId;
     private String containerName;
     private String stream;
+    private String namespace;
+    private String pod;
 
     public Builder timestamp(Instant v) { this.timestamp = v; return this; }
     public Builder timestampRaw(String v) { this.timestampRaw = v; return this; }
@@ -176,6 +184,8 @@ public record CanonicalLogEvent(
     public Builder containerId(String v) { this.containerId = v; return this; }
     public Builder containerName(String v) { this.containerName = v; return this; }
     public Builder stream(String v) { this.stream = v; return this; }
+    public Builder namespace(String v) { this.namespace = v; return this; }
+    public Builder pod(String v) { this.pod = v; return this; }
 
     public CanonicalLogEvent build() {
       return new CanonicalLogEvent(
@@ -184,7 +194,8 @@ public record CanonicalLogEvent(
           traceId, spanId, journeyId, eventId, businessStep, uiIdentifier,
           errorCode, correlationId, sensitive, devicePlatformType, language,
           serverIp, serverHost, unknownTopLevelFields, unknownMdcFields,
-          malformed, rawLine, sourceId, composeProject, containerId, containerName, stream);
+          malformed, rawLine, sourceId, composeProject, containerId, containerName, stream,
+          namespace, pod);
     }
   }
 }

@@ -58,6 +58,8 @@ public class EventMapper {
         event.composeProject(),
         event.containerId(),
         event.containerName(),
-        event.stream());
+        event.stream(),
+        event.namespace(),
+        event.pod());
   }
 }

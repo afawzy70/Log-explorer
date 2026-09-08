@@ -2,12 +2,12 @@ package com.logexplorer.source.fixture;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.logexplorer.core.model.CanonicalLogEvent;
-import com.logexplorer.core.model.RawSensitiveFields;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceCapabilities;
 import com.logexplorer.core.model.SourceHealth;
 import com.logexplorer.core.parse.LogLineParser;
+import com.logexplorer.core.search.EventFilters;
 import com.logexplorer.source.LogSource;
 import java.time.Instant;
 import java.util.Comparator;
@@ -92,7 +92,7 @@ public class FixtureLogSource implements LogSource {
     // sorts nulls to the FRONT. Reversing only the inner natural-order
     // comparator keeps nulls pinned last regardless of direction.
     return Flux.fromIterable(corpus())
-        .filter(e -> matches(e, request))
+        .filter(e -> EventFilters.matches(e, request))
         .sort(Comparator.comparing(CanonicalLogEvent::timestamp,
             Comparator.nullsLast(Comparator.reverseOrder())));
   }
@@ -110,95 +110,5 @@ public class FixtureLogSource implements LogSource {
       }
     }
     return result;
-  }
-
-  private boolean matches(CanonicalLogEvent event, SearchRequest request) {
-    // Malformed lines have no parsed timestamp by definition (LogLineParser
-    // never fabricates one). Excluding them from every time-bounded search
-    // would silently drop them from virtually all real usage - the opposite
-    // of "malformed lines become raw fallback events, never dropped"
-    // (HANDOVER.md §5.4). A real adapter (Phase C/D) would stamp these with
-    // a receive-time instead; until then, don't let time-range filtering
-    // hide what has no timestamp to filter on.
-    if (event.timestamp() != null) {
-      if (request.start() != null && event.timestamp().isBefore(request.start())) {
-        return false;
-      }
-      if (request.end() != null && !event.timestamp().isBefore(request.end())) {
-        return false;
-      }
-    }
-    if (!request.services().isEmpty()
-        && (event.service() == null || !request.services().contains(event.service()))) {
-      return false;
-    }
-    if (!request.levels().isEmpty()
-        && (event.severity() == null || !containsIgnoreCase(request.levels(), event.severity()))) {
-      return false;
-    }
-    if (notBlank(request.text()) && (event.message() == null
-        || !event.message().toLowerCase().contains(request.text().toLowerCase()))) {
-      return false;
-    }
-    if (!fieldMatches(request.traceId(), event.traceId())) {
-      return false;
-    }
-    if (!fieldMatches(request.spanId(), event.spanId())) {
-      return false;
-    }
-    if (!fieldMatches(request.correlationId(), event.correlationId())) {
-      return false;
-    }
-    if (!fieldMatches(request.journeyId(), event.journeyId())) {
-      return false;
-    }
-    if (!fieldMatches(request.eventId(), event.eventId())) {
-      return false;
-    }
-    if (!fieldMatches(request.errorCode(), event.errorCode())) {
-      return false;
-    }
-    if (!fieldMatches(request.businessStep(), event.businessStep())) {
-      return false;
-    }
-    if (!fieldMatches(request.uiIdentifier(), event.uiIdentifier())) {
-      return false;
-    }
-    if (!fieldMatches(request.devicePlatform(), event.devicePlatformType())) {
-      return false;
-    }
-    if (!fieldMatches(request.language(), event.language())) {
-      return false;
-    }
-    // Source-side filtering against raw sensitive values is exactly the
-    // allowance IMPLEMENTATION_PLAN.md Phase B item 8 describes: adapters
-    // may hold raw values for this purpose; they never leave via search().
-    RawSensitiveFields filters = request.sensitiveFilters();
-    RawSensitiveFields raw = event.sensitive();
-    if (!fieldMatches(filters.cif(), raw.cif())) {
-      return false;
-    }
-    if (!fieldMatches(filters.userName(), raw.userName())) {
-      return false;
-    }
-    if (!fieldMatches(filters.customerId(), raw.customerId())) {
-      return false;
-    }
-    if (!fieldMatches(filters.deviceId(), raw.deviceId())) {
-      return false;
-    }
-    return fieldMatches(filters.deviceIp(), raw.deviceIp());
-  }
-
-  private boolean fieldMatches(String requested, String actual) {
-    return !notBlank(requested) || requested.equals(actual);
-  }
-
-  private boolean notBlank(String s) {
-    return s != null && !s.isBlank();
-  }
-
-  private boolean containsIgnoreCase(List<String> values, String candidate) {
-    return values.stream().anyMatch(v -> v.equalsIgnoreCase(candidate));
   }
 }

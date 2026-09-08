@@ -40,3 +40,15 @@ logexplorer:
     default-tail-lines: 2000
     request-timeout: 10s
     connect-timeout: 5s
+  loki:
+    gateway-prefix: /api/logs/v1
+    tenant: application
+    namespace-label-key: kubernetes_namespace_name
+    service-label-key: app
+    pod-label-key: pod
+    container-label-key: container
+    max-results-per-query: 2000
+    request-timeout: 15s
+    connect-timeout: 5s
+    raw-log-ql-enabled: false
+    live-tail-supported: false

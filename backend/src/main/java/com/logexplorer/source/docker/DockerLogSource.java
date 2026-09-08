@@ -8,6 +8,7 @@ import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceCapabilities;
 import com.logexplorer.core.model.SourceHealth;
 import com.logexplorer.core.parse.LogLineParser;
+import com.logexplorer.core.search.EventFilters;
 import com.logexplorer.source.LogSource;
 import java.io.IOException;
 import java.time.Instant;
@@ -149,13 +150,22 @@ public class DockerLogSource implements LogSource {
     for (ContainerLine cl : merged) {
       Map<String, String> labels = cl.container().getLabels();
       CanonicalLogEvent parsed = parser.parse(cl.line().content(), ComposeLabels.service(labels));
-      events.add(parsed.toBuilder()
+      CanonicalLogEvent enriched = parsed.toBuilder()
           .sourceId(id())
           .composeProject(ComposeLabels.project(labels))
           .containerId(cl.container().getId())
           .containerName(firstName(cl.container()))
           .stream(cl.line().stream())
-          .build());
+          .build();
+      // Container/time-range filtering above narrows which containers and
+      // Docker-API-level range we even read; this applies every remaining
+      // structured filter (traceId, correlationId, text, sensitive
+      // filters, ...) that the Docker API itself has no way to push down -
+      // real gap found while extracting EventFilters: this adapter
+      // previously applied none of these at all.
+      if (EventFilters.matches(enriched, request)) {
+        events.add(enriched);
+      }
     }
     return events;
   }
