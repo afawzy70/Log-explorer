@@ -40,6 +40,8 @@ public record SearchRequestDto(
     String customerId,
     String deviceId,
     String deviceIp,
+    String query,
+    String rawLogQl,
     String cursor
 ) {
 
@@ -69,6 +71,8 @@ public record SearchRequestDto(
         + ", customerId=" + redacted(customerId)
         + ", deviceId=" + redacted(deviceId)
         + ", deviceIp=" + redacted(deviceIp)
+        + ", query=" + redacted(query)
+        + ", rawLogQl=" + redacted(rawLogQl)
         + ", cursor=" + cursor
         + "]";
   }

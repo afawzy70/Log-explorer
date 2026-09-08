@@ -3,6 +3,7 @@ package com.logexplorer.core.search;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.RawSensitiveFields;
 import com.logexplorer.core.model.SearchRequest;
+import com.logexplorer.core.query.QueryEvaluator;
 
 /**
  * Shared structured-filter predicate for every {@code LogSource}
@@ -23,6 +24,15 @@ import com.logexplorer.core.model.SearchRequest;
  * timestamp; Loki's nanosecond bounds could differ subtly from a
  * source-clock-skewed content timestamp), so this acts as a cheap,
  * correct safety net on top, not a redundant no-op.
+ *
+ * <p>Phase E's DSL query ({@link SearchRequest#query()}, already parsed
+ * once by {@code SearchRequest.Builder#query}) is ANDed with every
+ * structured filter here (HANDOVER.md §9: "Structured filters are ANDed
+ * with parsed expression") — the single call site every adapter already
+ * uses. Because the exact same {@link QueryEvaluator} runs here regardless
+ * of which source produced the event, predicate-path/planner-path result
+ * equivalence ({@code source.loki.plan.LogQlDslPlanner} only ever narrows
+ * what Loki fetches as an optimization) is structural, not incidental.
  */
 public final class EventFilters {
 
@@ -79,6 +89,13 @@ public final class EventFilters {
     if (!fieldMatches(request.uiIdentifier(), event.uiIdentifier())) {
       return false;
     }
+    // loggerContains arrives on SearchRequest/the DTO and was never
+    // actually checked anywhere - a real, previously-shipped no-op filter
+    // bug found while touching this file for Phase E, fixed here.
+    if (notBlank(request.loggerContains()) && (event.logger() == null
+        || !event.logger().toLowerCase().contains(request.loggerContains().toLowerCase()))) {
+      return false;
+    }
     if (!fieldMatches(request.devicePlatform(), event.devicePlatformType())) {
       return false;
     }
@@ -102,7 +119,10 @@ public final class EventFilters {
     if (!fieldMatches(filters.deviceId(), raw.deviceId())) {
       return false;
     }
-    return fieldMatches(filters.deviceIp(), raw.deviceIp());
+    if (!fieldMatches(filters.deviceIp(), raw.deviceIp())) {
+      return false;
+    }
+    return QueryEvaluator.evaluate(request.query(), event);
   }
 
   private static boolean fieldMatches(String requested, String actual) {

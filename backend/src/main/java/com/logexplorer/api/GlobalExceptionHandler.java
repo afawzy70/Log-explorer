@@ -2,6 +2,7 @@ package com.logexplorer.api;
 
 import com.logexplorer.core.guard.GuardrailViolationException;
 import com.logexplorer.core.guard.TooManyConcurrentSearchesException;
+import com.logexplorer.core.query.QuerySyntaxException;
 import com.logexplorer.source.DisabledSourceException;
 import com.logexplorer.source.UnknownSourceException;
 import java.util.concurrent.TimeoutException;
@@ -40,6 +41,16 @@ public class GlobalExceptionHandler {
   public ProblemDetail handleGuardrailViolation(GuardrailViolationException e) {
     ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
     problem.setProperty("reason", e.reason().name());
+    return problem;
+  }
+
+  @ExceptionHandler(QuerySyntaxException.class)
+  public ProblemDetail handleQuerySyntax(QuerySyntaxException e) {
+    // e.getMessage() is already guaranteed never to contain a literal
+    // query value or arbitrary raw substring - see QuerySyntaxException's
+    // own javadoc for the invariant every throw site in core.query upholds.
+    ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
+    problem.setProperty("position", e.position());
     return problem;
   }
 

@@ -10,6 +10,7 @@ import com.logexplorer.core.guard.SearchGuardrails;
 import com.logexplorer.core.guard.TooManyConcurrentSearchesException;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.SearchRequest;
+import com.logexplorer.core.model.SourceCapabilities;
 import com.logexplorer.source.LogSourceRegistry;
 import com.logexplorer.source.StubLogSource;
 import com.logexplorer.source.UnknownSourceException;
@@ -132,6 +133,51 @@ class SearchServiceTest {
     } finally {
       holder.dispose();
     }
+  }
+
+  @Test
+  void rawLogQlIsRejectedForASourceWhoseCapabilitiesDoNotAllowIt() {
+    // stub's default capabilities have rawLogQL=false, matching Docker/
+    // fixture's honest reporting (IMPLEMENTATION_PLAN.md "Phase E" scope
+    // item 8: "never advertised for Docker").
+    SearchRequest request = baseRequest().rawLogQl("{namespace=\"x\"}").build();
+    StepVerifier.create(newService().search(request))
+        .expectErrorSatisfies(e -> {
+          assertThat(e).isInstanceOf(GuardrailViolationException.class);
+          assertThat(((GuardrailViolationException) e).reason())
+              .isEqualTo(GuardrailViolationException.Reason.RAW_LOGQL_NOT_SUPPORTED);
+        })
+        .verify(Duration.ofSeconds(2));
+  }
+
+  @Test
+  void rawLogQlIsAllowedForASourceThatAdvertisesTheCapability() {
+    StubLogSource lokiLike = new StubLogSource(
+        "openshift-loki", "OpenShift Loki", new SourceCapabilities(true, false, true, false, false, false));
+    lokiLike.withSearchFlux(Flux.fromIterable(events(1)));
+    SearchGuardrails guardrails = new SearchGuardrails(properties);
+    ConcurrencyGuard concurrencyGuard = new ConcurrencyGuard(properties);
+    LogSourceRegistry registry = new LogSourceRegistry(List.of(lokiLike), new SourcesProperties());
+    SearchService service = new SearchService(registry, guardrails, concurrencyGuard);
+
+    SearchRequest request = SearchRequest.builder()
+        .sourceId("openshift-loki").start(NOW.minusSeconds(60)).end(NOW)
+        .rawLogQl("{namespace=\"x\"}")
+        .build();
+
+    StepVerifier.create(service.search(request))
+        .assertNext(result -> assertThat(result.events()).hasSize(1))
+        .verifyComplete();
+  }
+
+  @Test
+  void aBlankRawLogQlIsNeverTreatedAsARequestForTheCapability() {
+    // An empty string must not spuriously trip the gate - only a real
+    // non-blank value counts as "raw LogQL requested".
+    SearchRequest request = baseRequest().rawLogQl("").build();
+    StepVerifier.create(newService().search(request))
+        .expectNextCount(1)
+        .verifyComplete();
   }
 
   private List<CanonicalLogEvent> events(int count) {

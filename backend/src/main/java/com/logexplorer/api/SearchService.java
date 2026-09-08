@@ -1,6 +1,8 @@
 package com.logexplorer.api;
 
 import com.logexplorer.core.guard.ConcurrencyGuard;
+import com.logexplorer.core.guard.GuardrailViolationException;
+import com.logexplorer.core.guard.GuardrailViolationException.Reason;
 import com.logexplorer.core.guard.SearchGuardrails;
 import com.logexplorer.core.guard.ValidatedSearch;
 import com.logexplorer.core.model.CanonicalLogEvent;
@@ -39,6 +41,7 @@ public class SearchService {
   public Mono<SearchResult> search(SearchRequest request) {
     return Mono.defer(() -> {
       LogSource source = registry.require(request.sourceId());
+      rejectRawLogQlIfUnsupported(request, source);
       ValidatedSearch validated = guardrails.validate(request);
 
       Flux<CanonicalLogEvent> guarded = concurrencyGuard.guard(source.search(request));
@@ -53,6 +56,22 @@ public class SearchService {
           .timeout(validated.timeout())
           .map(list -> toResult(list, validated.effectiveLimit()));
     });
+  }
+
+  /**
+   * Raw LogQL is Loki-only, config-enabled (IMPLEMENTATION_PLAN.md "Phase
+   * E" scope item 8: "never advertised for Docker") — this one honest
+   * capability check ({@link com.logexplorer.core.model.SourceCapabilities#rawLogQL()},
+   * which itself reflects real per-source configuration, never assumed
+   * true) covers both "wrong source type" and "not enabled by config" in
+   * one place, rather than two separate special cases.
+   */
+  private void rejectRawLogQlIfUnsupported(SearchRequest request, LogSource source) {
+    boolean requestsRawLogQl = request.rawLogQl() != null && !request.rawLogQl().isBlank();
+    if (requestsRawLogQl && !source.capabilities().rawLogQL()) {
+      throw new GuardrailViolationException(
+          Reason.RAW_LOGQL_NOT_SUPPORTED, "Raw LogQL is not supported for source " + request.sourceId());
+    }
   }
 
   private SearchResult toResult(List<CanonicalLogEvent> fetched, int effectiveLimit) {

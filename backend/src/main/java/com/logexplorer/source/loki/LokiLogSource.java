@@ -9,6 +9,7 @@ import com.logexplorer.core.model.SourceHealth;
 import com.logexplorer.core.parse.LogLineParser;
 import com.logexplorer.core.search.EventFilters;
 import com.logexplorer.source.LogSource;
+import com.logexplorer.source.loki.plan.LogQlDslPlanner;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -79,9 +80,7 @@ public class LokiLogSource implements LogSource {
 
   @Override
   public Flux<CanonicalLogEvent> search(SearchRequest request) {
-    String selector = LogQlSelectorBuilder.build(
-        properties.getNamespaceLabelKey(), properties.getNamespace(),
-        properties.getServiceLabelKey(), request.services());
+    String selector = buildSelector(request);
 
     Instant start = request.start() != null ? request.start() : Instant.now().minusSeconds(3600);
     Instant end = request.end() != null ? request.end() : Instant.now();
@@ -90,6 +89,40 @@ public class LokiLogSource implements LogSource {
     return queryClient.queryRange(selector, toNanos(start), toNanos(end), properties.getMaxResultsPerQuery(), direction)
         .map(response -> toEvents(response, request))
         .flatMapMany(Flux::fromIterable);
+  }
+
+  /**
+   * Raw LogQL (IMPLEMENTATION_PLAN.md "Phase E" scope item 8) is used
+   * verbatim, in place of the built selector, when present - {@code
+   * api.SearchService} already rejects it before ever reaching here unless
+   * {@link SourceCapabilities#rawLogQL()} (which reflects {@code
+   * properties.isRawLogQlEnabled()}) was true, but this check is repeated
+   * here too as defense in depth, never trusting a single call site as the
+   * only line of defense (the same posture {@link LogSource#search}'s own
+   * javadoc states for guardrails generally).
+   *
+   * <p>Otherwise builds the normal selector — augmented with {@code
+   * LogQlDslPlanner}'s narrow, provably-safe {@code service = "..."}
+   * pushdown from the DSL query when the request didn't already specify a
+   * service list itself (an optimization only; {@code EventFilters}
+   * always still re-applies the full DSL predicate afterward regardless).
+   */
+  private String buildSelector(SearchRequest request) {
+    if (request.rawLogQl() != null && !request.rawLogQl().isBlank()) {
+      if (!properties.isRawLogQlEnabled()) {
+        throw new IllegalStateException("Raw LogQL is not enabled for this source");
+      }
+      return request.rawLogQl();
+    }
+
+    List<String> requestedServices = request.services();
+    if (requestedServices.isEmpty()) {
+      requestedServices = LogQlDslPlanner.extractServiceEquality(request.query())
+          .map(List::of)
+          .orElse(requestedServices);
+    }
+    return LogQlSelectorBuilder.build(
+        properties.getNamespaceLabelKey(), properties.getNamespace(), properties.getServiceLabelKey(), requestedServices);
   }
 
   private List<CanonicalLogEvent> toEvents(LokiQueryResponse response, SearchRequest request) {
