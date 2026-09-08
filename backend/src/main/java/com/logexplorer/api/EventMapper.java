@@ -53,6 +53,11 @@ public class EventMapper {
         event.unknownTopLevelFields(),
         event.unknownMdcFields(),
         event.malformed(),
-        event.rawLine());
+        event.rawLine(),
+        event.sourceId(),
+        event.composeProject(),
+        event.containerId(),
+        event.containerName(),
+        event.stream());
   }
 }
