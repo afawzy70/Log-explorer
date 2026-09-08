@@ -164,6 +164,25 @@ class LogLineParserTest {
     assertThat(event.unknownMdcFields()).isEmpty();
   }
 
+  @Test
+  void aNullValuedUnknownFieldIsPreservedRatherThanCrashingTheWholeEvent() {
+    // Regression test for a real NullPointerException reported against a
+    // real Docker container's real log output (not reproducible from the
+    // fixture/mock corpora, which never happened to include a null-valued
+    // field): CanonicalLogEvent's canonical constructor used to call
+    // Map.copyOf on unknownTopLevelFields/unknownMdcFields, which rejects
+    // any null *value* - but a JSON `null` (e.g. "exception":null when
+    // absent) is a perfectly ordinary, valid value for an unknown field,
+    // not a malformed one.
+    String line = """
+        {"message":"m","application":"gateway","mdc":{"weirdCustomField":null},"someFutureField":null}
+        """;
+    CanonicalLogEvent event = parser.parse(line);
+    assertThat(event.unknownTopLevelFields()).containsEntry("someFutureField", null);
+    assertThat(event.unknownMdcFields()).containsEntry("weirdCustomField", null);
+    assertThat(event.malformed()).isFalse();
+  }
+
   // --- malformed lines (HANDOVER.md §5.4) -------------------------------------
 
   @Test

@@ -3,10 +3,33 @@ package com.logexplorer.core.model;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class CanonicalLogEventTest {
+
+  @Test
+  void constructorAcceptsUnknownFieldMapsContainingANullValue() {
+    // Regression test for a real NullPointerException found against real
+    // Docker container logs: the canonical constructor used to call
+    // Map.copyOf on unknownTopLevelFields/unknownMdcFields, which throws
+    // on any null *value* - but a JSON `null` is an ordinary, valid value
+    // for a field this codebase has never heard of, not a malformed one.
+    Map<String, Object> topLevelWithNull = new HashMap<>();
+    topLevelWithNull.put("someFutureField", null);
+    Map<String, Object> mdcWithNull = new HashMap<>();
+    mdcWithNull.put("weirdCustomField", null);
+
+    CanonicalLogEvent event = CanonicalLogEvent.builder()
+        .message("m")
+        .unknownTopLevelFields(topLevelWithNull)
+        .unknownMdcFields(mdcWithNull)
+        .build();
+
+    assertThat(event.unknownTopLevelFields()).containsEntry("someFutureField", null);
+    assertThat(event.unknownMdcFields()).containsEntry("weirdCustomField", null);
+  }
 
   @Test
   void toBuilderRoundTripsEveryFieldIncludingAdapterEnrichment() {

@@ -1,6 +1,8 @@
 package com.logexplorer.core.model;
 
 import java.time.Instant;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -59,8 +61,23 @@ public record CanonicalLogEvent(
 ) {
 
   public CanonicalLogEvent {
-    unknownTopLevelFields = unknownTopLevelFields == null ? Map.of() : Map.copyOf(unknownTopLevelFields);
-    unknownMdcFields = unknownMdcFields == null ? Map.of() : Map.copyOf(unknownMdcFields);
+    // A real bug, found only against real-world container logs (never
+    // reproduced by the fixture/mock corpora, which never happened to
+    // include one): Map.copyOf rejects any null *value*, but a genuine
+    // unknown top-level or MDC field in a real Spring Boot JSON log line
+    // can legitimately be JSON `null` (e.g. "exception": null when
+    // absent) - a perfectly valid value, not a malformed one.
+    // Collections.unmodifiableMap tolerates null values (only Map.copyOf
+    // and Map.of() reject them), preserving the field's real value
+    // faithfully - "never discard unknown JSON or MDC fields" (CLAUDE.md
+    // §4 "Parsing") applies just as much to a null-valued field as any
+    // other.
+    unknownTopLevelFields = unknownTopLevelFields == null
+        ? Map.of()
+        : Collections.unmodifiableMap(new LinkedHashMap<>(unknownTopLevelFields));
+    unknownMdcFields = unknownMdcFields == null
+        ? Map.of()
+        : Collections.unmodifiableMap(new LinkedHashMap<>(unknownMdcFields));
     sensitive = sensitive == null ? RawSensitiveFields.empty() : sensitive;
   }
 
