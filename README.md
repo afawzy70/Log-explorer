@@ -64,20 +64,36 @@ customer ID, device ID, device IP) while doing it.
 backend/    Spring Boot backend (parsing, masking, guardrails, source adapters, API)
 frontend/   React + TypeScript UI
 tools/      Standalone verification-harness components (demo log generator, mock Loki)
-docs/       Requirements handover, run guide, per-phase verification reports
-scripts/    smoke.sh — deterministic build/start/health/search/UI smoke test
+docs/       Requirements handover, run guide, security notes, per-phase verification reports
+deploy/     OpenShift deployment manifests (Deployment, Service, Route, ConfigMap, ServiceAccount)
+scripts/    smoke.sh / validate-openshift-manifests.sh — deterministic verification scripts
 ```
 
 ## Quick start — Docker (recommended)
 
 Requires Docker Engine with Compose v2 (the `docker compose` subcommand).
 No local Java or Node install needed — the whole build happens inside the
-`Dockerfile`.
+`Dockerfile`. **On Windows**, install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+with the **WSL2 backend** (Docker Desktop's own default and recommended
+setup — Settings → General → "Use the WSL 2 based engine") and run the
+commands below from either a WSL2 terminal (Ubuntu, etc.) or PowerShell —
+Docker Desktop exposes the same `docker compose` command to both.
+
+macOS / Linux / WSL2 / Git Bash:
 
 ```bash
 git clone <this repository>
 cd Log-explorer
 cp .env.example .env
+docker compose --profile demo up --build
+```
+
+Windows PowerShell:
+
+```powershell
+git clone <this repository>
+cd Log-explorer
+Copy-Item .env.example .env
 docker compose --profile demo up --build
 ```
 
@@ -100,7 +116,9 @@ demo: **[docs/RUN_GUIDE.md](docs/RUN_GUIDE.md)**. Covers:
 - Ports, health checks, troubleshooting.
 
 Run the deterministic smoke test (build → start → health → source
-discovery → search → UI load → stop → cleanup, limited to this stack only):
+discovery → search → UI load → stop → cleanup, limited to this stack only) —
+a Bash script, so on Windows run it from a **WSL2 or Git Bash terminal**,
+not plain PowerShell/cmd.exe:
 
 ```bash
 ./scripts/smoke.sh
@@ -108,20 +126,48 @@ discovery → search → UI load → stop → cleanup, limited to this stack onl
 
 ## Run locally (without Docker)
 
-Requires **Java 21** and **Node.js 20+**. Two terminals — the frontend dev
+Requires **Java 21** ([Temurin](https://adoptium.net/) works well on all
+three platforms) and **Node.js 20+**. Two terminals — the frontend dev
 server proxies `/api` and `/actuator` to the backend on port 8080, so both
 need to be running together.
+
+**Important — set `SPRING_PROFILES_ACTIVE=dev` unless you specifically
+want to query a real source.** Without it, the backend registers only the
+real `local-docker` (via your local Docker Desktop/Engine) and
+`openshift-loki` sources — no Fixture source, no demo data. This is a
+common source of confusion when running locally for the first time: if
+you start the backend with no active profile and search against
+`local-docker`, it will genuinely try to read logs from whatever real
+containers happen to be running on your machine.
 
 **Backend** (starts on `:8080`; `SPRING_PROFILES_ACTIVE=dev` enables the
 in-process Fixture source, the same zero-dependency demo data the Docker
 quick start uses):
+
+macOS / Linux / WSL2 / Git Bash:
 
 ```bash
 cd backend
 SPRING_PROFILES_ACTIVE=dev ./mvnw spring-boot:run
 ```
 
-**Frontend** (starts on `:5173`):
+Windows PowerShell:
+
+```powershell
+cd backend
+$env:SPRING_PROFILES_ACTIVE = "dev"
+.\mvnw.cmd spring-boot:run
+```
+
+Windows cmd.exe:
+
+```bat
+cd backend
+set SPRING_PROFILES_ACTIVE=dev
+mvnw.cmd spring-boot:run
+```
+
+**Frontend** (starts on `:5173`; identical on every platform):
 
 ```bash
 cd frontend
@@ -130,19 +176,23 @@ npm run dev
 ```
 
 Open <http://localhost:5173>. Configuration is the same set of
-`LOGEXPLORER_*` environment variables documented in `.env.example` — export
-them in your shell before starting the backend to point it at a real Docker
-socket or Loki gateway instead of the Fixture source.
+`LOGEXPLORER_*` environment variables documented in `.env.example` — set
+them in your shell (`export VAR=value` on macOS/Linux/WSL2,
+`$env:VAR = "value"` in PowerShell, `set VAR=value` in cmd.exe) before
+starting the backend to point it at a real Docker socket or Loki gateway
+instead of the Fixture source.
 
 ## Testing
 
 ```bash
-# Backend — 362 tests: parser, masking, guardrails, source adapters,
+# Backend — 364 tests: parser, masking, guardrails, source adapters,
 # query engine, API integration, ArchUnit boundary, log/serialization leak
-# checks.
+# checks. On Windows use mvnw.cmd instead of ./mvnw (PowerShell and
+# cmd.exe both accept it: `cd backend; .\mvnw.cmd test`).
 cd backend && ./mvnw test
 
 # Frontend — 288 unit/component tests (Vitest + Testing Library + jest-axe).
+# Identical on every platform.
 cd frontend && npm run test
 
 # Frontend strict type-check and production build.
@@ -173,7 +223,7 @@ see `CLAUDE.md`). Current state:
 | I | Trace / correlation / journey investigation | Done |
 | J | Live tail | Done |
 | K | Portable Docker Compose delivery | Done |
-| L | OpenShift deployment assets | Not started |
+| L | OpenShift deployment assets | Done |
 | M | Final acceptance | Not started |
 
 Full per-requirement coverage: **[REQUIREMENTS_TRACEABILITY.md](REQUIREMENTS_TRACEABILITY.md)**.
@@ -189,7 +239,9 @@ PASS/FAIL/BLOCKED/DEFERRED — never fabricated): **`docs/verification/PHASE_<X>
 | [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) | The phase-by-phase build plan this project follows |
 | [`REQUIREMENTS_TRACEABILITY.md`](REQUIREMENTS_TRACEABILITY.md) | Every requirement mapped to its owning phase and evidence |
 | [`docs/RUN_GUIDE.md`](docs/RUN_GUIDE.md) | Full run guide — Docker Compose profiles, ports, env vars, troubleshooting |
+| [`docs/SECURITY_NOTES.md`](docs/SECURITY_NOTES.md) | Full security posture across both deployment shapes (Docker Compose, OpenShift) |
 | [`.env.example`](.env.example) | Every configuration variable, with names and harmless defaults only |
+| [`deploy/openshift/`](deploy/openshift/) | OpenShift manifests — see `docs/SECURITY_NOTES.md` and `docs/verification/PHASE_L_REPORT.md` for how to apply them |
 | `docs/verification/PHASE_<X>_REPORT.md` | Per-phase verification report |
 
 ## Out of scope
