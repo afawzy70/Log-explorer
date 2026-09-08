@@ -121,6 +121,42 @@ export async function assertNoHorizontalOverflow(page: Page): Promise<void> {
 }
 
 /**
+ * Asserts two elements' bounding boxes do not overlap (CLAUDE.md §4: "The
+ * editor must not overlap severity"). Throws with both rects' geometry so
+ * a failure is diagnosable without re-running under a debugger.
+ */
+export async function assertNoOverlap(page: Page, selectorA: string, selectorB: string): Promise<void> {
+  const rects = await page.evaluate(
+    ({ selectorA, selectorB }) => {
+      const a = document.querySelector(selectorA);
+      const b = document.querySelector(selectorB);
+      if (!a || !b) {
+        throw new Error(`assertNoOverlap: could not find "${selectorA}" and/or "${selectorB}"`);
+      }
+      const ar = a.getBoundingClientRect();
+      const br = b.getBoundingClientRect();
+      return {
+        a: { left: ar.left, right: ar.right, top: ar.top, bottom: ar.bottom },
+        b: { left: br.left, right: br.right, top: br.top, bottom: br.bottom },
+      };
+    },
+    { selectorA, selectorB },
+  );
+
+  const overlaps =
+    rects.a.left < rects.b.right &&
+    rects.a.right > rects.b.left &&
+    rects.a.top < rects.b.bottom &&
+    rects.a.bottom > rects.b.top;
+
+  if (overlaps) {
+    throw new Error(
+      `assertNoOverlap: "${selectorA}" (${JSON.stringify(rects.a)}) overlaps "${selectorB}" (${JSON.stringify(rects.b)})`,
+    );
+  }
+}
+
+/**
  * Screenshots into docs/verification/<phase>/, creating the directory if
  * needed — the evidence path every phase's browser checks write into.
  */

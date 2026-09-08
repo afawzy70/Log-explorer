@@ -1,0 +1,23 @@
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: var(--border-width) solid var(--color-border);
+  background: var(--color-bg-raised);
+}
+
+.title {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  margin: 0;
+}
+
+.sourceName {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.spacer {
+  flex: 1;
+}

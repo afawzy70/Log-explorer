@@ -1,0 +1,29 @@
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: var(--color-bg-hover);
+  border-radius: 999px;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.chipLabel {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.protected {
+  color: var(--color-protected);
+  background: var(--color-protected-bg);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+}

@@ -4,13 +4,14 @@ import { setViewport, setZoom, assertNoHorizontalOverflow } from './helpers';
 /*
  * H4b (Phase A2b) — proves Playwright is wired to the real running app
  * (the Vite dev server auto-started by playwright.config.ts's webServer),
- * not just to static fixture files. Deliberately minimal: this page is a
- * placeholder (see frontend/src/App.tsx), not the real product UI - Phase
- * F builds that. This test exercises the relocated A2a helper library
- * against a real app for the first time.
+ * not just to static fixture files. Originally written against Phase
+ * A2b's placeholder page; the title and "Log Explorer" heading assertions
+ * still hold verbatim now that Phase F's real Shell renders them (see
+ * frontend/src/app/Shell.tsx) - see e2e/phase-f-search-ux.spec.ts for
+ * Phase F's own dedicated browser checks.
  */
 
-test('the real dev server serves the placeholder app and renders its heading', async ({ page }) => {
+test('the real dev server serves the app and renders its heading', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveTitle('Log Explorer');
   await expect(page.getByRole('heading', { name: 'Log Explorer' })).toBeVisible();
