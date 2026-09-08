@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import * as path from 'path';
-import { assertTableGeometry, assertNoHorizontalOverflow, setViewport, setZoom } from '../helpers';
+import { assertTableGeometry, assertNoHorizontalOverflow, setViewport, setZoom } from './helpers';
 
 /*
  * Proves the geometry helpers actually catch the regressions they exist to
@@ -9,10 +9,14 @@ import { assertTableGeometry, assertNoHorizontalOverflow, setViewport, setZoom }
  *
  * An assertion that only ever runs against a passing page has never been
  * proven to fail correctly — this file proves both directions.
+ *
+ * Relocated here (Phase A2b) from tools/playwright-harness/, which was
+ * A2a's standalone home for this before frontend/ existed - see
+ * IMPLEMENTATION_PLAN.md "Phase A2b".
  */
 
-const CORRECT_FIXTURE = `file://${path.join(__dirname, '..', 'fixtures', 'table-correct.html')}`;
-const BROKEN_FIXTURE = `file://${path.join(__dirname, '..', 'fixtures', 'table-broken.html')}`;
+const CORRECT_FIXTURE = `file://${path.join(import.meta.dirname, 'fixtures', 'table-correct.html')}`;
+const BROKEN_FIXTURE = `file://${path.join(import.meta.dirname, 'fixtures', 'table-broken.html')}`;
 
 test.describe('assertTableGeometry / assertNoHorizontalOverflow — meta-tests', () => {
   test('PASS: a correctly-built semantic table satisfies both assertions', async ({ page }) => {
