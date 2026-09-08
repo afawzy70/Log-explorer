@@ -90,7 +90,7 @@ export function EventInspector({ state }: { state: SearchState }) {
           <ActorClientSection event={event} />
           <RequestFlowSection
             event={event}
-            onFindRelated={state.findRelated}
+            onOpenJourney={state.openJourney}
             onShowContext={() => state.showContext(event)}
           />
           <BusinessErrorSection event={event} />

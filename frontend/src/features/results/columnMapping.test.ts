@@ -105,11 +105,15 @@ describe('resolveUserOrCustomer', () => {
 
 describe('resolveCorrelationOrTrace', () => {
   it('prefers traceId', () => {
-    expect(resolveCorrelationOrTrace(baseEvent())).toEqual({ label: 'Trace ID', value: 'trace-1' });
+    expect(resolveCorrelationOrTrace(baseEvent())).toEqual({ label: 'Trace ID', value: 'trace-1', field: 'traceId' });
   });
 
   it('falls back to correlationId', () => {
-    expect(resolveCorrelationOrTrace(baseEvent({ traceId: null }))).toEqual({ label: 'Correlation ID', value: 'corr-1' });
+    expect(resolveCorrelationOrTrace(baseEvent({ traceId: null }))).toEqual({
+      label: 'Correlation ID',
+      value: 'corr-1',
+      field: 'correlationId',
+    });
   });
 
   it('returns null when neither is present', () => {

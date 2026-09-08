@@ -48,13 +48,18 @@ export function resolveUserOrCustomer(event: LogEvent): LabeledValue | null {
   return null;
 }
 
-/** Correlation/Trace column - traceId preferred, correlationId as fallback (both non-sensitive, copyable). */
-export function resolveCorrelationOrTrace(event: LogEvent): LabeledValue | null {
+export interface CorrelationOrTraceCell extends LabeledValue {
+  /** Which journey-lookup field this cell's value is - IMPLEMENTATION_PLAN.md "Phase I" click actions key off this. */
+  field: 'traceId' | 'correlationId';
+}
+
+/** Correlation/Trace column - traceId preferred, correlationId as fallback (both non-sensitive, copyable, and clickable per HANDOVER.md §17 "supported click actions on non-sensitive IDs"). */
+export function resolveCorrelationOrTrace(event: LogEvent): CorrelationOrTraceCell | null {
   if (event.traceId) {
-    return { label: 'Trace ID', value: event.traceId };
+    return { label: 'Trace ID', value: event.traceId, field: 'traceId' };
   }
   if (event.correlationId) {
-    return { label: 'Correlation ID', value: event.correlationId };
+    return { label: 'Correlation ID', value: event.correlationId, field: 'correlationId' };
   }
   return null;
 }

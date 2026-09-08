@@ -1,9 +1,13 @@
 package com.logexplorer.api;
 
 import com.logexplorer.api.dto.ContextRequestDto;
+import com.logexplorer.api.dto.JourneyRequestDto;
 import com.logexplorer.api.dto.SearchRequestDto;
 import com.logexplorer.api.dto.SearchResponseDto;
+import com.logexplorer.core.model.CanonicalLogEvent;
 import jakarta.validation.Valid;
+import java.util.Comparator;
+import java.util.List;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -47,5 +51,30 @@ public class SearchController {
             result.events().stream().map(eventMapper::toDto).toList(),
             result.counts(),
             result.nextCursor()));
+  }
+
+  /**
+   * "Timeline ... ascending order for flow" (IMPLEMENTATION_PLAN.md "Phase
+   * I", HANDOVER.md §17) — every {@code LogSource} implementation sorts
+   * its own way regardless of {@link com.logexplorer.core.model.SearchRequest#direction()}
+   * (only {@code LokiLogSource} honors it at all; fixture/Docker always
+   * return newest-first — a real, previously-latent inconsistency this
+   * endpoint does not rely on), so ascending order is enforced once, here,
+   * for every source alike. Malformed events (no parsed timestamp) sort
+   * last, never dropped (CLAUDE.md §4 "malformed lines ... never silently
+   * dropped").
+   */
+  @PostMapping("/journey")
+  public Mono<SearchResponseDto> journey(@Valid @RequestBody JourneyRequestDto dto) {
+    return searchService.search(requestMapper.toJourneyDomain(dto))
+        .map(result -> {
+          List<CanonicalLogEvent> ascending = result.events().stream()
+              .sorted(Comparator.comparing(CanonicalLogEvent::timestamp, Comparator.nullsLast(Comparator.naturalOrder())))
+              .toList();
+          return new SearchResponseDto(
+              ascending.stream().map(eventMapper::toDto).toList(),
+              result.counts(),
+              result.nextCursor());
+        });
   }
 }

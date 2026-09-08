@@ -140,6 +140,23 @@ export interface ContextRequestBody {
   pod?: string;
 }
 
+/** The exact four non-sensitive identifiers "Find this X" (IMPLEMENTATION_PLAN.md "Phase I") can search by - never a sensitive field, structurally. */
+export type JourneyField = 'journeyId' | 'correlationId' | 'traceId' | 'eventId';
+
+/**
+ * `POST /api/v1/logs/journey` body - "Click actions on non-sensitive IDs"
+ * (IMPLEMENTATION_PLAN.md "Phase I", HANDOVER.md §17). `start`/`end` are
+ * always the caller's own currently-committed search window - this
+ * endpoint never invents or widens a "bounded time window" of its own.
+ */
+export interface JourneyRequestBody {
+  sourceId: string;
+  start: string;
+  end: string;
+  field: JourneyField;
+  value: string;
+}
+
 /** RFC 7807, as GlobalExceptionHandler produces it. */
 export interface ProblemDetail {
   type?: string;

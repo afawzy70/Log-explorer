@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { ResultsTable } from './ResultsTable';
 import type { LogEvent } from '../../shared/api/types';
@@ -130,6 +131,20 @@ describe('ResultsTable', () => {
     const row = screen.getAllByRole('row')[1];
     expect(within(row).getAllByRole('cell')[5].textContent).toContain('trace-abc');
     expect(within(row).getAllByRole('cell')[5].textContent).toContain('Trace ID');
+  });
+
+  it('without onOpenJourney, the Correlation/Trace cell has no button at all', () => {
+    render(<ResultsTable events={[event({ traceId: 'trace-abc' })]} />);
+    const row = screen.getAllByRole('row')[1];
+    expect(within(row).getAllByRole('cell')[5].querySelector('button')).toBeNull();
+  });
+
+  it('"supported click actions on non-sensitive IDs" (HANDOVER.md §17) - clicking the Correlation/Trace cell calls onOpenJourney with the right field and value', async () => {
+    const user = userEvent.setup();
+    const onOpenJourney = vi.fn();
+    render(<ResultsTable events={[event({ traceId: 'trace-abc' })]} onOpenJourney={onOpenJourney} />);
+    await user.click(screen.getByRole('button', { name: /trace id:trace-abc/i }));
+    expect(onOpenJourney).toHaveBeenCalledWith('traceId', 'trace-abc');
   });
 
   it('renders rows in exactly the order given - no client-side reordering, no dropped/duplicated rows', () => {

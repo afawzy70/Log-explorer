@@ -1,8 +1,11 @@
 package com.logexplorer.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.logexplorer.api.dto.ContextRequestDto;
+import com.logexplorer.api.dto.JourneyRequestDto;
+import com.logexplorer.core.guard.GuardrailViolationException;
 import com.logexplorer.core.model.SearchRequest;
 import java.time.Duration;
 import java.time.Instant;
@@ -51,5 +54,60 @@ class RequestMapperTest {
   void sourceIdIsCarriedThroughUnchanged() {
     SearchRequest request = mapper.toContextDomain(new ContextRequestDto("openshift-loki", TIMESTAMP, null, null, null));
     assertThat(request.sourceId()).isEqualTo("openshift-loki");
+  }
+
+  private static final Instant START = Instant.parse("2026-01-01T00:00:00Z");
+  private static final Instant END = Instant.parse("2026-01-02T00:00:00Z");
+
+  @Test
+  void journeyIdFieldMapsToTheJourneyIdFilterOnly() {
+    SearchRequest request = mapper.toJourneyDomain(new JourneyRequestDto("local-docker", START, END, "journeyId", "j-1"));
+    assertThat(request.journeyId()).isEqualTo("j-1");
+    assertThat(request.correlationId()).isNull();
+    assertThat(request.traceId()).isNull();
+    assertThat(request.eventId()).isNull();
+  }
+
+  @Test
+  void correlationIdFieldMapsToTheCorrelationIdFilterOnly() {
+    SearchRequest request = mapper.toJourneyDomain(new JourneyRequestDto("local-docker", START, END, "correlationId", "c-1"));
+    assertThat(request.correlationId()).isEqualTo("c-1");
+    assertThat(request.journeyId()).isNull();
+  }
+
+  @Test
+  void traceIdFieldMapsToTheTraceIdFilterOnly() {
+    SearchRequest request = mapper.toJourneyDomain(new JourneyRequestDto("local-docker", START, END, "traceId", "t-1"));
+    assertThat(request.traceId()).isEqualTo("t-1");
+    assertThat(request.journeyId()).isNull();
+  }
+
+  @Test
+  void eventIdFieldMapsToTheEventIdFilterOnly() {
+    SearchRequest request = mapper.toJourneyDomain(new JourneyRequestDto("local-docker", START, END, "eventId", "e-1"));
+    assertThat(request.eventId()).isEqualTo("e-1");
+    assertThat(request.journeyId()).isNull();
+  }
+
+  @Test
+  void sourceIdAndTimeRangeAreCarriedThroughUnchangedNeverWidened() {
+    SearchRequest request = mapper.toJourneyDomain(new JourneyRequestDto("openshift-loki", START, END, "traceId", "t-1"));
+    assertThat(request.sourceId()).isEqualTo("openshift-loki");
+    assertThat(request.start()).isEqualTo(START);
+    assertThat(request.end()).isEqualTo(END);
+  }
+
+  @Test
+  void anyFieldOutsideTheFourNonSensitiveIdentifiersIsRejected() {
+    // The exact "never a raw customer-identifier click-search" guarantee
+    // (CLAUDE.md §2 rule 1 / IMPLEMENTATION_PLAN.md "Phase I") - enforced
+    // structurally, not just by convention: nothing else is even a legal
+    // value for `field`.
+    for (String sensitive : new String[] {"cif", "userName", "customerId", "deviceId", "deviceIp", "bogus"}) {
+      assertThatThrownBy(() -> mapper.toJourneyDomain(new JourneyRequestDto("local-docker", START, END, sensitive, "x")))
+          .isInstanceOf(GuardrailViolationException.class)
+          .satisfies(e -> assertThat(((GuardrailViolationException) e).reason())
+              .isEqualTo(GuardrailViolationException.Reason.INVALID_JOURNEY_FIELD));
+    }
   }
 }

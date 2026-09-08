@@ -1,11 +1,15 @@
 package com.logexplorer.api;
 
 import com.logexplorer.api.dto.ContextRequestDto;
+import com.logexplorer.api.dto.JourneyRequestDto;
 import com.logexplorer.api.dto.SearchRequestDto;
+import com.logexplorer.core.guard.GuardrailViolationException;
+import com.logexplorer.core.guard.GuardrailViolationException.Reason;
 import com.logexplorer.core.model.SearchRequest;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /**
@@ -22,6 +26,16 @@ public class RequestMapper {
 
   /** "Show ±30 seconds was explicitly specified" (HANDOVER.md §16.7) — fixed, never client-supplied. */
   static final Duration CONTEXT_WINDOW = Duration.ofSeconds(30);
+
+  /**
+   * "Click actions on non-sensitive IDs: Find this trace / correlation /
+   * journey / event. Never create a raw customer-identifier click-search."
+   * (IMPLEMENTATION_PLAN.md "Phase I") — a closed set, checked in {@link
+   * #toJourneyDomain}, so a request naming anything else (in particular
+   * any of the five sensitive fields) is structurally rejected before it
+   * ever reaches a {@code LogSource}.
+   */
+  private static final Set<String> JOURNEY_FIELDS = Set.of("journeyId", "correlationId", "traceId", "eventId");
 
   public SearchRequest toDomain(SearchRequestDto dto) {
     return SearchRequest.builder()
@@ -72,6 +86,33 @@ public class RequestMapper {
         .containerId(dto.containerId())
         .pod(dto.pod())
         .build();
+  }
+
+  /**
+   * "Timeline: same active source only; bounded time window" (HANDOVER.md
+   * §17) — {@code sourceId}/{@code start}/{@code end} are carried straight
+   * through, never widened or defaulted here; the caller's own
+   * currently-committed search window is the bound. {@code field} must be
+   * one of {@link #JOURNEY_FIELDS} — anything else (including any of the
+   * five sensitive fields) is rejected outright.
+   */
+  public SearchRequest toJourneyDomain(JourneyRequestDto dto) {
+    if (!JOURNEY_FIELDS.contains(dto.field())) {
+      throw new GuardrailViolationException(Reason.INVALID_JOURNEY_FIELD,
+          "field must be one of " + JOURNEY_FIELDS);
+    }
+    SearchRequest.Builder builder = SearchRequest.builder()
+        .sourceId(dto.sourceId())
+        .start(dto.start())
+        .end(dto.end());
+    switch (dto.field()) {
+      case "journeyId" -> builder.journeyId(dto.value());
+      case "correlationId" -> builder.correlationId(dto.value());
+      case "traceId" -> builder.traceId(dto.value());
+      case "eventId" -> builder.eventId(dto.value());
+      default -> throw new IllegalStateException("unreachable - already validated above");
+    }
+    return builder.build();
   }
 
   private SearchRequest.Direction parseDirection(String raw) {

@@ -64,10 +64,12 @@ const SOURCES_RESPONSE = [
 describe('useSearchState', () => {
   let searchCalls: Array<{ body: string; resolve: (r: Response) => void; reject: (e: unknown) => void }>;
   let contextCalls: Array<{ body: string; resolve: (r: Response) => void; reject: (e: unknown) => void }>;
+  let journeyCalls: Array<{ body: string; resolve: (r: Response) => void; reject: (e: unknown) => void }>;
 
   beforeEach(() => {
     searchCalls = [];
     contextCalls = [];
+    journeyCalls = [];
     vi.stubGlobal(
       'fetch',
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -93,6 +95,13 @@ describe('useSearchState', () => {
             const signal = init?.signal as AbortSignal | undefined;
             signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
             contextCalls.push({ body: String(init?.body), resolve, reject });
+          });
+        }
+        if (url.endsWith('/api/v1/logs/journey')) {
+          return new Promise<Response>((resolve, reject) => {
+            const signal = init?.signal as AbortSignal | undefined;
+            signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+            journeyCalls.push({ body: String(init?.body), resolve, reject });
           });
         }
         throw new Error(`Unexpected fetch: ${url}`);
@@ -268,46 +277,68 @@ describe('useSearchState', () => {
     expect(result.current.selectedEvent).toBeNull();
   });
 
-  it('a fresh runSearch clears the inspector selection and any breadcrumb', async () => {
+  it('a fresh runSearch clears the inspector selection and closes journey mode', async () => {
     const result = await searchedWithThreeEvents();
     act(() => result.current.openInspector(0));
-    act(() => result.current.findRelated('traceId', 'trace-x'));
-    await waitFor(() => expect(searchCalls).toHaveLength(2));
-    searchCalls[1].resolve(
-      jsonResponse({ events: [], counts: { estimatedTotal: null, returned: 0, visible: 0, limit: 200, truncated: false }, nextCursor: null }),
-    );
-    await waitFor(() => expect(result.current.breadcrumbLabel).not.toBeNull());
+    act(() => result.current.openJourney('traceId', 'trace-x'));
+    await waitFor(() => expect(journeyCalls).toHaveLength(1));
+    expect(result.current.journeyQuery).not.toBeNull();
 
     act(() => result.current.runSearch());
-    await waitFor(() => expect(searchCalls).toHaveLength(3));
+    await waitFor(() => expect(searchCalls).toHaveLength(2));
     expect(result.current.selectedEvent).toBeNull();
-    expect(result.current.breadcrumbLabel).toBeNull();
+    expect(result.current.journeyQuery).toBeNull();
   });
 
-  it('findRelated searches by only the given ID, clears other filters, sets a breadcrumb, and restoreOriginalSearch brings back the prior results', async () => {
+  it('openJourney calls the dedicated /journey endpoint (never /search) with only the given ID over the current time range, and never touches searchResult', async () => {
     const result = await searchedWithThreeEvents();
     const originalEvents = result.current.searchResult?.events;
+    const originalTimeRange = result.current.timeRange;
 
-    act(() => result.current.findRelated('correlationId', 'corr-123'));
-    await waitFor(() => expect(searchCalls).toHaveLength(2));
-    expect(searchCalls[1].body).toContain('"correlationId":"corr-123"');
-    expect(searchCalls[1].body).toContain('"services":[]');
-    expect(searchCalls[1].body).toContain('"levels":[]');
+    act(() => result.current.openJourney('correlationId', 'corr-123'));
+    await waitFor(() => expect(journeyCalls).toHaveLength(1));
+    expect(searchCalls).toHaveLength(1); // unchanged - journey lookups never go through /search
+    expect(journeyCalls[0].body).toContain('"field":"correlationId"');
+    expect(journeyCalls[0].body).toContain('"value":"corr-123"');
+    expect(journeyCalls[0].body).toContain(`"start":"${originalTimeRange.start}"`);
+    expect(journeyCalls[0].body).toContain(`"end":"${originalTimeRange.end}"`);
+    expect(result.current.journeyQuery).toEqual({ field: 'correlationId', value: 'corr-123' });
+    expect(result.current.journeyLoading).toBe(true);
 
-    searchCalls[1].resolve(
+    journeyCalls[0].resolve(
       jsonResponse({
         events: [eventWithMessage('related')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
         nextCursor: null,
       }),
     );
-    await waitFor(() => expect(result.current.searchResult?.events[0].message).toBe('related'));
-    expect(result.current.breadcrumbLabel).toMatch(/correlation id/i);
-    expect(result.current.selectedEvent).toBeNull(); // inspector closes on navigating away
-
-    act(() => result.current.restoreOriginalSearch());
+    await waitFor(() => expect(result.current.journeyResult?.events[0].message).toBe('related'));
+    expect(result.current.journeyLoading).toBe(false);
+    // The underlying search/toolbar state is completely untouched.
     expect(result.current.searchResult?.events).toEqual(originalEvents);
-    expect(result.current.breadcrumbLabel).toBeNull();
+    expect(result.current.timeRange).toEqual(originalTimeRange);
+
+    act(() => result.current.closeJourney());
+    expect(result.current.journeyQuery).toBeNull();
+    expect(result.current.journeyResult).toBeNull();
+    expect(result.current.searchResult?.events).toEqual(originalEvents);
+  });
+
+  it('openJourney closes the inspector first, so the two never render at once', async () => {
+    const result = await searchedWithThreeEvents();
+    act(() => result.current.openInspector(0));
+    expect(result.current.selectedEvent).not.toBeNull();
+
+    act(() => result.current.openJourney('journeyId', 'journey-1'));
+    expect(result.current.selectedEvent).toBeNull();
+  });
+
+  it('openJourney does nothing for an empty value', async () => {
+    const result = await searchedWithThreeEvents();
+    act(() => result.current.openJourney('traceId', ''));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(journeyCalls).toHaveLength(0);
+    expect(result.current.journeyQuery).toBeNull();
   });
 
   it('showContext calls the dedicated /context endpoint (never /search) and narrows the time range', async () => {
