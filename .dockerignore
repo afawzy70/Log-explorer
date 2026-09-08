@@ -1,0 +1,35 @@
+# Phase K: keeps the build context small and guarantees no local secret or
+# build artifact ever reaches a layer (CLAUDE.md §2 rule 6 "credentials ...
+# never committed, never printed" applies just as much to what we hand the
+# Docker daemon as to what we commit to git).
+
+.git/
+.gitignore
+
+**/node_modules/
+**/dist/
+**/target/
+**/*.tsbuildinfo
+**/*.class
+
+frontend/test-results/
+frontend/playwright-report/
+frontend/playwright/.cache/
+frontend/coverage/
+
+docs/
+tools/
+README.md
+IMPLEMENTATION_PLAN.md
+HANDOVER.md
+CLAUDE.md
+PHASE_PROMPTS.md
+REQUIREMENTS_TRACEABILITY.md
+Makefile
+
+# Never send a real local env file into a build context.
+.env
+.env.*
+!.env.example
+
+**/.DS_Store

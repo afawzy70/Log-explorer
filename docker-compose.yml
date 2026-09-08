@@ -1,0 +1,64 @@
+# IMPLEMENTATION_PLAN.md "Phase K" scope item 2. See docs/RUN_GUIDE.md for
+# the full, tested command set. Quick start:
+#
+#   cp .env.example .env
+#   docker compose --profile demo up --build
+#
+# `app` itself carries no `profiles:` tag, so it always starts regardless
+# of which --profile flags (if any) are passed - "demo", "docker-socket",
+# and "loki-mock" are independent, combinable add-ons on top of it, never
+# a prerequisite for it. Real Docker container discovery
+# (`--profile docker-socket`) needs the separate
+# docker-compose.docker-socket.yml override file layered on top - see
+# that file's own header comment for why a profile flag alone can't gate
+# a volume mount on an already-defined service, and RUN_GUIDE.md for the
+# exact combined command.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: log-explorer:local
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      # Falls back to "dev" (enables the in-process Fixture source) even
+      # with no .env file at all - the default happy path genuinely needs
+      # no configuration.
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-dev}
+    env_file:
+      - path: .env
+        required: false
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:8080/actuator/health"]
+      interval: 10s
+      timeout: 3s
+      start_period: 20s
+      retries: 6
+
+  # `--profile demo`: a deterministic, fake-data Spring Boot JSON log feed
+  # (tools/demo-log-generator, H1). Emits to its own stdout/stderr - always
+  # inspectable with `docker compose logs demo-log-generator` regardless of
+  # any other profile. Only visible *inside the app* through the
+  # `local-docker` source once `--profile docker-socket` is also active
+  # (see that override file) - `app`'s own default happy path uses the
+  # Fixture source instead and needs no host Docker access whatsoever.
+  demo-log-generator:
+    profiles: ["demo"]
+    build:
+      context: ./tools/demo-log-generator
+    command: ["--seed", "${DEMO_LOG_GENERATOR_SEED:-42}"]
+    restart: unless-stopped
+
+  # `--profile loki-mock`: an offline stand-in for a real OpenShift Loki
+  # gateway (tools/mock-loki, H2), for demonstrating the Loki source path
+  # without a real cluster. Point `app` at it via
+  # LOGEXPLORER_LOKI_BASE_URL=http://mock-loki:3100 in `.env` (see
+  # `.env.example`).
+  mock-loki:
+    profiles: ["loki-mock"]
+    build:
+      context: ./tools/mock-loki
+    ports:
+      - "${MOCK_LOKI_PORT:-3100}:3100"

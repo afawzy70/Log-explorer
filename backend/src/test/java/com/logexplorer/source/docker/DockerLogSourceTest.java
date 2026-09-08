@@ -192,6 +192,24 @@ class DockerLogSourceTest {
   }
 
   @Test
+  void aBlankComposeProjectFilterIsTreatedAsNoFilterNotAsAnEmptyProjectName() {
+    // Regression test for a real bug found via Phase K's own Compose
+    // end-to-end verification: docker-compose's `env_file` mechanism
+    // passes a declared-but-empty .env line through as the literal empty
+    // string, not an absent variable, which Spring binds as "" here, not
+    // null - every real container was previously silently excluded
+    // because "" never equals a real project name.
+    properties.setComposeProjectFilter("");
+    Container container = container("c1", "a-gateway-1", "proj-a", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(container));
+    stubLogs("c1", jsonLine("2026-01-01T00:00:00.000000000Z", "gateway", "still discovered"));
+
+    List<CanonicalLogEvent> events = source.search(wideOpenRequest().build()).collectList().block();
+
+    assertThat(events).hasSize(1);
+  }
+
+  @Test
   void serviceFilterOnTheSearchRequestOnlyQueriesMatchingContainers() {
     Container gateway = container("c1", "proj-gateway-1", "proj", "gateway", "running");
     Container accounts = container("c2", "proj-accounts-1", "proj", "accounts-api", "running");
