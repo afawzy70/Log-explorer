@@ -1,0 +1,38 @@
+.wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+}
+
+.input {
+  width: 100%;
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.suggestion {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  right: 0;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-accent-bg);
+  border: var(--border-width) solid var(--color-accent);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.suggestionText {
+  flex: 1;
+}
+
+.suggestionActions {
+  display: flex;
+  gap: var(--space-1);
+}

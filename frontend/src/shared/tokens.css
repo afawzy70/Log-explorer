@@ -1,0 +1,115 @@
+/*
+ * Centralized design tokens (CLAUDE.md §7: "centralized tokens for
+ * typography/spacing/radius/border/shadow"). Calm, precise,
+ * information-dense enterprise tool - one restrained accent, semantic
+ * severity colors (never color alone - see SeverityFilter/SeverityBadge
+ * for the accompanying icon/text).
+ */
+
+:root {
+  /* Color - light theme (required; dark theme only if complete, not attempted this phase) */
+  --color-bg: #ffffff;
+  --color-bg-canvas: #f7f8fa;
+  --color-bg-raised: #ffffff;
+  --color-bg-hover: #f0f2f5;
+  --color-bg-selected: #eaf1fe;
+  --color-border: #d8dce3;
+  --color-border-strong: #b7bdc9;
+  --color-text: #1a1d23;
+  --color-text-secondary: #5b6270;
+  --color-text-tertiary: #868d99;
+  --color-text-inverse: #ffffff;
+  --color-accent: #2359d1;
+  --color-accent-hover: #1a48ad;
+  --color-accent-bg: #eaf1fe;
+  --color-focus-ring: #2359d1;
+
+  --color-severity-error: #b3261e;
+  --color-severity-error-bg: #fdecea;
+  --color-severity-warn: #8a5a00;
+  --color-severity-warn-bg: #fff6e0;
+  --color-severity-info: #1a5e9a;
+  --color-severity-info-bg: #e8f2fc;
+  --color-severity-debug: #5b6270;
+  --color-severity-debug-bg: #f0f2f5;
+  --color-severity-trace: #7a5ba6;
+  --color-severity-trace-bg: #f3edfb;
+
+  --color-protected: #5b6270;
+  --color-protected-bg: #f0f2f5;
+
+  --color-danger: #b3261e;
+  --color-danger-bg: #fdecea;
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-md: 15px;
+  --font-size-lg: 18px;
+  --font-size-xl: 22px;
+  --line-height-base: 1.45;
+
+  /* Spacing (4/8px scale) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Radius / border / shadow */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --border-width: 1px;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.12);
+
+  /* Motion */
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg-canvas);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}

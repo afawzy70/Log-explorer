@@ -3,13 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Log Explorer frontend - React + TypeScript + Vite (strict). Phase A2b: minimal placeholder scaffold only, proving Playwright is wired to a real running app. Product UI is Phase F onward.",
+  "description": "Log Explorer frontend - React + TypeScript + Vite (strict). Phase F: the historical search investigation UI.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview --port 4173 --strictPort",
     "typecheck": "tsc -b --noEmit",
     "typecheck:e2e": "tsc --noEmit -p e2e/tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "test:e2e": "playwright test"
   },
   "dependencies": {
@@ -18,11 +20,17 @@
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.7",
     "@types/node": "26.5.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
     "@vitejs/plugin-react": "6.1.1",
+    "jest-axe": "11.0.0",
+    "jsdom": "30.0.1",
     "typescript": "7.0.2",
-    "vite": "8.2.2"
+    "vite": "8.2.2",
+    "vitest": "5.0.0"
   }
 }

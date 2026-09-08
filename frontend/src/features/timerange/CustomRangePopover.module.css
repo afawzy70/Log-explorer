@@ -1,0 +1,81 @@
+/*
+ * Deliberately normal flow, never `position: absolute` (CLAUDE.md §4:
+ * "The editor must not overlap severity"). An absolutely positioned
+ * popover paints at a fixed offset no matter how much room is actually
+ * available, so it can overlap whatever the flex-wrap toolbar reflows
+ * beneath it - both at narrow viewports AND under the `zoom` CSS property
+ * (which scales rendered content without changing the reported viewport
+ * width, so a width-based media-query breakpoint can never detect it -
+ * see e2e/helpers.ts's `setZoom`). Normal flow has neither problem: the
+ * flex-wrap algorithm compares children's real rendered size against the
+ * container's own box width regardless of why that size grew, so it
+ * reflows correctly under both a narrow viewport and high zoom alike.
+ */
+.popover {
+  margin-top: var(--space-2);
+  background: var(--color-bg-raised);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-4);
+  /*
+   * A real (not `max-content`) width, so `.fields`' own `flex-wrap` below
+   * has an actual constraint to react to - `max-content` would size this
+   * box to fit two unwrapped fields, which means `flex-wrap` could never
+   * have a reason to trigger at all, at any width or zoom.
+   */
+  width: 280px;
+  max-width: 100%;
+}
+
+/*
+ * "Fields stack at narrow widths" (CLAUDE.md §4) via `flex-wrap`, not a
+ * viewport-width media query: the two native `datetime-local` inputs
+ * can't shrink below their own intrinsic rendering width, and a
+ * width-based breakpoint can't detect the `zoom` CSS property (see the
+ * `.popover` comment above) - `flex-wrap` reacts to the two fields' real
+ * rendered size against `.popover`'s own fixed 280px box regardless of
+ * why they don't fit, so it correctly stacks under both a narrow
+ * viewport and high zoom alike.
+ */
+.fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+}
+
+.field label {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.field input {
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.error {
+  margin-top: var(--space-3);
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.actions {
+  margin-top: var(--space-4);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
