@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { Toolbar } from './Toolbar';
 import type { SearchState } from './useSearchState';
@@ -116,6 +117,30 @@ describe('Toolbar', () => {
     const moreFilters = screen.getByRole('button', { name: /^more filters/i });
     const all = Array.from(container.querySelectorAll('*'));
     expect(all.indexOf(liveButton)).toBeLessThan(all.indexOf(moreFilters));
+  });
+
+  it('clicking Live calls onStartLive (IMPLEMENTATION_PLAN.md "Phase J")', async () => {
+    const user = userEvent.setup();
+    const caps = {
+      historicalSearch: true,
+      liveTail: true,
+      rawLogQL: false,
+      serviceDiscovery: false,
+      queryStatistics: false,
+      contextView: false,
+    };
+    const onStartLive = vi.fn();
+    render(
+      <Toolbar
+        state={baseState({ selectedSource: { id: 'live-source', displayName: 'Live Source', capabilities: caps } })}
+        onStartLive={onStartLive}
+      />,
+    );
+
+    const liveButton = screen.getByRole('button', { name: /^live$/i });
+    expect(liveButton).toBeEnabled();
+    await user.click(liveButton);
+    expect(onStartLive).toHaveBeenCalledTimes(1);
   });
 
   it('clicking Search calls runSearch', () => {

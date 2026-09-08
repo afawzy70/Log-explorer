@@ -1,6 +1,7 @@
 package com.logexplorer.source;
 
 import com.logexplorer.core.model.CanonicalLogEvent;
+import com.logexplorer.core.model.FollowRequest;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceCapabilities;
@@ -35,4 +36,15 @@ public interface LogSource {
    * implementation must never assume it is the only line of defense.
    */
   Flux<CanonicalLogEvent> search(SearchRequest request);
+
+  /**
+   * Live tail (IMPLEMENTATION_PLAN.md "Phase J", HANDOVER.md §18) - an
+   * unbounded stream of new events from "now" forward. Callers must check
+   * {@link SourceCapabilities#liveTail()} first; this default rejects the
+   * call outright for every source that doesn't override it, so "Do not
+   * fake it" (HANDOVER.md §18.3) holds even if a caller forgets to check.
+   */
+  default Flux<CanonicalLogEvent> follow(FollowRequest request) {
+    return Flux.error(new UnsupportedOperationException("Live tail is not supported by source " + id()));
+  }
 }

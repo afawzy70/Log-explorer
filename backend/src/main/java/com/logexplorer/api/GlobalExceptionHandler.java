@@ -1,6 +1,7 @@
 package com.logexplorer.api;
 
 import com.logexplorer.core.guard.GuardrailViolationException;
+import com.logexplorer.core.guard.TooManyConcurrentLiveTailsException;
 import com.logexplorer.core.guard.TooManyConcurrentSearchesException;
 import com.logexplorer.core.query.QuerySyntaxException;
 import com.logexplorer.source.DisabledSourceException;
@@ -56,6 +57,11 @@ public class GlobalExceptionHandler {
 
   @ExceptionHandler(TooManyConcurrentSearchesException.class)
   public ProblemDetail handleTooManyConcurrent(TooManyConcurrentSearchesException e) {
+    return ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, e.getMessage());
+  }
+
+  @ExceptionHandler(TooManyConcurrentLiveTailsException.class)
+  public ProblemDetail handleTooManyConcurrentLiveTails(TooManyConcurrentLiveTailsException e) {
     return ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, e.getMessage());
   }
 

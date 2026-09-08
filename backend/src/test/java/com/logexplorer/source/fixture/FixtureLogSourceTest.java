@@ -22,7 +22,7 @@ class FixtureLogSourceTest {
     var caps = source.capabilities();
     assertThat(caps.historicalSearch()).isTrue();
     assertThat(caps.serviceDiscovery()).isTrue();
-    assertThat(caps.liveTail()).isFalse();
+    assertThat(caps.liveTail()).isTrue();
     assertThat(caps.rawLogQL()).isFalse();
   }
 
@@ -169,6 +169,57 @@ class FixtureLogSourceTest {
     List<CanonicalLogEvent> matched = source.search(request).collectList().block();
     assertThat(matched).isNotEmpty();
     assertThat(matched).allSatisfy(e -> assertThat(e.sensitive().cif()).isEqualTo(cif));
+  }
+
+  @Test
+  void followEmitsOneRealParsedEventPerTickAndABurstEveryNthTick() {
+    // IMPLEMENTATION_PLAN.md "Phase J" manual check: "including a burst" -
+    // this is that demo generator, so the burst must be real and
+    // reproducible, not left to chance. Tick 1-5: one event each (5
+    // total). Tick 6: a burst of 5 more (10 total).
+    reactor.test.StepVerifier.withVirtualTime(
+            () -> source.follow(new com.logexplorer.core.model.FollowRequest("fixture", List.of())))
+        .thenAwait(java.time.Duration.ofMillis(700))
+        .expectNextCount(1)
+        .thenAwait(java.time.Duration.ofMillis(700 * 4))
+        .expectNextCount(4)
+        .thenAwait(java.time.Duration.ofMillis(700))
+        .expectNextCount(5)
+        .thenCancel()
+        .verify(java.time.Duration.ofSeconds(2));
+  }
+
+  @Test
+  void followEmitsRealParseableNonMalformedEvents() {
+    CanonicalLogEvent event = source.follow(new com.logexplorer.core.model.FollowRequest("fixture", List.of()))
+        .blockFirst(java.time.Duration.ofSeconds(3));
+    assertThat(event).isNotNull();
+    assertThat(event.malformed()).isFalse();
+    assertThat(event.service()).isNotNull();
+    assertThat(event.timestamp()).isCloseTo(Instant.now(), org.assertj.core.api.Assertions.within(java.time.Duration.ofSeconds(5)));
+  }
+
+  @Test
+  void followFiltersByRequestedServices() {
+    List<CanonicalLogEvent> events = source.follow(new com.logexplorer.core.model.FollowRequest("fixture", List.of("gateway")))
+        .take(3)
+        .collectList()
+        .block(java.time.Duration.ofSeconds(5));
+    assertThat(events).isNotEmpty();
+    assertThat(events).allSatisfy(e -> assertThat(e.service()).isEqualTo("gateway"));
+  }
+
+  @Test
+  void twoConcurrentFollowSubscriptionsAreIndependentTimelines() {
+    reactor.core.publisher.Flux<CanonicalLogEvent> a =
+        source.follow(new com.logexplorer.core.model.FollowRequest("fixture", List.of()));
+    reactor.core.publisher.Flux<CanonicalLogEvent> b =
+        source.follow(new com.logexplorer.core.model.FollowRequest("fixture", List.of()));
+    CanonicalLogEvent first = a.blockFirst(java.time.Duration.ofSeconds(3));
+    CanonicalLogEvent second = b.blockFirst(java.time.Duration.ofSeconds(3));
+    // Both independently start at their own index 0 - proves subscriptions
+    // don't share mutable counter state.
+    assertThat(first.message()).isEqualTo(second.message());
   }
 
   private SearchRequest.Builder wideOpenRequest() {

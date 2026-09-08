@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
 class ReadOnlyDockerClientMethodSetTest {
 
   private static final Set<String> ALLOWED_METHOD_NAMES = Set.of(
-      "listContainers", "inspectContainer", "readLogs", "ping", "version", "close");
+      "listContainers", "inspectContainer", "readLogs", "followLogs", "ping", "version", "close");
 
   @Test
   void exposesOnlyTheIntendedReadOnlyOperations() {

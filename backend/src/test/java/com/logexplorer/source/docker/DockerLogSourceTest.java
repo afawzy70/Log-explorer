@@ -272,11 +272,11 @@ class DockerLogSourceTest {
   }
 
   @Test
-  void capabilitiesReportLiveTailFalseUntilPhaseJWiresTheEndpoint() {
+  void capabilitiesReportLiveTailTrueNowThatPhaseJWiresTheEndpoint() {
     var caps = source.capabilities();
     assertThat(caps.historicalSearch()).isTrue();
     assertThat(caps.serviceDiscovery()).isTrue();
-    assertThat(caps.liveTail()).isFalse();
+    assertThat(caps.liveTail()).isTrue();
     assertThat(caps.rawLogQL()).isFalse();
   }
 
@@ -298,6 +298,70 @@ class DockerLogSourceTest {
           assertThat(h.message()).doesNotContain("RuntimeException"); // sanitized, not the raw exception
         })
         .verifyComplete();
+  }
+
+  @Test
+  void followEmitsRealParsedEnrichedEventsFromContainerFrames() throws Exception {
+    Container c1 = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(c1));
+    doAnswer(invocation -> {
+      DockerFollowCallback callback = invocation.getArgument(1);
+      callback.onNext(new com.github.dockerjava.api.model.Frame(
+          com.github.dockerjava.api.model.StreamType.STDOUT,
+          jsonLine("2026-01-01T12:00:00.000Z", "gateway", "live event").getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+      return callback;
+    }).when(mockClient).followLogs(eq("c1"), any());
+
+    CanonicalLogEvent event = source.follow(new com.logexplorer.core.model.FollowRequest("local-docker", List.of()))
+        .blockFirst(java.time.Duration.ofSeconds(2));
+
+    assertThat(event).isNotNull();
+    assertThat(event.message()).isEqualTo("live event");
+    assertThat(event.service()).isEqualTo("gateway");
+    assertThat(event.sourceId()).isEqualTo("local-docker");
+    assertThat(event.composeProject()).isEqualTo("proj");
+    assertThat(event.containerId()).isEqualTo("c1");
+  }
+
+  @Test
+  void followOnlyFollowsContainersMatchingTheRequestedServices() {
+    Container gateway = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    Container accounts = container("c2", "proj-accounts-1", "proj", "accounts-api", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(gateway, accounts));
+    when(mockClient.followLogs(any(), any())).thenAnswer(invocation -> invocation.getArgument(1));
+
+    source.follow(new com.logexplorer.core.model.FollowRequest("local-docker", List.of("gateway")))
+        .subscribe();
+
+    verify(mockClient, org.mockito.Mockito.timeout(2000)).followLogs(eq("c1"), any());
+    verify(mockClient, never()).followLogs(eq("c2"), any());
+  }
+
+  @Test
+  void cancellationClosesTheUnderlyingDockerFollowCallback() throws Exception {
+    // HANDOVER.md §18.2: "Disconnect must cancel upstream callback/resource" -
+    // verified directly (the mock Closeable's close() was actually
+    // invoked), not just inferred from the Flux no longer emitting.
+    Container c1 = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(c1));
+
+    java.io.Closeable mockCloseable = mock(java.io.Closeable.class);
+    java.util.concurrent.CountDownLatch started = new java.util.concurrent.CountDownLatch(1);
+    doAnswer(invocation -> {
+      DockerFollowCallback callback = invocation.getArgument(1);
+      callback.onStart(mockCloseable);
+      started.countDown();
+      return callback;
+    }).when(mockClient).followLogs(eq("c1"), any());
+
+    reactor.core.Disposable subscription = source
+        .follow(new com.logexplorer.core.model.FollowRequest("local-docker", List.of()))
+        .subscribe();
+    assertThat(started.await(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+
+    subscription.dispose();
+
+    verify(mockCloseable, org.mockito.Mockito.timeout(2000)).close();
   }
 
   private SearchRequest.Builder wideOpenRequest() {

@@ -91,6 +91,34 @@ class FixtureCorpusGeneratorTest {
   }
 
   @Test
+  void generateLiveLineIsDeterministicForTheSameSeedAndIndex() {
+    Instant t = Instant.parse("2026-01-01T12:00:00Z");
+    assertThat(generator.generateLiveLine(42, 7, t)).isEqualTo(generator.generateLiveLine(42, 7, t));
+  }
+
+  @Test
+  void generateLiveLineProducesARealParseableEventCarryingTheGivenTimestamp() {
+    Instant t = Instant.parse("2026-01-01T12:00:00.500Z");
+    String line = generator.generateLiveLine(42, 0, t);
+    CanonicalLogEvent event = parser.parse(line, null);
+    assertThat(event.malformed()).isFalse();
+    assertThat(event.timestamp()).isEqualTo(t);
+    assertThat(event.service()).isNotNull();
+  }
+
+  @Test
+  void generateLiveLineAdvancesThroughDifferentContentAsTheIndexGrows() {
+    Instant t = Instant.now();
+    // Different slots within a cycle carry different messages/services -
+    // proves live tail doesn't just repeat the exact same event forever.
+    List<String> distinctLines = java.util.stream.IntStream.range(0, 40)
+        .mapToObj(i -> generator.generateLiveLine(42, i, t))
+        .distinct()
+        .toList();
+    assertThat(distinctLines.size()).isGreaterThan(1);
+  }
+
+  @Test
   void timestampsAreAnchoredNearTheRequestedInstantForRealisticTimeRangeSearches() {
     Instant anchor = Instant.now();
     List<String> lines = generator.generateLines(42, 40, anchor);

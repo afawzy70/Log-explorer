@@ -1,6 +1,7 @@
 package com.logexplorer.source;
 
 import com.logexplorer.core.model.CanonicalLogEvent;
+import com.logexplorer.core.model.FollowRequest;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceCapabilities;
@@ -25,8 +26,12 @@ public class StubLogSource implements LogSource {
   private final SourceCapabilities capabilities;
 
   private Flux<CanonicalLogEvent> searchFlux = Flux.empty();
+  private Flux<CanonicalLogEvent> followFlux = Flux.empty();
   private Mono<SourceHealth> health = Mono.just(new SourceHealth(SourceHealth.Status.UP, "ok", Instant.now()));
   private Flux<ServiceInfo> services = Flux.empty();
+
+  /** The most recent {@link FollowRequest} this source was asked to follow with (Phase J). */
+  public volatile FollowRequest lastFollowRequest;
 
   public final AtomicBoolean cancelled = new AtomicBoolean(false);
   public final AtomicInteger subscriptions = new AtomicInteger(0);
@@ -55,6 +60,11 @@ public class StubLogSource implements LogSource {
 
   public StubLogSource withServices(Flux<ServiceInfo> services) {
     this.services = services;
+    return this;
+  }
+
+  public StubLogSource withFollowFlux(Flux<CanonicalLogEvent> flux) {
+    this.followFlux = flux;
     return this;
   }
 
@@ -88,5 +98,11 @@ public class StubLogSource implements LogSource {
     subscriptions.incrementAndGet();
     lastRequest = request;
     return searchFlux.doOnCancel(() -> cancelled.set(true));
+  }
+
+  @Override
+  public Flux<CanonicalLogEvent> follow(FollowRequest request) {
+    lastFollowRequest = request;
+    return followFlux.doOnCancel(() -> cancelled.set(true));
   }
 }

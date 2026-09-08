@@ -3,6 +3,7 @@ package com.logexplorer.source.docker;
 import com.github.dockerjava.api.model.Container;
 import com.logexplorer.config.DockerProperties;
 import com.logexplorer.core.model.CanonicalLogEvent;
+import com.logexplorer.core.model.FollowRequest;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceCapabilities;
@@ -18,10 +19,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.FluxSink;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -69,11 +72,13 @@ public class DockerLogSource implements LogSource {
 
   @Override
   public SourceCapabilities capabilities() {
-    // liveTail is false here on purpose: Phase C builds the follow
-    // primitive, but the /api/v1/logs/live endpoint and buffering
-    // lifecycle are Phase J's job - reporting true before that exists
-    // would violate "capabilities reflect reality" (HANDOVER.md §7).
-    return new SourceCapabilities(true, false, false, true, false, false);
+    // liveTail is true now that Phase J's follow() implementation and
+    // /api/v1/logs/live endpoint both exist - "capabilities reflect
+    // reality" (HANDOVER.md §7) the same way historicalSearch/
+    // serviceDiscovery are declared true regardless of whether any
+    // container happens to be running right now (an empty container list
+    // means an empty stream, not an unsupported capability).
+    return new SourceCapabilities(true, true, false, true, false, false);
   }
 
   @Override
@@ -117,6 +122,78 @@ public class DockerLogSource implements LogSource {
     return Mono.fromCallable(() -> searchBlocking(request))
         .subscribeOn(Schedulers.boundedElastic())
         .flatMapMany(Flux::fromIterable);
+  }
+
+  /**
+   * Live tail (IMPLEMENTATION_PLAN.md "Phase J", HANDOVER.md §18.2) - one
+   * {@link DockerFollowCallback} per relevant container, merged into a
+   * single {@link Flux}. Cancellation (a client disconnecting, or the
+   * caller cancelling the subscription for any other reason) closes every
+   * callback via {@code sink.onDispose} - the actual mechanism by which
+   * "disconnect must cancel upstream callback/resource" holds, verified
+   * directly (not just by absence of an error) in {@code DockerLogSourceTest}.
+   */
+  @Override
+  public Flux<CanonicalLogEvent> follow(FollowRequest request) {
+    return Mono.fromCallable(() -> relevantContainers(client.listContainers(true), request.services()))
+        .subscribeOn(Schedulers.boundedElastic())
+        .flatMapMany(containers -> Flux.<CanonicalLogEvent>create(
+            sink -> startFollowing(containers, sink), FluxSink.OverflowStrategy.BUFFER));
+  }
+
+  private void startFollowing(List<Container> containers, FluxSink<CanonicalLogEvent> sink) {
+    if (containers.isEmpty()) {
+      sink.complete();
+      return;
+    }
+    List<DockerFollowCallback> callbacks = new ArrayList<>();
+    AtomicInteger remaining = new AtomicInteger(containers.size());
+    for (Container container : containers) {
+      Map<String, String> labels = container.getLabels();
+      DockerFollowCallback callback = new DockerFollowCallback(
+          line -> emitFollowedLine(sink, container, labels, line),
+          () -> {
+            if (remaining.decrementAndGet() <= 0) {
+              sink.complete();
+            }
+          });
+      try {
+        client.followLogs(container.getId(), callback);
+        callbacks.add(callback);
+      } catch (Exception e) {
+        // One container failing to start following (removed mid-scan,
+        // unsupported logging driver, ...) must not fail the whole tail -
+        // the others keep streaming.
+        log.warn("Skipping container {} for live tail - could not start follow: {}",
+            container.getId(), DockerDiagnostics.classify(e));
+        if (remaining.decrementAndGet() <= 0) {
+          sink.complete();
+        }
+      }
+    }
+    sink.onDispose(() -> closeAll(callbacks));
+  }
+
+  private void emitFollowedLine(FluxSink<CanonicalLogEvent> sink, Container container, Map<String, String> labels, DockerLogLine line) {
+    CanonicalLogEvent parsed = parser.parse(line.content(), ComposeLabels.service(labels));
+    CanonicalLogEvent enriched = parsed.toBuilder()
+        .sourceId(id())
+        .composeProject(ComposeLabels.project(labels))
+        .containerId(container.getId())
+        .containerName(firstName(container))
+        .stream(line.stream())
+        .build();
+    sink.next(enriched);
+  }
+
+  private void closeAll(List<DockerFollowCallback> callbacks) {
+    for (DockerFollowCallback callback : callbacks) {
+      try {
+        callback.close();
+      } catch (IOException ignored) {
+        // best-effort cleanup - the connection is going away regardless
+      }
+    }
   }
 
   private record ContainerLine(DockerLogLine line, Container container) {
