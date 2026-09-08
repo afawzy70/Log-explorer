@@ -32,3 +32,11 @@ logexplorer:
     request-timeout: 30s
     max-concurrency: 8
     per-source-max-time-range: {}
+  docker:
+    mode: LOCAL
+    port: 2375
+    tls: false
+    max-containers: 200
+    default-tail-lines: 2000
+    request-timeout: 10s
+    connect-timeout: 5s

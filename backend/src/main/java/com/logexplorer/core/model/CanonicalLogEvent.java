@@ -10,6 +10,13 @@ import java.util.Map;
  * types are built from this via {@code core.mask.MaskingService}, and an
  * ArchUnit rule (see the {@code arch} test package) forbids any DTO from
  * depending on this type at all.
+ *
+ * <p>{@code sourceId}, {@code composeProject}, {@code containerId}, {@code
+ * containerName}, {@code stream} are adapter enrichment fields (added
+ * Phase C, IMPLEMENTATION_PLAN.md "Phase C" scope item 5) — none of them
+ * sensitive, populated by a {@code source.docker}-style adapter, left
+ * {@code null} by anything that doesn't have them (the fixture source,
+ * Loki in Phase D, etc.).
  */
 public record CanonicalLogEvent(
     Instant timestamp,
@@ -39,7 +46,12 @@ public record CanonicalLogEvent(
     Map<String, Object> unknownTopLevelFields,
     Map<String, Object> unknownMdcFields,
     boolean malformed,
-    String rawLine
+    String rawLine,
+    String sourceId,
+    String composeProject,
+    String containerId,
+    String containerName,
+    String stream
 ) {
 
   public CanonicalLogEvent {
@@ -50,6 +62,49 @@ public record CanonicalLogEvent(
 
   public static Builder builder() {
     return new Builder();
+  }
+
+  /**
+   * A {@link Builder} pre-populated from this event — for adapters (Docker,
+   * Loki) that parse via {@code core.parse.LogLineParser} and then need to
+   * stamp on their own enrichment fields ({@code composeProject}, {@code
+   * containerId}, ...) without hand-copying every existing field.
+   */
+  public Builder toBuilder() {
+    return new Builder()
+        .timestamp(timestamp)
+        .timestampRaw(timestampRaw)
+        .schemaVersion(schemaVersion)
+        .service(service)
+        .serviceSourceHint(serviceSourceHint)
+        .severity(severity)
+        .severityNumber(severityNumber)
+        .message(message)
+        .logger(logger)
+        .thread(thread)
+        .exception(exception)
+        .traceId(traceId)
+        .spanId(spanId)
+        .journeyId(journeyId)
+        .eventId(eventId)
+        .businessStep(businessStep)
+        .uiIdentifier(uiIdentifier)
+        .errorCode(errorCode)
+        .correlationId(correlationId)
+        .sensitive(sensitive)
+        .devicePlatformType(devicePlatformType)
+        .language(language)
+        .serverIp(serverIp)
+        .serverHost(serverHost)
+        .unknownTopLevelFields(unknownTopLevelFields)
+        .unknownMdcFields(unknownMdcFields)
+        .malformed(malformed)
+        .rawLine(rawLine)
+        .sourceId(sourceId)
+        .composeProject(composeProject)
+        .containerId(containerId)
+        .containerName(containerName)
+        .stream(stream);
   }
 
   /** Builder for a large immutable record — plain positional construction would be error-prone. */
@@ -82,6 +137,11 @@ public record CanonicalLogEvent(
     private Map<String, Object> unknownMdcFields = Map.of();
     private boolean malformed;
     private String rawLine;
+    private String sourceId;
+    private String composeProject;
+    private String containerId;
+    private String containerName;
+    private String stream;
 
     public Builder timestamp(Instant v) { this.timestamp = v; return this; }
     public Builder timestampRaw(String v) { this.timestampRaw = v; return this; }
@@ -111,6 +171,11 @@ public record CanonicalLogEvent(
     public Builder unknownMdcFields(Map<String, Object> v) { this.unknownMdcFields = v; return this; }
     public Builder malformed(boolean v) { this.malformed = v; return this; }
     public Builder rawLine(String v) { this.rawLine = v; return this; }
+    public Builder sourceId(String v) { this.sourceId = v; return this; }
+    public Builder composeProject(String v) { this.composeProject = v; return this; }
+    public Builder containerId(String v) { this.containerId = v; return this; }
+    public Builder containerName(String v) { this.containerName = v; return this; }
+    public Builder stream(String v) { this.stream = v; return this; }
 
     public CanonicalLogEvent build() {
       return new CanonicalLogEvent(
@@ -119,7 +184,7 @@ public record CanonicalLogEvent(
           traceId, spanId, journeyId, eventId, businessStep, uiIdentifier,
           errorCode, correlationId, sensitive, devicePlatformType, language,
           serverIp, serverHost, unknownTopLevelFields, unknownMdcFields,
-          malformed, rawLine);
+          malformed, rawLine, sourceId, composeProject, containerId, containerName, stream);
     }
   }
 }

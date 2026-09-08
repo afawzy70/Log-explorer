@@ -41,6 +41,11 @@ public record EventDto(
     Map<String, Object> unknownTopLevelFields,
     Map<String, Object> unknownMdcFields,
     boolean malformed,
-    String rawLine
+    String rawLine,
+    String sourceId,
+    String composeProject,
+    String containerId,
+    String containerName,
+    String stream
 ) {
 }

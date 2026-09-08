@@ -43,18 +43,21 @@ class SourcesApiIntegrationTest {
 
   @Test
   void sourcesEndpointReturnsExplicitCapabilitiesJson() {
+    // Filter by id rather than assuming array position - the real
+    // DockerLogSource (Phase C) is unconditionally registered alongside
+    // this test's stub, exactly as it would be in production.
+    String filter = "$[?(@.id=='test-source')]";
     webTestClient.get().uri("/api/v1/sources")
         .exchange()
         .expectStatus().isOk()
         .expectBody()
-        .jsonPath("$[0].id").isEqualTo("test-source")
-        .jsonPath("$[0].displayName").isEqualTo("Test Source")
-        .jsonPath("$[0].capabilities.historicalSearch").isEqualTo(true)
-        .jsonPath("$[0].capabilities.liveTail").isEqualTo(false)
-        .jsonPath("$[0].capabilities.rawLogQL").isEqualTo(false)
-        .jsonPath("$[0].capabilities.serviceDiscovery").isEqualTo(true)
-        .jsonPath("$[0].capabilities.queryStatistics").isEqualTo(false)
-        .jsonPath("$[0].capabilities.contextView").isEqualTo(false);
+        .jsonPath(filter + ".displayName").isEqualTo("Test Source")
+        .jsonPath(filter + ".capabilities.historicalSearch").isEqualTo(true)
+        .jsonPath(filter + ".capabilities.liveTail").isEqualTo(false)
+        .jsonPath(filter + ".capabilities.rawLogQL").isEqualTo(false)
+        .jsonPath(filter + ".capabilities.serviceDiscovery").isEqualTo(true)
+        .jsonPath(filter + ".capabilities.queryStatistics").isEqualTo(false)
+        .jsonPath(filter + ".capabilities.contextView").isEqualTo(false);
   }
 
   @Test
