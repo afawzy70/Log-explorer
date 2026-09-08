@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   fetchContext,
+  fetchJourney,
   fetchSourceHealth,
   fetchSourceServices,
   fetchSources,
   runSearch as runSearchApi,
 } from '../shared/api/client';
 import type {
+  JourneyField,
   LogEvent,
   SearchRequestBody,
   SearchResponse,
@@ -29,16 +31,12 @@ function defaultTimeRange(): CommittedTimeRange {
   return { presetId: DEFAULT_PRESET_ID, start: start.toISOString(), end: end.toISOString() };
 }
 
-/** The five identifier fields the inspector's "Find related logs" action can search by (HANDOVER.md §16.4). */
-export type FindRelatedField = 'traceId' | 'spanId' | 'correlationId' | 'journeyId' | 'eventId';
-
 /**
  * A snapshot of every piece of state that composes one search + its
- * result - what "find related logs" / "show context" (IMPLEMENTATION_PLAN.md
- * "Phase H") save before replacing the visible search, and what "back to
- * original search" restores. Only ever one level deep: a second detour
- * before returning does not overwrite the saved original (see
- * `snapshotOriginalIfAbsent`).
+ * result - what "show context" (IMPLEMENTATION_PLAN.md "Phase H") saves
+ * before replacing the visible search, and what "back to original search"
+ * restores. Only ever one level deep: a second detour before returning
+ * does not overwrite the saved original (see `snapshotOriginalIfAbsent`).
  */
 interface SearchSnapshot {
   selectedServices: string[];
@@ -81,9 +79,23 @@ export function useSearchState() {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const focusRestoreRef = useRef<HTMLElement | null>(null);
 
-  /** "Find related logs" / "Show ±30 seconds" breadcrumb (HANDOVER.md §16.4/§16.7 "breadcrumb back to the original search"). */
+  /** "Show ±30 seconds" breadcrumb (HANDOVER.md §16.7 "breadcrumb back to the original search"). */
   const [breadcrumbLabel, setBreadcrumbLabel] = useState<string | null>(null);
   const [originalSnapshot, setOriginalSnapshot] = useState<SearchSnapshot | null>(null);
+
+  /**
+   * "Find this trace/correlation/journey/event" (IMPLEMENTATION_PLAN.md
+   * "Phase I") - unlike "Show ±30 seconds", journey mode never mutates
+   * `searchResult`/the toolbar's own filters at all; it is a pure overlay
+   * state `App.tsx` renders `JourneyView` instead of `ResultsPanel` for.
+   * "Preserves and restores the original search state" (HANDOVER.md
+   * §17.5) therefore holds by construction - there is nothing to restore
+   * because nothing was ever changed; `closeJourney` just clears this.
+   */
+  const [journeyQuery, setJourneyQuery] = useState<{ field: JourneyField; value: string } | null>(null);
+  const [journeyResult, setJourneyResult] = useState<SearchResponse | null>(null);
+  const [journeyLoading, setJourneyLoading] = useState(false);
+  const [journeyError, setJourneyError] = useState<string | null>(null);
 
   /**
    * "Cancelled" state (IMPLEMENTATION_PLAN.md "Phase G" scope item 11): a
@@ -203,14 +215,18 @@ export function useSearchState() {
     const controller = supersedeActiveRequest();
     setSearchLoading(true);
     setSearchError(null);
-    // A genuinely new, user-initiated search invalidates both the
-    // inspector's selection (row indices belong to the list about to be
-    // replaced) and any "back to original search" breadcrumb (this new
-    // search IS the current state now, not a detour from something to
-    // return to).
+    // A genuinely new, user-initiated search invalidates the inspector's
+    // selection (row indices belong to the list about to be replaced),
+    // any "back to original search" breadcrumb (this new search IS the
+    // current state now, not a detour from something to return to), and
+    // journey mode (a fresh search means the investigator is no longer
+    // looking at the journey timeline).
     setSelectedIndex(null);
     setBreadcrumbLabel(null);
     setOriginalSnapshot(null);
+    setJourneyQuery(null);
+    setJourneyResult(null);
+    setJourneyError(null);
     const searchedRange = timeRange;
     runSearchApi(body, controller.signal)
       .then((result) => {
@@ -333,67 +349,54 @@ export function useSearchState() {
     setSelectedIndex(null);
   }, [originalSnapshot]);
 
-  const FIND_RELATED_LABELS: Record<FindRelatedField, string> = {
-    traceId: 'Trace ID',
-    spanId: 'Span ID',
-    correlationId: 'Correlation ID',
-    journeyId: 'Journey ID',
-    eventId: 'Event ID',
-  };
-
   /**
-   * "Find related logs" (HANDOVER.md §16.4): re-runs the current source's
-   * search with every other structured filter cleared and only this one
-   * ID set, over the same committed time range - a scoped, honest search
-   * using the exact same engine every other search on this page uses, not
-   * a preview of Phase I's dedicated multi-source-of-truth journey
-   * timeline (IMPLEMENTATION_PLAN.md "Phase I" scope item 1 owns that).
+   * "Find this trace / correlation / journey / event" (IMPLEMENTATION_PLAN.md
+   * "Phase I" scope item 1, HANDOVER.md §17) - fetches the dedicated
+   * `/journey` endpoint (never `/search`), which enforces ascending order
+   * server-side and never widens the caller's own currently-committed
+   * time range ("bounded time window"). Closes the inspector first so the
+   * two panels never overlap. "Handles missing identifier ... cleanly":
+   * guarded here too, though every real caller already only ever passes a
+   * concrete, non-empty value it read off a rendered event.
    */
-  const findRelated = useCallback(
-    (field: FindRelatedField, value: string) => {
-      if (!selectedSourceId) {
+  const openJourney = useCallback(
+    (field: JourneyField, value: string) => {
+      if (!selectedSourceId || !value) {
         return;
       }
-      snapshotOriginalIfAbsent();
       closeInspector();
-      const nextAdvancedFilters: AdvancedFilterValues = { ...emptyAdvancedFilterValues(), [field]: value };
-      setSelectedServices([]);
-      setSelectedLevels([]);
-      setSearchText('');
-      setAdvancedFilters(nextAdvancedFilters);
-      setBreadcrumbLabel(`Related logs — ${FIND_RELATED_LABELS[field]}`);
+      setJourneyQuery({ field, value });
+      setJourneyResult(null);
+      setJourneyError(null);
 
-      const body: SearchRequestBody = {
-        sourceId: selectedSourceId,
-        start: timeRange.start,
-        end: timeRange.end,
-        services: [],
-        levels: [],
-        [field]: value,
-      };
       const controller = supersedeActiveRequest();
-      setSearchLoading(true);
-      setSearchError(null);
-      const searchedRange = timeRange;
-      runSearchApi(body, controller.signal)
-        .then((result) => {
-          setSearchResult(result);
-          setLastSearchedRange(searchedRange);
-        })
+      setJourneyLoading(true);
+      fetchJourney(
+        { sourceId: selectedSourceId, start: timeRange.start, end: timeRange.end, field, value },
+        controller.signal,
+      )
+        .then((result) => setJourneyResult(result))
         .catch((error: unknown) => {
           if (error instanceof DOMException && error.name === 'AbortError') {
             return;
           }
-          setSearchError(error instanceof Error ? error.message : 'Search failed');
+          setJourneyError(error instanceof Error ? error.message : 'Journey search failed');
         })
         .finally(() => {
           if (activeRequestRef.current === controller) {
-            setSearchLoading(false);
+            setJourneyLoading(false);
           }
         });
     },
-    [selectedSourceId, timeRange, snapshotOriginalIfAbsent, closeInspector],
+    [selectedSourceId, timeRange, closeInspector],
   );
+
+  /** "Preserves and restores the original search state": closing journey mode never had anything to restore - `searchResult`/the toolbar's filters were never touched while it was open. */
+  const closeJourney = useCallback(() => {
+    setJourneyQuery(null);
+    setJourneyResult(null);
+    setJourneyError(null);
+  }, []);
 
   /**
    * "Show ±30 seconds" (HANDOVER.md §16.7): calls the dedicated `/context`
@@ -493,8 +496,13 @@ export function useSearchState() {
     selectNextEvent,
     breadcrumbLabel,
     restoreOriginalSearch,
-    findRelated,
     showContext,
+    journeyQuery,
+    journeyResult,
+    journeyLoading,
+    journeyError,
+    openJourney,
+    closeJourney,
   };
 }
 

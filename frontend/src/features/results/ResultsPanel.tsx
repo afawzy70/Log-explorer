@@ -107,7 +107,12 @@ export function ResultsPanel({ state }: { state: SearchState }) {
             : ''}
         </p>
       </div>
-      <ResultsTable events={events} selectedIndex={state.selectedIndex} onInspect={state.openInspector} />
+      <ResultsTable
+        events={events}
+        selectedIndex={state.selectedIndex}
+        onInspect={state.openInspector}
+        onOpenJourney={state.openJourney}
+      />
       {nextCursor ? (
         <div className={styles.loadMoreRow}>
           <Button variant="secondary" onClick={state.loadMore} disabled={state.loadingMore}>

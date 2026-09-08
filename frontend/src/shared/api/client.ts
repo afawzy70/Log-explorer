@@ -1,5 +1,6 @@
 import type {
   ContextRequestBody,
+  JourneyRequestBody,
   ProblemDetail,
   SearchRequestBody,
   SearchResponse,
@@ -70,6 +71,23 @@ export async function runSearch(body: SearchRequestBody, signal?: AbortSignal): 
  */
 export async function fetchContext(body: ContextRequestBody, signal?: AbortSignal): Promise<SearchResponse> {
   const response = await fetch('/api/v1/logs/context', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+  return parseJsonOrThrow<SearchResponse>(response);
+}
+
+/**
+ * "Find this trace/correlation/journey/event" (IMPLEMENTATION_PLAN.md
+ * "Phase I") - a distinct endpoint from `runSearch` because the backend
+ * enforces ascending order here (no `LogSource` implementation this
+ * project has honors `direction` consistently - see `SearchController#journey`'s
+ * own comment), which the general search endpoint does not guarantee.
+ */
+export async function fetchJourney(body: JourneyRequestBody, signal?: AbortSignal): Promise<SearchResponse> {
+  const response = await fetch('/api/v1/logs/journey', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

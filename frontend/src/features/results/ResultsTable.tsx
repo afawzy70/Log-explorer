@@ -1,4 +1,4 @@
-import type { LogEvent } from '../../shared/api/types';
+import type { JourneyField, LogEvent } from '../../shared/api/types';
 import { SEVERITY_LEVELS } from '../search/severityLevels';
 import { EMPTY_VALUE, formatTimestampCell, resolveCorrelationOrTrace, resolveService, resolveUserOrCustomer } from './columnMapping';
 import { RESULT_COLUMNS } from './columns';
@@ -19,16 +19,20 @@ function levelColor(severity: string | null): string | undefined {
  *
  * `selectedIndex`/`onInspect` are the event inspector's row-selection
  * contract (IMPLEMENTATION_PLAN.md "Phase H": "selected row stays
- * identifiable") - `onInspect` is optional so this component still works
- * standalone in tests/stories that don't need the inspector wired up.
+ * identifiable"). `onOpenJourney` makes the Correlation/Trace cell's own
+ * ID a click action too (HANDOVER.md §17: "supported click actions on
+ * non-sensitive IDs" - not scoped only to the inspector's Request Flow
+ * section). Both are optional so this component still works standalone in
+ * tests/stories that don't need them wired up.
  */
 export interface ResultsTableProps {
   events: LogEvent[];
   selectedIndex?: number | null;
   onInspect?: (index: number) => void;
+  onOpenJourney?: (field: JourneyField, value: string) => void;
 }
 
-export function ResultsTable({ events, selectedIndex = null, onInspect }: ResultsTableProps) {
+export function ResultsTable({ events, selectedIndex = null, onInspect, onOpenJourney }: ResultsTableProps) {
   return (
     <div className={styles.scrollWrapper} data-testid="results-scroll-wrapper">
       <table className={styles.table}>
@@ -81,10 +85,33 @@ export function ResultsTable({ events, selectedIndex = null, onInspect }: Result
                 </td>
                 <td className={styles.idCell}>
                   {correlationOrTrace ? (
-                    <>
-                      <span className={styles.idLabel}>{correlationOrTrace.label}:</span>
-                      {correlationOrTrace.value}
-                    </>
+                    onOpenJourney ? (
+                      // The whole cell is one button (not just the value)
+                      // deliberately: a real, previously-caught bug (Phase
+                      // H's ActionsCell menu, and this same class of bug
+                      // found again here - see ResultsTable.module.css's
+                      // own comment) showed that a clickable element whose
+                      // own bounding box exceeds an ancestor's `overflow:
+                      // hidden` clip can be visually correct yet
+                      // unclickable in the clipped region. Giving the
+                      // button its own `width: 100%` + `overflow: hidden`
+                      // (`.idLinkCell`) makes its clickable box exactly
+                      // match its visible, ellipsis-truncated box.
+                      <button
+                        type="button"
+                        className={styles.idLinkCell}
+                        onClick={() => onOpenJourney(correlationOrTrace.field, correlationOrTrace.value)}
+                        title={`Find this ${correlationOrTrace.label}`}
+                      >
+                        <span className={styles.idLabel}>{correlationOrTrace.label}:</span>
+                        {correlationOrTrace.value}
+                      </button>
+                    ) : (
+                      <>
+                        <span className={styles.idLabel}>{correlationOrTrace.label}:</span>
+                        {correlationOrTrace.value}
+                      </>
+                    )
                   ) : (
                     EMPTY_VALUE
                   )}

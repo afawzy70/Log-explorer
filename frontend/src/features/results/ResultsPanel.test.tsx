@@ -95,8 +95,13 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     selectNextEvent: vi.fn(),
     breadcrumbLabel: null,
     restoreOriginalSearch: vi.fn(),
-    findRelated: vi.fn(),
     showContext: vi.fn(),
+    journeyQuery: null,
+    journeyResult: null,
+    journeyLoading: false,
+    journeyError: null,
+    openJourney: vi.fn(),
+    closeJourney: vi.fn(),
     ...overrides,
   };
 }

@@ -3,7 +3,11 @@ package com.logexplorer.core.guard;
 /** A {@link SearchGuardrails#validate} rejection. Maps to HTTP 400. */
 public class GuardrailViolationException extends RuntimeException {
 
-  public enum Reason { MISSING_RANGE, INVALID_RANGE, MAX_RANGE_EXCEEDED, INVALID_LIMIT, RAW_LOGQL_NOT_SUPPORTED }
+  public enum Reason {
+    MISSING_RANGE, INVALID_RANGE, MAX_RANGE_EXCEEDED, INVALID_LIMIT, RAW_LOGQL_NOT_SUPPORTED,
+    /** {@code JourneyRequestDto#field} is not one of the four non-sensitive identifiers (Phase I). */
+    INVALID_JOURNEY_FIELD
+  }
 
   private final Reason reason;
 

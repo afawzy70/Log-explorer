@@ -79,6 +79,40 @@
 }
 
 /*
+ * "Supported click actions on non-sensitive IDs" (HANDOVER.md §17) - the
+ * whole cell is one button. `width: 100%` plus its own `overflow: hidden`
+ * (not just relying on `.idCell`'s) makes this element's clickable
+ * bounding box match its visible, ellipsis-truncated box exactly - a
+ * real bug (found via Phase I's Playwright suite) otherwise leaves a
+ * clickable box wider than what's actually painted, so a real click in
+ * the truncated region lands on the `<td>` underneath instead. The same
+ * bug class as Phase H's ActionsCell-menu-clipping fix, this time on an
+ * inline element rather than a positioned popover.
+ */
+.idLinkCell {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.idLinkCell:hover,
+.idLinkCell:focus-visible {
+  text-decoration: underline;
+  color: var(--color-accent);
+}
+
+/*
  * Real bug found via Phase H's Playwright suite (the first spec to
  * actually click into `ActionsCell`'s popover in a real browser - Phase
  * G's own E2E coverage only ever checked table geometry, never per-row

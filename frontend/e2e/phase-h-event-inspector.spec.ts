@@ -107,17 +107,12 @@ test('"Show ±30 seconds" previews the bounded window before running, then repla
   await expect(page.getByText(/back to original search/i)).not.toBeVisible();
 });
 
-test('"Find related logs" searches by only that ID and shows a back-to-original breadcrumb', async ({ page }) => {
-  await runRealSearch(page);
-  await openInspectorOnRow(page, 0);
-  const dialog = page.getByRole('dialog', { name: /event details/i });
-
-  await dialog.getByRole('button', { name: /find related logs/i }).first().click();
-
-  await expect(page.getByText(/related logs/i)).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByRole('button', { name: /back to original search/i })).toBeVisible();
-  await expect(page.getByRole('table')).toBeVisible();
-});
+// "Find related logs" (this section's original per-ID action) was
+// superseded in IMPLEMENTATION_PLAN.md "Phase I" by "Find this trace/
+// correlation/journey/event" (HANDOVER.md §17's own click-action list),
+// which opens the dedicated journey timeline instead of re-filtering the
+// flat results table - a strict upgrade, not a regression. See
+// `phase-i-journey-investigation.spec.ts` for its real-browser coverage.
 
 test('Inspect event is always available in the row actions menu, never disabled', async ({ page }) => {
   await runRealSearch(page);

@@ -1,0 +1,63 @@
+.entry {
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid transparent;
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.headerRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-1);
+}
+
+.timestamp {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.service {
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+}
+
+.level {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.levelDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.businessStep {
+  font-size: var(--font-size-xs);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-canvas);
+  color: var(--color-text-secondary);
+}
+
+.message {
+  margin: 0 0 var(--space-1) 0;
+  font-size: var(--font-size-sm);
+  overflow-wrap: break-word;
+}
+
+.metaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+}
