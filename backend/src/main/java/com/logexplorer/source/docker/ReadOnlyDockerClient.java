@@ -73,6 +73,27 @@ public class ReadOnlyDockerClient implements Closeable {
     return cmd.exec(callback);
   }
 
+  /**
+   * Live tail (IMPLEMENTATION_PLAN.md "Phase J") - {@code withFollowStream(true)},
+   * no since/until bound (only new lines from "now" matter for live tail;
+   * history is {@link #readLogs}'s job), {@code tail(0)} so the stream
+   * starts empty and only carries genuinely new frames. The returned
+   * callback is the cancellation handle: closing it (via {@link
+   * Closeable#close()}) terminates the underlying read - {@code
+   * DockerLogSource} is responsible for propagating Reactor cancellation
+   * to that close call (HANDOVER.md §18.2 "Disconnect must cancel
+   * upstream callback/resource").
+   */
+  public <T extends ResultCallback<Frame>> T followLogs(String containerId, T callback) {
+    return delegate.logContainerCmd(containerId)
+        .withStdOut(true)
+        .withStdErr(true)
+        .withTimestamps(true)
+        .withFollowStream(true)
+        .withTail(0)
+        .exec(callback);
+  }
+
   public void ping() {
     delegate.pingCmd().exec();
   }

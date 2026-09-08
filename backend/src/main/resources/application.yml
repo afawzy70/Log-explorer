@@ -52,3 +52,8 @@ logexplorer:
     connect-timeout: 5s
     raw-log-ql-enabled: false
     live-tail-supported: false
+  live:
+    max-concurrent-tails: 4
+    connection-timeout: 30m
+    heartbeat-interval: 15s
+    server-buffer-size: 500

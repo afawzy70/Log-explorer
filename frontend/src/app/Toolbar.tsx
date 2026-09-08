@@ -12,6 +12,8 @@ import styles from './Toolbar.module.css';
 
 export interface ToolbarProps {
   state: SearchState;
+  /** Starts live mode for the currently-selected source/services (IMPLEMENTATION_PLAN.md "Phase J") - undefined only in tests/stories that don't wire live tail up. */
+  onStartLive?: () => void;
 }
 
 /**
@@ -20,7 +22,7 @@ export interface ToolbarProps {
  * search -> Search -> Live (only when capability true) -> More filters +
  * active count.
  */
-export function Toolbar({ state }: ToolbarProps) {
+export function Toolbar({ state, onStartLive }: ToolbarProps) {
   const liveTailSupported = state.selectedSource?.capabilities.liveTail ?? false;
 
   return (
@@ -44,11 +46,10 @@ export function Toolbar({ state }: ToolbarProps) {
           {state.searchLoading ? 'Searching…' : 'Search'}
         </Button>
         {liveTailSupported ? (
-          // Live tail itself is Phase J's job - this button is only ever
-          // rendered when the active source's own capabilities say it
-          // supports it (never assumed, never shown for a source that
-          // can't - CLAUDE.md §4 "Sources and capabilities").
-          <Button variant="secondary" disabled title="Live tail is not yet available">
+          // Only ever rendered when the active source's own capabilities
+          // say it supports live tail (never assumed, never shown for a
+          // source that can't - CLAUDE.md §4 "Sources and capabilities").
+          <Button variant="secondary" onClick={onStartLive} disabled={!onStartLive || !state.selectedSourceId}>
             Live
           </Button>
         ) : null}

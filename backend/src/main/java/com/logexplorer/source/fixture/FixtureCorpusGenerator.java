@@ -41,6 +41,29 @@ public class FixtureCorpusGenerator {
    *     earlier events are spaced backward from it, so a caller searching
    *     "the last N minutes" from real wall-clock time actually finds them.
    */
+  /**
+   * One live-tail line (IMPLEMENTATION_PLAN.md "Phase J") - deterministic
+   * for a given {@code (seed, globalIndex)}, restamped to {@code
+   * timestamp}. Recomputes at most one {@value #CYCLE_LEN}-record cycle,
+   * never the whole growing history {@link #generateLines} would need to
+   * reproduce the exact same position - a long-running live session calls
+   * this once per new event, so its cost must stay flat over time, not
+   * grow with how long the tail has been running (CLAUDE.md §4 "no
+   * unbounded scans"). Content is fixture-shaped and realistic but not
+   * byte-identical to what {@link #generateLines} would put at the same
+   * slot, since each cycle here is seeded independently rather than
+   * carrying forward one shared {@link Random}'s accumulated state -
+   * live tail is a separate, forward-continuing stream, not required to
+   * replay the static corpus.
+   */
+  public String generateLiveLine(long seed, int globalIndex, Instant timestamp) {
+    int cycleIndex = globalIndex / CYCLE_LEN;
+    int slot = globalIndex % CYCLE_LEN;
+    Random rng = new Random(seed + cycleIndex);
+    String line = buildCycle(rng, cycleIndex).get(slot);
+    return restamp(line, timestamp);
+  }
+
   public List<String> generateLines(long seed, int count, Instant anchor) {
     Random rng = new Random(seed);
     List<String> lines = new ArrayList<>(count);

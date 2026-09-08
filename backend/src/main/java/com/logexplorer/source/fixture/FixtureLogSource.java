@@ -2,6 +2,7 @@ package com.logexplorer.source.fixture;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.logexplorer.core.model.CanonicalLogEvent;
+import com.logexplorer.core.model.FollowRequest;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceCapabilities;
@@ -9,11 +10,14 @@ import com.logexplorer.core.model.SourceHealth;
 import com.logexplorer.core.parse.LogLineParser;
 import com.logexplorer.core.search.EventFilters;
 import com.logexplorer.source.LogSource;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -43,7 +47,12 @@ public class FixtureLogSource implements LogSource {
   private static final long SEED = 42L;
   private static final int CORPUS_SIZE = 120;
   private static final SourceCapabilities CAPABILITIES =
-      new SourceCapabilities(true, false, false, true, false, false);
+      new SourceCapabilities(true, true, false, true, false, false);
+
+  /** Every 6th tick emits a burst instead of one event - the "manual check... including a burst" (IMPLEMENTATION_PLAN.md "Phase J") needs a real, reproducible burst, not left to chance. */
+  private static final Duration TICK_INTERVAL = Duration.ofMillis(700);
+  private static final int BURST_EVERY_N_TICKS = 6;
+  private static final int BURST_SIZE = 5;
 
   private final LogLineParser parser;
   private final FixtureCorpusGenerator generator;
@@ -95,6 +104,33 @@ public class FixtureLogSource implements LogSource {
         .filter(e -> EventFilters.matches(e, request))
         .sort(Comparator.comparing(CanonicalLogEvent::timestamp,
             Comparator.nullsLast(Comparator.reverseOrder())));
+  }
+
+  /**
+   * "Live tail against the demo generator including a burst" (IMPLEMENTATION_PLAN.md
+   * "Phase J" manual check) - this *is* that demo generator, continuing
+   * forward in time rather than replaying the static corpus. Each
+   * subscription gets its own independent counter/timeline (two
+   * concurrent tails are two independent streams, not shared state).
+   */
+  @Override
+  public Flux<CanonicalLogEvent> follow(FollowRequest request) {
+    AtomicInteger tick = new AtomicInteger(0);
+    AtomicInteger globalIndex = new AtomicInteger(0);
+    return Flux.interval(TICK_INTERVAL)
+        .flatMapIterable(ignored -> {
+          int thisTick = tick.incrementAndGet();
+          int count = thisTick % BURST_EVERY_N_TICKS == 0 ? BURST_SIZE : 1;
+          List<CanonicalLogEvent> batch = new ArrayList<>(count);
+          Instant now = Instant.now();
+          for (int i = 0; i < count; i++) {
+            int idx = globalIndex.getAndIncrement();
+            String line = generator.generateLiveLine(SEED, idx, now);
+            batch.add(parser.parse(line, null));
+          }
+          return batch;
+        })
+        .filter(e -> request.services().isEmpty() || request.services().contains(e.service()));
   }
 
   private List<CanonicalLogEvent> corpus() {
