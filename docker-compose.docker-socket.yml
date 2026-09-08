@@ -1,0 +1,43 @@
+# IMPLEMENTATION_PLAN.md "Phase K" scope item 2: the `docker-socket`
+# profile - "mounts /var/run/docker.sock read-only, behind this explicit
+# profile only... Never mounted silently."
+#
+# Why a second file, not just a `profiles:` line on `app` in
+# docker-compose.yml: Compose's `profiles:` key controls whether an entire
+# *service* starts, not whether one already-running service gains an
+# extra volume - there is no way to conditionally add a mount to the same
+# `app` service from within one compose file based on which profile flags
+# were passed. This override file is Compose's actual, documented
+# mechanism for that: layered on top of the base file with `-f`, it adds
+# the socket mount to the *same* `app` service/container, never a second
+# competing one. It is deliberately named after, and additionally still
+# profile-gated to, "docker-socket" so the intent reads the same way the
+# plan itself describes it - but the real, unbypassable gate is that this
+# file must be explicitly passed with `-f` at all. Two explicit, separate
+# actions are required to ever mount the socket - it can never happen by
+# accident from `docker compose up` alone.
+#
+# PRIVILEGE WARNING: the Docker Engine API is not scoped to "read-only" at
+# the daemon level - anything that can reach the socket, even only issuing
+# GET requests as this codebase's ReadOnlyDockerClient always does
+# (CLAUDE.md §2 rule 8: list, inspect, read logs, follow logs - never
+# start/stop/create/remove/exec), can still read the full detail of every
+# container's config, environment variables, image contents, and logs on
+# this host. Mounting `:ro` restricts filesystem-level operations on the
+# socket *node itself* (it cannot be deleted or replaced from inside the
+# container); it does not shrink what the Docker Engine API itself allows
+# a connected client to read. Only enable this profile on a host and for
+# an audience for whom that visibility is acceptable. See
+# docs/RUN_GUIDE.md's "Docker socket privilege warning" section.
+#
+# Usage (see docs/RUN_GUIDE.md for the full command):
+#   docker compose -f docker-compose.yml -f docker-compose.docker-socket.yml \
+#     --profile demo --profile docker-socket up --build
+
+services:
+  app:
+    profiles: ["docker-socket"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - LOGEXPLORER_DOCKER_MODE=LOCAL

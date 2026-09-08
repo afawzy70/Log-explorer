@@ -14,6 +14,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.support.WebExchangeBindException;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Maps every exception this backend can throw to a sanitized {@link
@@ -73,6 +74,23 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(WebExchangeBindException.class)
   public ProblemDetail handleValidation(WebExchangeBindException e) {
     return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Invalid request");
+  }
+
+  /**
+   * A real bug found during Phase K's SPA-fallback work: {@link
+   * org.springframework.web.reactive.resource.NoResourceFoundException}
+   * (thrown for any genuinely unmatched path, incl. the SPA fallback's own
+   * resource-chain dead-end) extends {@link ResponseStatusException} but
+   * was previously falling through to {@link #handleGeneric}, silently
+   * turning every honest 404 into a misleading 500 "An internal error
+   * occurred". This preserves the exception's own real status - never
+   * downgrading a client error into a fabricated server error - and its
+   * structural (never sensitive) reason text, e.g. the unmatched path.
+   */
+  @ExceptionHandler(ResponseStatusException.class)
+  public ProblemDetail handleResponseStatus(ResponseStatusException e) {
+    String detail = e.getReason() != null ? e.getReason() : e.getMessage();
+    return ProblemDetail.forStatusAndDetail(HttpStatus.valueOf(e.getStatusCode().value()), detail);
   }
 
   @ExceptionHandler(Exception.class)

@@ -271,10 +271,22 @@ public class DockerLogSource implements LogSource {
   }
 
   private List<Container> relevantContainers(List<Container> containers, List<String> requestedServices) {
+    // A real bug found via Phase K's own Compose end-to-end verification:
+    // Compose's `env_file` mechanism passes a declared-but-empty .env line
+    // (e.g. "LOGEXPLORER_DOCKER_COMPOSE_PROJECT_FILTER=") through as the
+    // literal empty string, not an absent variable - Spring then binds
+    // that as "" here, not null. A bare `== null` check let that empty
+    // string reach `.equals(project)`, which no real project name ever
+    // matches, so EVERY container was silently filtered out. isBlank()
+    // treats both "unset" and "set to blank" as "no filter", matching
+    // this codebase's own established convention for the same class of
+    // optional string field (see DockerClientFactory#buildConfig's own
+    // `host == null || host.isBlank()` check).
+    String projectFilter = properties.getComposeProjectFilter();
+    boolean noProjectFilter = projectFilter == null || projectFilter.isBlank();
     return containers.stream()
         .filter(c -> ComposeLabels.isComposeManaged(c.getLabels()))
-        .filter(c -> properties.getComposeProjectFilter() == null
-            || properties.getComposeProjectFilter().equals(ComposeLabels.project(c.getLabels())))
+        .filter(c -> noProjectFilter || projectFilter.equals(ComposeLabels.project(c.getLabels())))
         .filter(c -> requestedServices.isEmpty()
             || requestedServices.contains(ComposeLabels.service(c.getLabels())))
         .toList();

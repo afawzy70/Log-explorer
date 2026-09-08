@@ -16,3 +16,8 @@ target/
 
 # OS
 .DS_Store
+
+# Phase K: a real deployer's own local Compose env - never the tracked
+# .env.example (CLAUDE.md §2 rule 6, "credentials ... never committed").
+.env
+.env.local
