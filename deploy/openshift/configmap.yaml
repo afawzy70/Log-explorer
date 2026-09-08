@@ -1,0 +1,53 @@
+# IMPLEMENTATION_PLAN.md "Phase L". Non-secret configuration only - every
+# key here mirrors a documented variable in .env.example (same names,
+# same meanings, same harmless-default philosophy). Edit the values below
+# for your own cluster before applying; nothing here is a real credential
+# or a real cluster URL.
+#
+# Docker discovery is deliberately disabled (LOGEXPLORER_SOURCES_DISABLED
+# includes local-docker) - there is no Docker socket in an OpenShift pod,
+# and this deployment never attempts to mount one (CLAUDE.md §2 rule 10
+# "never mount /var/run/docker.sock silently" - here it is never mounted
+# at all). SPRING_PROFILES_ACTIVE is deliberately left unset (not "dev")
+# so the fake in-process Fixture source never appears in a real
+# deployment.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: log-explorer-config
+  labels:
+    app.kubernetes.io/name: log-explorer
+    app.kubernetes.io/part-of: log-explorer
+data:
+  LOGEXPLORER_SOURCES_DISABLED: "local-docker"
+
+  # --- OpenShift Loki source (Phase D) ---------------------------------
+  LOGEXPLORER_LOKI_BASE_URL: "https://loki-gateway.example-namespace.svc.cluster.local:8080"
+  LOGEXPLORER_LOKI_GATEWAY_PREFIX: "/api/logs/v1"
+  LOGEXPLORER_LOKI_TENANT: "application"
+  LOGEXPLORER_LOKI_NAMESPACE_LABEL_KEY: "kubernetes_namespace_name"
+  LOGEXPLORER_LOKI_SERVICE_LABEL_KEY: "app"
+  LOGEXPLORER_LOKI_POD_LABEL_KEY: "pod"
+  LOGEXPLORER_LOKI_CONTAINER_LABEL_KEY: "container"
+  LOGEXPLORER_LOKI_NAMESPACE: "example-namespace"
+  LOGEXPLORER_LOKI_MAX_RESULTS_PER_QUERY: "2000"
+  LOGEXPLORER_LOKI_REQUEST_TIMEOUT: "15s"
+  LOGEXPLORER_LOKI_CONNECT_TIMEOUT: "5s"
+  LOGEXPLORER_LOKI_RAW_LOG_QL_ENABLED: "false"
+  LOGEXPLORER_LOKI_LIVE_TAIL_SUPPORTED: "false"
+  # Names the env var (below, from a Secret - see deployment.yaml) that
+  # actually holds the bearer token. Never a token value here.
+  LOGEXPLORER_LOKI_TOKEN_ENV_VAR: "LOKI_BEARER_TOKEN"
+
+  # --- Search guardrails (Phase B) -------------------------------------
+  LOGEXPLORER_SEARCH_DEFAULT_LIMIT: "200"
+  LOGEXPLORER_SEARCH_MAX_LIMIT: "5000"
+  LOGEXPLORER_SEARCH_MAX_TIME_RANGE: "7d"
+  LOGEXPLORER_SEARCH_REQUEST_TIMEOUT: "30s"
+  LOGEXPLORER_SEARCH_MAX_CONCURRENCY: "8"
+
+  # --- Live tail guardrails (Phase J) -----------------------------------
+  LOGEXPLORER_LIVE_MAX_CONCURRENT_TAILS: "4"
+  LOGEXPLORER_LIVE_CONNECTION_TIMEOUT: "30m"
+  LOGEXPLORER_LIVE_HEARTBEAT_INTERVAL: "15s"
+  LOGEXPLORER_LIVE_SERVER_BUFFER_SIZE: "500"

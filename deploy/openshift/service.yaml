@@ -1,0 +1,17 @@
+# IMPLEMENTATION_PLAN.md "Phase L".
+apiVersion: v1
+kind: Service
+metadata:
+  name: log-explorer
+  labels:
+    app.kubernetes.io/name: log-explorer
+    app.kubernetes.io/part-of: log-explorer
+spec:
+  selector:
+    app.kubernetes.io/name: log-explorer
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+  type: ClusterIP

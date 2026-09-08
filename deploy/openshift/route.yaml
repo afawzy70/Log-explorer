@@ -1,0 +1,25 @@
+# IMPLEMENTATION_PLAN.md "Phase L". `edge` termination + a redirect
+# policy: TLS to the browser always, HTTP inside the cluster network only
+# (the normal, standard OpenShift posture for an internal investigation
+# tool - CLAUDE.md §2 rule 7's "TLS verification stays on" governs this
+# app's own *outbound* calls to Loki, already true since Phase D; this
+# Route governs *inbound* traffic to the app itself). Replace `host:`
+# with your own, or delete the line to let OpenShift assign one.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: log-explorer
+  labels:
+    app.kubernetes.io/name: log-explorer
+    app.kubernetes.io/part-of: log-explorer
+spec:
+  host: log-explorer.example-namespace.apps.example-cluster.example.com
+  to:
+    kind: Service
+    name: log-explorer
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
