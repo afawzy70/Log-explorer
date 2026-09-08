@@ -88,6 +88,11 @@ class DockerLogSourceTest {
         + "\",\"application\":\"" + service + "\",\"mdc\":{}}\n";
   }
 
+  private String jsonLineWithTraceId(String timestamp, String service, String message, String traceId) {
+    return timestamp + " {\"@timestamp\":\"" + timestamp + "\",\"message\":\"" + message
+        + "\",\"application\":\"" + service + "\",\"mdc\":{\"traceId\":\"" + traceId + "\"}}\n";
+  }
+
   @Test
   void discoverServicesOnlyIncludesComposeManagedContainersAndCountsRunningVsTotal() {
     // Build every mock container BEFORE starting the listContainers stub -
@@ -202,6 +207,28 @@ class DockerLogSourceTest {
   }
 
   @Test
+  void structuredFiltersLikeTraceIdAreActuallyAppliedToEvents() {
+    // Real bug found while extracting core.search.EventFilters: this
+    // adapter previously filtered containers by service only and never
+    // applied any per-event structured filter (traceId, correlationId,
+    // text, sensitive filters, ...) at all - a request for one specific
+    // traceId would have silently returned every event from the matching
+    // containers/time-range instead.
+    Container gateway = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(gateway));
+    stubLogs("c1",
+        jsonLineWithTraceId("2026-01-01T00:00:00.000000000Z", "gateway", "matching trace", "trace-abc"),
+        jsonLineWithTraceId("2026-01-01T00:00:01.000000000Z", "gateway", "other trace", "trace-xyz"));
+
+    SearchRequest request = wideOpenRequest().traceId("trace-abc").build();
+    List<CanonicalLogEvent> events = source.search(request).collectList().block();
+
+    assertThat(events).hasSize(1);
+    assertThat(events.get(0).message()).isEqualTo("matching trace");
+    assertThat(events.get(0).traceId()).isEqualTo("trace-abc");
+  }
+
+  @Test
   void oneUnreadableContainerDoesNotFailTheWholeSearch() {
     Container ok = container("c1", "proj-gateway-1", "proj", "gateway", "running");
     Container broken = container("c2", "proj-accounts-1", "proj", "accounts-api", "running");
@@ -274,10 +301,14 @@ class DockerLogSourceTest {
   }
 
   private SearchRequest.Builder wideOpenRequest() {
-    Instant now = Instant.parse("2026-01-01T12:00:00Z");
+    // Genuinely wide - EventFilters (extracted this phase) now applies
+    // real time-range post-filtering on each event's parsed content
+    // timestamp, not just the (irrelevant, fully-mocked) Docker API
+    // since/until args. A narrow window here previously went untested
+    // against real content timestamps and silently passed regardless.
     return SearchRequest.builder()
         .sourceId("local-docker")
-        .start(now.minusSeconds(3600))
-        .end(now.plusSeconds(3600));
+        .start(Instant.parse("2025-01-01T00:00:00Z"))
+        .end(Instant.parse("2027-01-01T00:00:00Z"));
   }
 }

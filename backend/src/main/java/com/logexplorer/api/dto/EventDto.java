@@ -46,6 +46,8 @@ public record EventDto(
     String composeProject,
     String containerId,
     String containerName,
-    String stream
+    String stream,
+    String namespace,
+    String pod
 ) {
 }

@@ -44,6 +44,8 @@ class CanonicalLogEventTest {
         .containerId("container-1")
         .containerName("myproject-gateway-1")
         .stream("stdout")
+        .namespace("my-namespace")
+        .pod("my-pod-abc123")
         .build();
 
     CanonicalLogEvent copy = original.toBuilder().build();
