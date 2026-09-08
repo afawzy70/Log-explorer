@@ -79,6 +79,18 @@ class EventFiltersTest {
   }
 
   @Test
+  void filtersByContainerIdAndPod() {
+    // These two only ever arrive via api.SearchController's /context
+    // endpoint (HANDOVER.md 16.7) - no UI-facing filter on the general
+    // search sets them, but EventFilters itself is source-agnostic.
+    CanonicalLogEvent scoped = baseEvent().containerId("c1").pod("pod-abc").build();
+    assertThat(EventFilters.matches(scoped, baseRequest().containerId("c1").build())).isTrue();
+    assertThat(EventFilters.matches(scoped, baseRequest().containerId("other").build())).isFalse();
+    assertThat(EventFilters.matches(scoped, baseRequest().pod("pod-abc").build())).isTrue();
+    assertThat(EventFilters.matches(scoped, baseRequest().pod("other").build())).isFalse();
+  }
+
+  @Test
   void filtersByDevicePlatformAndLanguage() {
     assertThat(EventFilters.matches(baseEvent().build(), baseRequest().devicePlatform("WEB").build())).isTrue();
     assertThat(EventFilters.matches(baseEvent().build(), baseRequest().devicePlatform("IOS").build())).isFalse();

@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchSourceHealth, fetchSourceServices, fetchSources, runSearch as runSearchApi } from '../shared/api/client';
+import {
+  fetchContext,
+  fetchSourceHealth,
+  fetchSourceServices,
+  fetchSources,
+  runSearch as runSearchApi,
+} from '../shared/api/client';
 import type {
+  LogEvent,
   SearchRequestBody,
   SearchResponse,
   ServiceInfo,
@@ -11,14 +18,36 @@ import { DEFAULT_SEVERITY_LEVELS } from '../features/search/severityLevels';
 import { emptyAdvancedFilterValues } from '../features/search/advancedFilterFields';
 import type { AdvancedFilterValues } from '../features/search/advancedFilterFields';
 import type { DetectableIdField } from '../features/search/idDetection';
-import { DEFAULT_PRESET_ID, TIME_RANGE_PRESETS } from '../shared/time/presets';
+import { DEFAULT_PRESET_ID, TIME_RANGE_PRESETS, CUSTOM_RANGE_ID } from '../shared/time/presets';
 import type { CommittedTimeRange } from '../features/timerange/types';
+import { formatUtcTimestamp } from '../features/inspector/timestampFormat';
 
 function defaultTimeRange(): CommittedTimeRange {
   const preset = TIME_RANGE_PRESETS.find((p) => p.id === DEFAULT_PRESET_ID)!;
   const end = new Date();
   const start = new Date(end.getTime() - preset.durationMs);
   return { presetId: DEFAULT_PRESET_ID, start: start.toISOString(), end: end.toISOString() };
+}
+
+/** The five identifier fields the inspector's "Find related logs" action can search by (HANDOVER.md §16.4). */
+export type FindRelatedField = 'traceId' | 'spanId' | 'correlationId' | 'journeyId' | 'eventId';
+
+/**
+ * A snapshot of every piece of state that composes one search + its
+ * result - what "find related logs" / "show context" (IMPLEMENTATION_PLAN.md
+ * "Phase H") save before replacing the visible search, and what "back to
+ * original search" restores. Only ever one level deep: a second detour
+ * before returning does not overwrite the saved original (see
+ * `snapshotOriginalIfAbsent`).
+ */
+interface SearchSnapshot {
+  selectedServices: string[];
+  selectedLevels: string[];
+  searchText: string;
+  advancedFilters: AdvancedFilterValues;
+  timeRange: CommittedTimeRange;
+  searchResult: SearchResponse | null;
+  lastSearchedRange: CommittedTimeRange | null;
 }
 
 /**
@@ -47,6 +76,15 @@ export function useSearchState() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [lastSearchedRange, setLastSearchedRange] = useState<CommittedTimeRange | null>(null);
+
+  /** The event inspector's selection (IMPLEMENTATION_PLAN.md "Phase H") - an index into `searchResult.events`, since events have no stable id (see `ResultsTable`'s own comment on why it keys by index). */
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const focusRestoreRef = useRef<HTMLElement | null>(null);
+
+  /** "Find related logs" / "Show ±30 seconds" breadcrumb (HANDOVER.md §16.4/§16.7 "breadcrumb back to the original search"). */
+  const [breadcrumbLabel, setBreadcrumbLabel] = useState<string | null>(null);
+  const [originalSnapshot, setOriginalSnapshot] = useState<SearchSnapshot | null>(null);
+
   /**
    * "Cancelled" state (IMPLEMENTATION_PLAN.md "Phase G" scope item 11): a
    * new search must never be raced by a still-in-flight older one
@@ -165,6 +203,14 @@ export function useSearchState() {
     const controller = supersedeActiveRequest();
     setSearchLoading(true);
     setSearchError(null);
+    // A genuinely new, user-initiated search invalidates both the
+    // inspector's selection (row indices belong to the list about to be
+    // replaced) and any "back to original search" breadcrumb (this new
+    // search IS the current state now, not a detour from something to
+    // return to).
+    setSelectedIndex(null);
+    setBreadcrumbLabel(null);
+    setOriginalSnapshot(null);
     const searchedRange = timeRange;
     runSearchApi(body, controller.signal)
       .then((result) => {
@@ -227,6 +273,186 @@ export function useSearchState() {
       });
   }, [buildRequestBody, searchResult]);
 
+  const events = searchResult?.events ?? [];
+  const selectedEvent: LogEvent | null = selectedIndex != null ? (events[selectedIndex] ?? null) : null;
+  const hasPreviousEvent = selectedIndex != null && selectedIndex > 0;
+  const hasNextEvent = selectedIndex != null && selectedIndex < events.length - 1;
+
+  /** Opens the inspector on `index`, remembering whatever had keyboard focus so `closeInspector` can restore it (WCAG 2.2 AA logical focus restoration, CLAUDE.md §7). */
+  const openInspector = useCallback((index: number) => {
+    focusRestoreRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setSelectedIndex(index);
+  }, []);
+
+  const closeInspector = useCallback(() => {
+    setSelectedIndex(null);
+    focusRestoreRef.current?.focus();
+    focusRestoreRef.current = null;
+  }, []);
+
+  const selectPreviousEvent = useCallback(() => {
+    setSelectedIndex((prev) => (prev != null && prev > 0 ? prev - 1 : prev));
+  }, []);
+
+  const selectNextEvent = useCallback(() => {
+    setSelectedIndex((prev) => (prev != null && prev < events.length - 1 ? prev + 1 : prev));
+  }, [events.length]);
+
+  const snapshotCurrent = useCallback(
+    (): SearchSnapshot => ({
+      selectedServices,
+      selectedLevels,
+      searchText,
+      advancedFilters,
+      timeRange,
+      searchResult,
+      lastSearchedRange,
+    }),
+    [selectedServices, selectedLevels, searchText, advancedFilters, timeRange, searchResult, lastSearchedRange],
+  );
+
+  /** "Preserves and restores the original search state" (HANDOVER.md §17.5, applied here to both Phase H detour actions) - only the true original is ever kept, never a chain of detours. */
+  const snapshotOriginalIfAbsent = useCallback(() => {
+    setOriginalSnapshot((prev) => prev ?? snapshotCurrent());
+  }, [snapshotCurrent]);
+
+  const restoreOriginalSearch = useCallback(() => {
+    const snapshot = originalSnapshot;
+    if (!snapshot) {
+      return;
+    }
+    setSelectedServices(snapshot.selectedServices);
+    setSelectedLevels(snapshot.selectedLevels);
+    setSearchText(snapshot.searchText);
+    setAdvancedFilters(snapshot.advancedFilters);
+    setTimeRange(snapshot.timeRange);
+    setSearchResult(snapshot.searchResult);
+    setLastSearchedRange(snapshot.lastSearchedRange);
+    setOriginalSnapshot(null);
+    setBreadcrumbLabel(null);
+    setSelectedIndex(null);
+  }, [originalSnapshot]);
+
+  const FIND_RELATED_LABELS: Record<FindRelatedField, string> = {
+    traceId: 'Trace ID',
+    spanId: 'Span ID',
+    correlationId: 'Correlation ID',
+    journeyId: 'Journey ID',
+    eventId: 'Event ID',
+  };
+
+  /**
+   * "Find related logs" (HANDOVER.md §16.4): re-runs the current source's
+   * search with every other structured filter cleared and only this one
+   * ID set, over the same committed time range - a scoped, honest search
+   * using the exact same engine every other search on this page uses, not
+   * a preview of Phase I's dedicated multi-source-of-truth journey
+   * timeline (IMPLEMENTATION_PLAN.md "Phase I" scope item 1 owns that).
+   */
+  const findRelated = useCallback(
+    (field: FindRelatedField, value: string) => {
+      if (!selectedSourceId) {
+        return;
+      }
+      snapshotOriginalIfAbsent();
+      closeInspector();
+      const nextAdvancedFilters: AdvancedFilterValues = { ...emptyAdvancedFilterValues(), [field]: value };
+      setSelectedServices([]);
+      setSelectedLevels([]);
+      setSearchText('');
+      setAdvancedFilters(nextAdvancedFilters);
+      setBreadcrumbLabel(`Related logs — ${FIND_RELATED_LABELS[field]}`);
+
+      const body: SearchRequestBody = {
+        sourceId: selectedSourceId,
+        start: timeRange.start,
+        end: timeRange.end,
+        services: [],
+        levels: [],
+        [field]: value,
+      };
+      const controller = supersedeActiveRequest();
+      setSearchLoading(true);
+      setSearchError(null);
+      const searchedRange = timeRange;
+      runSearchApi(body, controller.signal)
+        .then((result) => {
+          setSearchResult(result);
+          setLastSearchedRange(searchedRange);
+        })
+        .catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === 'AbortError') {
+            return;
+          }
+          setSearchError(error instanceof Error ? error.message : 'Search failed');
+        })
+        .finally(() => {
+          if (activeRequestRef.current === controller) {
+            setSearchLoading(false);
+          }
+        });
+    },
+    [selectedSourceId, timeRange, snapshotOriginalIfAbsent, closeInspector],
+  );
+
+  /**
+   * "Show ±30 seconds" (HANDOVER.md §16.7): calls the dedicated `/context`
+   * endpoint (never `/search`) so container/pod scoping - which the
+   * general search has no UI filter for - can still be honored server-side.
+   * Reflects the resulting service/time-range in the toolbar so it never
+   * shows filters that don't match what's actually displayed.
+   */
+  const showContext = useCallback(
+    (event: LogEvent) => {
+      if (!selectedSourceId || !event.timestamp) {
+        return;
+      }
+      snapshotOriginalIfAbsent();
+      closeInspector();
+      const windowMs = 30_000;
+      const centerMs = new Date(event.timestamp).getTime();
+      const nextTimeRange: CommittedTimeRange = {
+        presetId: CUSTOM_RANGE_ID,
+        start: new Date(centerMs - windowMs).toISOString(),
+        end: new Date(centerMs + windowMs).toISOString(),
+      };
+      const nextServices = event.service ? [event.service] : [];
+      setSelectedServices(nextServices);
+      setTimeRange(nextTimeRange);
+      setBreadcrumbLabel(`Context — ±30s around ${formatUtcTimestamp(event.timestamp)}`);
+
+      const controller = supersedeActiveRequest();
+      setSearchLoading(true);
+      setSearchError(null);
+      fetchContext(
+        {
+          sourceId: selectedSourceId,
+          timestamp: event.timestamp,
+          service: event.service ?? undefined,
+          containerId: event.containerId ?? undefined,
+          pod: event.pod ?? undefined,
+        },
+        controller.signal,
+      )
+        .then((result) => {
+          setSearchResult(result);
+          setLastSearchedRange(nextTimeRange);
+        })
+        .catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === 'AbortError') {
+            return;
+          }
+          setSearchError(error instanceof Error ? error.message : 'Context search failed');
+        })
+        .finally(() => {
+          if (activeRequestRef.current === controller) {
+            setSearchLoading(false);
+          }
+        });
+    },
+    [selectedSourceId, snapshotOriginalIfAbsent, closeInspector],
+  );
+
   const selectedSource = sources.find((s) => s.id === selectedSourceId) ?? null;
 
   return {
@@ -257,6 +483,18 @@ export function useSearchState() {
     lastSearchedRange,
     runSearch,
     loadMore,
+    selectedIndex,
+    selectedEvent,
+    hasPreviousEvent,
+    hasNextEvent,
+    openInspector,
+    closeInspector,
+    selectPreviousEvent,
+    selectNextEvent,
+    breadcrumbLabel,
+    restoreOriginalSearch,
+    findRelated,
+    showContext,
   };
 }
 

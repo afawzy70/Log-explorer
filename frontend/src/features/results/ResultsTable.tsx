@@ -16,10 +16,21 @@ function levelColor(severity: string | null): string | undefined {
  * share the same geometry system because they are literally the same
  * table, not independently-styled grid/flex layouts (HANDOVER.md §15.2:
  * "do not apply independent grid/flex layouts to header and body").
+ *
+ * `selectedIndex`/`onInspect` are the event inspector's row-selection
+ * contract (IMPLEMENTATION_PLAN.md "Phase H": "selected row stays
+ * identifiable") - `onInspect` is optional so this component still works
+ * standalone in tests/stories that don't need the inspector wired up.
  */
-export function ResultsTable({ events }: { events: LogEvent[] }) {
+export interface ResultsTableProps {
+  events: LogEvent[];
+  selectedIndex?: number | null;
+  onInspect?: (index: number) => void;
+}
+
+export function ResultsTable({ events, selectedIndex = null, onInspect }: ResultsTableProps) {
   return (
-    <div className={styles.scrollWrapper}>
+    <div className={styles.scrollWrapper} data-testid="results-scroll-wrapper">
       <table className={styles.table}>
         <colgroup>
           {RESULT_COLUMNS.map((col) => (
@@ -46,7 +57,7 @@ export function ResultsTable({ events }: { events: LogEvent[] }) {
               // fresh search always replaces the whole list) and the
               // backend gives no other stable per-event id to key on.
               // eslint-disable-next-line react/no-array-index-key
-              <tr key={index}>
+              <tr key={index} className={index === selectedIndex ? styles.selectedRow : undefined}>
                 <td className={styles.timeCell}>{formatTimestampCell(event.timestamp)}</td>
                 <td>
                   <span className={styles.levelCell}>
@@ -78,8 +89,8 @@ export function ResultsTable({ events }: { events: LogEvent[] }) {
                     EMPTY_VALUE
                   )}
                 </td>
-                <td>
-                  <ActionsCell event={event} />
+                <td className={styles.actionsCell}>
+                  <ActionsCell event={event} onInspect={() => onInspect?.(index)} />
                 </td>
               </tr>
             );
