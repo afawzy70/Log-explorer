@@ -48,6 +48,8 @@ public record SearchRequest(
     String loggerContains,
     String devicePlatform,
     String language,
+    String containerId,
+    String pod,
     RawSensitiveFields sensitiveFilters,
     QueryExpr query,
     String rawLogQl,
@@ -84,6 +86,8 @@ public record SearchRequest(
         + ", loggerContains=" + loggerContains
         + ", devicePlatform=" + devicePlatform
         + ", language=" + language
+        + ", containerId=" + containerId
+        + ", pod=" + pod
         + ", sensitiveFilters=" + sensitiveFilters
         + ", query=" + (query == null ? "null" : "[REDACTED]")
         + ", rawLogQl=" + (rawLogQl == null ? "null" : "[REDACTED]")
@@ -115,6 +119,8 @@ public record SearchRequest(
     private String loggerContains;
     private String devicePlatform;
     private String language;
+    private String containerId;
+    private String pod;
     private RawSensitiveFields sensitiveFilters = RawSensitiveFields.empty();
     private QueryExpr query;
     private String rawLogQl;
@@ -139,6 +145,8 @@ public record SearchRequest(
     public Builder loggerContains(String v) { this.loggerContains = v; return this; }
     public Builder devicePlatform(String v) { this.devicePlatform = v; return this; }
     public Builder language(String v) { this.language = v; return this; }
+    public Builder containerId(String v) { this.containerId = v; return this; }
+    public Builder pod(String v) { this.pod = v; return this; }
     public Builder cursor(String v) { this.cursor = v; return this; }
 
     /**
@@ -180,7 +188,7 @@ public record SearchRequest(
           sourceId, start, end, direction, limit, services, levels, text,
           traceId, spanId, correlationId, journeyId, eventId, errorCode,
           businessStep, uiIdentifier, loggerContains, devicePlatform, language,
-          sensitiveFilters, query, rawLogQl, cursor);
+          containerId, pod, sensitiveFilters, query, rawLogQl, cursor);
     }
   }
 }

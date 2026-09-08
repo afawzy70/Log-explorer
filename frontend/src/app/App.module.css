@@ -1,0 +1,10 @@
+.mainRow {
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.resultsColumn {
+  flex: 1 1 auto;
+  min-width: 0;
+}

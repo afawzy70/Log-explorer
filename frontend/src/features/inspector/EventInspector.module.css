@@ -1,0 +1,69 @@
+.backdrop {
+  display: none;
+}
+
+.panel {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--color-bg-raised);
+  border-left: var(--border-width) solid var(--color-border);
+}
+
+.resizeHandle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 8px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.resizeHandle:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+}
+
+.body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/*
+ * "Sheet/overlay on narrow screens" (HANDOVER.md §16) - a real
+ * viewport-width breakpoint switch (unlike the zoom-vs-flex-reflow bugs
+ * Phase F/G's own CSS fixed, this genuinely is about the physical
+ * viewport, which `zoom` never changes either - CLAUDE.md §7's own
+ * "1024/768/390" usable-width targets), so a plain media query is the
+ * correct tool: at 1024px and below (CLAUDE.md §7's own boundary - a
+ * side panel plus the table's 900px min-width don't comfortably coexist
+ * at exactly 1024px, so "remain usable at 1024" means overlay mode
+ * there, not a cramped side panel) the panel becomes a fixed full-height
+ * sheet over the results, with a dismissable backdrop and no JS-driven
+ * resize (the resize handle stays present but harmless - dragging it
+ * still works, it just resizes a panel that's already been forced to a
+ * capped width by this breakpoint's own override below).
+ */
+@media (max-width: 1024px) {
+  .backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(16, 24, 40, 0.4);
+    z-index: 30;
+  }
+
+  .panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(100vw, 420px) !important;
+    max-width: 100vw;
+    z-index: 31;
+    box-shadow: var(--shadow-md);
+  }
+}

@@ -63,9 +63,11 @@ const SOURCES_RESPONSE = [
 
 describe('useSearchState', () => {
   let searchCalls: Array<{ body: string; resolve: (r: Response) => void; reject: (e: unknown) => void }>;
+  let contextCalls: Array<{ body: string; resolve: (r: Response) => void; reject: (e: unknown) => void }>;
 
   beforeEach(() => {
     searchCalls = [];
+    contextCalls = [];
     vi.stubGlobal(
       'fetch',
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -84,6 +86,13 @@ describe('useSearchState', () => {
             const signal = init?.signal as AbortSignal | undefined;
             signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
             searchCalls.push({ body: String(init?.body), resolve, reject });
+          });
+        }
+        if (url.endsWith('/api/v1/logs/context')) {
+          return new Promise<Response>((resolve, reject) => {
+            const signal = init?.signal as AbortSignal | undefined;
+            signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+            contextCalls.push({ body: String(init?.body), resolve, reject });
           });
         }
         throw new Error(`Unexpected fetch: ${url}`);
@@ -209,5 +218,123 @@ describe('useSearchState', () => {
     searchCalls[0].resolve(new Response('{"status":500,"detail":"boom"}', { status: 500 }));
 
     await waitFor(() => expect(result.current.searchError).not.toBeNull());
+  });
+
+  async function searchedWithThreeEvents() {
+    const result = await renderReady();
+    act(() => result.current.runSearch());
+    await waitFor(() => expect(searchCalls).toHaveLength(1));
+    searchCalls[0].resolve(
+      jsonResponse({
+        events: [eventWithMessage('one'), eventWithMessage('two'), eventWithMessage('three')],
+        counts: { estimatedTotal: null, returned: 3, visible: 3, limit: 200, truncated: false },
+        nextCursor: null,
+      }),
+    );
+    await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(3));
+    return result;
+  }
+
+  it('openInspector selects an event by index; Previous/Next move within loaded events and stop at the bounds', async () => {
+    const result = await searchedWithThreeEvents();
+
+    act(() => result.current.openInspector(1));
+    expect(result.current.selectedEvent?.message).toBe('two');
+    expect(result.current.hasPreviousEvent).toBe(true);
+    expect(result.current.hasNextEvent).toBe(true);
+
+    act(() => result.current.selectPreviousEvent());
+    expect(result.current.selectedEvent?.message).toBe('one');
+    expect(result.current.hasPreviousEvent).toBe(false);
+
+    act(() => result.current.selectPreviousEvent());
+    expect(result.current.selectedEvent?.message).toBe('one'); // already at the start - stays put
+
+    act(() => result.current.selectNextEvent());
+    act(() => result.current.selectNextEvent());
+    expect(result.current.selectedEvent?.message).toBe('three');
+    expect(result.current.hasNextEvent).toBe(false);
+
+    act(() => result.current.selectNextEvent());
+    expect(result.current.selectedEvent?.message).toBe('three'); // already at the end - stays put
+  });
+
+  it('closeInspector clears the selection', async () => {
+    const result = await searchedWithThreeEvents();
+    act(() => result.current.openInspector(0));
+    expect(result.current.selectedEvent).not.toBeNull();
+
+    act(() => result.current.closeInspector());
+    expect(result.current.selectedEvent).toBeNull();
+  });
+
+  it('a fresh runSearch clears the inspector selection and any breadcrumb', async () => {
+    const result = await searchedWithThreeEvents();
+    act(() => result.current.openInspector(0));
+    act(() => result.current.findRelated('traceId', 'trace-x'));
+    await waitFor(() => expect(searchCalls).toHaveLength(2));
+    searchCalls[1].resolve(
+      jsonResponse({ events: [], counts: { estimatedTotal: null, returned: 0, visible: 0, limit: 200, truncated: false }, nextCursor: null }),
+    );
+    await waitFor(() => expect(result.current.breadcrumbLabel).not.toBeNull());
+
+    act(() => result.current.runSearch());
+    await waitFor(() => expect(searchCalls).toHaveLength(3));
+    expect(result.current.selectedEvent).toBeNull();
+    expect(result.current.breadcrumbLabel).toBeNull();
+  });
+
+  it('findRelated searches by only the given ID, clears other filters, sets a breadcrumb, and restoreOriginalSearch brings back the prior results', async () => {
+    const result = await searchedWithThreeEvents();
+    const originalEvents = result.current.searchResult?.events;
+
+    act(() => result.current.findRelated('correlationId', 'corr-123'));
+    await waitFor(() => expect(searchCalls).toHaveLength(2));
+    expect(searchCalls[1].body).toContain('"correlationId":"corr-123"');
+    expect(searchCalls[1].body).toContain('"services":[]');
+    expect(searchCalls[1].body).toContain('"levels":[]');
+
+    searchCalls[1].resolve(
+      jsonResponse({
+        events: [eventWithMessage('related')],
+        counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
+        nextCursor: null,
+      }),
+    );
+    await waitFor(() => expect(result.current.searchResult?.events[0].message).toBe('related'));
+    expect(result.current.breadcrumbLabel).toMatch(/correlation id/i);
+    expect(result.current.selectedEvent).toBeNull(); // inspector closes on navigating away
+
+    act(() => result.current.restoreOriginalSearch());
+    expect(result.current.searchResult?.events).toEqual(originalEvents);
+    expect(result.current.breadcrumbLabel).toBeNull();
+  });
+
+  it('showContext calls the dedicated /context endpoint (never /search) and narrows the time range', async () => {
+    const result = await searchedWithThreeEvents();
+    const event = result.current.searchResult!.events[0];
+
+    act(() => result.current.showContext(event));
+    await waitFor(() => expect(contextCalls).toHaveLength(1));
+    expect(searchCalls).toHaveLength(1); // unchanged - context never goes through /search
+    expect(contextCalls[0].body).toContain(`"timestamp":"${event.timestamp}"`);
+
+    contextCalls[0].resolve(
+      jsonResponse({
+        events: [eventWithMessage('surrounding')],
+        counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
+        nextCursor: null,
+      }),
+    );
+    await waitFor(() => expect(result.current.searchResult?.events[0].message).toBe('surrounding'));
+    expect(result.current.breadcrumbLabel).toMatch(/context/i);
+    expect(new Date(result.current.timeRange.end).getTime() - new Date(result.current.timeRange.start).getTime()).toBe(60_000);
+  });
+
+  it('showContext does nothing for an event with no timestamp', async () => {
+    const result = await searchedWithThreeEvents();
+    act(() => result.current.showContext({ ...result.current.searchResult!.events[0], timestamp: null }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(contextCalls).toHaveLength(0);
   });
 });

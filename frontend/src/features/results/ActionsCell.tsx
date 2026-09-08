@@ -12,9 +12,11 @@ import styles from './ActionsCell.module.css';
  * row"). Copies whichever non-sensitive identifiers this event actually
  * has (HANDOVER.md §5: "Non-sensitive trace/correlation/journey/event IDs
  * may be copied") - never a raw sensitive value, and never fabricated
- * when an event has none.
+ * when an event has none. "Inspect event" (IMPLEMENTATION_PLAN.md "Phase
+ * H") is always present regardless of identifiers, so this trigger is
+ * never disabled the way it was in Phase G.
  */
-export function ActionsCell({ event }: { event: LogEvent }) {
+export function ActionsCell({ event, onInspect }: { event: LogEvent; onInspect: () => void }) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const popover = usePopoverTrigger();
   const identifiers = listCopyableIdentifiers(event);
@@ -40,14 +42,24 @@ export function ActionsCell({ event }: { event: LogEvent }) {
         className={styles.trigger}
         aria-haspopup="true"
         aria-expanded={popover.isOpen}
-        aria-label={identifiers.length === 0 ? 'No actions available for this event' : 'Actions for this event'}
-        disabled={identifiers.length === 0}
+        aria-label="Actions for this event"
         onClick={() => (popover.isOpen ? popover.close() : popover.open())}
       >
         …
       </button>
-      {popover.isOpen && identifiers.length > 0 ? (
-        <div className={styles.menu} role="menu" aria-label="Copy identifier">
+      {popover.isOpen ? (
+        <div className={styles.menu} role="menu" aria-label="Event actions">
+          <button
+            type="button"
+            role="menuitem"
+            className={styles.menuItem}
+            onClick={() => {
+              popover.close();
+              onInspect();
+            }}
+          >
+            Inspect event
+          </button>
           {identifiers.map((id) => (
             <button
               key={id.label}

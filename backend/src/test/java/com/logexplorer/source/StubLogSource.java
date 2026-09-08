@@ -30,6 +30,8 @@ public class StubLogSource implements LogSource {
 
   public final AtomicBoolean cancelled = new AtomicBoolean(false);
   public final AtomicInteger subscriptions = new AtomicInteger(0);
+  /** The most recent {@link SearchRequest} this source was asked to search with - lets tests assert what a controller/mapper actually built, since this stub never applies {@code EventFilters} itself. */
+  public volatile SearchRequest lastRequest;
 
   public StubLogSource(String id) {
     this(id, id, new SourceCapabilities(true, false, false, true, false, false));
@@ -84,6 +86,7 @@ public class StubLogSource implements LogSource {
   @Override
   public Flux<CanonicalLogEvent> search(SearchRequest request) {
     subscriptions.incrementAndGet();
+    lastRequest = request;
     return searchFlux.doOnCancel(() -> cancelled.set(true));
   }
 }

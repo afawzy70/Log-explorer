@@ -102,6 +102,16 @@ public final class EventFilters {
     if (!fieldMatches(request.language(), event.language())) {
       return false;
     }
+    // containerId/pod only ever come from api.SearchController's /context
+    // endpoint (HANDOVER.md 16.7: "scope context to service/container/pod
+    // where possible") - never from the general SearchRequestDto, which
+    // has no UI-facing filter for either.
+    if (!fieldMatches(request.containerId(), event.containerId())) {
+      return false;
+    }
+    if (!fieldMatches(request.pod(), event.pod())) {
+      return false;
+    }
     // Source-side filtering against raw sensitive values is exactly the
     // allowance IMPLEMENTATION_PLAN.md Phase B item 8 describes: adapters
     // may hold raw values for this purpose; they never leave via search().

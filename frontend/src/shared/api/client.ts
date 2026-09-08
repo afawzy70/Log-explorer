@@ -1,4 +1,5 @@
 import type {
+  ContextRequestBody,
   ProblemDetail,
   SearchRequestBody,
   SearchResponse,
@@ -53,6 +54,22 @@ export async function fetchSourceServices(sourceId: string, signal?: AbortSignal
  */
 export async function runSearch(body: SearchRequestBody, signal?: AbortSignal): Promise<SearchResponse> {
   const response = await fetch('/api/v1/logs/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+  return parseJsonOrThrow<SearchResponse>(response);
+}
+
+/**
+ * "Show ±30 seconds" (IMPLEMENTATION_PLAN.md "Phase H") - a distinct
+ * endpoint from `runSearch` because the window itself is never
+ * client-supplied (see `ContextRequestBody`'s own comment); the backend
+ * computes it from `timestamp` alone.
+ */
+export async function fetchContext(body: ContextRequestBody, signal?: AbortSignal): Promise<SearchResponse> {
+  const response = await fetch('/api/v1/logs/context', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

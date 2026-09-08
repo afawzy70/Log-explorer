@@ -125,6 +125,21 @@ export interface SearchRequestBody {
   cursor?: string;
 }
 
+/**
+ * `POST /api/v1/logs/context` body - "Show ±30 seconds" (IMPLEMENTATION_PLAN.md
+ * "Phase H"). There is no client-supplied window size: the backend always
+ * computes exactly ±30 seconds around `timestamp` itself
+ * (`RequestMapper#toContextDomain`), never trusting a wider range from
+ * here - `service`/`containerId`/`pod` only narrow the window further.
+ */
+export interface ContextRequestBody {
+  sourceId: string;
+  timestamp: string;
+  service?: string;
+  containerId?: string;
+  pod?: string;
+}
+
 /** RFC 7807, as GlobalExceptionHandler produces it. */
 export interface ProblemDetail {
   type?: string;

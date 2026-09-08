@@ -85,6 +85,18 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     lastSearchedRange: null,
     runSearch: vi.fn(),
     loadMore: vi.fn(),
+    selectedIndex: null,
+    selectedEvent: null,
+    hasPreviousEvent: false,
+    hasNextEvent: false,
+    openInspector: vi.fn(),
+    closeInspector: vi.fn(),
+    selectPreviousEvent: vi.fn(),
+    selectNextEvent: vi.fn(),
+    breadcrumbLabel: null,
+    restoreOriginalSearch: vi.fn(),
+    findRelated: vi.fn(),
+    showContext: vi.fn(),
     ...overrides,
   };
 }

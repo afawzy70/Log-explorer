@@ -77,3 +77,34 @@
 .protectedValue {
   color: var(--color-protected);
 }
+
+/*
+ * Real bug found via Phase H's Playwright suite (the first spec to
+ * actually click into `ActionsCell`'s popover in a real browser - Phase
+ * G's own E2E coverage only ever checked table geometry, never per-row
+ * interaction): the generic `.table th, .table td { overflow: hidden }`
+ * rule above clips ActionsCell's absolutely-positioned menu, since its
+ * containing block is inside this very `<td>` - the menu still visually
+ * *looked* right (browsers don't chrome-highlight a clipped-but-painted
+ * region), but every pixel beyond the 56px-wide Actions column belonged
+ * to the clipped-away part of the menu, so a real click landed on
+ * whatever `<td>` was actually rendered underneath instead. Only this one
+ * column needs `overflow: visible` - Service/User-Customer/Correlation-
+ * Trace still need `overflow: hidden` for their own ellipsis truncation.
+ *
+ * A bare `.actionsCell { overflow: visible }` first attempt at this fix
+ * silently lost to `.table td`'s higher specificity (one class + one
+ * element type beats one class alone) - confirmed by inspecting the
+ * cascade directly, not assumed. `.table td.actionsCell` matches that
+ * specificity exactly and wins on source order.
+ */
+.table td.actionsCell {
+  overflow: visible;
+}
+
+/* "Selected row stays identifiable" (IMPLEMENTATION_PLAN.md "Phase H") - never color alone: the left border is a non-color cue too (CLAUDE.md §7). */
+.selectedRow {
+  background: var(--color-bg-selected);
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+

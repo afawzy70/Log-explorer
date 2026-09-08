@@ -1,0 +1,19 @@
+.section {
+  padding: var(--space-4);
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.heading {
+  margin: 0 0 var(--space-3) 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+.emptyNote {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+}

@@ -52,15 +52,31 @@ function event(overrides: Partial<LogEvent> = {}): LogEvent {
 }
 
 describe('ActionsCell', () => {
-  it('is disabled with an honest label when the event has no copyable identifiers', () => {
-    render(<ActionsCell event={event()} />);
-    const trigger = screen.getByRole('button', { name: /no actions available/i });
-    expect(trigger).toBeDisabled();
+  it('the trigger is never disabled, even with no copyable identifiers - "Inspect event" (Phase H) is always available', async () => {
+    const user = userEvent.setup();
+    render(<ActionsCell event={event()} onInspect={vi.fn()} />);
+    const trigger = screen.getByRole('button', { name: /actions for this event/i });
+    expect(trigger).toBeEnabled();
+
+    await user.click(trigger);
+    expect(screen.getByRole('menuitem', { name: /inspect event/i })).toBeInTheDocument();
+  });
+
+  it('clicking "Inspect event" calls onInspect and closes the menu', async () => {
+    const user = userEvent.setup();
+    const onInspect = vi.fn();
+    render(<ActionsCell event={event({ traceId: 'trace-1' })} onInspect={onInspect} />);
+
+    await user.click(screen.getByRole('button', { name: /actions for this event/i }));
+    await user.click(screen.getByRole('menuitem', { name: /inspect event/i }));
+
+    expect(onInspect).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
   it('lists only the identifiers actually present on the event', async () => {
     const user = userEvent.setup();
-    render(<ActionsCell event={event({ traceId: 'trace-1', correlationId: 'corr-1' })} />);
+    render(<ActionsCell event={event({ traceId: 'trace-1', correlationId: 'corr-1' })} onInspect={vi.fn()} />);
 
     await user.click(screen.getByRole('button', { name: /actions for this event/i }));
 
@@ -71,7 +87,7 @@ describe('ActionsCell', () => {
 
   it('copying an identifier writes its real value to the clipboard and closes the menu', async () => {
     const user = userEvent.setup();
-    render(<ActionsCell event={event({ traceId: 'trace-000100' })} />);
+    render(<ActionsCell event={event({ traceId: 'trace-000100' })} onInspect={vi.fn()} />);
 
     await user.click(screen.getByRole('button', { name: /actions for this event/i }));
     await user.click(screen.getByRole('menuitem', { name: /copy trace id/i }));
@@ -84,7 +100,7 @@ describe('ActionsCell', () => {
     const user = userEvent.setup();
     render(
       <div>
-        <ActionsCell event={event({ traceId: 'trace-1' })} />
+        <ActionsCell event={event({ traceId: 'trace-1' })} onInspect={vi.fn()} />
         <button type="button">outside</button>
       </div>,
     );
@@ -96,10 +112,10 @@ describe('ActionsCell', () => {
   });
 
   it('has no detectable accessibility violations, with or without identifiers', async () => {
-    const { container, rerender } = render(<ActionsCell event={event()} />);
+    const { container, rerender } = render(<ActionsCell event={event()} onInspect={vi.fn()} />);
     expect(await axe(container)).toHaveNoViolations();
 
-    rerender(<ActionsCell event={event({ traceId: 'trace-1' })} />);
+    rerender(<ActionsCell event={event({ traceId: 'trace-1' })} onInspect={vi.fn()} />);
     expect(await axe(container)).toHaveNoViolations();
   });
 });
