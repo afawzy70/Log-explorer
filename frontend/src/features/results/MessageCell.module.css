@@ -1,0 +1,42 @@
+.wrapper {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.expanded {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.malformed {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.toggle {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-accent);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  padding: 0;
+}
+
+.badge {
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+}

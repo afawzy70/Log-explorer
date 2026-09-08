@@ -5,4 +5,17 @@
   padding: var(--space-2) var(--space-3);
   font-size: var(--font-size-sm);
   cursor: pointer;
+  /*
+   * A native <select> otherwise sizes itself to its own content, which is
+   * real source display-name text from the backend (length genuinely
+   * varies, e.g. "OpenShift Loki" vs "Fixture (dev/test only)") - left
+   * unbounded, a long enough name pushes the toolbar's own row wider,
+   * which the page-level horizontal-overflow invariant (CLAUDE.md §4)
+   * must hold regardless of. Bounded + ellipsis rather than reactive to a
+   * specific observed name, so it survives any future source name too.
+   */
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchSourceHealth, fetchSourceServices, fetchSources, runSearch as runSearchApi } from '../shared/api/client';
 import type {
   SearchRequestBody,
@@ -44,8 +44,18 @@ export function useSearchState() {
 
   const [searchResult, setSearchResult] = useState<SearchResponse | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [lastSearchedRange, setLastSearchedRange] = useState<CommittedTimeRange | null>(null);
+  /**
+   * "Cancelled" state (IMPLEMENTATION_PLAN.md "Phase G" scope item 11): a
+   * new search must never be raced by a still-in-flight older one
+   * overwriting its results. Tracks the one active request so starting a
+   * new one aborts whatever came before it - there is no user-facing
+   * Cancel control in this UI yet, so this is request-supersession
+   * protection, not a separate visible state.
+   */
+  const activeRequestRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -105,45 +115,117 @@ export function useSearchState() {
     setAdvancedFilters({ ...next, text: '' });
   }, []);
 
+  const buildRequestBody = useCallback(
+    (cursor?: string): SearchRequestBody | null => {
+      if (!selectedSourceId) {
+        return null;
+      }
+      return {
+        sourceId: selectedSourceId,
+        start: timeRange.start,
+        end: timeRange.end,
+        services: selectedServices,
+        levels: selectedLevels,
+        text: searchText || undefined,
+        traceId: advancedFilters.traceId || undefined,
+        spanId: advancedFilters.spanId || undefined,
+        correlationId: advancedFilters.correlationId || undefined,
+        journeyId: advancedFilters.journeyId || undefined,
+        eventId: advancedFilters.eventId || undefined,
+        errorCode: advancedFilters.errorCode || undefined,
+        businessStep: advancedFilters.businessStep || undefined,
+        uiIdentifier: advancedFilters.uiIdentifier || undefined,
+        loggerContains: advancedFilters.loggerContains || undefined,
+        devicePlatform: advancedFilters.devicePlatform || undefined,
+        language: advancedFilters.language || undefined,
+        userName: advancedFilters.userName || undefined,
+        customerId: advancedFilters.customerId || undefined,
+        cif: advancedFilters.cif || undefined,
+        deviceId: advancedFilters.deviceId || undefined,
+        deviceIp: advancedFilters.deviceIp || undefined,
+        cursor,
+      };
+    },
+    [selectedSourceId, timeRange, selectedServices, selectedLevels, searchText, advancedFilters],
+  );
+
+  /** Aborts whatever request is currently in flight, so its result can never race a newer one. */
+  function supersedeActiveRequest(): AbortController {
+    activeRequestRef.current?.abort();
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
+    return controller;
+  }
+
   const runSearch = useCallback(() => {
-    if (!selectedSourceId) {
+    const body = buildRequestBody();
+    if (!body) {
       return;
     }
+    const controller = supersedeActiveRequest();
     setSearchLoading(true);
     setSearchError(null);
-    const body: SearchRequestBody = {
-      sourceId: selectedSourceId,
-      start: timeRange.start,
-      end: timeRange.end,
-      services: selectedServices,
-      levels: selectedLevels,
-      text: searchText || undefined,
-      traceId: advancedFilters.traceId || undefined,
-      spanId: advancedFilters.spanId || undefined,
-      correlationId: advancedFilters.correlationId || undefined,
-      journeyId: advancedFilters.journeyId || undefined,
-      eventId: advancedFilters.eventId || undefined,
-      errorCode: advancedFilters.errorCode || undefined,
-      businessStep: advancedFilters.businessStep || undefined,
-      uiIdentifier: advancedFilters.uiIdentifier || undefined,
-      loggerContains: advancedFilters.loggerContains || undefined,
-      devicePlatform: advancedFilters.devicePlatform || undefined,
-      language: advancedFilters.language || undefined,
-      userName: advancedFilters.userName || undefined,
-      customerId: advancedFilters.customerId || undefined,
-      cif: advancedFilters.cif || undefined,
-      deviceId: advancedFilters.deviceId || undefined,
-      deviceIp: advancedFilters.deviceIp || undefined,
-    };
     const searchedRange = timeRange;
-    runSearchApi(body)
+    runSearchApi(body, controller.signal)
       .then((result) => {
         setSearchResult(result);
         setLastSearchedRange(searchedRange);
       })
-      .catch((error: unknown) => setSearchError(error instanceof Error ? error.message : 'Search failed'))
-      .finally(() => setSearchLoading(false));
-  }, [selectedSourceId, timeRange, selectedServices, selectedLevels, searchText, advancedFilters]);
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return; // superseded by a newer search - the newer request owns the UI now
+        }
+        setSearchError(error instanceof Error ? error.message : 'Search failed');
+      })
+      .finally(() => {
+        if (activeRequestRef.current === controller) {
+          setSearchLoading(false);
+        }
+      });
+  }, [buildRequestBody, timeRange]);
+
+  /**
+   * "One pagination model (bounded cursor)" (scope item 9) - appends the
+   * next page's events to what's already shown, using the exact cursor
+   * the backend returned. Currently unreachable in practice: no adapter
+   * populates `SearchResult#nextCursor` yet (`SearchService#toResult`
+   * always returns `null`), so this button never renders today - built
+   * correctly and tested regardless, so it works the moment a future
+   * phase wires real cursor pagination server-side, and to prove by
+   * construction there is only ever one pagination model.
+   */
+  const loadMore = useCallback(() => {
+    const cursor = searchResult?.nextCursor;
+    if (!cursor) {
+      return;
+    }
+    const body = buildRequestBody(cursor);
+    if (!body) {
+      return;
+    }
+    const controller = supersedeActiveRequest();
+    setLoadingMore(true);
+    setSearchError(null);
+    runSearchApi(body, controller.signal)
+      .then((result) => {
+        setSearchResult((prev) =>
+          prev
+            ? { events: [...prev.events, ...result.events], counts: result.counts, nextCursor: result.nextCursor }
+            : result,
+        );
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return;
+        }
+        setSearchError(error instanceof Error ? error.message : 'Search failed');
+      })
+      .finally(() => {
+        if (activeRequestRef.current === controller) {
+          setLoadingMore(false);
+        }
+      });
+  }, [buildRequestBody, searchResult]);
 
   const selectedSource = sources.find((s) => s.id === selectedSourceId) ?? null;
 
@@ -170,9 +252,11 @@ export function useSearchState() {
     retryHealth: () => selectedSourceId && checkHealth(selectedSourceId),
     searchResult,
     searchLoading,
+    loadingMore,
     searchError,
     lastSearchedRange,
     runSearch,
+    loadMore,
   };
 }
 

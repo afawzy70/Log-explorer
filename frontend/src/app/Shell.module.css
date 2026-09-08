@@ -1,6 +1,14 @@
 .header {
   display: flex;
   align-items: center;
+  /*
+   * Real content here varies at runtime (an unhealthy source's "Retry"
+   * button is genuinely wider than "Healthy" alone, and source display
+   * names come from the backend) - without wrap, this row can overflow
+   * the page at high zoom exactly like the toolbar could before Phase F's
+   * own fix (CLAUDE.md §4: the page must never overflow horizontally).
+   */
+  flex-wrap: wrap;
   gap: var(--space-4);
   padding: var(--space-3) var(--space-4);
   border-bottom: var(--border-width) solid var(--color-border);
