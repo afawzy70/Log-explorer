@@ -1,0 +1,15 @@
+# IMPLEMENTATION_PLAN.md "Phase L". Apply with:
+#   oc apply -k deploy/openshift/ -n <your-namespace>
+#
+# role-and-rolebinding.example.yaml is deliberately NOT listed here - it
+# is an optional, documented-only reference (see that file's own header),
+# never applied by default.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - serviceaccount.yaml
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml
+  - route.yaml

@@ -1,0 +1,102 @@
+# IMPLEMENTATION_PLAN.md "Phase L". Replace `image:` below with your own
+# registry-qualified tag before applying - no real registry is assumed
+# here. Everything else is ready to apply as-is against any namespace.
+#
+# Security posture (CLAUDE.md §8, HANDOVER.md §21):
+# - Non-root, and portable to it: this is the SAME image Phase K built and
+#   verified for Docker Compose. OpenShift's default `restricted` SCC
+#   always runs every container as an arbitrary, non-zero UID with GID 0,
+#   regardless of what the image's own Dockerfile declares - confirmed
+#   directly this phase (`docker run --user 1000660000:0 ...` against the
+#   real Phase K image crashed immediately with
+#   "su-exec: setgroups: Operation not permitted", since that entrypoint's
+#   Docker-socket-only group-fixup logic assumed it was genuinely root).
+#   Fixed in docker-entrypoint.sh: it now runs the JVM directly, skipping
+#   that Compose-only logic entirely, whenever it is not actually root -
+#   correct for OpenShift, and re-verified booting cleanly under the same
+#   arbitrary-UID simulation. No `runAsUser` is pinned here on purpose -
+#   letting the cluster's own SCC assign it is what "supports arbitrary
+#   UIDs" means in practice.
+# - Read-only root filesystem, with the one writable path the JVM
+#   actually needs (`/tmp`) provided as a bounded `emptyDir`.
+# - All Linux capabilities dropped; no privilege escalation.
+# - Loki's bearer token comes from a Secret reference only (`optional:
+#   true` - a mock/no-auth Loki gateway needs no token at all) - no
+#   Secret object is committed anywhere in this repository; an
+#   administrator creates `log-explorer-loki-token` out of band, e.g.:
+#     oc create secret generic log-explorer-loki-token \
+#       --from-literal=token=<real token>
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: log-explorer
+  labels:
+    app.kubernetes.io/name: log-explorer
+    app.kubernetes.io/part-of: log-explorer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: log-explorer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: log-explorer
+        app.kubernetes.io/part-of: log-explorer
+    spec:
+      serviceAccountName: log-explorer
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: log-explorer
+          image: log-explorer:latest # REPLACE with your own registry-qualified image tag
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: log-explorer-config
+          env:
+            - name: LOKI_BEARER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: log-explorer-loki-token
+                  key: token
+                  optional: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: tmp
+          emptyDir: {}

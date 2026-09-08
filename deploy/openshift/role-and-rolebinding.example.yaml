@@ -1,0 +1,55 @@
+# IMPLEMENTATION_PLAN.md "Phase L": "document (do not apply) the
+# namespace-scoped role binding an administrator may choose to create."
+#
+# NOT part of the default `oc apply -f deploy/openshift/` set (see
+# kustomization.yaml, which deliberately omits this file) - it is a
+# reference/example only. An administrator applies it explicitly, and
+# only if they need it.
+#
+# When you might want this: some OpenShift Logging LokiStack gateway
+# deployments authorize each request with a SubjectAccessReview against
+# the caller's own bearer token, rather than (or in addition to) a
+# separately-issued static credential. If your cluster's Loki gateway is
+# configured that way, you can present this ServiceAccount's own bound
+# token as the Loki credential (LOGEXPLORER_LOKI_TOKEN_FILE_PATH=
+# /var/run/secrets/kubernetes.io/serviceaccount/token in configmap.yaml,
+# and set `automountServiceAccountToken: true` in serviceaccount.yaml)
+# instead of a separately-managed Secret - but the token then needs
+# *some* RBAC permission for the gateway's authorization check to pass.
+# The exact resource/verb a given LokiStack gateway checks varies by
+# OpenShift Logging version and configuration - `pods/log` `get` is the
+# closest common approximation and is what's below; confirm the actual
+# requirement against your own cluster's Loki gateway documentation
+# before relying on this, and adjust the rule accordingly. This has
+# deliberately not been verified against a real cluster in this session
+# (IMPLEMENTATION_PLAN.md "Phase L": "Applying to a real cluster is
+# DEFERRED BY SCOPE unless a cluster is genuinely available" - none was).
+#
+# Always namespace-scoped (Role + RoleBinding, never
+# ClusterRole/ClusterRoleBinding - CLAUDE.md §2 rule 9).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: log-explorer-loki-log-reader
+  labels:
+    app.kubernetes.io/name: log-explorer
+    app.kubernetes.io/part-of: log-explorer
+rules:
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: log-explorer-loki-log-reader
+  labels:
+    app.kubernetes.io/name: log-explorer
+    app.kubernetes.io/part-of: log-explorer
+subjects:
+  - kind: ServiceAccount
+    name: log-explorer
+roleRef:
+  kind: Role
+  name: log-explorer-loki-log-reader
+  apiGroup: rbac.authorization.k8s.io

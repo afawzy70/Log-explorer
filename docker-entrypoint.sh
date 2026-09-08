@@ -13,7 +13,25 @@
 # drops to that non-root user via su-exec before exec'ing the JVM - the
 # actual application process is always non-root, on every profile,
 # incl. `docker-socket`.
+#
+# Phase L addendum, found by actually running this exact image with an
+# arbitrary non-root UID (`docker run --user 1000660000:0 ...`) - the same
+# way OpenShift's default `restricted` SCC always runs every container,
+# never granting real root regardless of what the image's own Dockerfile
+# declares: su-exec crashed immediately ("setgroups: Operation not
+# permitted"), because a non-root, non-privileged process can't call
+# setgroups() at all - this script's whole group-fixup dance assumes it
+# is genuinely root to begin with. Under OpenShift there is no
+# docker.sock to align with anyway (Docker discovery is Compose-only;
+# OpenShift only ever uses the Loki source), so the fix is simply to
+# skip straight to running the JVM directly whenever this script is NOT
+# actually running as root - correct for OpenShift, and harmless for any
+# other non-root invocation of this same image.
 set -e
+
+if [ "$(id -u)" != "0" ]; then
+  exec java -jar app.jar "$@"
+fi
 
 if [ -S /var/run/docker.sock ]; then
   SOCK_GID="$(stat -c '%g' /var/run/docker.sock)"
