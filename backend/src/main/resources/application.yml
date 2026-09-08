@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: log-explorer-backend
+
+logging:
+  level:
+    # Explicit floor, independent of root: Reactor Netty's HTTP wire-tracing
+    # dumps raw request/response bytes - including sensitive search filter
+    # values - the moment its logger category reaches TRACE. Pinning it here
+    # means even an operator who raises root logging for troubleshooting
+    # cannot accidentally start logging raw request bodies (CLAUDE.md "never
+    # log search values ... via request/access logs").
+    reactor.netty: INFO
+    io.netty: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+logexplorer:
+  sources:
+    disabled: []
+  search:
+    default-limit: 200
+    max-limit: 5000
+    max-time-range: 7d
+    request-timeout: 30s
+    max-concurrency: 8
+    per-source-max-time-range: {}
