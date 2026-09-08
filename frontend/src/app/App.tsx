@@ -1,9 +1,9 @@
 import { Shell } from './Shell';
 import { Toolbar } from './Toolbar';
-import { ResultsPlaceholder } from './ResultsPlaceholder';
+import { ResultsPanel } from '../features/results/ResultsPanel';
 import { useSearchState } from './useSearchState';
 
-/** The historical search investigation shell (IMPLEMENTATION_PLAN.md "Phase F"). */
+/** The historical search investigation shell (IMPLEMENTATION_PLAN.md "Phase F" + "Phase G"). */
 export default function App() {
   const state = useSearchState();
 
@@ -11,7 +11,7 @@ export default function App() {
     <div>
       <Shell state={state} />
       <Toolbar state={state} />
-      <ResultsPlaceholder state={state} />
+      <ResultsPanel state={state} />
     </div>
   );
 }

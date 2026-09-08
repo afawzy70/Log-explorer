@@ -39,9 +39,11 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     retryHealth: vi.fn(),
     searchResult: null,
     searchLoading: false,
+    loadingMore: false,
     searchError: null,
     lastSearchedRange: null,
     runSearch: vi.fn(),
+    loadMore: vi.fn(),
     ...overrides,
   };
 }
