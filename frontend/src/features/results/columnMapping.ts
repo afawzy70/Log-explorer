@@ -24,10 +24,24 @@ export interface WhatHappenedCell {
  * service. A malformed event has no `message` by definition; its raw line
  * is shown instead, distinguishably marked (scope item 11: "malformed raw
  * line rendering").
+ *
+ * A genuinely empty message (`message: ""` - the field was present, just
+ * blank) is distinct from an absent one (`message: null`): CLAUDE.md §4
+ * "Parsing" - "Empty message is preserved; the UI shows a display
+ * fallback like `(empty message)`. The backend never invents a message."
+ * A real bug found via Phase M's real-browser UX acceptance testing:
+ * this previously rendered a truly empty string for that case - an
+ * invisible, effectively omitted cell, not a fallback at all, and
+ * indistinguishable from a rendering glitch. `null` (the field was never
+ * present) still falls back to the ordinary `EMPTY_VALUE` ("—") shared by
+ * every other missing-value cell in this table.
  */
 export function resolveWhatHappened(event: LogEvent): WhatHappenedCell {
   if (event.malformed) {
     return { text: event.rawLine ?? EMPTY_VALUE, malformed: true };
+  }
+  if (event.message === '') {
+    return { text: '(empty message)', malformed: false };
   }
   return { text: event.message ?? EMPTY_VALUE, malformed: false };
 }
