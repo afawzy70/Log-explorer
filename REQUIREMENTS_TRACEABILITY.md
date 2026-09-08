@@ -8,12 +8,12 @@ Every item in handover §34 maps to at least one owning phase. Claude Code updat
 | # | Requirement | Handover § | Owning phase | Status | Evidence |
 |---:|---|---|---|---|---|
 | 1 | Problem statement understood and preserved | 1–2 | A | Present | Understood and preserved in HANDOVER.md (read in full); see docs/AUDIT.md §5 row 1. |
-| 2 | Two logical sources (Docker, OpenShift Loki) | 1 | C (after A2b), D | Missing | Absent — repo contains no application code (backend/ and frontend/ do not exist). docs/AUDIT.md §5 row 2. |
+| 2 | Two logical sources (Docker, OpenShift Loki) | 1 | C, D | Missing | Absent — no source/docker/** package exists yet (Phase C not started). backend/ and frontend/ now exist (Phase B, Phase A2b). |
 | 3 | Portable Docker Compose delivery | 20 | K | Missing | Absent — repo contains no application code (backend/ and frontend/ do not exist). docs/AUDIT.md §5 row 3. |
-| 4 | Remote Docker default port prefilled | 11, 20.2 | C (after A2b) | Missing | Absent — repo contains no application code (backend/ and frontend/ do not exist). docs/AUDIT.md §5 row 4. |
-| 5 | Remote Docker custom port supported | 11, 24.3 | C (after A2b) | Missing | Absent — repo contains no application code (backend/ and frontend/ do not exist). docs/AUDIT.md §5 row 5. |
-| 6 | Remote Docker TLS optional | 11.1, 24.2 | C (after A2b) | Missing | Absent — repo contains no application code (backend/ and frontend/ do not exist). docs/AUDIT.md §5 row 6. |
-| 7 | Remote Docker reachability lesson honored (no 2375 prerequisite) | 11.2, 24.1 | C (after A2b), K | Missing | Absent — repo contains no application code (backend/ and frontend/ do not exist). docs/AUDIT.md §5 row 7. |
+| 4 | Remote Docker default port prefilled | 11, 20.2 | C | Missing | Absent — no source/docker/** package exists yet (Phase C not started). |
+| 5 | Remote Docker custom port supported | 11, 24.3 | C | Missing | Absent — no source/docker/** package exists yet (Phase C not started). |
+| 6 | Remote Docker TLS optional | 11.1, 24.2 | C | Missing | Absent — no source/docker/** package exists yet (Phase C not started). |
+| 7 | Remote Docker reachability lesson honored (no 2375 prerequisite) | 11.2, 24.1 | C, K | Missing | Absent — no source/docker/** package exists yet (Phase C not started). |
 | 8 | Java 21 / Spring Boot 3.x / WebFlux | 4.1 | A, B | Done | backend/pom.xml (Spring Boot 3.5.16 parent, Java 21); backend/src/main/java/com/logexplorer/LogExplorerApplication.java; spring-boot-starter-webflux dependency; real `./mvnw -q verify` run (83/83 tests) and a real `java -jar` smoke boot (docs/verification/PHASE_B_REPORT.md). |
 | 9 | React / TypeScript / Vite, strict TS | 4.2 | A, F | Missing | Absent — repo contains no application code (backend/ and frontend/ do not exist). docs/AUDIT.md §5 row 9. |
 | 10 | No MVP database; safe localStorage only | 4.4 | B, F | Partial | Backend: no database dependency of any kind in backend/pom.xml (trivially satisfied). Frontend localStorage rule not yet applicable - no frontend exists (owned by Phase F). |
@@ -37,9 +37,9 @@ Every item in handover §34 maps to at least one owning phase. Claude Code updat
 | 28 | Cancellation propagated | 8.1, 18.2 | B, J | Partial | Phase B (search cancellation): ConcurrencyGuard#guard releases on doFinally incl. cancel; SearchServiceTest#cancellationPropagatesDownToTheUnderlyingSource proves cancellation reaches the LogSource. Phase J (live-tail cancellation) not yet done. |
 | 29 | Simple deterministic query DSL (no eval/SpEL/reflection) | 9 | E | Missing | Absent — repo contains no application code (backend/ and frontend/ do not exist). docs/AUDIT.md §5 row 29. |
 | 30 | Raw LogQL gated: Loki-only, off by default, config-enabled, bounded | 9.1 | E | Missing | Absent — repo contains no application code (backend/ and frontend/ do not exist). docs/AUDIT.md §5 row 30. |
-| 31 | Docker Compose label discovery + service counts | 10 | C (after A2b) | Missing | Absent — repo contains no application code (backend/ and frontend/ do not exist). docs/AUDIT.md §5 row 31. |
-| 32 | Docker stream framing decoded correctly (incl. tty) | 10 | C (after A2b) | Missing | Absent — repo contains no application code (backend/ and frontend/ do not exist). docs/AUDIT.md §5 row 32. |
-| 33 | Docker operations strictly read-only | 10 | C (after A2b) | Missing | Absent — repo contains no application code (backend/ and frontend/ do not exist). docs/AUDIT.md §5 row 33. |
+| 31 | Docker Compose label discovery + service counts | 10 | C | Missing | Absent — no source/docker/** package exists yet (Phase C not started). |
+| 32 | Docker stream framing decoded correctly (incl. tty) | 10 | C | Missing | Absent — no source/docker/** package exists yet (Phase C not started). |
+| 33 | Docker operations strictly read-only | 10 | C | Missing | Absent — no source/docker/** package exists yet (Phase C not started). |
 | 34 | OpenShift Loki gateway adapter, query_range semantics | 12 | D | Missing | Absent — repo contains no application code (backend/ and frontend/ do not exist). docs/AUDIT.md §5 row 34. |
 | 35 | Gateway prefix / tenant / namespace + service label keys configurable | 12 | D | Missing | Absent — repo contains no application code (backend/ and frontend/ do not exist). docs/AUDIT.md §5 row 35. |
 | 36 | TLS verification enabled for Loki; no trust-all | 6.5, 12 | D | Missing | Absent — repo contains no application code (backend/ and frontend/ do not exist). docs/AUDIT.md §5 row 36. |

@@ -1,0 +1,28 @@
+{
+  "name": "log-explorer-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Log Explorer frontend - React + TypeScript + Vite (strict). Phase A2b: minimal placeholder scaffold only, proving Playwright is wired to a real running app. Product UI is Phase F onward.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --port 4173 --strictPort",
+    "typecheck": "tsc -b --noEmit",
+    "typecheck:e2e": "tsc --noEmit -p e2e/tsconfig.json",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "26.5.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "6.1.1",
+    "typescript": "7.0.2",
+    "vite": "8.2.2"
+  }
+}

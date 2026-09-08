@@ -125,7 +125,7 @@ export async function assertNoHorizontalOverflow(page: Page): Promise<void> {
  * needed — the evidence path every phase's browser checks write into.
  */
 export async function captureScreenshot(page: Page, phase: string, name: string): Promise<string> {
-  const dir = path.join(__dirname, '..', '..', 'docs', 'verification', phase);
+  const dir = path.join(import.meta.dirname, '..', '..', 'docs', 'verification', phase);
   fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, `${name}.png`);
   await page.screenshot({ path: filePath, fullPage: true });
