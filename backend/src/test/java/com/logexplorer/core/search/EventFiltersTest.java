@@ -107,6 +107,24 @@ class EventFiltersTest {
   }
 
   @Test
+  void malformedEventsWithNoSeverityAreExemptFromTheLevelFilterJustLikeTheTimestampFilter() {
+    // Regression test for a real, serious bug found via Phase M's
+    // real-browser UX acceptance testing: a malformed line has no parsed
+    // severity by definition, but the level filter previously excluded
+    // any null-severity event outright the moment ANY level filter was
+    // active - which is always true in the real app, since Info/Warn/
+    // Error are the frontend's own default selection. Every malformed
+    // event was being silently dropped from virtually all real searches
+    // - confirmed live: a real `levels=["INFO","WARN","ERROR"]` search
+    // against the real fixture source returned 0 of its 3 real malformed
+    // events. This is the exact same class of bug this file's own
+    // malformedEventsWithNoTimestampAreExemptFromTimeRangeFiltering test
+    // already guards against for the timestamp filter.
+    CanonicalLogEvent malformed = CanonicalLogEvent.builder().malformed(true).rawLine("garbage").build();
+    assertThat(EventFilters.matches(malformed, baseRequest().levels(List.of("INFO", "WARN", "ERROR")).build())).isTrue();
+  }
+
+  @Test
   void filtersByTextAgainstMessageCaseInsensitively() {
     assertThat(EventFilters.matches(baseEvent().build(), baseRequest().text("HELLO").build())).isTrue();
     assertThat(EventFilters.matches(baseEvent().build(), baseRequest().text("nope").build())).isFalse();

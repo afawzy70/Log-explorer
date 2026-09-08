@@ -57,8 +57,21 @@ public final class EventFilters {
         && (event.service() == null || !request.services().contains(event.service()))) {
       return false;
     }
+    // A real, previously-shipped bug found via Phase M's real-browser UX
+    // acceptance testing: a malformed line has no parsed severity by
+    // definition (same as the timestamp case above), but this condition
+    // excluded any null-severity event outright the moment ANY level
+    // filter was active - which is always, since Info/Warn/Error are the
+    // frontend's own default selection. Every malformed event was being
+    // silently dropped from virtually all real searches, the opposite of
+    // "malformed lines... never dropped" (HANDOVER.md §5.4) - the exact
+    // same principle this file already applies to the timestamp filter
+    // just above. A malformed event now passes through this filter
+    // unconditionally (there is no severity to check against), exactly
+    // like it already does for the timestamp bound.
     if (!request.levels().isEmpty()
-        && (event.severity() == null || !containsIgnoreCase(request.levels(), event.severity()))) {
+        && event.severity() != null
+        && !containsIgnoreCase(request.levels(), event.severity())) {
       return false;
     }
     if (notBlank(request.text()) && (event.message() == null

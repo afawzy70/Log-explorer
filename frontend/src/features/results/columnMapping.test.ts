@@ -77,7 +77,14 @@ describe('resolveWhatHappened', () => {
   });
 
   it('shows the empty placeholder for a truly empty message (never invents one)', () => {
-    expect(resolveWhatHappened(baseEvent({ message: '' }))).toEqual({ text: '', malformed: false });
+    // Regression test for a real bug found via Phase M's real-browser UX
+    // acceptance testing: this used to return a literal empty string for
+    // message: '' - an invisible, effectively omitted cell, not a
+    // fallback at all (CLAUDE.md §4 "Parsing": "the UI shows a display
+    // fallback like `(empty message)`"). Distinct from message: null (the
+    // field was never present), which still falls back to the ordinary
+    // EMPTY_VALUE every other missing-value cell in this table uses.
+    expect(resolveWhatHappened(baseEvent({ message: '' }))).toEqual({ text: '(empty message)', malformed: false });
     expect(resolveWhatHappened(baseEvent({ message: null }))).toEqual({ text: EMPTY_VALUE, malformed: false });
   });
 });

@@ -97,10 +97,17 @@ class FixtureLogSourceTest {
 
   @Test
   void filtersByLevelCaseInsensitively() {
+    // Updated for a real bug fixed at Phase M: a malformed event has no
+    // parsed severity at all, and must never be excluded by an active
+    // level filter just because of that (EventFilters - the same
+    // "never silently drop malformed lines" principle already applied to
+    // the timestamp filter) - so every returned event either has no
+    // severity (malformed) or genuinely matches "error".
     SearchRequest request = wideOpenRequest().levels(List.of("error")).build();
     List<CanonicalLogEvent> events = source.search(request).collectList().block();
     assertThat(events).isNotEmpty();
-    assertThat(events).allSatisfy(e -> assertThat(e.severity()).isEqualToIgnoringCase("ERROR"));
+    assertThat(events).allSatisfy(e -> assertThat(e.severity() == null || e.severity().equalsIgnoreCase("ERROR")).isTrue());
+    assertThat(events).anySatisfy(e -> assertThat(e.severity()).isEqualToIgnoringCase("ERROR"));
   }
 
   @Test
