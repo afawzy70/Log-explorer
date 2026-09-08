@@ -1,5 +1,7 @@
 package com.logexplorer.core.model;
 
+import com.logexplorer.core.query.QueryParser;
+import com.logexplorer.core.query.ast.QueryExpr;
 import java.time.Instant;
 import java.util.List;
 
@@ -13,6 +15,18 @@ import java.util.List;
  * text} and {@code sensitiveFilters}, never the structural fields (source,
  * time range, limit, services, levels, non-sensitive IDs), which are safe
  * and useful to see in diagnostics.
+ *
+ * <p>{@code query} is the parsed DSL AST (HANDOVER.md §9) — parsed exactly
+ * once, eagerly, inside {@link Builder#query(String)}, never re-parsed per
+ * event; ANDed with every other structured filter by {@code
+ * core.search.EventFilters}. {@code rawLogQl} is Loki-only raw LogQL text
+ * (IMPLEMENTATION_PLAN.md "Phase E" scope item 8), gated by {@code
+ * api.SearchService} against the target source's {@code
+ * capabilities().rawLogQL()} before ever reaching a {@code LogSource}.
+ * Both are exactly the class of "search value" CLAUDE.md's "never log
+ * search values" rule covers, so {@link #toString()} redacts both — {@code
+ * query}'s own AST node types already self-redact their literal values
+ * too (defense in depth), and {@code rawLogQl} is arbitrary free text.
  */
 public record SearchRequest(
     String sourceId,
@@ -35,6 +49,8 @@ public record SearchRequest(
     String devicePlatform,
     String language,
     RawSensitiveFields sensitiveFilters,
+    QueryExpr query,
+    String rawLogQl,
     String cursor
 ) {
 
@@ -69,6 +85,8 @@ public record SearchRequest(
         + ", devicePlatform=" + devicePlatform
         + ", language=" + language
         + ", sensitiveFilters=" + sensitiveFilters
+        + ", query=" + (query == null ? "null" : "[REDACTED]")
+        + ", rawLogQl=" + (rawLogQl == null ? "null" : "[REDACTED]")
         + ", cursor=" + cursor
         + "]";
   }
@@ -98,6 +116,8 @@ public record SearchRequest(
     private String devicePlatform;
     private String language;
     private RawSensitiveFields sensitiveFilters = RawSensitiveFields.empty();
+    private QueryExpr query;
+    private String rawLogQl;
     private String cursor;
 
     public Builder sourceId(String v) { this.sourceId = v; return this; }
@@ -133,12 +153,34 @@ public record SearchRequest(
       return this;
     }
 
+    /**
+     * Parses {@code text} into the DSL AST immediately (may throw {@link
+     * com.logexplorer.core.query.QuerySyntaxException}) — exactly once,
+     * eagerly, never per-event. {@code null}/blank means "no DSL filter",
+     * not an error.
+     */
+    public Builder query(String text) {
+      this.query = QueryParser.parse(text);
+      return this;
+    }
+
+    /** Already-parsed AST, for callers (tests) that build one directly. */
+    public Builder query(QueryExpr parsed) {
+      this.query = parsed;
+      return this;
+    }
+
+    public Builder rawLogQl(String v) {
+      this.rawLogQl = v;
+      return this;
+    }
+
     public SearchRequest build() {
       return new SearchRequest(
           sourceId, start, end, direction, limit, services, levels, text,
           traceId, spanId, correlationId, journeyId, eventId, errorCode,
           businessStep, uiIdentifier, loggerContains, devicePlatform, language,
-          sensitiveFilters, cursor);
+          sensitiveFilters, query, rawLogQl, cursor);
     }
   }
 }

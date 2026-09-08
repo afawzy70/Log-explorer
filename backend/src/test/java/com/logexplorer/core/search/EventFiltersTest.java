@@ -5,6 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.RawSensitiveFields;
 import com.logexplorer.core.model.SearchRequest;
+import com.logexplorer.core.query.ast.And;
+import com.logexplorer.core.query.ast.Comparison;
+import com.logexplorer.core.query.ast.Operator;
+import com.logexplorer.core.query.ast.Or;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -23,6 +27,7 @@ class EventFiltersTest {
         .service("gateway")
         .severity("INFO")
         .message("hello world")
+        .logger("com.example.Gateway")
         .traceId("trace-1")
         .spanId("span-1")
         .correlationId("corr-1")
@@ -129,5 +134,94 @@ class EventFiltersTest {
   void nullServiceDoesNotThrowWhenAServiceFilterIsActive() {
     CanonicalLogEvent noService = CanonicalLogEvent.builder().malformed(true).build();
     assertThat(EventFilters.matches(noService, baseRequest().services(List.of("gateway")).build())).isFalse();
+  }
+
+  @Test
+  void loggerContainsFiltersAgainstTheLoggerFieldCaseInsensitively() {
+    // Real bug found while touching this file for Phase E: loggerContains
+    // arrives on SearchRequest/the DTO but was never actually checked here
+    // - a previously-shipped no-op filter.
+    assertThat(EventFilters.matches(baseEvent().build(), baseRequest().loggerContains("EXAMPLE").build())).isTrue();
+    assertThat(EventFilters.matches(baseEvent().build(), baseRequest().loggerContains("nope").build())).isFalse();
+  }
+
+  @Test
+  void loggerContainsIsExemptWhenTheEventHasNoLogger() {
+    CanonicalLogEvent noLogger = CanonicalLogEvent.builder().malformed(true).build();
+    assertThat(EventFilters.matches(noLogger, baseRequest().loggerContains("anything").build())).isFalse();
+  }
+
+  @Test
+  void dslQueryIsAndedWithEveryStructuredFilter() {
+    // HANDOVER.md §9: "Structured filters are ANDed with parsed expression."
+    SearchRequest structuralMatchDslMatch = baseRequest()
+        .services(List.of("gateway"))
+        .query(new Comparison("level", Operator.EQ, "INFO"))
+        .build();
+    assertThat(EventFilters.matches(baseEvent().build(), structuralMatchDslMatch)).isTrue();
+
+    SearchRequest structuralMatchDslMismatch = baseRequest()
+        .services(List.of("gateway"))
+        .query(new Comparison("level", Operator.EQ, "ERROR"))
+        .build();
+    assertThat(EventFilters.matches(baseEvent().build(), structuralMatchDslMismatch)).isFalse();
+
+    SearchRequest structuralMismatchDslMatch = baseRequest()
+        .services(List.of("other-service"))
+        .query(new Comparison("level", Operator.EQ, "INFO"))
+        .build();
+    assertThat(EventFilters.matches(baseEvent().build(), structuralMismatchDslMatch)).isFalse();
+  }
+
+  @Test
+  void dslQueryAloneFiltersWithNoStructuredFiltersSet() {
+    SearchRequest matching = baseRequest().query(new Comparison("service", Operator.EQ, "gateway")).build();
+    assertThat(EventFilters.matches(baseEvent().build(), matching)).isTrue();
+
+    SearchRequest mismatch = baseRequest().query(new Comparison("service", Operator.EQ, "auth")).build();
+    assertThat(EventFilters.matches(baseEvent().build(), mismatch)).isFalse();
+  }
+
+  @Test
+  void dslOrAndCombinationsEvaluateCorrectlyThroughEventFilters() {
+    SearchRequest orMatch = baseRequest()
+        .query(new Or(new Comparison("service", Operator.EQ, "auth"), new Comparison("service", Operator.EQ, "gateway")))
+        .build();
+    assertThat(EventFilters.matches(baseEvent().build(), orMatch)).isTrue();
+
+    SearchRequest andMismatch = baseRequest()
+        .query(new And(new Comparison("service", Operator.EQ, "gateway"), new Comparison("level", Operator.EQ, "ERROR")))
+        .build();
+    assertThat(EventFilters.matches(baseEvent().build(), andMismatch)).isFalse();
+  }
+
+  /**
+   * Predicate/planner equivalence (IMPLEMENTATION_PLAN.md "Phase E"
+   * required automated test) is structural here, not incidental: {@code
+   * EventFilters.matches} is the exact same call every adapter (fixture,
+   * Docker, Loki) makes. This proves that adapter-specific enrichment
+   * fields (Docker's {@code containerName}, Loki's {@code namespace}, ...)
+   * never influence DSL evaluation - only the fields the DSL actually
+   * names do, regardless of which source produced the event.
+   */
+  @Test
+  void dslResultIsIdenticalRegardlessOfWhichAdaptersEnrichmentFieldsAreSet() {
+    CanonicalLogEvent dockerShaped = baseEvent()
+        .sourceId("local-docker").composeProject("demo").containerId("c1")
+        .containerName("gateway-1").stream("stdout")
+        .build();
+    CanonicalLogEvent lokiShaped = baseEvent()
+        .sourceId("openshift-loki").namespace("prod-ns").pod("gateway-abc123")
+        .containerName("gateway").stream("stdout")
+        .build();
+
+    SearchRequest request = baseRequest()
+        .query(new And(new Comparison("service", Operator.EQ, "gateway"), new Comparison("level", Operator.EQ, "INFO")))
+        .build();
+
+    assertThat(EventFilters.matches(dockerShaped, request)).isTrue();
+    assertThat(EventFilters.matches(lokiShaped, request)).isTrue();
+    assertThat(EventFilters.matches(dockerShaped, request))
+        .isEqualTo(EventFilters.matches(lokiShaped, request));
   }
 }

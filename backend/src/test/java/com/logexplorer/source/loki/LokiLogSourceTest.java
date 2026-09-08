@@ -2,6 +2,7 @@ package com.logexplorer.source.loki;
 
 import static com.logexplorer.source.loki.MockLokiServer.stream;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.logexplorer.config.LokiProperties;
@@ -9,6 +10,8 @@ import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.SourceHealth;
 import com.logexplorer.core.parse.LogLineParser;
+import com.logexplorer.core.query.ast.Comparison;
+import com.logexplorer.core.query.ast.Operator;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
@@ -319,6 +322,129 @@ class LokiLogSourceTest {
 
     Map<String, String> params = parseQuery(mockServer.lastQueryString());
     assertThat(params.get("query")).isEqualTo("{namespace=\"my-namespace\",app=\"gateway\"}");
+  }
+
+  @Test
+  void aBareServiceEqualityDslQueryIsPushedDownIntoTheSelectorWhenNoServicesListIsSet() throws IOException {
+    // IMPLEMENTATION_PLAN.md "Phase E" scope item 4, "Loki path" -
+    // LogQlDslPlanner narrows the fetch as an optimization only; the full
+    // DSL predicate still applies afterward regardless (proven by the
+    // response actually matching in the next test).
+    mockServer = new MockLokiServer("/api/logs/v1", "application", "namespace", "app");
+    LokiProperties properties = propertiesFor(mockServer);
+
+    Map<String, String> labels = Map.of("namespace", "my-namespace", "app", "gateway");
+    mockServer.respondWithStreams(List.of(
+        stream(labels, lineAt(1L, "2026-01-01T00:00:00Z", "hello", "gateway"))));
+
+    LokiLogSource source = sourceFor(properties);
+    SearchRequest request = SearchRequest.builder()
+        .sourceId(source.id())
+        .start(Instant.parse("2025-01-01T00:00:00Z"))
+        .end(Instant.parse("2027-01-01T00:00:00Z"))
+        .query(new Comparison("service", Operator.EQ, "gateway"))
+        .build();
+
+    StepVerifier.create(source.search(request)).expectNextCount(1).verifyComplete();
+
+    Map<String, String> params = parseQuery(mockServer.lastQueryString());
+    assertThat(params.get("query")).isEqualTo("{namespace=\"my-namespace\",app=\"gateway\"}");
+  }
+
+  @Test
+  void anExplicitServicesListTakesPrecedenceOverTheDslPushdownHint() throws IOException {
+    // A DSL query naming a *different* field than "service" so the two
+    // constraints don't conflict - this test is purely about which value
+    // wins in the selector, not about the DSL post-filter outcome.
+    mockServer = new MockLokiServer("/api/logs/v1", "application", "namespace", "app");
+    LokiProperties properties = propertiesFor(mockServer);
+
+    Map<String, String> labels = Map.of("namespace", "my-namespace", "app", "auth");
+    mockServer.respondWithStreams(List.of(
+        stream(labels, lineAt(1L, "2026-01-01T00:00:00Z", "hello", "auth"))));
+
+    LokiLogSource source = sourceFor(properties);
+    SearchRequest request = SearchRequest.builder()
+        .sourceId(source.id())
+        .start(Instant.parse("2025-01-01T00:00:00Z"))
+        .end(Instant.parse("2027-01-01T00:00:00Z"))
+        .services(List.of("auth"))
+        .query(new Comparison("message", Operator.CONTAINS, "hello"))
+        .build();
+
+    StepVerifier.create(source.search(request)).expectNextCount(1).verifyComplete();
+
+    Map<String, String> params = parseQuery(mockServer.lastQueryString());
+    assertThat(params.get("query")).isEqualTo("{namespace=\"my-namespace\",app=\"auth\"}");
+  }
+
+  @Test
+  void rawLogQlIsUsedVerbatimAsTheSelectorWhenEnabled() throws IOException {
+    mockServer = new MockLokiServer("/api/logs/v1", "application", "namespace", "app");
+    LokiProperties properties = propertiesFor(mockServer);
+    properties.setRawLogQlEnabled(true);
+
+    Map<String, String> labels = Map.of("namespace", "my-namespace", "app", "gateway");
+    mockServer.respondWithStreams(List.of(
+        stream(labels, lineAt(1L, "2026-01-01T00:00:00Z", "hello", "gateway"))));
+
+    LokiLogSource source = sourceFor(properties);
+    String raw = "{namespace=\"my-namespace\",app=\"gateway\"}";
+    SearchRequest request = SearchRequest.builder()
+        .sourceId(source.id())
+        .start(Instant.parse("2025-01-01T00:00:00Z"))
+        .end(Instant.parse("2027-01-01T00:00:00Z"))
+        .rawLogQl(raw)
+        .build();
+
+    StepVerifier.create(source.search(request)).expectNextCount(1).verifyComplete();
+
+    Map<String, String> params = parseQuery(mockServer.lastQueryString());
+    assertThat(params.get("query")).isEqualTo(raw);
+  }
+
+  @Test
+  void rawLogQlStillPassesThroughTheSameEventFiltersPostFilterAfterward() throws IOException {
+    mockServer = new MockLokiServer("/api/logs/v1", "application", "namespace", "app");
+    LokiProperties properties = propertiesFor(mockServer);
+    properties.setRawLogQlEnabled(true);
+
+    Map<String, String> labels = Map.of("namespace", "my-namespace", "app", "gateway");
+    mockServer.respondWithStreams(List.of(
+        stream(labels, List.of(
+            List.of("1", "{\"@timestamp\":\"2026-01-01T00:00:00Z\",\"message\":\"keep me\",\"application\":\"gateway\",\"mdc\":{}}"),
+            List.of("2", "{\"@timestamp\":\"2026-01-01T00:01:00Z\",\"message\":\"drop me\",\"application\":\"gateway\",\"mdc\":{}}")))));
+
+    LokiLogSource source = sourceFor(properties);
+    SearchRequest request = SearchRequest.builder()
+        .sourceId(source.id())
+        .start(Instant.parse("2025-01-01T00:00:00Z"))
+        .end(Instant.parse("2027-01-01T00:00:00Z"))
+        .rawLogQl("{namespace=\"my-namespace\"}")
+        .text("keep")
+        .build();
+
+    StepVerifier.create(source.search(request))
+        .assertNext(event -> assertThat(event.message()).isEqualTo("keep me"))
+        .verifyComplete();
+  }
+
+  @Test
+  void rawLogQlThrowsDefensivelyWhenNotEnabledEvenThoughSearchServiceShouldHaveAlreadyBlockedIt() throws IOException {
+    mockServer = new MockLokiServer("/api/logs/v1", "application", "namespace", "app");
+    LokiProperties properties = propertiesFor(mockServer);
+    properties.setRawLogQlEnabled(false);
+
+    LokiLogSource source = sourceFor(properties);
+    SearchRequest request = SearchRequest.builder()
+        .sourceId(source.id())
+        .start(Instant.parse("2025-01-01T00:00:00Z"))
+        .end(Instant.parse("2027-01-01T00:00:00Z"))
+        .rawLogQl("{namespace=\"x\"}")
+        .build();
+
+    assertThatThrownBy(() -> source.search(request).blockLast())
+        .isInstanceOf(IllegalStateException.class);
   }
 
   private Map<String, String> parseQuery(String rawQuery) {

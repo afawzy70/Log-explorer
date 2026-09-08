@@ -39,6 +39,8 @@ public class RequestMapper {
         .devicePlatform(dto.devicePlatform())
         .language(dto.language())
         .sensitiveFilters(dto.cif(), dto.userName(), dto.customerId(), dto.deviceId(), dto.deviceIp())
+        .query(dto.query())
+        .rawLogQl(dto.rawLogQl())
         .cursor(dto.cursor())
         .build();
   }
