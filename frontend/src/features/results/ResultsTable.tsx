@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import type { KeyboardEvent } from 'react';
 import type { JourneyField, LogEvent } from '../../shared/api/types';
 import { COLUMN_REGISTRY_BY_ID, DEFAULT_COLUMN_ORDER, DEFAULT_HIDDEN_COLUMN_IDS, ACTIONS_COLUMN_WIDTH } from './columnRegistry';
@@ -6,6 +7,9 @@ import { ActionsCell } from './ActionsCell';
 import type { TableDensity } from './tablePreferences';
 import { eventIdentity } from '../../app/useSearchState';
 import { VisuallyHidden } from '../../shared/ui/VisuallyHidden';
+import { formatGapDuration } from './gapDetection';
+import type { GapMarker } from './gapDetection';
+import { formatUtcTimestamp } from '../inspector/timestampFormat';
 import styles from './ResultsTable.module.css';
 
 /**
@@ -67,6 +71,21 @@ export interface ResultsTableProps {
    * (never color alone).
    */
   contextRootIdentity?: string | null;
+  /**
+   * Legacy Remediation Slice 6 - investigation-gap markers (only ever
+   * passed in a context view; `gapDetection.ts` computes these once in
+   * `ResultsPanel.tsx`, shared with `ContextSummary`'s own count/list, so
+   * both never disagree). Rendered as extra `<tr>`s interleaved between
+   * the real event rows they fall between (`afterIndex`) - deliberately
+   * NOT a merged/`colSpan` cell: every gap row still renders exactly one
+   * `<td>` per visible column (message in the first, "—" in the rest,
+   * matching this table's own "never omit a cell" convention), so the
+   * table's own `table-layout: fixed`/per-column geometry invariant
+   * (CLAUDE.md §4) holds for a gap row exactly the same way it holds for
+   * an event row - `assertTableGeometry` would pass against this table
+   * even with gap rows present, not just without them.
+   */
+  gaps?: GapMarker[];
 }
 
 /** ArrowDown/ArrowUp within the table body move focus to the next/previous row's Actions button - see the module doc comment above. */
@@ -84,8 +103,20 @@ function handleRowKeyDown(event: KeyboardEvent<HTMLTableSectionElement>) {
   if (currentIndex === -1) {
     return;
   }
-  const nextRow = rows[event.key === 'ArrowDown' ? currentIndex + 1 : currentIndex - 1];
-  const nextTrigger = nextRow?.querySelector<HTMLButtonElement>('button[aria-label="Actions for this event"]');
+  // A gap-marker row (Legacy Remediation Slice 6) has no Actions button -
+  // step past any number of them in the given direction to reach the next
+  // real event row, rather than silently doing nothing when the adjacent
+  // row happens to be a gap.
+  const step = event.key === 'ArrowDown' ? 1 : -1;
+  let i = currentIndex + step;
+  let nextTrigger: HTMLButtonElement | null = null;
+  while (i >= 0 && i < rows.length) {
+    nextTrigger = rows[i].querySelector<HTMLButtonElement>('button[aria-label="Actions for this event"]');
+    if (nextTrigger) {
+      break;
+    }
+    i += step;
+  }
   if (!nextTrigger) {
     return;
   }
@@ -102,12 +133,16 @@ export function ResultsTable({
   hiddenColumnIds = DEFAULT_HIDDEN_COLUMN_IDS,
   density = 'comfortable',
   contextRootIdentity = null,
+  gaps = [],
 }: ResultsTableProps) {
   const hiddenSet = new Set(hiddenColumnIds);
   const visibleColumns = columnOrder
     .filter((id) => !hiddenSet.has(id))
     .map((id) => COLUMN_REGISTRY_BY_ID.get(id))
     .filter((col): col is NonNullable<typeof col> => col != null);
+
+  const gapsByAfterIndex = new Map<number, GapMarker>();
+  gaps.forEach((gap) => gapsByAfterIndex.set(gap.afterIndex, gap));
 
   const tableClassName = density === 'compact' ? `${styles.table} ${styles.compact}` : styles.table;
 
@@ -139,23 +174,38 @@ export function ResultsTable({
             ]
               .filter(Boolean)
               .join(' ') || undefined;
+            const gap = gapsByAfterIndex.get(index);
             return (
               // Index is stable for the lifetime of one rendered result set
               // (events are never reordered/added mid-render - a fresh
               // search always replaces the whole list) and the backend
               // gives no other stable per-event id to key on.
               // eslint-disable-next-line react/no-array-index-key
-              <tr key={index} className={rowClassName} aria-current={isContextRoot ? 'location' : undefined}>
-                {visibleColumns.map((col) => (
-                  <td key={col.id} className={col.cellClassName}>
-                    {col.render(event, { onOpenJourney })}
+              <Fragment key={index}>
+                <tr className={rowClassName} aria-current={isContextRoot ? 'location' : undefined}>
+                  {visibleColumns.map((col) => (
+                    <td key={col.id} className={col.cellClassName}>
+                      {col.render(event, { onOpenJourney })}
+                    </td>
+                  ))}
+                  <td className={styles.actionsCell}>
+                    {isContextRoot ? <VisuallyHidden>Original event you were investigating</VisuallyHidden> : null}
+                    <ActionsCell event={event} onInspect={() => onInspect?.(index)} />
                   </td>
-                ))}
-                <td className={styles.actionsCell}>
-                  {isContextRoot ? <VisuallyHidden>Original event you were investigating</VisuallyHidden> : null}
-                  <ActionsCell event={event} onInspect={() => onInspect?.(index)} />
-                </td>
-              </tr>
+                </tr>
+                {gap ? (
+                  <tr className={styles.gapRow} data-testid="gap-row">
+                    {visibleColumns.map((col, colIndex) => (
+                      <td key={col.id} className={col.cellClassName}>
+                        {colIndex === 0
+                          ? `Gap detected — ${formatGapDuration(gap.durationMs)} with no observed events (${formatUtcTimestamp(gap.fromTimestamp)} → ${formatUtcTimestamp(gap.toTimestamp)})`
+                          : '—'}
+                      </td>
+                    ))}
+                    <td className={styles.actionsCell}>—</td>
+                  </tr>
+                ) : null}
+              </Fragment>
             );
           })}
         </tbody>

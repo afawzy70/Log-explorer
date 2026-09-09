@@ -96,3 +96,86 @@ describe('ContextSummary (UI Parity Acceleration Pass §8)', () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 });
+
+describe('ContextSummary enrichment (Legacy Remediation Slice 6)', () => {
+  it('shows a WARN count alongside Errors', () => {
+    const events = [
+      event({ severity: 'WARN' }),
+      event({ severity: 'WARN' }),
+      event({ severity: 'ERROR' }),
+      event({ severity: 'INFO' }),
+    ];
+    render(<ContextSummary events={events} range={range} />);
+    expect(screen.getByText('Warnings').nextElementSibling).toHaveTextContent('2');
+  });
+
+  it('shows the observed span between the first and last event, distinct from the fixed Window', () => {
+    const events = [
+      event({ timestamp: '2026-01-01T12:00:00Z' }),
+      event({ timestamp: '2026-01-01T12:00:12Z' }),
+    ];
+    render(<ContextSummary events={events} range={range} />);
+    expect(screen.getByText('Observed span').nextElementSibling).toHaveTextContent('12s');
+  });
+
+  it('omits Observed span when fewer than two timestamped events exist', () => {
+    render(<ContextSummary events={[event()]} range={range} />);
+    expect(screen.queryByText('Observed span')).not.toBeInTheDocument();
+  });
+
+  it('shows the Source name when provided', () => {
+    render(<ContextSummary events={[event()]} range={range} source="Fixture" />);
+    expect(screen.getByText('Source').nextElementSibling).toHaveTextContent('Fixture');
+  });
+
+  it('omits the Source row when none is provided', () => {
+    render(<ContextSummary events={[event()]} range={range} />);
+    expect(screen.queryByText('Source')).not.toBeInTheDocument();
+  });
+
+  it('shows a truthful incomplete-results notice when counts.truncated is true, nothing when false', () => {
+    const counts = { estimatedTotal: null, returned: 200, visible: 200, limit: 200, truncated: true };
+    const { rerender } = render(<ContextSummary events={[event()]} range={range} counts={counts} />);
+    expect(screen.getByText(/results may be incomplete/i)).toBeInTheDocument();
+
+    rerender(<ContextSummary events={[event()]} range={range} counts={{ ...counts, truncated: false }} />);
+    expect(screen.queryByText(/results may be incomplete/i)).not.toBeInTheDocument();
+  });
+
+  it('shows a Gaps count of 0 and no gap list when the sequence has no detectable gap', () => {
+    const events = [event({ timestamp: '2026-01-01T12:00:00Z' }), event({ timestamp: '2026-01-01T12:00:01Z' })];
+    render(<ContextSummary events={events} range={range} />);
+    expect(screen.getByText('Gaps').nextElementSibling).toHaveTextContent('0');
+    expect(screen.queryByText(/sequence gap/i)).not.toBeInTheDocument();
+  });
+
+  it('shows a Gaps count and a descriptive list when a real gap is present, computed internally when no gaps prop is given', () => {
+    const events = [event({ timestamp: '2026-01-01T12:00:00Z' }), event({ timestamp: '2026-01-01T12:00:20Z' })];
+    render(<ContextSummary events={events} range={range} />);
+    expect(screen.getByText('Gaps').nextElementSibling).toHaveTextContent('1');
+    expect(screen.getByText(/1 sequence gap detected/i)).toBeInTheDocument();
+    expect(screen.getByText(/20s with no observed events between/i)).toBeInTheDocument();
+  });
+
+  it('uses the caller-supplied gaps prop (computed once) instead of recomputing when provided', () => {
+    const events = [event({ timestamp: '2026-01-01T12:00:00Z' }), event({ timestamp: '2026-01-01T12:00:01Z' })]; // no real gap
+    const suppliedGaps = [
+      { afterIndex: 0, fromTimestamp: '2026-01-01T12:00:00Z', toTimestamp: '2026-01-01T12:00:01Z', durationMs: 1000, reason: 'large_interval' as const, confidence: 'observed' as const },
+    ];
+    render(<ContextSummary events={events} range={range} gaps={suppliedGaps} />);
+    expect(screen.getByText('Gaps').nextElementSibling).toHaveTextContent('1');
+  });
+
+  it('never implies causality for a detected gap - explains it means no event was observed, not that something failed', () => {
+    const events = [event({ timestamp: '2026-01-01T12:00:00Z' }), event({ timestamp: '2026-01-01T12:00:20Z' })];
+    render(<ContextSummary events={events} range={range} />);
+    expect(screen.getByText(/not evidence that anything failed/i)).toBeInTheDocument();
+  });
+
+  it('has no detectable accessibility violations with warnings, a gap, and a truncation notice all present', async () => {
+    const events = [event({ timestamp: '2026-01-01T12:00:00Z' }), event({ timestamp: '2026-01-01T12:00:20Z' })];
+    const counts = { estimatedTotal: null, returned: 200, visible: 200, limit: 200, truncated: true };
+    const { container } = render(<ContextSummary events={events} range={range} source="Fixture" counts={counts} />);
+    expect(await axe(container)).toHaveNoViolations();
+  });
+});

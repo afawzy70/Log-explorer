@@ -7,8 +7,12 @@ import { ResultsTable } from './ResultsTable';
 import { QueryPlanDisclosure } from './QueryPlanDisclosure';
 import { TableSettingsControl } from './TableSettingsControl';
 import { ContextSummary } from './ContextSummary';
+import { detectGaps } from './gapDetection';
+import type { GapMarker } from './gapDetection';
 import { useTablePreferences } from './tablePreferences';
 import styles from './ResultsPanel.module.css';
+
+const NO_GAPS: GapMarker[] = [];
 
 const DAY_MS = TIME_RANGE_PRESETS.find((p) => p.id === DEFAULT_PRESET_ID)!.durationMs;
 
@@ -82,13 +86,27 @@ export function ResultsPanel({ state }: { state: SearchState }) {
   }
 
   const { events, counts, nextCursor, queryPlan } = state.searchResult;
+  // Legacy Remediation Slice 6 - computed once per render, shared by
+  // ContextSummary's own count/list and ResultsTable's inline markers, so
+  // the two can never disagree with each other (§9 "memoized/derived once
+  // where appropriate"). Only ever computed for a context view - gap
+  // detection is out of scope for an ordinary historical search.
+  const gaps = state.breadcrumbLabel ? detectGaps(events) : NO_GAPS;
 
   if (events.length === 0) {
     const oneDayAgo = new Date(Date.now() - DAY_MS);
     return (
       <div className={styles.wrapper}>
         <Breadcrumb state={state} />
-        {state.breadcrumbLabel ? <ContextSummary events={events} range={state.lastSearchedRange} /> : null}
+        {state.breadcrumbLabel ? (
+          <ContextSummary
+            events={events}
+            range={state.lastSearchedRange}
+            source={state.selectedSource?.displayName ?? null}
+            counts={counts}
+            gaps={gaps}
+          />
+        ) : null}
         <RefreshRow state={state} />
         <QueryPlanDisclosure queryPlan={queryPlan} />
         <p className={styles.empty}>
@@ -113,7 +131,15 @@ export function ResultsPanel({ state }: { state: SearchState }) {
   return (
     <div className={styles.wrapper}>
       <Breadcrumb state={state} />
-      {state.breadcrumbLabel ? <ContextSummary events={events} range={state.lastSearchedRange} /> : null}
+      {state.breadcrumbLabel ? (
+        <ContextSummary
+          events={events}
+          range={state.lastSearchedRange}
+          source={state.selectedSource?.displayName ?? null}
+          counts={counts}
+          gaps={gaps}
+        />
+      ) : null}
       <div className={styles.summaryRow}>
         <p className={styles.summary}>
           {buildCountsSummary(counts, events.length)}
@@ -134,6 +160,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
         hiddenColumnIds={table.preferences.hiddenColumnIds}
         density={table.preferences.density}
         contextRootIdentity={state.breadcrumbLabel ? state.contextRootIdentity : null}
+        gaps={gaps}
       />
       {nextCursor ? (
         <div className={styles.loadMoreRow}>

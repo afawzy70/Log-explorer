@@ -1,8 +1,10 @@
-import type { LogEvent } from '../../shared/api/types';
+import type { LogEvent, ResultCounts } from '../../shared/api/types';
 import type { CommittedTimeRange } from '../timerange/types';
 import { formatInterval } from '../../shared/time/interval';
-import { localZoneLabel } from '../inspector/timestampFormat';
+import { localZoneLabel, formatUtcTimestamp } from '../inspector/timestampFormat';
 import { countDistinctServices } from '../journey/journeyFields';
+import { detectGaps, formatGapDuration } from './gapDetection';
+import type { GapMarker } from './gapDetection';
 import styles from './ContextSummary.module.css';
 
 /**
@@ -23,10 +25,42 @@ import styles from './ContextSummary.module.css';
  * actual sorting (re-sorting the whole bounded context set again after
  * every "Load more", never trusting append order alone) - this component
  * only ever renders whatever order it's given.
+ *
+ * <p><b>Legacy Remediation Slice 6</b> adds: Warnings (WARN severity
+ * count), the observed span between the first and last event (distinct
+ * from "Window", which is the fixed ±30s request bound - the observed span
+ * can be smaller when data is sparse, itself a completeness signal),
+ * Source, a gap count + list ("gap detected", never "missing"/"broken" -
+ * see `gapDetection.ts`'s own doc comment on why), and an honest
+ * incomplete-results notice when `counts.truncated` is true. `gaps` is
+ * passed in (computed once by the caller, `ResultsPanel.tsx`) rather than
+ * recomputed here, so it is derived exactly once and shared with
+ * `ResultsTable`'s own inline gap markers - never two different gap counts
+ * disagreeing with each other.
  */
-export function ContextSummary({ events, range }: { events: LogEvent[]; range: CommittedTimeRange | null }) {
+export function ContextSummary({
+  events,
+  range,
+  source = null,
+  counts = null,
+  gaps,
+}: {
+  events: LogEvent[];
+  range: CommittedTimeRange | null;
+  source?: string | null;
+  counts?: ResultCounts | null;
+  gaps?: GapMarker[];
+}) {
   const errorCount = events.filter((e) => e.severity?.toUpperCase() === 'ERROR').length;
+  const warnCount = events.filter((e) => e.severity?.toUpperCase() === 'WARN').length;
   const serviceCount = countDistinctServices(events);
+  const resolvedGaps = gaps ?? detectGaps(events);
+
+  const timestamped = events.filter((e): e is LogEvent & { timestamp: string } => e.timestamp != null);
+  const observedSpanMs =
+    timestamped.length >= 2
+      ? Date.parse(timestamped[timestamped.length - 1].timestamp) - Date.parse(timestamped[0].timestamp)
+      : null;
 
   return (
     <div className={styles.wrapper} role="note" aria-label="Surrounding-context summary">
@@ -44,9 +78,19 @@ export function ContextSummary({ events, range }: { events: LogEvent[]; range: C
           <dd>{errorCount}</dd>
         </div>
         <div className={styles.stat}>
+          <dt>Warnings</dt>
+          <dd>{warnCount}</dd>
+        </div>
+        <div className={styles.stat}>
           <dt>Window</dt>
           <dd>60 seconds (±30s)</dd>
         </div>
+        {observedSpanMs != null ? (
+          <div className={styles.stat}>
+            <dt>Observed span</dt>
+            <dd>{observedSpanMs === 0 ? '0s' : formatGapDuration(observedSpanMs)}</dd>
+          </div>
+        ) : null}
         {range ? (
           <div className={styles.stat}>
             <dt>Range</dt>
@@ -55,10 +99,44 @@ export function ContextSummary({ events, range }: { events: LogEvent[]; range: C
             </dd>
           </div>
         ) : null}
+        {source ? (
+          <div className={styles.stat}>
+            <dt>Source</dt>
+            <dd>{source}</dd>
+          </div>
+        ) : null}
+        <div className={styles.stat}>
+          <dt>Gaps</dt>
+          <dd>{resolvedGaps.length}</dd>
+        </div>
       </dl>
+
+      {counts?.truncated ? (
+        <p className={styles.incompleteNotice} role="status">
+          ⚠ Results may be incomplete — this source returned a bounded subset (limit reached).
+        </p>
+      ) : null}
+
+      {resolvedGaps.length > 0 ? (
+        <div className={styles.gapsList}>
+          <p className={styles.gapsListTitle}>
+            {resolvedGaps.length} sequence gap{resolvedGaps.length === 1 ? '' : 's'} detected:
+          </p>
+          <ul>
+            {resolvedGaps.map((gap) => (
+              <li key={`${gap.fromTimestamp}-${gap.toTimestamp}`}>
+                {formatGapDuration(gap.durationMs)} with no observed events between {formatUtcTimestamp(gap.fromTimestamp)} and{' '}
+                {formatUtcTimestamp(gap.toTimestamp)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <p className={styles.disclaimer}>
         Sorted chronologically, oldest first — this order does not indicate causality between events. The highlighted
-        row below is the original event you were investigating.
+        row below is the original event you were investigating. A detected gap means no event was observed in that
+        interval - it is not evidence that anything failed.
       </p>
     </div>
   );
