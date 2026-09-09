@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { JourneyView } from './JourneyView';
@@ -145,6 +145,108 @@ describe('JourneyView', () => {
     );
     await user.click(screen.getByRole('button', { name: /back to search results/i }));
     expect(closeJourney).toHaveBeenCalledTimes(1);
+  });
+
+  describe('enrichment (Legacy Remediation Slice 6)', () => {
+    it('shows Errors/Warnings/First->Last/Gaps stats', () => {
+      const events = [
+        fullEvent({ severity: 'ERROR', timestamp: '2026-01-01T12:00:00Z' }),
+        fullEvent({ severity: 'WARN', timestamp: '2026-01-01T12:00:05Z' }),
+        fullEvent({ severity: 'INFO', timestamp: '2026-01-01T12:00:10Z' }),
+      ];
+      render(
+        <JourneyView
+          state={baseState({
+            journeyQuery: { field: 'journeyId', value: 'journey-1' },
+            journeyResult: { events, counts: { estimatedTotal: null, returned: 3, visible: 3, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+          })}
+        />,
+      );
+      expect(screen.getByText('Errors').nextElementSibling).toHaveTextContent('1');
+      expect(screen.getByText('Warnings').nextElementSibling).toHaveTextContent('1');
+      expect(screen.getByText('Gaps').nextElementSibling).toHaveTextContent('0');
+      expect(screen.getByText('First → Last')).toBeInTheDocument();
+    });
+
+    it('renders a gap marker between two entries whose observed interval exceeds the threshold, never a fake event', () => {
+      const events = [
+        fullEvent({ message: 'first', timestamp: '2026-01-01T12:00:00Z' }),
+        fullEvent({ message: 'second', timestamp: '2026-01-01T12:00:30Z' }), // 30s gap
+      ];
+      render(
+        <JourneyView
+          state={baseState({
+            journeyQuery: { field: 'journeyId', value: 'journey-1' },
+            journeyResult: { events, counts: { estimatedTotal: null, returned: 2, visible: 2, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+          })}
+        />,
+      );
+      expect(screen.getByText('Gaps').nextElementSibling).toHaveTextContent('1');
+      const marker = screen.getByTestId('journey-gap-marker');
+      expect(marker.textContent).toMatch(/gap detected/i);
+      expect(marker.textContent).toMatch(/30s/);
+      expect(marker.textContent).not.toMatch(/missing|broken|failed/i);
+
+      // The marker is a real, standalone list item - not nested inside a JourneyEntryRow's own <li>.
+      const list = screen.getByRole('list');
+      const items = within(list).getAllByRole('listitem');
+      expect(items).toHaveLength(3); // first entry, gap marker, second entry
+    });
+
+    it('shows no gap marker for a sequence with no detectable gap', () => {
+      const events = [
+        fullEvent({ timestamp: '2026-01-01T12:00:00Z' }),
+        fullEvent({ timestamp: '2026-01-01T12:00:01Z' }),
+      ];
+      render(
+        <JourneyView
+          state={baseState({
+            journeyQuery: { field: 'journeyId', value: 'journey-1' },
+            journeyResult: { events, counts: { estimatedTotal: null, returned: 2, visible: 2, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+          })}
+        />,
+      );
+      expect(screen.queryByTestId('journey-gap-marker')).not.toBeInTheDocument();
+    });
+
+    it('shows a truthful incomplete-results notice when the journey result is truncated', () => {
+      const events = [fullEvent()];
+      render(
+        <JourneyView
+          state={baseState({
+            journeyQuery: { field: 'journeyId', value: 'journey-1' },
+            journeyResult: { events, counts: { estimatedTotal: null, returned: 200, visible: 200, limit: 200, truncated: true }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+          })}
+        />,
+      );
+      expect(screen.getByText(/results may be incomplete/i)).toBeInTheDocument();
+    });
+
+    it('never claims a gap is evidence of failure', () => {
+      const events = [fullEvent({ timestamp: '2026-01-01T12:00:00Z' }), fullEvent({ timestamp: '2026-01-01T12:00:30Z' })];
+      render(
+        <JourneyView
+          state={baseState({
+            journeyQuery: { field: 'journeyId', value: 'journey-1' },
+            journeyResult: { events, counts: { estimatedTotal: null, returned: 2, visible: 2, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+          })}
+        />,
+      );
+      expect(screen.getByText(/not evidence that anything failed/i)).toBeInTheDocument();
+    });
+
+    it('has no detectable accessibility violations with a gap marker and a truncation notice present', async () => {
+      const events = [fullEvent({ timestamp: '2026-01-01T12:00:00Z' }), fullEvent({ timestamp: '2026-01-01T12:00:30Z' })];
+      const { container } = render(
+        <JourneyView
+          state={baseState({
+            journeyQuery: { field: 'journeyId', value: 'journey-1' },
+            journeyResult: { events, counts: { estimatedTotal: null, returned: 200, visible: 200, limit: 200, truncated: true }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+          })}
+        />,
+      );
+      expect(await axe(container)).toHaveNoViolations();
+    });
   });
 
   it('has no detectable accessibility violations across states', async () => {

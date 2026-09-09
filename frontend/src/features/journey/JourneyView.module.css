@@ -37,6 +37,52 @@
   font-size: var(--font-size-sm);
 }
 
+/* Legacy Remediation Slice 6 - Errors/Warnings/First-Last/Gaps, matching ContextSummary's own stat-tile visual language (a small dl, not a chart/library). */
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin: 0 0 var(--space-2);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat dt {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.stat dd {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.incompleteNotice {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-severity-warn);
+}
+
+/* An investigation-gap marker between two timeline entries - a sibling <li>, never nested inside JourneyEntryRow's own <li> (valid <ol> markup). Muted/dashed, never color alone (the text itself says "Gap detected"). */
+.gapMarker {
+  list-style: none;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-size-xs);
+  font-style: italic;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-hover);
+  border-top: 1px dashed var(--color-border);
+  border-bottom: 1px dashed var(--color-border);
+}
+
 .list {
   margin: 0;
   padding: 0;
