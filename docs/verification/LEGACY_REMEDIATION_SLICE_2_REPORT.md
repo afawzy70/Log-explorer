@@ -251,7 +251,19 @@ cd frontend && npx playwright test            # 90 passed
 
 ---
 
-## 7. Known limitations / blockers
+## 7. GitHub-hosted CI
+
+PR [#20](https://github.com/afawzy70/Log-explorer/pull/20), run
+[34344470905](https://github.com/afawzy70/Log-explorer/actions/runs/34344470905)
+on commit `0f04a61` — all three jobs green:
+
+```
+Backend    pass   1m21s
+E2E        pass   3m21s
+Frontend   pass   1m32s
+```
+
+## 8. Known limitations / blockers
 
 - **Docker's raw-LogQL absence** (item 10) was verified via Fixture, not a
   live Docker container — Docker is not reachable in this dev-profile
@@ -274,7 +286,7 @@ cd frontend && npx playwright test            # 90 passed
 
 ---
 
-## 8. Scope discipline
+## 9. Scope discipline
 
 Not touched: Issue #19, Slice 3 (Docker settings), Slice 4 (table
 configuration), Slice 5 (live tail changes), any unrelated refactoring. Only
