@@ -159,3 +159,19 @@
   box-shadow: inset 3px 0 0 var(--color-accent);
 }
 
+/*
+ * UI Gap Closure Pass - "Context ordering": marks the row a "Show ±30
+ * seconds" context view is centered on. Never color alone - `aria-current`
+ * on the row itself (see ResultsTable.tsx) and a visually-hidden label in
+ * its Actions cell both carry the same meaning non-visually; the dashed
+ * border (a different pattern than `.selectedRow`'s solid one) keeps the
+ * two distinct even if both classes are ever applied to the same row at
+ * once (re-opening the inspector on the root event itself).
+ */
+.contextRootRow {
+  background: var(--color-accent-bg);
+  box-shadow: inset 3px 0 0 var(--color-accent);
+  outline: 1px dashed var(--color-accent);
+  outline-offset: -1px;
+}
+

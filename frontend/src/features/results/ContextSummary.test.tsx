@@ -80,10 +80,10 @@ describe('ContextSummary (UI Parity Acceleration Pass §8)', () => {
     expect(screen.getByText('Errors').nextElementSibling).toHaveTextContent('0');
   });
 
-  it('never claims causality - states the actual (newest-first) ordering honestly', () => {
+  it('never claims causality - states the actual (UI Gap Closure Pass: chronological ascending) ordering honestly', () => {
     render(<ContextSummary events={[event()]} range={range} />);
     expect(screen.getByText(/does not indicate causality/i)).toBeInTheDocument();
-    expect(screen.getByText(/sorted newest first/i)).toBeInTheDocument();
+    expect(screen.getByText(/sorted chronologically, oldest first/i)).toBeInTheDocument();
   });
 
   it('renders without a Range row when no range is available', () => {
