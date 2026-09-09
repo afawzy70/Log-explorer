@@ -27,6 +27,24 @@ export interface SourceHealth {
   status: SourceHealthStatus;
   message: string | null;
   checkedAt: string;
+  /** Legacy Remediation Slice 6 - sanitized, fixed-vocabulary degradation reasons (e.g. "no containers matched..."). Always present, empty when there is nothing to warn about - never fabricated. */
+  warnings: string[];
+}
+
+/**
+ * `GET /api/v1/sources/{id}/health` (Legacy Remediation Slice 6) - the
+ * persistent health badge's own richer shape. `latencyMs` is genuinely
+ * measured server-side (`Mono#elapsed()`), never estimated; `capabilities`
+ * is the exact same {@link SourceCapabilities} `GET /api/v1/sources`
+ * already returns for this source, attached here too so one fetch carries
+ * a complete picture. The ephemeral Docker "Test Connection" probe
+ * (`testDockerConnection`) intentionally still returns the plainer {@link
+ * SourceHealth} - a candidate connection has no registered capabilities to
+ * attach.
+ */
+export interface SourceHealthDetail extends SourceHealth {
+  latencyMs: number | null;
+  capabilities: SourceCapabilities | null;
 }
 
 /**
