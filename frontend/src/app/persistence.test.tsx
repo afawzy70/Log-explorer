@@ -6,6 +6,7 @@ import { EMPTY_QUERY_PLAN } from '../shared/api/testFixtures';
 
 const SENTINEL_TEXT = 'RAW-SEARCH-TEXT-SENTINEL';
 const SENTINEL_CIF = 'RAW-CIF-SENTINEL';
+const SENTINEL_QUERY_VALUE = 'RAW-QUERY-VALUE-SENTINEL';
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -25,8 +26,10 @@ describe('persistence: nothing ever written to localStorage/sessionStorage/the U
   let sessionStorageSetItem: ReturnType<typeof vi.spyOn>;
   let pushState: ReturnType<typeof vi.spyOn>;
   let replaceState: ReturnType<typeof vi.spyOn>;
+  let capturedSearchBody: string | null;
 
   beforeEach(() => {
+    capturedSearchBody = null;
     localStorageSetItem = vi.spyOn(Storage.prototype, 'setItem');
     sessionStorageSetItem = vi.spyOn(window.sessionStorage, 'setItem');
     pushState = vi.spyOn(window.history, 'pushState');
@@ -59,11 +62,11 @@ describe('persistence: nothing ever written to localStorage/sessionStorage/the U
           return jsonResponse([{ name: 'gateway', runningCount: 1, totalCount: 1 }]);
         }
         if (url.endsWith('/api/v1/logs/search') && init?.method === 'POST') {
-          // The raw sentinel values must genuinely be in the outgoing
-          // request body for this test to mean anything - assert that
-          // separately from the persistence assertions below.
-          expect(String(init.body)).toContain(SENTINEL_TEXT);
-          expect(String(init.body)).toContain(SENTINEL_CIF);
+          // Whichever sentinel(s) this particular test actually typed must
+          // genuinely be in the outgoing request body, or the test proves
+          // nothing - each test below drives its own sentinel(s) through
+          // and asserts on `capturedSearchBody` itself.
+          capturedSearchBody = String(init.body);
           return jsonResponse({ events: [], counts: { estimatedTotal: 0, returned: 0, visible: 0, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN });
         }
         throw new Error(`Unexpected fetch: ${url}`);
@@ -103,6 +106,43 @@ describe('persistence: nothing ever written to localStorage/sessionStorage/the U
     // Run the actual search.
     await user.click(screen.getByRole('button', { name: /^search$/i }));
     await waitFor(() => expect(screen.getByText(/run a search to see results|no results/i)).toBeInTheDocument());
+
+    // The sentinels must genuinely have reached the outgoing request body -
+    // otherwise this test would trivially pass by testing nothing.
+    expect(capturedSearchBody).toContain(SENTINEL_TEXT);
+    expect(capturedSearchBody).toContain(SENTINEL_CIF);
+
+    expect(localStorageSetItem).not.toHaveBeenCalled();
+    expect(sessionStorageSetItem).not.toHaveBeenCalled();
+    expect(pushState).not.toHaveBeenCalled();
+    expect(replaceState).not.toHaveBeenCalled();
+    expect(window.location.search).toBe('');
+    expect(window.location.hash).toBe('');
+  });
+
+  /**
+   * Legacy Remediation Slice 2 final self-audit (risk area 11): the guided
+   * query builder and its generated DSL text are exactly the same class of
+   * "search value" as `text`/the advanced sensitive filters above - this
+   * proves the new Query authoring surface is held to the identical
+   * never-persisted standard, not just asserted by code review.
+   */
+  it('a guided query built through the new Query control is never written to localStorage/sessionStorage/the URL either', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole('combobox')).toHaveValue('fixture'));
+
+    await user.click(screen.getByRole('button', { name: /^query/i }));
+    await user.click(screen.getByRole('button', { name: /\+ condition/i }));
+    await user.selectOptions(screen.getByLabelText('Field'), 'message');
+    await user.type(screen.getByLabelText('Value'), SENTINEL_QUERY_VALUE);
+    await user.click(screen.getByRole('button', { name: /^apply$/i }));
+
+    await user.click(screen.getByRole('button', { name: /^search$/i }));
+    await waitFor(() => expect(screen.getByText(/run a search to see results|no results/i)).toBeInTheDocument());
+
+    expect(capturedSearchBody).toContain(SENTINEL_QUERY_VALUE);
 
     expect(localStorageSetItem).not.toHaveBeenCalled();
     expect(sessionStorageSetItem).not.toHaveBeenCalled();
