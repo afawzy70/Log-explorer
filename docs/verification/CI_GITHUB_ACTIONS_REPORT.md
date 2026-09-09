@@ -82,12 +82,13 @@ While re-running the full local E2E suite after Part A, `phase-m-ux-acceptance.s
 
 ## GitHub-hosted verification
 
-<!-- Filled in after pushing and inspecting the actual hosted run - never asserted as PASS without a real run id/url and job conclusions. -->
+Two real hosted runs on this PR branch:
 
-- Run: `<filled in after push>`
-- `Backend`: `<filled in>`
-- `Frontend`: `<filled in>`
-- `E2E`: `<filled in>`
+- **Run 1** (`34333896993`, commit `eeb02e2`): `Backend` PASS; `Frontend` **FAIL** (Node 20 / jsdom incompatibility, see the Node-version note above); `E2E` **FAIL** (`--offline` broke the E2E job's own independent, cold Maven cache, see the Job 3 note above). Both real bugs, fixed in commit `7142bca`, not worked around or hidden.
+- **Run 2** (`34334410635`, commit `7142bca`, https://github.com/afawzy70/Log-explorer/actions/runs/34334410635): **all three jobs PASS**.
+  - `Backend`: PASS (411/411, same as the local run).
+  - `Frontend`: PASS (typecheck clean, 301/301 tests, build succeeds).
+  - `E2E`: PASS — **80/80** Playwright tests, including "Task 1 - What failed recently?", the one test that failed consistently in this session's *local* E2E re-run (see the "Known, pre-existing, out-of-scope issue" section above). Its hosted-CI pass confirms that failure really was specific to this development machine's own unrelated real Docker daemon — the clean, Docker-free `E2E` runner never triggers that race at all.
 
 ## Tests skipped
 
