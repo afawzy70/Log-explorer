@@ -74,33 +74,57 @@ in `docs/LEGACY_TO_NEW_VERIFIED_CAPABILITY_MATRIX.md`) is excluded from these to
 | 23 | Live | Start / Pause / Resume / Stop | Already `NEW_FULL` | Unchanged | FULL | Pre-existing `phase-j` spec | — |
 | 24 | Live | Clear (`LIVE-07` `NEW_MISSING`) | Absent | `useLiveTail.ts#clear` + button, connection stays open | FULL | `useLiveTail.test.ts` (2 new tests), `LiveTailPanel.test.tsx` (3 new tests), E2E item 11 | — |
 | 25 | Live | Pre-start confirmation dialog | Present in OLD | Absent - **owner-confirmed decision**: "NO pre-start confirmation dialog. Current one-click Start is preferred." | SUPERSEDED_BY_OWNER_DECISION | This mission's own text | — |
-| 26 | Live | Reconnect with visible/bounded backoff (`LIVE-06` `NEW_MISSING`, deliberate) | Present in OLD | Still absent - a real resilience-engine change | MISSING | `useLiveTail.ts`'s own comment | Slice 5 |
-| 27 | Live | Follow-newest toggle (`LIVE-05` `NEW_MISSING`) | Present in OLD | Still absent | MISSING | — | Later (a genuine new state model - freeze/unseen-count/jump-to-latest - not a same-pass bolt-on) |
+| 26 | Live | Reconnect with visible/bounded backoff (`LIVE-06` `NEW_MISSING`, deliberate) | Present in OLD | **UPDATED — Legacy Remediation Slice 5**: bounded exponential backoff + jitter (500ms→15s cap, 5 attempts, then a terminal `failed` state with Retry), visible via the `reconnecting` state and attempt counter, cancellable via Stop | FULL | `useLiveTail.test.ts` (bounded-retries, Stop-cancels, restart-from-failed), real-browser (including a genuine, organically-occurring dev-proxy disconnect the test suite caught) in `phase-legacy-slice5-live-resilience.spec.ts` | — |
+| 27 | Live | Follow-newest toggle (`LIVE-05` `NEW_MISSING`) | Present in OLD | **UPDATED — Legacy Remediation Slice 5**: `followNewest`/`unseenCount`/`setFollowNewest`, driven by the event list's own real scroll position - scrolling away suspends it (never fights the user's scroll), "Jump to newest (N new)" restores it | FULL | `LiveTailPanel.test.tsx` (real-scroll describe block), real-browser in `phase-legacy-slice5-live-resilience.spec.ts` items 5-7 | — |
 | 28 | Keyboard | Run search from anywhere (`SEARCH-18` `NEW_MISSING`) | Absent | `Ctrl/Cmd+Enter` via `useGlobalShortcuts.ts` | FULL | `useGlobalShortcuts.test.ts` (5 tests), E2E item 10 | — |
 | 29 | Keyboard | Focus search box | Absent | `/` (guarded against hijacking typed text) | FULL | `useGlobalShortcuts.test.ts` | — |
 | 30 | Keyboard | Shortcuts help | Absent | `?` + header button | FULL | `KeyboardShortcutsHelp.test.tsx` | — |
 | 31 | Keyboard | Live control shortcuts (Start/Stop/Pause key bindings) | Present in OLD | Still absent - every Live control remains one click away, just with no dedicated key | MISSING | — | Later (lower value than the rest of this list - buttons are already fast to reach) |
 | 32 | Density | Whole workspace fits usefully on one screen (1440px) | Baseline claim | Re-verified, not assumed | FULL | E2E item 12 screenshot, `assertTableGeometry` | — |
 | 33 | Mobile | No regression at 390px with every new control added | N/A (new controls didn't exist before) | Verified clean | FULL | E2E item 13; full existing `f`/`g`/`h`/`i`/`j`/`m` narrow-width suites still green | — |
+| 34 | Live | Live-local severity/text filtering (`LIVE-09` `NEW_PARTIAL` before Slice 5) | Absent for Live (historical search only) | **Added — Legacy Remediation Slice 5**: `LiveTailPanel.tsx` reuses `SeverityFilter.tsx` (the exact same component the historical toolbar uses) plus a plain substring text filter, purely client-side over the already-retained/masked event set - never reconnects on a filter change | FULL | `LiveTailPanel.test.tsx` (severity/text describe blocks), real-browser (`Received:` count never resets across a filter change) in `phase-legacy-slice5-live-resilience.spec.ts` items 8-9 | — |
+| 35 | Live | Status clarity for reconnect/terminal states (`LIVE-02` `NEW_PARTIAL` before Slice 5) | Present in OLD (Connecting/Live/Paused/Reconnecting/Stopped/Error) | **Added — Legacy Remediation Slice 5**: a full 7-state machine (`idle/connecting/live/paused/reconnecting/stopped/failed`), each with its own distinct visible text (never color alone), an attempt counter while reconnecting, a sanitized reason + Retry on terminal failure, and a persistent (non-toast) "events may have been missed" notice once any reconnect has occurred | FULL | `LiveTailPanel.test.tsx` (per-state rendering describe blocks), `phase-legacy-slice5-live-resilience.spec.ts` | — |
 
-### Totals (visible UI/UX rows only, 33 total, scored against `CURRENT_AFTER`)
+### Totals (visible UI/UX rows only, 35 total after Slice 5, scored against `CURRENT_AFTER`)
+
+Recalculated after Slice 5 - rows 26/27 moved from `MISSING` to `FULL` (real
+Live resilience/follow-newest work, not backend-only improvement, so this
+increase is not an inflation of the kind the mission's own instruction warns
+against), and two new rows (34/35) were added for capabilities Slice 5
+introduced that didn't exist as distinct audit items before (Live-local
+filtering, reconnect/terminal-state clarity) rather than silently folding
+them into existing rows, so the denominator grows honestly alongside the
+numerator instead of just the percentage moving.
 
 ```
-FULL         = 24   (rows 1, 4-8, 10-12, 14-19, 21-24, 28-30, 32-33)
+FULL         = 28   (rows 1, 4-8, 10-12, 14-19, 21-24, 26-30, 32-35)
 PARTIAL      = 3    (rows 9, 13, 20)
-MISSING      = 4    (rows 2, 26, 27, 31)
+MISSING      = 2    (rows 2, 31)
 NEW_BETTER   = 1    (row 3)
 SUPERSEDED_BY_OWNER_DECISION = 1 (row 25 - excluded from the four counts above, per that status's own definition)
 ```
 
-24 + 3 + 4 + 1 + 1 = 33.
+28 + 3 + 2 + 1 + 1 = 35.
 
-**`VISIBLE_UI_PARITY_BEFORE_PERCENT`** — the same 33-row rubric scored against
-`CURRENT_BEFORE` instead: 14 rows were already `FULL`, 1 already `NEW_BETTER`, 1
-already `SUPERSEDED_BY_OWNER_DECISION` (16 of 33 needed no further work) ≈ **48%**.
+**`VISIBLE_UI_PARITY_BEFORE_PERCENT`** (unchanged historical figure, UI Parity
+Acceleration Pass's own before/after, 33-row rubric): **48%**.
 
-**`VISIBLE_UI_PARITY_AFTER_PERCENT`** (FULL + NEW_BETTER + SUPERSEDED, scored against
-`CURRENT_AFTER`): 24 + 1 + 1 = 26 of 33 ≈ **79%**.
+**`VISIBLE_UI_PARITY_AFTER_PERCENT` (UI Parity Acceleration Pass, pre-Slice-5)**:
+26 of 33 ≈ **79%**.
+
+**`VISIBLE_UI_PARITY_AFTER_PERCENT` (post-Slice-5, current)**: FULL + NEW_BETTER
++ SUPERSEDED = 28 + 1 + 1 = 30 of 35 ≈ **86%**.
+
+Remaining `MISSING`/`PARTIAL` rows after Slice 5 (7 of 35): environment/
+profile header indicator (row 2, Later - needs a backend contract change);
+More Filters' visual chrome staying a popover rather than a literal drawer
+(row 9, Later - already functionally equivalent); row-click-to-inspect (row
+13, Later - tied to Slice 4's own mandatory-Actions decision); context
+results staying newest-first rather than chronological (row 20, Later - a
+real pagination-safety risk, not laziness); dedicated Live keyboard
+shortcuts (row 31, Later - low value, every control is already one click
+away). None of these are Live-resilience items - Slice 5 closed every Live-
+specific gap this rubric tracked (rows 24/26/27/34/35 all now `FULL`).
 
 ---
 
@@ -162,24 +186,27 @@ already `SUPERSEDED_BY_OWNER_DECISION` (16 of 33 needed no further work) ≈ **4
   `ContextSummary.tsx`'s own copy is honest about this ("Sorted newest first, same
   as the main results table") rather than claiming a chronological presentation
   that does not actually exist.
-- **Live reconnect (bounded/visible backoff) and the follow-newest toggle remain
-  absent**, exactly as before this pass - both are real state-model additions, not
-  UI-only bolt-ons, and the mission explicitly says not to build the Slice 5
-  resilience engine here.
+- ~~Live reconnect (bounded/visible backoff) and the follow-newest toggle remain
+  absent~~ - **delivered by Legacy Remediation Slice 5** (`docs/verification/LEGACY_REMEDIATION_SLICE_5_REPORT.md`).
+  Left here, struck through, so the history of this pass's own honest gap-list
+  stays visible rather than silently rewritten.
 - **No environment/profile indicator in the header** - there is currently no
   profile/environment signal in any API response the frontend reads at all; adding
-  one is a backend contract change, out of this pass's frontend-only scope.
+  one is a backend contract change, out of this pass's frontend-only scope. Still
+  open after Slice 5 (not that slice's scope either).
 
 ## 5. Deferred
 
-- **Slice 5** (as explicitly named by the mission): Live reconnect with bounded,
+- ~~**Slice 5**~~ (as explicitly named by the mission): Live reconnect with bounded,
   visible, cancellable exponential backoff; the follow-newest toggle's frozen-view/
-  unseen-count/jump-to-latest state model.
-- **Later** (no committed slice yet): environment/profile header indicator (needs a
-  backend contract change first); converting More Filters' visual chrome to a
-  literal right-side drawer; revisiting row-click-to-inspect against Slice 4's own
-  mandatory-Actions decision; chronological (ascending) context ordering (needs its
-  own pagination-safety design); dedicated Live control keyboard shortcuts.
+  unseen-count/jump-to-latest state model. **Completed** - see
+  `docs/verification/LEGACY_REMEDIATION_SLICE_5_REPORT.md`.
+- **Later** (no committed slice yet, still open after Slice 5): environment/profile
+  header indicator (needs a backend contract change first); converting More Filters'
+  visual chrome to a literal right-side drawer; revisiting row-click-to-inspect
+  against Slice 4's own mandatory-Actions decision; chronological (ascending)
+  context ordering (needs its own pagination-safety design); dedicated Live control
+  keyboard shortcuts.
 
 ---
 
