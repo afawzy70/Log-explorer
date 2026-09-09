@@ -87,10 +87,23 @@
   font-size: var(--font-size-sm);
 }
 
+/*
+ * Deliberately `justify-content: flex-end`, every button anchored to the
+ * panel's own right edge (never `space-between`) - this panel is
+ * `position: absolute; right: 0` relative to its trigger (Toolbar.module.css),
+ * so if the toolbar wraps and the trigger ends up near the page's LEFT
+ * edge, the panel's own left edge can fall at a deeply negative page X
+ * coordinate; a button anchored to that structurally-fragile left edge
+ * (an earlier draft put Reset there via `space-between`) can end up
+ * genuinely unreachable, with no scroll mechanism able to bring it back
+ * on-screen (found via this pass's own real-browser E2E run, not a code
+ * read - see docs/verification/UI_PARITY_ACCELERATION_REPORT.md).
+ */
 .actions {
   margin-top: var(--space-3);
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: var(--space-2);
   border-top: var(--border-width) solid var(--color-border);
   padding-top: var(--space-3);

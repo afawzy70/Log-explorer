@@ -151,6 +151,24 @@ export function useLiveTail() {
     setConnectionState('stopped');
   }, [closeEventSource]);
 
+  /**
+   * "Clear" (UI Parity Acceleration Pass §9 - LIVE-07 in the pre-pass
+   * capability matrix, `NEW_MISSING`): empties the displayed/buffered
+   * view and resets every count, but - unlike Stop - never touches the
+   * connection itself. `connectionState` is left exactly as it was, so a
+   * live/paused stream keeps streaming (or stays paused) straight through
+   * a Clear; only what has accumulated on screen (and, if paused, in the
+   * paused buffer) is discarded.
+   */
+  const clear = useCallback(() => {
+    pausedBufferRef.current = [];
+    setVisibleEvents([]);
+    setTotalReceived(0);
+    setBufferedCount(0);
+    setClientDroppedCount(0);
+    setServerDroppedCount(0);
+  }, []);
+
   /** Leaves live mode entirely (the app's own "back to search results" action) - always safe to call, active or not. */
   const exit = useCallback(() => {
     closeEventSource();
@@ -178,6 +196,7 @@ export function useLiveTail() {
     resume,
     exit,
     stop,
+    clear,
   };
 }
 

@@ -7,6 +7,7 @@ import { JourneyView } from '../features/journey/JourneyView';
 import { LiveTailPanel } from '../features/live/LiveTailPanel';
 import { useLiveTail } from '../features/live/useLiveTail';
 import { useSearchState } from './useSearchState';
+import { useGlobalShortcuts } from './useGlobalShortcuts';
 import styles from './App.module.css';
 
 /**
@@ -26,6 +27,7 @@ import styles from './App.module.css';
 export default function App() {
   const state = useSearchState();
   const live = useLiveTail();
+  useGlobalShortcuts(state.runSearch);
 
   const liveModeActive = live.connectionState !== 'idle';
 

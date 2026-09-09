@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from 'react';
 import type { JourneyField, LogEvent } from '../../shared/api/types';
 import { COLUMN_REGISTRY_BY_ID, DEFAULT_COLUMN_ORDER, DEFAULT_HIDDEN_COLUMN_IDS, ACTIONS_COLUMN_WIDTH } from './columnRegistry';
 import type { ColumnId } from './columnRegistry';
@@ -36,6 +37,14 @@ import styles from './ResultsTable.module.css';
  * Both are optional so this component still works standalone in
  * tests/stories that don't need them wired up. `density` only ever
  * changes CSS (row height/padding) - never re-fetches or re-shapes data.
+ *
+ * <p><b>Arrow-key row navigation</b> (UI Parity Acceleration Pass §6/§10 -
+ * TABLE-06 in the pre-pass capability matrix, `NEW_PARTIAL`: OLD supported
+ * row-to-row Arrow key traversal, NEW previously only had Tab): `<tbody>`'s
+ * own `onKeyDown` moves focus to the next/previous row's Actions trigger
+ * on ArrowDown/ArrowUp - a pure focus move, never a selection or inspector
+ * side effect on its own. Actions remains the only inspection entry
+ * point; this only makes reaching a given row's Actions button faster.
  */
 export interface ResultsTableProps {
   events: LogEvent[];
@@ -47,6 +56,30 @@ export interface ResultsTableProps {
   /** Subset of `columnOrder` currently hidden - defaults to every optional column (i.e. exactly the seven-column default). */
   hiddenColumnIds?: ColumnId[];
   density?: TableDensity;
+}
+
+/** ArrowDown/ArrowUp within the table body move focus to the next/previous row's Actions button - see the module doc comment above. */
+function handleRowKeyDown(event: KeyboardEvent<HTMLTableSectionElement>) {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
+    return;
+  }
+  const row = (event.target as HTMLElement).closest('tr');
+  const tbody = row?.parentElement;
+  if (!row || !tbody) {
+    return;
+  }
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  const currentIndex = rows.indexOf(row);
+  if (currentIndex === -1) {
+    return;
+  }
+  const nextRow = rows[event.key === 'ArrowDown' ? currentIndex + 1 : currentIndex - 1];
+  const nextTrigger = nextRow?.querySelector<HTMLButtonElement>('button[aria-label="Actions for this event"]');
+  if (!nextTrigger) {
+    return;
+  }
+  event.preventDefault();
+  nextTrigger.focus();
 }
 
 export function ResultsTable({
@@ -85,7 +118,7 @@ export function ResultsTable({
             <th scope="col">Actions</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody onKeyDown={handleRowKeyDown}>
           {events.map((event, index) => (
             // Index is stable for the lifetime of one rendered result set
             // (events are never reordered/added mid-render - a fresh

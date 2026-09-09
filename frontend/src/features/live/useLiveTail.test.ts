@@ -224,4 +224,46 @@ describe('useLiveTail', () => {
     expect(first.closed).toBe(true);
     expect(second).not.toBe(first);
   });
+
+  describe('clear() (UI Parity Acceleration Pass §9 - LIVE-07)', () => {
+    it('empties the visible list and resets every count, but leaves the connection open', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      const source = latestMockEventSource();
+      act(() => source.emitOpen());
+      act(() => source.emit('log', event({ message: 'one' })));
+      act(() => source.emit('log', event({ message: 'two' })));
+      expect(result.current.visibleEvents).toHaveLength(2);
+      expect(result.current.totalReceived).toBe(2);
+
+      act(() => result.current.clear());
+
+      expect(result.current.visibleEvents).toEqual([]);
+      expect(result.current.totalReceived).toBe(0);
+      expect(result.current.connectionState).toBe('live'); // connection state untouched
+      expect(source.closed).toBe(false); // the real connection was never closed
+
+      // The stream is still genuinely live - a new event still arrives after Clear.
+      act(() => source.emit('log', event({ message: 'after-clear' })));
+      expect(result.current.visibleEvents).toHaveLength(1);
+      expect(result.current.visibleEvents[0].message).toBe('after-clear');
+    });
+
+    it('also discards the paused buffer while paused, without resuming', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() => result.current.pause());
+      act(() => latestMockEventSource().emit('log', event({ message: 'buffered' })));
+      expect(result.current.bufferedCount).toBe(1);
+
+      act(() => result.current.clear());
+
+      expect(result.current.bufferedCount).toBe(0);
+      expect(result.current.connectionState).toBe('paused'); // still paused, not resumed
+
+      act(() => result.current.resume());
+      expect(result.current.visibleEvents).toEqual([]); // the cleared buffer had nothing left to flush
+    });
+  });
 });

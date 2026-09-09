@@ -70,6 +70,7 @@ export function UniversalSearch({ value, onChange, onSubmit, onApplyDetectedFiel
         onChange={(event) => handleChange(event.target.value)}
         onKeyDown={handleKeyDown}
         aria-describedby={detected ? `${inputId}-suggestion` : undefined}
+        data-shortcut="universal-search"
       />
       {detected ? (
         <div id={`${inputId}-suggestion`} className={styles.suggestion} role="status">
