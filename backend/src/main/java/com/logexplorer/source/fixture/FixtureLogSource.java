@@ -45,7 +45,15 @@ import reactor.core.publisher.Mono;
 public class FixtureLogSource implements LogSource {
 
   private static final long SEED = 42L;
-  private static final int CORPUS_SIZE = 120;
+  /**
+   * Legacy Remediation Slice 1: large enough to exceed the default search
+   * page size ({@code logexplorer.search.default-limit}, 200) on its own,
+   * so a real, un-doctored browser search against this source genuinely
+   * needs "Load more" - the only way to demonstrate real pagination
+   * end-to-end (backend cursor + frontend append) without a live external
+   * Docker/Loki deployment that happens to have that much history.
+   */
+  private static final int CORPUS_SIZE = 250;
   private static final SourceCapabilities CAPABILITIES =
       new SourceCapabilities(true, true, false, true, false, false);
 

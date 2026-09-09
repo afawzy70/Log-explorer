@@ -13,14 +13,25 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.dockerjava.api.model.Container;
+import com.logexplorer.api.SearchService;
 import com.logexplorer.config.DockerProperties;
+import com.logexplorer.config.SearchGuardrailsProperties;
+import com.logexplorer.config.SourcesProperties;
+import com.logexplorer.core.guard.ConcurrencyGuard;
+import com.logexplorer.core.guard.SearchGuardrails;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.SearchRequest;
+import com.logexplorer.core.model.SearchResult;
 import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceHealth;
 import com.logexplorer.core.parse.LogLineParser;
+import com.logexplorer.core.search.PageCursorCodec;
+import com.logexplorer.source.LogSourceRegistry;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.test.StepVerifier;
@@ -380,6 +391,92 @@ class DockerLogSourceTest {
     subscription.dispose();
 
     verify(mockCloseable, org.mockito.Mockito.timeout(2000)).close();
+  }
+
+  /**
+   * Legacy Remediation Slice 1 - real multi-page traversal against {@link
+   * DockerLogSource} (mocked I/O, real merge/sort/{@code EventFilters})
+   * driven by a real {@link SearchService}, including two containers
+   * logging at the exact same instant straddling every page boundary -
+   * mandatory architecture correction #3 ("Loki duplicate-timestamp
+   * safety") applies identically to Docker's own cross-container ties.
+   */
+  @Test
+  void searchServicePaginationAcrossTwoContainersWithTiedTimestampsVisitsEveryEventExactlyOnce() {
+    Container c1 = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    Container c2 = container("c2", "proj-accounts-1", "proj", "accounts-api", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(c1, c2));
+
+    stubLogs("c1",
+        jsonLine("2026-01-01T00:00:00.000000000Z", "gateway", "c1-a"),
+        jsonLine("2025-12-31T23:59:59.000000000Z", "gateway", "c1-b"),
+        jsonLine("2025-12-31T23:59:58.000000000Z", "gateway", "c1-c"));
+    stubLogs("c2",
+        jsonLine("2026-01-01T00:00:00.000000000Z", "accounts-api", "c2-a"),
+        jsonLine("2025-12-31T23:59:59.000000000Z", "accounts-api", "c2-b"),
+        jsonLine("2025-12-31T23:59:58.000000000Z", "accounts-api", "c2-c"));
+
+    SearchGuardrailsProperties properties = new SearchGuardrailsProperties();
+    properties.setDefaultLimit(2);
+    properties.setMaxTimeRange(java.time.Duration.ofDays(800)); // wideOpenRequest() itself spans ~2 years
+    SearchService searchService = searchServiceFor(properties);
+
+    SearchResult page1 = searchService.search(wideOpenRequest().build()).block();
+    assertThat(page1.events()).extracting(CanonicalLogEvent::message).containsExactlyInAnyOrder("c1-a", "c2-a");
+    assertThat(page1.nextCursor()).isNotNull();
+
+    SearchResult page2 = searchService.search(wideOpenRequest().cursor(page1.nextCursor()).build()).block();
+    assertThat(page2.events()).extracting(CanonicalLogEvent::message).containsExactlyInAnyOrder("c1-b", "c2-b");
+    assertThat(page2.nextCursor()).isNotNull();
+
+    SearchResult page3 = searchService.search(wideOpenRequest().cursor(page2.nextCursor()).build()).block();
+    assertThat(page3.events()).extracting(CanonicalLogEvent::message).containsExactlyInAnyOrder("c1-c", "c2-c");
+    assertThat(page3.counts().truncated()).isFalse();
+    assertThat(page3.nextCursor()).isNull();
+
+    List<String> all = new ArrayList<>();
+    page1.events().forEach(e -> all.add(e.message()));
+    page2.events().forEach(e -> all.add(e.message()));
+    page3.events().forEach(e -> all.add(e.message()));
+    assertThat(new HashSet<>(all)).as("no event skipped or duplicated across pages").hasSize(6);
+  }
+
+  @Test
+  void paginationThroughSearchServiceEventuallyExhaustsAndTerminates() {
+    Container c1 = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(c1));
+    String[] lines = new String[12];
+    for (int i = 0; i < 12; i++) {
+      lines[i] = jsonLine(String.format("2026-01-01T00:00:%02d.000000000Z", 59 - i), "gateway", "event-" + i);
+    }
+    stubLogs("c1", lines);
+
+    SearchGuardrailsProperties properties = new SearchGuardrailsProperties();
+    properties.setDefaultLimit(5);
+    properties.setMaxTimeRange(java.time.Duration.ofDays(800)); // wideOpenRequest() itself spans ~2 years
+    SearchService searchService = searchServiceFor(properties);
+
+    Set<String> seen = new HashSet<>();
+    String cursor = null;
+    int guardAgainstInfiniteLoop = 0;
+    do {
+      SearchResult page = searchService.search(wideOpenRequest().cursor(cursor).build()).block();
+      for (CanonicalLogEvent e : page.events()) {
+        assertThat(seen.add(e.message())).as("no duplicate across pages").isTrue();
+      }
+      cursor = page.nextCursor();
+      guardAgainstInfiniteLoop++;
+      assertThat(guardAgainstInfiniteLoop).isLessThan(20);
+    } while (cursor != null);
+
+    assertThat(seen).hasSize(12);
+  }
+
+  private SearchService searchServiceFor(SearchGuardrailsProperties properties) {
+    SearchGuardrails guardrails = new SearchGuardrails(properties);
+    ConcurrencyGuard concurrencyGuard = new ConcurrencyGuard(properties);
+    LogSourceRegistry registry = new LogSourceRegistry(List.of(source), new SourcesProperties());
+    return new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()));
   }
 
   private SearchRequest.Builder wideOpenRequest() {

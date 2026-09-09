@@ -5,18 +5,29 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.logexplorer.api.SearchService;
 import com.logexplorer.config.LokiProperties;
+import com.logexplorer.config.SearchGuardrailsProperties;
+import com.logexplorer.config.SourcesProperties;
+import com.logexplorer.core.guard.ConcurrencyGuard;
+import com.logexplorer.core.guard.SearchGuardrails;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.SearchRequest;
+import com.logexplorer.core.model.SearchResult;
 import com.logexplorer.core.model.SourceHealth;
 import com.logexplorer.core.parse.LogLineParser;
 import com.logexplorer.core.query.ast.Comparison;
 import com.logexplorer.core.query.ast.Operator;
+import com.logexplorer.core.search.PageCursorCodec;
+import com.logexplorer.source.LogSourceRegistry;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import reactor.test.StepVerifier;
@@ -445,6 +456,120 @@ class LokiLogSourceTest {
 
     assertThatThrownBy(() -> source.search(request).blockLast())
         .isInstanceOf(IllegalStateException.class);
+  }
+
+  /**
+   * Legacy Remediation Slice 1, mandatory architecture correction #3
+   * ("Loki duplicate-timestamp safety") — the concrete proof this was
+   * written for: multiple Loki entries sharing the exact same content
+   * timestamp, straddling a page boundary, driven by a real {@link
+   * SearchService} against the real {@link LokiLogSource} (mocked HTTP
+   * transport only).
+   */
+  @Test
+  void identicalTimestampsAtALokiPageBoundaryAreNeverSkippedOrDuplicated() throws IOException {
+    mockServer = new MockLokiServer("/api/logs/v1", "application", "namespace", "app");
+    LokiProperties properties = propertiesFor(mockServer);
+    Map<String, String> labels = Map.of("namespace", "prod-ns", "app", "gateway");
+
+    List<List<String>> values = new ArrayList<>();
+    // Five entries tied at exactly the same instant, then three older
+    // entries each with a distinct timestamp - same shape as the Docker
+    // equivalent test, proven independently against Loki's own response
+    // format (the nanos value in each [nanos, line] pair is Loki's own
+    // ordering key and is deliberately irrelevant here - LokiLogSource
+    // derives the real timestamp from the parsed JSON line's @timestamp,
+    // never from this field).
+    values.add(List.of("1", lokiLine("2026-01-01T00:00:00.000Z", "gateway", "a")));
+    values.add(List.of("2", lokiLine("2026-01-01T00:00:00.000Z", "gateway", "b")));
+    values.add(List.of("3", lokiLine("2026-01-01T00:00:00.000Z", "gateway", "c")));
+    values.add(List.of("4", lokiLine("2026-01-01T00:00:00.000Z", "gateway", "d")));
+    values.add(List.of("5", lokiLine("2026-01-01T00:00:00.000Z", "gateway", "e")));
+    values.add(List.of("6", lokiLine("2025-12-31T23:59:59.000Z", "gateway", "f")));
+    values.add(List.of("7", lokiLine("2025-12-31T23:59:58.000Z", "gateway", "g")));
+    values.add(List.of("8", lokiLine("2025-12-31T23:59:57.000Z", "gateway", "h")));
+    mockServer.respondWithStreams(List.of(stream(labels, values)));
+
+    LokiLogSource source = sourceFor(properties);
+    SearchGuardrailsProperties guardrailsProperties = new SearchGuardrailsProperties();
+    guardrailsProperties.setDefaultLimit(3);
+    guardrailsProperties.setMaxTimeRange(Duration.ofDays(800));
+    SearchService searchService = searchServiceFor(source, guardrailsProperties);
+
+    SearchRequest.Builder request = SearchRequest.builder()
+        .sourceId(source.id())
+        .start(Instant.parse("2025-01-01T00:00:00Z"))
+        .end(Instant.parse("2027-01-01T00:00:00Z"));
+
+    SearchResult page1 = searchService.search(request.build()).block();
+    assertThat(page1.events()).extracting(CanonicalLogEvent::message).containsExactly("a", "b", "c");
+    assertThat(page1.nextCursor()).isNotNull();
+
+    SearchResult page2 = searchService.search(request.cursor(page1.nextCursor()).build()).block();
+    assertThat(page2.events()).extracting(CanonicalLogEvent::message).containsExactly("d", "e", "f");
+    assertThat(page2.nextCursor()).isNotNull();
+
+    SearchResult page3 = searchService.search(request.cursor(page2.nextCursor()).build()).block();
+    assertThat(page3.events()).extracting(CanonicalLogEvent::message).containsExactly("g", "h");
+    assertThat(page3.counts().truncated()).isFalse();
+    assertThat(page3.nextCursor()).isNull();
+
+    List<String> all = new ArrayList<>();
+    page1.events().forEach(e -> all.add(e.message()));
+    page2.events().forEach(e -> all.add(e.message()));
+    page3.events().forEach(e -> all.add(e.message()));
+    assertThat(new HashSet<>(all)).as("no event skipped or duplicated across pages").hasSize(8);
+  }
+
+  @Test
+  void multiPageTraversalThroughSearchServiceAgainstLokiVisitsEveryEventExactlyOnceThenExhausts() throws IOException {
+    mockServer = new MockLokiServer("/api/logs/v1", "application", "namespace", "app");
+    LokiProperties properties = propertiesFor(mockServer);
+    Map<String, String> labels = Map.of("namespace", "prod-ns", "app", "gateway");
+
+    List<List<String>> values = new ArrayList<>();
+    for (int i = 0; i < 11; i++) {
+      values.add(List.of(String.valueOf(i), lokiLine(String.format("2026-01-01T00:00:%02dZ", 59 - i), "gateway", "event-" + i)));
+    }
+    mockServer.respondWithStreams(List.of(stream(labels, values)));
+
+    LokiLogSource source = sourceFor(properties);
+    SearchGuardrailsProperties guardrailsProperties = new SearchGuardrailsProperties();
+    guardrailsProperties.setDefaultLimit(4);
+    guardrailsProperties.setMaxTimeRange(Duration.ofDays(800));
+    SearchService searchService = searchServiceFor(source, guardrailsProperties);
+
+    SearchRequest.Builder request = SearchRequest.builder()
+        .sourceId(source.id())
+        .start(Instant.parse("2025-01-01T00:00:00Z"))
+        .end(Instant.parse("2027-01-01T00:00:00Z"));
+
+    Set<String> seen = new HashSet<>();
+    String cursor = null;
+    int guardAgainstInfiniteLoop = 0;
+    do {
+      SearchResult page = searchService.search(request.cursor(cursor).build()).block();
+      for (CanonicalLogEvent e : page.events()) {
+        assertThat(seen.add(e.message())).as("no duplicate across pages").isTrue();
+      }
+      cursor = page.nextCursor();
+      guardAgainstInfiniteLoop++;
+      assertThat(guardAgainstInfiniteLoop).isLessThan(20);
+    } while (cursor != null);
+
+    assertThat(seen).hasSize(11);
+  }
+
+  private String lokiLine(String timestamp, String service, String message) {
+    return "{\"@timestamp\":\"" + timestamp + "\",\"message\":\"" + message
+        + "\",\"application\":\"" + service + "\",\"mdc\":{}}";
+  }
+
+  private SearchService searchServiceFor(LokiLogSource source, SearchGuardrailsProperties properties) {
+    SearchGuardrails guardrails = new SearchGuardrails(properties);
+    ConcurrencyGuard concurrencyGuard = new ConcurrencyGuard(properties);
+    LogSourceRegistry registry = new LogSourceRegistry(List.of(source), new SourcesProperties());
+    return new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()));
   }
 
   private Map<String, String> parseQuery(String rawQuery) {

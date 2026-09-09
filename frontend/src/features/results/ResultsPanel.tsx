@@ -77,6 +77,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
     return (
       <div className={styles.wrapper}>
         <Breadcrumb state={state} />
+        <RefreshRow state={state} />
         <p className={styles.empty}>
           No results for this range.{' '}
           <Button
@@ -101,11 +102,12 @@ export function ResultsPanel({ state }: { state: SearchState }) {
       <Breadcrumb state={state} />
       <div className={styles.summaryRow}>
         <p className={styles.summary}>
-          {buildCountsSummary(counts)}
+          {buildCountsSummary(counts, events.length)}
           {state.lastSearchedRange
             ? ` — showing results for ${formatInterval(state.lastSearchedRange.start, state.lastSearchedRange.end)}`
             : ''}
         </p>
+        <RefreshRow state={state} />
       </div>
       <ResultsTable
         events={events}
@@ -118,8 +120,32 @@ export function ResultsPanel({ state }: { state: SearchState }) {
           <Button variant="secondary" onClick={state.loadMore} disabled={state.loadingMore}>
             {state.loadingMore ? 'Loading…' : 'Load more'}
           </Button>
+          {state.loadMoreError ? (
+            <span className={styles.loadMoreError} role="alert">
+              {state.loadMoreError}{' '}
+              <Button variant="ghost" onClick={state.loadMore}>
+                Retry
+              </Button>
+            </span>
+          ) : null}
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * "Refresh" (Legacy Remediation Slice 1) - a compact workspace action, not
+ * a new card/control: re-runs the exact current committed search from page
+ * 1 (`state.refresh` is `runSearch` itself - see that state's own
+ * comment). Rendered whenever a search has actually run, including an
+ * empty-result view (re-running is exactly how a user notices new data
+ * has since appeared).
+ */
+function RefreshRow({ state }: { state: SearchState }) {
+  return (
+    <Button variant="ghost" onClick={state.refresh} disabled={state.searchLoading}>
+      ↻ Refresh
+    </Button>
   );
 }

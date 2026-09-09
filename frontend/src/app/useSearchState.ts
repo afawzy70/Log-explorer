@@ -32,6 +32,21 @@ function defaultTimeRange(): CommittedTimeRange {
 }
 
 /**
+ * A practical, non-sensitive content identity for one event (Legacy
+ * Remediation Slice 1) - used only for client-side defensive dedup of
+ * appended "Load more" pages, mirroring the backend's own
+ * `PageCursorCodec#eventFingerprint` in spirit (never touches
+ * `protectedFields`, the frontend never sees a raw sensitive value to
+ * begin with).
+ */
+function eventIdentity(e: LogEvent): string {
+  return [
+    e.timestamp, e.sourceId, e.containerId, e.pod, e.stream, e.rawLine ?? e.message,
+    e.logger, e.thread, e.traceId, e.spanId, e.correlationId, e.journeyId, e.eventId,
+  ].join('');
+}
+
+/**
  * A snapshot of every piece of state that composes one search + its
  * result - what "show context" (IMPLEMENTATION_PLAN.md "Phase H") saves
  * before replacing the visible search, and what "back to original search"
@@ -73,6 +88,13 @@ export function useSearchState() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  /**
+   * Legacy Remediation Slice 1 - deliberately separate from `searchError`:
+   * a failed "Load more" must never replace the results already on screen
+   * with a full-page error state (the already-loaded events stay exactly
+   * as they were), only offer an inline retry next to the button itself.
+   */
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [lastSearchedRange, setLastSearchedRange] = useState<CommittedTimeRange | null>(null);
 
   /** The event inspector's selection (IMPLEMENTATION_PLAN.md "Phase H") - an index into `searchResult.events`, since events have no stable id (see `ResultsTable`'s own comment on why it keys by index). */
@@ -215,6 +237,7 @@ export function useSearchState() {
     const controller = supersedeActiveRequest();
     setSearchLoading(true);
     setSearchError(null);
+    setLoadMoreError(null); // a fresh search always starts back at page 1
     // A genuinely new, user-initiated search invalidates the inspector's
     // selection (row indices belong to the list about to be replaced),
     // any "back to original search" breadcrumb (this new search IS the
@@ -248,13 +271,16 @@ export function useSearchState() {
 
   /**
    * "One pagination model (bounded cursor)" (scope item 9) - appends the
-   * next page's events to what's already shown, using the exact cursor
-   * the backend returned. Currently unreachable in practice: no adapter
-   * populates `SearchResult#nextCursor` yet (`SearchService#toResult`
-   * always returns `null`), so this button never renders today - built
-   * correctly and tested regardless, so it works the moment a future
-   * phase wires real cursor pagination server-side, and to prove by
-   * construction there is only ever one pagination model.
+   * next page's events to what's already shown, using the exact opaque
+   * cursor the backend returned (Legacy Remediation Slice 1 wires a real,
+   * integrity-protected cursor server-side; this hook's own contract with
+   * it is unchanged from Phase G). Appended events are deduped defensively
+   * against everything already on screen (`eventIdentity`) - belt-and-
+   * suspenders on top of the backend's own boundary-safe pagination, never
+   * trusting a single line of defense. A page-load failure never touches
+   * `searchResult` (already-loaded events stay visible) and is reported
+   * through `loadMoreError`, not `searchError` - see that state's own
+   * comment.
    */
   const loadMore = useCallback(() => {
     const cursor = searchResult?.nextCursor;
@@ -267,20 +293,23 @@ export function useSearchState() {
     }
     const controller = supersedeActiveRequest();
     setLoadingMore(true);
-    setSearchError(null);
+    setLoadMoreError(null);
     runSearchApi(body, controller.signal)
       .then((result) => {
-        setSearchResult((prev) =>
-          prev
-            ? { events: [...prev.events, ...result.events], counts: result.counts, nextCursor: result.nextCursor }
-            : result,
-        );
+        setSearchResult((prev) => {
+          if (!prev) {
+            return result;
+          }
+          const seen = new Set(prev.events.map(eventIdentity));
+          const newEvents = result.events.filter((e) => !seen.has(eventIdentity(e)));
+          return { events: [...prev.events, ...newEvents], counts: result.counts, nextCursor: result.nextCursor };
+        });
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') {
           return;
         }
-        setSearchError(error instanceof Error ? error.message : 'Search failed');
+        setLoadMoreError(error instanceof Error ? error.message : 'Loading more results failed');
       })
       .finally(() => {
         if (activeRequestRef.current === controller) {
@@ -483,8 +512,19 @@ export function useSearchState() {
     searchLoading,
     loadingMore,
     searchError,
+    loadMoreError,
     lastSearchedRange,
     runSearch,
+    /**
+     * "Refresh" (Legacy Remediation Slice 1) - re-runs the exact committed
+     * search from page 1: same source/filters/time interval, cancels any
+     * in-flight request, and never touches un-applied draft filter state -
+     * `runSearch` already does precisely this (it never carries a cursor
+     * forward), so Refresh is not a separate code path, only a second
+     * name for the same one, kept distinct here for callers/tests that
+     * want to express "re-run" intent explicitly rather than "run".
+     */
+    refresh: runSearch,
     loadMore,
     selectedIndex,
     selectedEvent,

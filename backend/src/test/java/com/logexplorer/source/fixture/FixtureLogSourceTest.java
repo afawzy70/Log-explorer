@@ -3,12 +3,22 @@ package com.logexplorer.source.fixture;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.logexplorer.api.SearchService;
+import com.logexplorer.config.SearchGuardrailsProperties;
+import com.logexplorer.config.SourcesProperties;
+import com.logexplorer.core.guard.ConcurrencyGuard;
+import com.logexplorer.core.guard.SearchGuardrails;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.SearchRequest;
+import com.logexplorer.core.model.SearchResult;
 import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.parse.LogLineParser;
+import com.logexplorer.core.search.PageCursorCodec;
+import com.logexplorer.source.LogSourceRegistry;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import reactor.test.StepVerifier;
 
@@ -227,6 +237,66 @@ class FixtureLogSourceTest {
     // Both independently start at their own index 0 - proves subscriptions
     // don't share mutable counter state.
     assertThat(first.message()).isEqualTo(second.message());
+  }
+
+  /**
+   * Legacy Remediation Slice 1 - real multi-page traversal against the
+   * deterministic fixture corpus, driven by a real {@link SearchService}.
+   * The corpus's exact size/timestamp shape is an implementation detail of
+   * {@code FixtureCorpusGenerator} this test deliberately does not
+   * hardcode - it instead proves the pagination invariant directly: paging
+   * with a small limit visits exactly the same set of events, with no
+   * skips and no duplicates, as one single unpaginated wide-open search.
+   */
+  @Test
+  void multiPageTraversalThroughSearchServiceVisitsExactlyTheSameEventsAsOneUnpaginatedSearch() {
+    SearchGuardrailsProperties baseline = new SearchGuardrailsProperties();
+    baseline.setDefaultLimit(10_000);
+    SearchService unpaginated = searchServiceFor(baseline);
+    SearchResult everything = unpaginated.search(wideOpenRequest().build()).block();
+    assertThat(everything.counts().truncated()).isFalse();
+    Set<String> expected = new HashSet<>();
+    everything.events().forEach(e -> expected.add(identity(e)));
+
+    SearchGuardrailsProperties paged = new SearchGuardrailsProperties();
+    paged.setDefaultLimit(9); // deliberately not a divisor of the corpus size
+    SearchService searchService = searchServiceFor(paged);
+
+    // Captured once, exactly like the frontend resends the same committed
+    // start/end on every Load More call (`useSearchState.ts#buildRequestBody`)
+    // - a cursor is bound to a fixed committed window, and re-resolving
+    // `wideOpenRequest()`'s own `Instant.now()` on every loop iteration
+    // would produce a subtly different start/end each time, which the
+    // cursor's own fingerprint binding (mandatory architecture correction
+    // #1) correctly rejects as a different search - proving the codec
+    // works, but not what this test is about.
+    SearchRequest.Builder committed = wideOpenRequest();
+
+    Set<String> seen = new HashSet<>();
+    String cursor = null;
+    int guardAgainstInfiniteLoop = 0;
+    do {
+      SearchResult page = searchService.search(committed.cursor(cursor).build()).block();
+      for (CanonicalLogEvent e : page.events()) {
+        assertThat(seen.add(identity(e))).as("no duplicate across pages").isTrue();
+      }
+      cursor = page.nextCursor();
+      guardAgainstInfiniteLoop++;
+      assertThat(guardAgainstInfiniteLoop).isLessThan(50);
+    } while (cursor != null);
+
+    assertThat(seen).isEqualTo(expected);
+  }
+
+  private String identity(CanonicalLogEvent e) {
+    return e.timestamp() + "|" + e.message() + "|" + e.service() + "|" + e.rawLine();
+  }
+
+  private SearchService searchServiceFor(SearchGuardrailsProperties properties) {
+    SearchGuardrails guardrails = new SearchGuardrails(properties);
+    ConcurrencyGuard concurrencyGuard = new ConcurrencyGuard(properties);
+    LogSourceRegistry registry = new LogSourceRegistry(List.of(source), new SourcesProperties());
+    return new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()));
   }
 
   private SearchRequest.Builder wideOpenRequest() {

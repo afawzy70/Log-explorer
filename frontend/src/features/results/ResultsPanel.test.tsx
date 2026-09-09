@@ -82,8 +82,10 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     searchLoading: false,
     loadingMore: false,
     searchError: null,
+    loadMoreError: null,
     lastSearchedRange: null,
     runSearch: vi.fn(),
+    refresh: vi.fn(),
     loadMore: vi.fn(),
     selectedIndex: null,
     selectedEvent: null,
@@ -198,6 +200,74 @@ describe('ResultsPanel', () => {
     expect(screen.queryByRole('button', { name: /^next/i })).not.toBeInTheDocument();
   });
 
+  it('a loadMoreError renders inline next to Load more, with a Retry action, without replacing the already-shown table', async () => {
+    const user = userEvent.setup();
+    const loadMore = vi.fn();
+    render(
+      <ResultsPanel
+        state={baseState({
+          searchResult: { events: [baseEvent()], counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true }, nextCursor: 'cursor-1' },
+          loadMore,
+          loadMoreError: 'Loading more results failed',
+        })}
+      />,
+    );
+
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Loading more results failed');
+
+    await user.click(screen.getByRole('button', { name: /retry/i }));
+    expect(loadMore).toHaveBeenCalledTimes(1);
+  });
+
+  it('clicking Refresh calls refresh, never runSearch directly', async () => {
+    const user = userEvent.setup();
+    const refresh = vi.fn();
+    const runSearch = vi.fn();
+    render(
+      <ResultsPanel
+        state={baseState({
+          searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null },
+          refresh,
+          runSearch,
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /refresh/i }));
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(runSearch).not.toHaveBeenCalled();
+  });
+
+  it('Refresh is also offered from the empty-results state', () => {
+    render(
+      <ResultsPanel
+        state={baseState({
+          searchResult: { events: [], counts: { estimatedTotal: 0, returned: 0, visible: 0, limit: 200, truncated: false }, nextCursor: null },
+        })}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /refresh/i })).toBeInTheDocument();
+  });
+
+  it('the counts summary reflects the cumulative event count after Load More, not just the latest page', () => {
+    render(
+      <ResultsPanel
+        state={baseState({
+          searchResult: {
+            events: [baseEvent(), baseEvent(), baseEvent()],
+            counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
+            nextCursor: 'cursor-2',
+          },
+        })}
+      />,
+    );
+    // Cumulative (3, the real events.length) must be shown, never the
+    // latest page's own returned=1.
+    expect(screen.getByText(/showing 3 events loaded/i)).toBeInTheDocument();
+    expect(screen.queryByText(/of 1/i)).not.toBeInTheDocument();
+  });
+
   it('has no detectable accessibility violations in the loading, empty, and results states', async () => {
     const { container, rerender } = render(<ResultsPanel state={baseState({ searchLoading: true })} />);
     expect(await axe(container)).toHaveNoViolations();
@@ -213,6 +283,16 @@ describe('ResultsPanel', () => {
       <ResultsPanel
         state={baseState({
           searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null },
+        })}
+      />,
+    );
+    expect(await axe(container)).toHaveNoViolations();
+
+    rerender(
+      <ResultsPanel
+        state={baseState({
+          searchResult: { events: [baseEvent()], counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true }, nextCursor: 'cursor-1' },
+          loadMoreError: 'Loading more results failed',
         })}
       />,
     );

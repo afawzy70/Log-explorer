@@ -2,6 +2,7 @@ package com.logexplorer.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.logexplorer.config.SearchGuardrailsProperties;
 import com.logexplorer.config.SourcesProperties;
 import com.logexplorer.core.guard.ConcurrencyGuard;
@@ -11,6 +12,7 @@ import com.logexplorer.core.guard.TooManyConcurrentSearchesException;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.SourceCapabilities;
+import com.logexplorer.core.search.PageCursorCodec;
 import com.logexplorer.source.LogSourceRegistry;
 import com.logexplorer.source.StubLogSource;
 import com.logexplorer.source.UnknownSourceException;
@@ -35,7 +37,7 @@ class SearchServiceTest {
     SearchGuardrails guardrails = new SearchGuardrails(properties);
     ConcurrencyGuard concurrencyGuard = new ConcurrencyGuard(properties);
     LogSourceRegistry registry = new LogSourceRegistry(List.of(stub), new SourcesProperties());
-    return new SearchService(registry, guardrails, concurrencyGuard);
+    return new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()));
   }
 
   private SearchRequest.Builder baseRequest() {
@@ -158,7 +160,7 @@ class SearchServiceTest {
     SearchGuardrails guardrails = new SearchGuardrails(properties);
     ConcurrencyGuard concurrencyGuard = new ConcurrencyGuard(properties);
     LogSourceRegistry registry = new LogSourceRegistry(List.of(lokiLike), new SourcesProperties());
-    SearchService service = new SearchService(registry, guardrails, concurrencyGuard);
+    SearchService service = new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()));
 
     SearchRequest request = SearchRequest.builder()
         .sourceId("openshift-loki").start(NOW.minusSeconds(60)).end(NOW)

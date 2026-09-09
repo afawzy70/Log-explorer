@@ -320,9 +320,24 @@ test.describe('Task 6 - Failure states', () => {
     await page.getByRole('button', { name: /^search$/i }).click();
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10_000 });
     // The fixture corpus deterministically includes a malformed line once
-    // per cycle (FixtureCorpusGenerator) - scroll through a real page of
-    // results to find it rather than assuming row position.
-    await expect(page.getByText(/malformed/i).first()).toBeVisible({ timeout: 10_000 });
+    // per cycle (FixtureCorpusGenerator). Malformed events have no parsed
+    // timestamp and always sort last (never dropped, CLAUDE.md §4
+    // "Parsing") - since the corpus now genuinely exceeds one page
+    // (Legacy Remediation Slice 1's own fixture-sizing change), that can
+    // put them past page 1's boundary, so page via the real "Load more"
+    // control (never assuming row position, and never simulating data
+    // that isn't really there) until one is found or the source is
+    // exhausted.
+    const malformedText = page.getByText(/malformed/i).first();
+    const loadMoreButton = page.getByRole('button', { name: /^load more$/i });
+    for (let clicks = 0; clicks < 15 && !(await malformedText.isVisible().catch(() => false)); clicks++) {
+      if (!(await loadMoreButton.isVisible().catch(() => false))) {
+        break;
+      }
+      await loadMoreButton.click();
+      await page.waitForTimeout(50);
+    }
+    await expect(malformedText).toBeVisible({ timeout: 10_000 });
     await captureScreenshot(page, 'm', 'task6-malformed-raw-line');
   });
 });

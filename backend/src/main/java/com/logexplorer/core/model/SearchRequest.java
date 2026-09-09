@@ -65,6 +65,23 @@ public record SearchRequest(
 
   public enum Direction { FORWARD, BACKWARD }
 
+  /**
+   * A copy of this request with only {@code end} replaced - used by {@code
+   * api.SearchService} (Legacy Remediation Slice 1) to narrow the window
+   * sent to a {@code LogSource} for a continuation page, while every filter
+   * field (and therefore what the search "means") stays byte-for-byte
+   * identical to the original request. {@code cursor} is intentionally
+   * carried through unchanged; the caller only ever calls this once, before
+   * dispatch, and never re-reads {@code cursor()} off the scoped copy.
+   */
+  public SearchRequest withEnd(Instant newEnd) {
+    return new SearchRequest(
+        sourceId, start, newEnd, direction, limit, services, levels, text,
+        traceId, spanId, correlationId, journeyId, eventId, errorCode,
+        businessStep, uiIdentifier, loggerContains, devicePlatform, language,
+        containerId, pod, sensitiveFilters, query, rawLogQl, cursor);
+  }
+
   @Override
   public String toString() {
     return "SearchRequest[sourceId=" + sourceId

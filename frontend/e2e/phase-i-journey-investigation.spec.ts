@@ -71,7 +71,20 @@ test('"Find this Journey ID" from the inspector opens a real, multi-trace, cross
   }
   expect(journeyId, 'expected at least one multi-event journey in the fixture corpus').not.toBe('');
 
+  // The candidate event's row may not be on page 1: the fixture corpus
+  // now genuinely exceeds the default page size (Legacy Remediation
+  // Slice 1's own fixture-sizing change), so page via the real "Load
+  // more" control until it appears, rather than assuming it always fit
+  // on one page as every matching event previously did.
   const row = page.locator('tbody tr').filter({ hasText: traceIdInThatJourney });
+  const loadMoreButton = page.getByRole('button', { name: /^load more$/i });
+  for (let clicks = 0; clicks < 15 && !(await row.first().isVisible().catch(() => false)); clicks++) {
+    if (!(await loadMoreButton.isVisible().catch(() => false))) {
+      break;
+    }
+    await loadMoreButton.click();
+    await page.waitForTimeout(50);
+  }
   await row.getByRole('button', { name: /actions for this event/i }).click();
   await page.getByRole('menuitem', { name: /inspect event/i }).click();
   await expect(page.getByRole('dialog', { name: /event details/i })).toBeVisible();

@@ -200,6 +200,151 @@ describe('useSearchState', () => {
     expect(result.current.searchResult?.events.map((e) => e.message)).toEqual(['page-1', 'page-2']);
   });
 
+  it('loadMore dedupes defensively when the server response overlaps an already-shown event', async () => {
+    const result = await renderReady();
+
+    act(() => result.current.runSearch());
+    await waitFor(() => expect(searchCalls).toHaveLength(1));
+    searchCalls[0].resolve(
+      jsonResponse({
+        events: [eventWithMessage('page-1')],
+        counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
+        nextCursor: 'cursor-abc',
+      }),
+    );
+    await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
+
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(searchCalls).toHaveLength(2));
+    searchCalls[1].resolve(
+      jsonResponse({
+        // "page-1" reappears (a defensive belt-and-suspenders case even
+        // though the backend's own boundary-safe cursor should prevent
+        // this) alongside one genuinely new event.
+        events: [eventWithMessage('page-1'), eventWithMessage('page-2')],
+        counts: { estimatedTotal: null, returned: 2, visible: 2, limit: 2, truncated: false },
+        nextCursor: null,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(2));
+    expect(result.current.searchResult?.events.map((e) => e.message)).toEqual(['page-1', 'page-2']);
+  });
+
+  it('a loadMore failure sets loadMoreError (not searchError) and keeps the already-loaded results visible; retry via loadMore again succeeds', async () => {
+    const result = await renderReady();
+
+    act(() => result.current.runSearch());
+    await waitFor(() => expect(searchCalls).toHaveLength(1));
+    searchCalls[0].resolve(
+      jsonResponse({
+        events: [eventWithMessage('page-1')],
+        counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
+        nextCursor: 'cursor-abc',
+      }),
+    );
+    await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
+
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(searchCalls).toHaveLength(2));
+    searchCalls[1].resolve(new Response('{"status":500,"detail":"page load boom"}', { status: 500 }));
+
+    await waitFor(() => expect(result.current.loadMoreError).not.toBeNull());
+    expect(result.current.searchError).toBeNull();
+    // Already-loaded results are untouched by the failed page load.
+    expect(result.current.searchResult?.events).toHaveLength(1);
+    expect(result.current.searchResult?.events[0].message).toBe('page-1');
+    expect(result.current.searchResult?.nextCursor).toBe('cursor-abc');
+
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(searchCalls).toHaveLength(3));
+    expect(searchCalls[2].body).toContain('cursor-abc');
+    searchCalls[2].resolve(
+      jsonResponse({
+        events: [eventWithMessage('page-2')],
+        counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: false },
+        nextCursor: null,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(2));
+    expect(result.current.loadMoreError).toBeNull();
+  });
+
+  it('opening the inspector before loadMore preserves the selection after the next page is appended', async () => {
+    const result = await renderReady();
+
+    act(() => result.current.runSearch());
+    await waitFor(() => expect(searchCalls).toHaveLength(1));
+    searchCalls[0].resolve(
+      jsonResponse({
+        events: [eventWithMessage('page-1')],
+        counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
+        nextCursor: 'cursor-abc',
+      }),
+    );
+    await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
+
+    act(() => result.current.openInspector(0));
+    expect(result.current.selectedEvent?.message).toBe('page-1');
+
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(searchCalls).toHaveLength(2));
+    searchCalls[1].resolve(
+      jsonResponse({
+        events: [eventWithMessage('page-2')],
+        counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: false },
+        nextCursor: null,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(2));
+    expect(result.current.selectedIndex).toBe(0);
+    expect(result.current.selectedEvent?.message).toBe('page-1');
+  });
+
+  it('refresh re-runs the exact committed search from page 1, using committed filters rather than any un-applied draft', async () => {
+    const result = await renderReady();
+
+    act(() => result.current.runSearch());
+    await waitFor(() => expect(searchCalls).toHaveLength(1));
+    searchCalls[0].resolve(
+      jsonResponse({
+        events: [eventWithMessage('page-1')],
+        counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
+        nextCursor: 'cursor-abc',
+      }),
+    );
+    await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
+
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(searchCalls).toHaveLength(2));
+    searchCalls[1].resolve(
+      jsonResponse({
+        events: [eventWithMessage('page-2')],
+        counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: false },
+        nextCursor: null,
+      }),
+    );
+    await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(2));
+
+    act(() => result.current.refresh());
+    await waitFor(() => expect(searchCalls).toHaveLength(3));
+    // Refresh's own request never carries a cursor forward - it's a page-1 request.
+    expect(searchCalls[2].body).not.toContain('cursor-abc');
+    searchCalls[2].resolve(
+      jsonResponse({
+        events: [eventWithMessage('page-1')],
+        counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
+        nextCursor: 'cursor-def',
+      }),
+    );
+
+    await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
+    expect(result.current.searchResult?.events[0].message).toBe('page-1');
+    expect(result.current.searchResult?.nextCursor).toBe('cursor-def');
+  });
+
   it('loadMore does nothing when there is no nextCursor', async () => {
     const result = await renderReady();
 
