@@ -62,9 +62,14 @@ class InMemoryFilteringLogSource implements LogSource {
 
   @Override
   public Flux<CanonicalLogEvent> search(SearchRequest request) {
+    // Sorted by source-native timestamp, direction-of-travel order
+    // (Legacy Remediation Slice 1 recovery, mandatory blockers #1/#2) -
+    // mirroring exactly what every real adapter now does.
+    boolean forward = request.direction() == SearchRequest.Direction.FORWARD;
+    Comparator<Instant> nativeOrder = forward ? Comparator.naturalOrder() : Comparator.reverseOrder();
     List<CanonicalLogEvent> matched = corpus.stream()
         .filter(e -> EventFilters.matches(e, request))
-        .sorted(Comparator.comparing(CanonicalLogEvent::timestamp, Comparator.nullsLast(Comparator.reverseOrder())))
+        .sorted(Comparator.comparing(CanonicalLogEvent::sourceTimestamp, Comparator.nullsLast(nativeOrder)))
         .toList();
     return Flux.fromIterable(matched);
   }

@@ -25,40 +25,53 @@ import reactor.core.publisher.Mono;
 /**
  * Orchestrates one bounded search: resolve the source, validate/derive
  * guardrails, apply the concurrency cap, decode/validate any pagination
- * cursor and narrow the query window accordingly, enforce the request
+ * cursor and hand the source the decoded boundary, enforce the request
  * timeout, and turn the result into a truthful {@link SearchResult}
  * (Legacy Remediation Slice 1, {@code
  * docs/LEGACY_TO_NEW_REMEDIATION_PLAN.md} §"Slice 1 — Result-set
- * completeness").
+ * completeness"; recovered per the owner/reviewer's mandatory architecture
+ * corrections after PR #18's first review).
  *
- * <p><b>Pagination model.</b> None of the three {@code LogSource}
- * implementations offer a native "resume after this row" cursor - Docker's
- * log API and Loki's {@code query_range} both only ever support "the
- * newest N entries within [start, end]" (their own {@code tail}/{@code
- * limit} parameters). So a continuation page is obtained by re-issuing the
- * exact same search with {@code end} narrowed to the previous page's oldest
- * (boundary) timestamp, +1ns so that timestamp is included rather than
- * excluded (every source's own filtering already treats {@code end} as
- * exclusive - see {@code core.search.EventFilters} - narrowing this way
- * needs no change to that shared, heavily-depended-on rule). Events at
- * exactly the boundary timestamp that the previous page already returned
- * are then filtered back out using {@link PageCursor#boundaryKeys()},
- * which is exactly what makes it safe for two different events to share a
- * timestamp at a page boundary (mandatory architecture correction #3 -
- * "Loki duplicate-timestamp safety"): nothing is ever skipped (a re-fetched
- * event either matches a boundary key, in which case it is a real
- * duplicate and dropped, or it doesn't, in which case it is genuinely new
- * and kept) and nothing is ever duplicated in what the caller sees.
+ * <p><b>Source-native pagination position (mandatory blocker #1).</b> The
+ * parsed *application* timestamp ({@link CanonicalLogEvent#timestamp()})
+ * is {@code null} for a malformed/non-JSON line, and can genuinely differ
+ * from the source's own clock even when present (clock skew, a
+ * backdated/forwarded log entry). Pagination continuation is instead keyed
+ * on {@link CanonicalLogEvent#sourceTimestamp()} — Docker's own log-frame
+ * receive time, Loki's stream-entry nanosecond timestamp, or fixture's own
+ * deterministic per-index instant — which every adapter always knows,
+ * malformed lines included. The displayed/canonical timestamp is entirely
+ * unaffected by this; only pagination continuation uses the native clock.
  *
- * <p><b>Totals.</b> Mandatory architecture correction #4 ("truthful
- * totals"): {@code estimatedTotal} is populated with an exact count only
- * when page 1 (no cursor yet) turns out not to be truncated - i.e. every
- * matching event within the whole committed search window was seen in one
- * bounded scan, so the count is genuinely complete, not an undercount
- * hidden by this source's own per-request read bound. Every other case
- * (page 1 truncated, or any later page) reports {@code null} - explicit
- * UNKNOWN, never a fabricated or silently-reused number, and never Loki's
- * own separate, expensive count query.
+ * <p><b>Direction-aware continuation (mandatory blocker #2).</b> {@link
+ * SearchRequest#direction()} is honored, not assumed: for {@code BACKWARD}
+ * (the default — newest-first), continuation moves the boundary toward
+ * *older* native timestamps; for {@code FORWARD} (oldest-first), toward
+ * *newer* ones. Every {@code LogSource} implementation sorts its own
+ * result by {@code sourceTimestamp} in the direction-of-travel order
+ * (descending for BACKWARD, ascending for FORWARD) — this class trusts
+ * that order (the last element of a page is always "farthest along in the
+ * direction of travel") rather than re-deriving it, and never silently
+ * treats FORWARD as BACKWARD.
+ *
+ * <p><b>Duplicate-native-timestamp safety.</b> Events at exactly the
+ * boundary native timestamp that the previous page already returned are
+ * filtered back out using {@link PageCursor#boundaryTieKeys()} (a keyed
+ * HMAC per event, mandatory blocker #3 — never a plain/public hash),
+ * which is what makes it safe for two different events to share a native
+ * timestamp at a page boundary: nothing is ever skipped (a re-fetched
+ * event either matches a tie key, in which case it is a real duplicate and
+ * dropped, or it doesn't, in which case it is genuinely new and kept) and
+ * nothing is ever duplicated in what the caller sees.
+ *
+ * <p><b>Totals.</b> {@code estimatedTotal} is populated with an exact
+ * count only when page 1 (no cursor yet) turns out not to be truncated -
+ * i.e. every matching event within the whole committed search window was
+ * seen in one bounded scan, so the count is genuinely complete, not an
+ * undercount hidden by this source's own per-request read bound. Every
+ * other case (page 1 truncated, or any later page) reports {@code null} -
+ * explicit UNKNOWN, never a fabricated or silently-reused number, and
+ * never Loki's own separate, expensive count query.
  */
 @Component
 public class SearchService {
@@ -84,10 +97,13 @@ public class SearchService {
 
       // Decoded/verified before the source is ever queried - an invalid
       // cursor must never silently fall back to "page 1" or reach a
-      // LogSource at all (mandatory architecture correction #1).
+      // LogSource at all. request.start()/end() (the canonical committed
+      // window) are left completely untouched here - only the new,
+      // separate pageBoundary field carries the decoded native-clock
+      // continuation point, so EventFilters' canonical-timestamp
+      // filtering can never be corrupted by a native-clock value.
       PageCursor cursor = cursorCodec.decodeAndValidate(request);
-      Instant queryEnd = cursor == null ? request.end() : cursor.boundaryTimestamp().plusNanos(1);
-      SearchRequest scoped = cursor == null ? request : request.withEnd(queryEnd);
+      SearchRequest scoped = cursor == null ? request : request.withPageBoundary(cursor.boundarySourceTimestamp());
 
       Flux<CanonicalLogEvent> guarded = concurrencyGuard.guard(source.search(scoped));
 
@@ -98,9 +114,9 @@ public class SearchService {
       // call capped at LokiProperties#maxResultsPerQuery; fixture: its
       // fixed, small in-memory corpus) - collecting the whole thing here
       // adds no new unbounded-memory risk beyond what each adapter already
-      // accepts today (mandatory architecture correction #5 - "preserve
-      // bounds"), and is what makes a truthful, non-guessed truncation
-      // signal and (on an unpaginated first page) an exact total possible.
+      // accepts today, and is what makes a truthful, non-guessed
+      // truncation signal and (on an unpaginated first page) an exact
+      // total possible.
       return guarded
           .collectList()
           .timeout(validated.timeout())
@@ -125,25 +141,23 @@ public class SearchService {
   }
 
   private SearchResult toResult(List<CanonicalLogEvent> fetched, int effectiveLimit, SearchRequest originalRequest, PageCursor incoming) {
+    boolean backward = originalRequest.direction() != SearchRequest.Direction.FORWARD;
+
     List<CanonicalLogEvent> deduped = incoming == null
         ? fetched
-        : fetched.stream().filter(e -> !isAlreadySeenAtBoundary(e, incoming)).toList();
+        : fetched.stream().filter(e -> keepForContinuation(e, incoming, backward)).toList();
 
     boolean moreWithinThisFetch = deduped.size() > effectiveLimit;
     List<CanonicalLogEvent> page = moreWithinThisFetch ? deduped.subList(0, effectiveLimit) : deduped;
 
-    // A next cursor can fail to be derivable even when moreWithinThisFetch
-    // is true (every event on this page has no parsed timestamp - see
-    // findBoundary's javadoc; a real scenario, not just a theoretical
-    // one - found via this slice's own real-Docker verification against
-    // containers whose log lines don't parse to the expected schema, so
-    // every event on the page is a malformed fallback). In that rare edge
-    // case, offering a cursor could skip or duplicate on the next call,
-    // so pagination honestly stops there - but `truncated` must still
-    // reflect reality (more data exists, it just cannot be safely paged
-    // to) rather than silently claiming the page was complete, which
-    // would be exactly the "malformed lines... never silently dropped"
-    // violation this whole slice exists to close.
+    // A next cursor can fail to be derivable only if every event on this
+    // page somehow has no source-native timestamp at all (should not
+    // happen - every adapter always sets one, even for malformed/non-JSON
+    // lines - defensive only). In that rare edge case, offering a cursor
+    // could skip or duplicate on the next call, so pagination honestly
+    // stops there - but `truncated` must still reflect reality (more data
+    // exists, it just cannot be safely paged to) rather than silently
+    // claiming the page was complete.
     String nextCursor = moreWithinThisFetch ? buildNextCursor(page, originalRequest, incoming) : null;
     boolean truncated = moreWithinThisFetch;
 
@@ -155,41 +169,64 @@ public class SearchService {
     return new SearchResult(page, counts, nextCursor);
   }
 
-  private boolean isAlreadySeenAtBoundary(CanonicalLogEvent e, PageCursor incoming) {
-    return e.timestamp() != null
-        && e.timestamp().equals(incoming.boundaryTimestamp())
-        && incoming.boundaryKeys().contains(PageCursorCodec.eventFingerprint(e));
+  /**
+   * Direction-aware: for BACKWARD, keep events whose native timestamp is
+   * strictly older than the boundary, or exactly at it but not already
+   * returned (tie key not in {@code incoming.boundaryTieKeys()}); for
+   * FORWARD, the mirror image (strictly newer, or exactly-at-and-new).
+   */
+  private boolean keepForContinuation(CanonicalLogEvent e, PageCursor incoming, boolean backward) {
+    Instant ts = e.sourceTimestamp();
+    if (ts == null) {
+      // No native timestamp at all - should never happen (every adapter
+      // always sets one) but never silently drop an event we cannot prove
+      // was already returned.
+      return true;
+    }
+    int cmp = ts.compareTo(incoming.boundarySourceTimestamp());
+    if (cmp == 0) {
+      return !incoming.boundaryTieKeys().contains(cursorCodec.boundaryTieKey(e));
+    }
+    return backward ? cmp < 0 : cmp > 0;
   }
 
-  /**
-   * Never {@code null} unless every event on {@code page} has no parsed
-   * timestamp (malformed events sort last but are never dropped -
-   * CLAUDE.md §4 "Parsing" - so a page can, in principle, be nothing but
-   * malformed events at the very tail of a source's bounded history). In
-   * that rare edge case there is no safe timestamp to narrow the next
-   * query by, so pagination stops there rather than risk an incorrect
-   * boundary - correctness over completeness.
-   */
   private String buildNextCursor(List<CanonicalLogEvent> page, SearchRequest originalRequest, PageCursor incoming) {
     Optional<Instant> boundary = findBoundary(page);
     if (boundary.isEmpty()) {
       return null;
     }
     Instant boundaryTimestamp = boundary.get();
-    Set<String> boundaryKeys = new LinkedHashSet<>();
+    Set<String> tieKeys = new LinkedHashSet<>();
+    // A tied-timestamp group larger than one page (e.g. 5 events sharing
+    // the exact same native instant, with a page size of 3) takes more
+    // than one page to get through. If this page's boundary is still the
+    // *same* native instant as the incoming cursor's, the events already
+    // consumed from that group on earlier pages must stay excluded too -
+    // carry their tie keys forward rather than starting a fresh, page-
+    // local-only set (a real bug found and fixed while writing this
+    // recovery's own tests: without this carry-forward, an earlier page's
+    // already-returned event at the shared boundary could reappear once
+    // the tie-key set "moved on" to a later page's own subset).
+    if (incoming != null && boundaryTimestamp.equals(incoming.boundarySourceTimestamp())) {
+      tieKeys.addAll(incoming.boundaryTieKeys());
+    }
     for (CanonicalLogEvent e : page) {
-      if (boundaryTimestamp.equals(e.timestamp())) {
-        boundaryKeys.add(PageCursorCodec.eventFingerprint(e));
+      if (boundaryTimestamp.equals(e.sourceTimestamp())) {
+        tieKeys.add(cursorCodec.boundaryTieKey(e));
       }
     }
     int nextPageIndex = (incoming == null ? 1 : incoming.pageIndex() + 1);
-    return cursorCodec.encode(originalRequest, boundaryTimestamp, boundaryKeys, nextPageIndex);
+    return cursorCodec.encode(originalRequest, boundaryTimestamp, tieKeys, nextPageIndex);
   }
 
-  /** The last (oldest, since every source sorts newest-first) event on the page that actually has a parsed timestamp. */
+  /**
+   * The last event on the page (in direction-of-travel order, as sorted by
+   * the source) that actually has a source-native timestamp - in practice
+   * always the very last element, since every adapter always sets one.
+   */
   private Optional<Instant> findBoundary(List<CanonicalLogEvent> page) {
     for (int i = page.size() - 1; i >= 0; i--) {
-      Instant ts = page.get(i).timestamp();
+      Instant ts = page.get(i).sourceTimestamp();
       if (ts != null) {
         return Optional.of(ts);
       }

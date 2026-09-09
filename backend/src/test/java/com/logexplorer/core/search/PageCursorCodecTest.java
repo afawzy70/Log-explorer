@@ -7,14 +7,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.logexplorer.core.guard.GuardrailViolationException;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.SearchRequest;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.Set;
+
 import org.junit.jupiter.api.Test;
 
 /**
  * Legacy Remediation Slice 1, mandatory architecture correction #1
- * ("cursor must be opaque, integrity-protected and search-bound"). These
- * tests are the concrete proof behind that requirement - not the
+ * ("cursor must be opaque, integrity-protected and search-bound") and
+ * mandatory blocker #3 from the recovery round ("keyed cursor
+ * fingerprints — replace deterministic public hashes with keyed HMAC").
+ * These tests are the concrete proof behind those requirements - not the
  * production behavior of {@code SearchService} (see {@code
  * SearchServicePaginationTest}/adapter-level pagination tests for that).
  */
@@ -44,8 +48,8 @@ class PageCursorCodecTest {
     PageCursor decoded = codec.decodeAndValidate(baseRequest().cursor(cursor).build());
 
     assertThat(decoded.sourceId()).isEqualTo("local-docker");
-    assertThat(decoded.boundaryTimestamp()).isEqualTo(BOUNDARY);
-    assertThat(decoded.boundaryKeys()).containsExactlyInAnyOrder("key-a", "key-b");
+    assertThat(decoded.boundarySourceTimestamp()).isEqualTo(BOUNDARY);
+    assertThat(decoded.boundaryTieKeys()).containsExactlyInAnyOrder("key-a", "key-b");
     assertThat(decoded.pageIndex()).isEqualTo(1);
   }
 
@@ -175,14 +179,15 @@ class PageCursorCodecTest {
 
     PageCursor decoded = codec.decodeAndValidate(continuation);
     assertThat(decoded).isNotNull();
-    assertThat(decoded.boundaryTimestamp()).isEqualTo(BOUNDARY);
+    assertThat(decoded.boundarySourceTimestamp()).isEqualTo(BOUNDARY);
     assertThat(decoded.pageIndex()).isEqualTo(2);
   }
 
   @Test
-  void eventFingerprintNeverReadsSensitiveFields() {
+  void boundaryTieKeyNeverReadsSensitiveFields() {
     CanonicalLogEvent event = CanonicalLogEvent.builder()
         .timestamp(BOUNDARY)
+        .sourceTimestamp(BOUNDARY)
         .message("hello")
         .sensitive(new com.logexplorer.core.model.RawSensitiveFields(
             "should-not-matter-1", "should-not-matter-2", "should-not-matter-3", "should-not-matter-4", "should-not-matter-5"))
@@ -191,14 +196,108 @@ class PageCursorCodecTest {
         .sensitive(new com.logexplorer.core.model.RawSensitiveFields("x", "y", "z", "a", "b"))
         .build();
 
-    assertThat(PageCursorCodec.eventFingerprint(event))
-        .isEqualTo(PageCursorCodec.eventFingerprint(sameButDifferentSensitiveValues));
+    assertThat(codec.boundaryTieKey(event))
+        .isEqualTo(codec.boundaryTieKey(sameButDifferentSensitiveValues));
   }
 
   @Test
-  void eventFingerprintDistinguishesGenuinelyDifferentEvents() {
-    CanonicalLogEvent a = CanonicalLogEvent.builder().timestamp(BOUNDARY).message("a").build();
-    CanonicalLogEvent b = CanonicalLogEvent.builder().timestamp(BOUNDARY).message("b").build();
-    assertThat(PageCursorCodec.eventFingerprint(a)).isNotEqualTo(PageCursorCodec.eventFingerprint(b));
+  void boundaryTieKeyDistinguishesGenuinelyDifferentEvents() {
+    CanonicalLogEvent a = CanonicalLogEvent.builder().timestamp(BOUNDARY).sourceTimestamp(BOUNDARY).message("a").build();
+    CanonicalLogEvent b = CanonicalLogEvent.builder().timestamp(BOUNDARY).sourceTimestamp(BOUNDARY).message("b").build();
+    assertThat(codec.boundaryTieKey(a)).isNotEqualTo(codec.boundaryTieKey(b));
+  }
+
+  // ---------------------------------------------------------------------
+  // Mandatory blocker #3 — "keyed cursor fingerprints"
+  // ---------------------------------------------------------------------
+
+  @Test
+  void sameInputAndSameKeyProduceAStableRequestBindingFingerprint() {
+    SearchRequest request = baseRequest().sensitiveFilters("12345678", null, null, null, null).build();
+    assertThat(codec.requestBindingFingerprint(request)).isEqualTo(codec.requestBindingFingerprint(request));
+  }
+
+  @Test
+  void sameInputAndSameKeyProduceAStableBoundaryTieKey() {
+    CanonicalLogEvent event = CanonicalLogEvent.builder().timestamp(BOUNDARY).sourceTimestamp(BOUNDARY).message("hello").build();
+    assertThat(codec.boundaryTieKey(event)).isEqualTo(codec.boundaryTieKey(event));
+  }
+
+  @Test
+  void sameInputWithADifferentProcessKeyProducesADifferentRequestBindingFingerprint() {
+    // A second codec instance = a second process boot = a different
+    // randomly-generated master key (PageCursorCodec's own constructor).
+    PageCursorCodec otherProcessCodec = new PageCursorCodec(new ObjectMapper());
+    SearchRequest request = baseRequest().sensitiveFilters("12345678", null, null, null, null).build();
+
+    assertThat(codec.requestBindingFingerprint(request))
+        .isNotEqualTo(otherProcessCodec.requestBindingFingerprint(request));
+  }
+
+  @Test
+  void sameInputWithADifferentProcessKeyProducesADifferentBoundaryTieKey() {
+    PageCursorCodec otherProcessCodec = new PageCursorCodec(new ObjectMapper());
+    CanonicalLogEvent event = CanonicalLogEvent.builder().timestamp(BOUNDARY).sourceTimestamp(BOUNDARY).message("hello").build();
+
+    assertThat(codec.boundaryTieKey(event)).isNotEqualTo(otherProcessCodec.boundaryTieKey(event));
+  }
+
+  @Test
+  void aCursorFromOneProcessIsRejectedWhenDecodedByAnotherProcesssCodec() {
+    // The practical consequence of keyed (not plain) fingerprints: a
+    // cursor is bound to the process/key that issued it, not just to the
+    // logical search - restarting the process invalidates every
+    // outstanding cursor, which is intended (see PageCursorCodec's own
+    // "Signing key and subkeys" javadoc).
+    PageCursorCodec otherProcessCodec = new PageCursorCodec(new ObjectMapper());
+    SearchRequest request = baseRequest().build();
+    String cursorFromThisProcess = codec.encode(request, BOUNDARY, Set.of(), 1);
+
+    SearchRequest withCursor = baseRequest().cursor(cursorFromThisProcess).build();
+    assertThatThrownBy(() -> otherProcessCodec.decodeAndValidate(withCursor))
+        .isInstanceOf(GuardrailViolationException.class);
+  }
+
+  @Test
+  void theRequestBindingFingerprintIsNeverAPlainUnkeyedSha256OfTheBasisString() {
+    // A regression guard specifically against reintroducing mandatory
+    // blocker #3's exact defect: a plain, public SHA-256 (computable by
+    // anyone, without this process's key) would make a low-entropy raw
+    // sensitive value (e.g. a CIF) offline-guessable by hashing candidates
+    // and comparing to what's embedded in the cursor. The keyed HMAC must
+    // never coincide with an independently-computed plain SHA-256 of any
+    // reasonable representation of the same request.
+    SearchRequest request = baseRequest().sensitiveFilters("12345678", null, null, null, null).build();
+    String keyed = codec.requestBindingFingerprint(request);
+
+    String plainShaOfCif = sha256Hex("12345678");
+    String plainShaOfSourceId = sha256Hex("local-docker");
+    assertThat(keyed).isNotEqualTo(plainShaOfCif).isNotEqualTo(plainShaOfSourceId);
+  }
+
+  @Test
+  void aCursorContainsNoDeterministicPublicHashRepresentationOfTheBoundaryEvent() {
+    CanonicalLogEvent event = CanonicalLogEvent.builder()
+        .timestamp(BOUNDARY).sourceTimestamp(BOUNDARY).message("secret-looking-content").build();
+    String plainShaOfMessage = sha256Hex("secret-looking-content");
+
+    Set<String> tieKeys = Set.of(codec.boundaryTieKey(event));
+    String cursor = codec.encode(baseRequest().build(), BOUNDARY, tieKeys, 1);
+
+    assertThat(cursor).doesNotContain(plainShaOfMessage);
+    assertThat(tieKeys.iterator().next()).isNotEqualTo(plainShaOfMessage);
+  }
+
+  private static String sha256Hex(String input) {
+    try {
+      byte[] digest = MessageDigest.getInstance("SHA-256").digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+      StringBuilder hex = new StringBuilder(digest.length * 2);
+      for (byte b : digest) {
+        hex.append(String.format("%02x", b));
+      }
+      return hex.toString();
+    } catch (Exception e) {
+      throw new IllegalStateException(e);
+    }
   }
 }

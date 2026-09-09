@@ -8,7 +8,6 @@ import com.logexplorer.core.model.RawSensitiveFields;
 import com.logexplorer.core.model.SearchRequest;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
@@ -21,83 +20,110 @@ import org.springframework.stereotype.Component;
 
 /**
  * Encodes/decodes the opaque {@code SearchRequest#cursor()} used for
- * bounded historical-search pagination (Legacy Remediation Slice 1,
- * {@code docs/LEGACY_TO_NEW_REMEDIATION_PLAN.md} §"Slice 1"). Mandatory
- * architecture correction #1 from that plan's owner-approved scope: the
+ * bounded historical-search pagination (Legacy Remediation Slice 1, {@code
+ * docs/LEGACY_TO_NEW_REMEDIATION_PLAN.md} §"Slice 1"; recovered per the
+ * owner/reviewer's mandatory architecture corrections after PR #18's first
+ * review). Mandatory correction #1 (from Slice 1's original approval): the
  * cursor must be opaque, integrity-protected, and bound to the exact
- * search it was issued for - never a plain, editable value.
+ * search it was issued for. Mandatory blocker #3 (from the recovery
+ * round): every fingerprint embedded in the cursor must be a *keyed* HMAC,
+ * never a plain/public deterministic hash — a public SHA-256 of a
+ * low-entropy raw value (e.g. a CIF) is offline-guessable by anyone who
+ * can compute SHA-256 and sees the cursor, without ever needing this
+ * process's key; a keyed HMAC is not.
  *
- * <p><b>Signing key.</b> Generated once, in memory, at process start via
- * {@link SecureRandom} - not configured, not persisted, never logged. A
- * cursor is a short-lived, single-pagination-session artifact (its whole
- * purpose ends the moment the investigator's search changes or the process
- * restarts), so a fresh random key per boot gives real tamper-evidence
- * without adding a new long-lived secret to operate or rotate - simpler and
- * safer than reusing/inventing a persistent shared secret for this.
+ * <p><b>Signing key and subkeys.</b> A single master key is generated
+ * once, in memory, at process start via {@link SecureRandom} — not
+ * configured, not persisted, never logged. A cursor is a short-lived,
+ * single-pagination-session artifact, so a fresh random key per boot gives
+ * real tamper-evidence without a new long-lived secret to operate or
+ * rotate. Two independent subkeys are derived from it via HMAC-SHA256
+ * (RFC 2104-style key derivation — {@code HMAC(masterKey, label)}), so a
+ * key used for one purpose can never be reused to attack the other:
+ * <ul>
+ *   <li>{@code request-binding} — signs {@link #requestBindingFingerprint},
+ *   the fingerprint of "what this search means" (source, time range,
+ *   filters, including the five raw sensitive values fed into the keyed
+ *   digest, never stored verbatim).
+ *   <li>{@code boundary-event} — signs {@link #boundaryTieKey}, the
+ *   fingerprint identifying one specific already-returned event at a
+ *   shared native-timestamp boundary.
+ * </ul>
+ * The outer cursor envelope itself (payload + signature) is still signed
+ * with the master key directly, exactly as before.
  *
- * <p><b>What it binds.</b> {@link #requestFingerprint} hashes (SHA-256,
- * one-way) every field of the {@link SearchRequest} that defines "what this
- * search means" - source, time range, direction, limit, and every
- * structured/text/DSL/raw-LogQL filter, including the five raw sensitive
- * values. Per the plan's explicit instruction ("do not put raw sensitive
- * search values inside the cursor; prefer a canonical request fingerprint
- * rather than embedding raw filters") the raw values are fed into the
- * one-way digest and never appear in the cursor's own payload - only the
- * digest does. {@code cursor} itself is excluded (it is the pagination
- * position, not part of "what this search means"). A cursor decoded
- * against a request whose recomputed fingerprint differs is rejected - a
- * cursor from search A can never be replayed to widen or change search B.
+ * <p><b>What the request-binding fingerprint covers.</b> Every field of
+ * the {@link SearchRequest} that defines "what this search means" - source,
+ * time range, direction, limit, and every structured/text/DSL/raw-LogQL
+ * filter, including the five raw sensitive values. A cursor decoded
+ * against a request whose recomputed fingerprint differs, or whose {@code
+ * sourceId} differs, is rejected — a cursor from search A can never be
+ * replayed to widen or change search B.
  *
- * <p><b>Boundary dedup keys.</b> {@link #eventFingerprint} is a second,
- * separate, non-cryptographic content fingerprint used only to recognize
- * "the exact same event, already returned" across a page boundary - see
- * {@link PageCursor}'s own javadoc for why that is necessary. It never
- * touches {@link CanonicalLogEvent#sensitive()}.
+ * <p><b>Source-native pagination position (mandatory blocker #1).</b> The
+ * boundary carried in the cursor is {@link CanonicalLogEvent#sourceTimestamp()}
+ * — the adapter's own native clock — never {@link CanonicalLogEvent#timestamp()}
+ * (the parsed application timestamp, which is {@code null} for a
+ * malformed/non-JSON line even though the source-native clock is always
+ * known). {@code boundarySourceEpochNanos} is a plain, non-sensitive
+ * position marker (comparable to a timestamp) and is never hashed.
+ * {@link #boundaryTieKey} is a second, keyed fingerprint used only to
+ * recognize "the exact same event, already returned" when multiple events
+ * share that exact native instant (mandatory blocker #1's tests: "multiple
+ * Docker events share application timestamp but have different engine
+ * timestamps", "multiple Loki events share identical source-native
+ * timestamp"). It never touches {@link CanonicalLogEvent#sensitive()}.
  *
- * <p>The boundary timestamp round-trips through the cursor as epoch
- * milliseconds ({@link PageCursorPayload}), not {@code java.time.Instant} -
+ * <p>The boundary instant round-trips through the cursor as epoch
+ * nanoseconds ({@link PageCursorPayload}), not {@code java.time.Instant} -
  * deliberately, so this codec's correctness never depends on Jackson's
  * {@code JavaTimeModule} being registered on whatever {@code ObjectMapper}
- * is injected. Every timestamp {@link com.logexplorer.core.parse.LogLineParser}
- * produces already has at most millisecond precision (parsed from JSON
- * timestamp strings), so this loses no real information in practice.
+ * is injected.
  */
 @Component
 public class PageCursorCodec {
 
-  private static final int VERSION = 1;
+  private static final int VERSION = 2;
   private static final String HMAC_ALGORITHM = "HmacSHA256";
+  private static final String REQUEST_BINDING_SUBKEY_LABEL = "request-binding";
+  private static final String BOUNDARY_EVENT_SUBKEY_LABEL = "boundary-event";
   private static final Base64.Encoder URL_ENCODER = Base64.getUrlEncoder().withoutPadding();
   private static final Base64.Decoder URL_DECODER = Base64.getUrlDecoder();
 
   private final ObjectMapper objectMapper;
-  private final SecretKeySpec signingKey;
+  private final SecretKeySpec requestBindingSubkey;
+  private final SecretKeySpec boundaryEventSubkey;
+  private final SecretKeySpec envelopeSigningKey;
 
   public PageCursorCodec(ObjectMapper objectMapper) {
     this.objectMapper = objectMapper;
-    byte[] keyBytes = new byte[32];
-    new SecureRandom().nextBytes(keyBytes);
-    this.signingKey = new SecretKeySpec(keyBytes, HMAC_ALGORITHM);
+    byte[] masterKeyBytes = new byte[32];
+    new SecureRandom().nextBytes(masterKeyBytes);
+    SecretKeySpec masterKey = new SecretKeySpec(masterKeyBytes, HMAC_ALGORITHM);
+    this.envelopeSigningKey = masterKey;
+    this.requestBindingSubkey = deriveSubkey(masterKey, REQUEST_BINDING_SUBKEY_LABEL);
+    this.boundaryEventSubkey = deriveSubkey(masterKey, BOUNDARY_EVENT_SUBKEY_LABEL);
   }
 
   /**
    * Builds the next page's cursor from the request that just ran, the
-   * timestamp of the oldest event on the page just returned ("boundary"),
-   * and the fingerprints of every event on that page which shares that
-   * exact timestamp ("boundary keys" - see {@link PageCursor}).
+   * *source-native* timestamp of the boundary event on the page just
+   * returned, and the tie-break keys of every event on that page which
+   * shares that exact native instant (see {@link PageCursor}).
    */
-  public String encode(SearchRequest request, Instant boundaryTimestamp, Set<String> boundaryKeys, int pageIndex) {
+  public String encode(SearchRequest request, Instant boundarySourceTimestamp, Set<String> boundaryTieKeys, int pageIndex) {
+    long nanos = boundarySourceTimestamp.getEpochSecond() * 1_000_000_000L + boundarySourceTimestamp.getNano();
     PageCursorPayload payload = new PageCursorPayload(
         VERSION,
         request.sourceId(),
-        boundaryTimestamp.toEpochMilli(),
-        new TreeSet<>(boundaryKeys),
+        nanos,
+        new TreeSet<>(boundaryTieKeys),
         request.direction().name(),
         pageIndex,
-        requestFingerprint(request));
+        requestBindingFingerprint(request));
     byte[] payloadBytes = writePayload(payload);
     String payloadPart = URL_ENCODER.encodeToString(payloadBytes);
-    String signaturePart = URL_ENCODER.encodeToString(hmac(payloadBytes));
+    String signaturePart = URL_ENCODER.encodeToString(hmac(envelopeSigningKey, payloadBytes));
     return payloadPart + "." + signaturePart;
   }
 
@@ -124,12 +150,15 @@ public class PageCursorCodec {
     if (!payload.sourceId().equals(request.sourceId())) {
       throw invalid();
     }
-    if (!payload.requestFingerprint().equals(requestFingerprint(request))) {
+    if (!payload.requestBindingHmac().equals(requestBindingFingerprint(request))) {
       throw invalid();
     }
+    Instant boundary = Instant.ofEpochSecond(
+        Math.floorDiv(payload.boundarySourceEpochNanos(), 1_000_000_000L),
+        Math.floorMod(payload.boundarySourceEpochNanos(), 1_000_000_000L));
     return new PageCursor(
-        payload.version(), payload.sourceId(), Instant.ofEpochMilli(payload.boundaryEpochMillis()),
-        Set.copyOf(payload.boundaryKeys()), payload.direction(), payload.pageIndex(), payload.requestFingerprint());
+        payload.version(), payload.sourceId(), boundary,
+        Set.copyOf(payload.boundaryTieKeys()), payload.direction(), payload.pageIndex(), payload.requestBindingHmac());
   }
 
   private PageCursorPayload decodeVerified(String cursor) {
@@ -145,7 +174,7 @@ public class PageCursorCodec {
     } catch (IllegalArgumentException e) {
       throw invalid();
     }
-    byte[] expectedSignature = hmac(payloadBytes);
+    byte[] expectedSignature = hmac(envelopeSigningKey, payloadBytes);
     if (!MessageDigest.isEqual(signature, expectedSignature)) {
       throw invalid();
     }
@@ -161,17 +190,21 @@ public class PageCursorCodec {
       return objectMapper.writeValueAsBytes(payload);
     } catch (Exception e) {
       // PageCursorPayload's fields are all plain, already-serializable
-      // types (int/String/Instant/Set<String>) - this cannot happen in
+      // types (int/long/String/Set<String>) - this cannot happen in
       // practice, but never surface a raw Jackson exception (which could
       // echo field values) if it somehow did.
       throw invalid();
     }
   }
 
-  private byte[] hmac(byte[] data) {
+  private static SecretKeySpec deriveSubkey(SecretKeySpec masterKey, String label) {
+    return new SecretKeySpec(hmac(masterKey, label.getBytes(StandardCharsets.UTF_8)), HMAC_ALGORITHM);
+  }
+
+  private static byte[] hmac(SecretKeySpec key, byte[] data) {
     try {
       Mac mac = Mac.getInstance(HMAC_ALGORITHM);
-      mac.init(signingKey);
+      mac.init(key);
       return mac.doFinal(data);
     } catch (Exception e) {
       throw new IllegalStateException("HMAC computation failed", e);
@@ -183,13 +216,16 @@ public class PageCursorCodec {
   }
 
   /**
-   * SHA-256 over every field that defines "what this search means" (see
-   * class javadoc). Raw sensitive filter values are fed into the digest,
-   * never stored verbatim anywhere in the cursor.
+   * Keyed HMAC-SHA256 (never a plain/public hash — mandatory blocker #3)
+   * over every field that defines "what this search means" (see class
+   * javadoc). Raw sensitive filter values are fed into the keyed digest,
+   * never stored verbatim anywhere in the cursor. Package-private so
+   * {@code SearchService} never needs to import a crypto primitive itself
+   * and {@code PageCursorCodecTest} can assert on it directly.
    */
-  String requestFingerprint(SearchRequest r) {
+  String requestBindingFingerprint(SearchRequest r) {
     RawSensitiveFields sf = r.sensitiveFilters();
-    String basis = String.join("",
+    String basis = String.join("",
         n(r.sourceId()), n(r.start()), n(r.end()), n(r.direction()), n(r.limit()),
         joinSorted(r.services()), joinSorted(r.levels()), n(r.text()),
         n(r.traceId()), n(r.spanId()), n(r.correlationId()), n(r.journeyId()), n(r.eventId()),
@@ -197,21 +233,22 @@ public class PageCursorCodec {
         n(r.devicePlatform()), n(r.language()), n(r.containerId()), n(r.pod()),
         n(sf.cif()), n(sf.userName()), n(sf.customerId()), n(sf.deviceId()), n(sf.deviceIp()),
         n(r.query()), n(r.rawLogQl()));
-    return sha256Hex(basis);
+    return hmacHex(requestBindingSubkey, basis);
   }
 
   /**
-   * A stable, non-sensitive content fingerprint for one event - used only
-   * to recognize an exact duplicate at a page boundary (see
-   * {@link PageCursor}'s javadoc). Deliberately never reads {@link
-   * CanonicalLogEvent#sensitive()}.
+   * Keyed HMAC-SHA256 (never a plain/public hash — mandatory blocker #3)
+   * content fingerprint for one event, used only to recognize "the exact
+   * same event, already returned" when two events share the same {@link
+   * CanonicalLogEvent#sourceTimestamp()} at a page boundary. Deliberately
+   * never reads {@link CanonicalLogEvent#sensitive()}.
    */
-  public static String eventFingerprint(CanonicalLogEvent e) {
-    String basis = String.join("",
+  public String boundaryTieKey(CanonicalLogEvent e) {
+    String basis = String.join("",
         n(e.sourceId()), n(e.containerId()), n(e.pod()), n(e.stream()), n(e.timestampRaw()),
         n(e.rawLine()), n(e.message()), n(e.logger()), n(e.thread()),
         n(e.traceId()), n(e.spanId()), n(e.correlationId()), n(e.journeyId()), n(e.eventId()));
-    return sha256Hex(basis);
+    return hmacHex(boundaryEventSubkey, basis);
   }
 
   private static String joinSorted(List<String> values) {
@@ -219,19 +256,15 @@ public class PageCursorCodec {
   }
 
   private static String n(Object value) {
-    return value == null ? " " : value.toString();
+    return value == null ? " " : value.toString();
   }
 
-  private static String sha256Hex(String input) {
-    try {
-      byte[] digest = MessageDigest.getInstance("SHA-256").digest(input.getBytes(StandardCharsets.UTF_8));
-      StringBuilder hex = new StringBuilder(digest.length * 2);
-      for (byte b : digest) {
-        hex.append(String.format("%02x", b));
-      }
-      return hex.toString();
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("SHA-256 not available", e);
+  private static String hmacHex(SecretKeySpec key, String input) {
+    byte[] digest = hmac(key, input.getBytes(StandardCharsets.UTF_8));
+    StringBuilder hex = new StringBuilder(digest.length * 2);
+    for (byte b : digest) {
+      hex.append(String.format("%02x", b));
     }
+    return hex.toString();
   }
 }

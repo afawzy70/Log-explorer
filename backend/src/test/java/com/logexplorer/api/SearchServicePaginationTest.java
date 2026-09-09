@@ -45,8 +45,20 @@ class SearchServicePaginationTest {
     return new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()));
   }
 
+  /** Canonical (application/display) timestamp and source-native timestamp are the same value by default - see {@link #eventWithDivergentTimestamps} for the case where they differ. */
   private CanonicalLogEvent event(Instant timestamp, String message) {
-    return CanonicalLogEvent.builder().timestamp(timestamp).message(message).service("gateway").build();
+    return CanonicalLogEvent.builder().timestamp(timestamp).sourceTimestamp(timestamp).message(message).service("gateway").build();
+  }
+
+  /**
+   * Legacy Remediation Slice 1 recovery, mandatory blocker #1: the parsed
+   * application timestamp and the source-native pagination position are
+   * deliberately different values - pagination must follow {@code
+   * sourceTimestamp} exclusively, never {@code timestamp}.
+   */
+  private CanonicalLogEvent eventWithDivergentTimestamps(Instant canonicalTimestamp, Instant sourceTimestamp, String message) {
+    return CanonicalLogEvent.builder()
+        .timestamp(canonicalTimestamp).sourceTimestamp(sourceTimestamp).message(message).service("gateway").build();
   }
 
   private SearchRequest.Builder baseRequest(String sourceId) {
@@ -117,18 +129,142 @@ class SearchServicePaginationTest {
   }
 
   /**
+   * Legacy Remediation Slice 1 recovery, mandatory blocker #1's core
+   * promise: pagination continuation must follow {@code sourceTimestamp}
+   * (the source-native clock) exclusively, never {@code timestamp} (the
+   * parsed application timestamp) - deliberately constructed so the two
+   * disagree about ordering. If SearchService accidentally used {@code
+   * timestamp} anywhere in its pagination logic, this would fail (wrong
+   * page contents or a wrong/impossible boundary).
+   */
+  @Test
+  void paginationFollowsSourceNativeTimestampEvenWhenTheApplicationTimestampDisagreesAboutOrder() {
+    // Canonical timestamps ascend a->e (as if the JSON content were
+    // written out of order / backdated); source-native timestamps
+    // descend a->e (the true receive order) - deliberately inverted.
+    List<CanonicalLogEvent> corpus = List.of(
+        eventWithDivergentTimestamps(T0.minusSeconds(100), T0, "a"),
+        eventWithDivergentTimestamps(T0.minusSeconds(99), T0.minusSeconds(1), "b"),
+        eventWithDivergentTimestamps(T0.minusSeconds(98), T0.minusSeconds(2), "c"),
+        eventWithDivergentTimestamps(T0.minusSeconds(97), T0.minusSeconds(3), "d"),
+        eventWithDivergentTimestamps(T0.minusSeconds(96), T0.minusSeconds(4), "e"));
+    properties.setDefaultLimit(2);
+    SearchService service = serviceFor("divergent-source", corpus);
+
+    SearchResult page1 = service.search(baseRequest("divergent-source").build()).block();
+    // Newest-first BY SOURCE-NATIVE TIME is a,b - not e,d (which would be
+    // newest-first by the application timestamp instead).
+    assertThat(page1.events()).extracting(CanonicalLogEvent::message).containsExactly("a", "b");
+
+    SearchResult page2 = service.search(baseRequest("divergent-source").cursor(page1.nextCursor()).build()).block();
+    assertThat(page2.events()).extracting(CanonicalLogEvent::message).containsExactly("c", "d");
+
+    SearchResult page3 = service.search(baseRequest("divergent-source").cursor(page2.nextCursor()).build()).block();
+    assertThat(page3.events()).extracting(CanonicalLogEvent::message).containsExactly("e");
+    assertThat(page3.nextCursor()).isNull();
+  }
+
+  @Test
+  void forwardDirectionPaginationAdvancesTowardNewerEventsAndNeverSkipsOrDuplicates() {
+    // Legacy Remediation Slice 1 recovery, mandatory blocker #2: FORWARD
+    // must move the boundary toward *newer* source-native timestamps, the
+    // mirror image of BACKWARD - never silently treated as BACKWARD.
+    List<CanonicalLogEvent> corpus = IntStream.range(0, 11)
+        .mapToObj(i -> event(T0.minusSeconds(10 - i), "event-" + i)) // event-0 oldest .. event-10 newest
+        .toList();
+    properties.setDefaultLimit(4);
+    SearchService service = serviceFor("forward-source", corpus);
+    SearchRequest.Builder request = baseRequest("forward-source").direction(SearchRequest.Direction.FORWARD);
+
+    SearchResult page1 = service.search(request.build()).block();
+    assertThat(page1.events()).extracting(CanonicalLogEvent::message)
+        .containsExactly("event-0", "event-1", "event-2", "event-3");
+    assertThat(page1.nextCursor()).isNotNull();
+
+    SearchResult page2 = service.search(request.cursor(page1.nextCursor()).build()).block();
+    assertThat(page2.events()).extracting(CanonicalLogEvent::message)
+        .containsExactly("event-4", "event-5", "event-6", "event-7");
+
+    SearchResult page3 = service.search(request.cursor(page2.nextCursor()).build()).block();
+    assertThat(page3.events()).extracting(CanonicalLogEvent::message)
+        .containsExactly("event-8", "event-9", "event-10");
+    assertThat(page3.counts().truncated()).isFalse();
+    assertThat(page3.nextCursor()).isNull();
+  }
+
+  @Test
+  void forwardDirectionHandlesTiedSourceTimestampsAtAPageBoundaryWithNoSkipOrDuplicate() {
+    List<CanonicalLogEvent> corpus = List.of(
+        event(T0.minusSeconds(3), "a"), event(T0.minusSeconds(2), "b"),
+        event(T0, "c"), event(T0, "d"), event(T0, "e"), event(T0, "f"), event(T0, "g"));
+    properties.setDefaultLimit(3);
+    SearchService service = serviceFor("forward-tie-source", corpus);
+    SearchRequest.Builder request = baseRequest("forward-tie-source").direction(SearchRequest.Direction.FORWARD);
+
+    SearchResult page1 = service.search(request.build()).block();
+    assertThat(page1.events()).extracting(CanonicalLogEvent::message).containsExactly("a", "b", "c");
+
+    SearchResult page2 = service.search(request.cursor(page1.nextCursor()).build()).block();
+    assertThat(page2.events()).extracting(CanonicalLogEvent::message).containsExactly("d", "e", "f");
+
+    SearchResult page3 = service.search(request.cursor(page2.nextCursor()).build()).block();
+    assertThat(page3.events()).extracting(CanonicalLogEvent::message).containsExactly("g");
+    assertThat(page3.nextCursor()).isNull();
+
+    List<String> all = new ArrayList<>();
+    page1.events().forEach(e -> all.add(e.message()));
+    page2.events().forEach(e -> all.add(e.message()));
+    page3.events().forEach(e -> all.add(e.message()));
+    assertThat(all).containsExactly("a", "b", "c", "d", "e", "f", "g");
+  }
+
+  @Test
+  void aCursorIssuedForOneDirectionIsRejectedWhenReplayedWithTheOppositeDirection() {
+    // Mandatory blocker #2's own binding requirement: direction is part
+    // of "what this search means" - a BACKWARD cursor must not be usable
+    // to continue a FORWARD search or vice versa.
+    List<CanonicalLogEvent> corpus = IntStream.range(0, 5)
+        .mapToObj(i -> event(T0.minusSeconds(i), "event-" + i))
+        .toList();
+    properties.setDefaultLimit(2);
+    SearchService service = serviceFor("direction-rebind-source", corpus);
+
+    SearchResult backwardPage1 = service.search(
+        baseRequest("direction-rebind-source").direction(SearchRequest.Direction.BACKWARD).build()).block();
+    assertThat(backwardPage1.nextCursor()).isNotNull();
+
+    SearchRequest flippedDirection = baseRequest("direction-rebind-source")
+        .direction(SearchRequest.Direction.FORWARD)
+        .cursor(backwardPage1.nextCursor())
+        .build();
+    assertThatThrownBy(() -> service.search(flippedDirection).block())
+        .isInstanceOf(GuardrailViolationException.class)
+        .satisfies(e -> assertThat(((GuardrailViolationException) e).reason())
+            .isEqualTo(GuardrailViolationException.Reason.INVALID_CURSOR));
+  }
+
+  /**
    * A real edge case found via this slice's own live-Docker verification
    * (containers whose log lines don't parse to the expected schema, so
    * every returned event is a malformed fallback with no parsed
-   * timestamp - see {@code docs/verification/LEGACY_REMEDIATION_SLICE_1_REPORT.md}):
-   * when every event on a page has a null timestamp, no safe cursor
-   * boundary exists (so {@code nextCursor} is honestly {@code null}), but
-   * more matching events genuinely remain beyond the page limit -
-   * {@code truncated} must still say so, and {@code estimatedTotal} must
-   * never claim the page was the complete, exact total.
+   * application timestamp - see {@code docs/verification/LEGACY_REMEDIATION_SLICE_1_REPORT.md}):
+   * before mandatory blocker #1's fix, that also meant no *source-native*
+   * timestamp was tracked at all, so no safe cursor boundary could be
+   * derived even though Docker itself always knows a receive time. This
+   * test now covers the residual, genuinely-defensive-only case: an event
+   * with no source-native timestamp either (should never happen for any
+   * real adapter after this recovery, since every one of them always sets
+   * it - see {@code DockerLogSourceTest}/{@code LokiLogSourceTest} for the
+   * proof that malformed/plain-text lines are now pageable via the native
+   * clock). When every event on a page still has no source-native
+   * timestamp, no safe cursor boundary exists (so {@code nextCursor} is
+   * honestly {@code null}), but more matching events genuinely remain
+   * beyond the page limit - {@code truncated} must still say so, and
+   * {@code estimatedTotal} must never claim the page was the complete,
+   * exact total.
    */
   @Test
-  void aPageOfEntirelyTimestamplessEventsReportsTruncatedHonestlyEvenThoughNoCursorCanBeOffered() {
+  void aPageOfEntirelySourceTimestamplessEventsReportsTruncatedHonestlyEvenThoughNoCursorCanBeOffered() {
     List<CanonicalLogEvent> corpus = IntStream.range(0, 5)
         .mapToObj(i -> event(null, "malformed-" + i))
         .toList();

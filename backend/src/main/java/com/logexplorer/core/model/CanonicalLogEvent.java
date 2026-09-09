@@ -21,6 +21,20 @@ import java.util.Map;
  * is reused for Loki's own container label, since pods have containers
  * too). None of these are sensitive; each is left {@code null} by
  * anything that doesn't have it (the fixture source has none of them).
+ *
+ * <p>{@code sourceTimestamp} (Legacy Remediation Slice 1 recovery,
+ * mandatory blocker #1 — "use source-native pagination position") is the
+ * adapter's own native clock for this event — Docker's log-frame receive
+ * time, Loki's stream-entry nanosecond timestamp, or fixture's own
+ * deterministic per-index instant — as distinct from {@link #timestamp},
+ * the *parsed application* timestamp from the log's own content, which can
+ * differ from the source-native one and, for a malformed/non-JSON line, is
+ * {@code null} while {@code sourceTimestamp} is always still known. Used
+ * exclusively for pagination continuation (see {@code api.SearchService}
+ * and {@code core.search.PageCursorCodec}) and never returned to the
+ * browser — {@code api.dto.EventDto} has no equivalent field, and the
+ * displayed/canonical timestamp everywhere in the UI remains {@link
+ * #timestamp}, unchanged.
  */
 public record CanonicalLogEvent(
     Instant timestamp,
@@ -57,7 +71,8 @@ public record CanonicalLogEvent(
     String containerName,
     String stream,
     String namespace,
-    String pod
+    String pod,
+    Instant sourceTimestamp
 ) {
 
   public CanonicalLogEvent {
@@ -127,7 +142,8 @@ public record CanonicalLogEvent(
         .containerName(containerName)
         .stream(stream)
         .namespace(namespace)
-        .pod(pod);
+        .pod(pod)
+        .sourceTimestamp(sourceTimestamp);
   }
 
   /** Builder for a large immutable record — plain positional construction would be error-prone. */
@@ -167,6 +183,7 @@ public record CanonicalLogEvent(
     private String stream;
     private String namespace;
     private String pod;
+    private Instant sourceTimestamp;
 
     public Builder timestamp(Instant v) { this.timestamp = v; return this; }
     public Builder timestampRaw(String v) { this.timestampRaw = v; return this; }
@@ -203,6 +220,7 @@ public record CanonicalLogEvent(
     public Builder stream(String v) { this.stream = v; return this; }
     public Builder namespace(String v) { this.namespace = v; return this; }
     public Builder pod(String v) { this.pod = v; return this; }
+    public Builder sourceTimestamp(Instant v) { this.sourceTimestamp = v; return this; }
 
     public CanonicalLogEvent build() {
       return new CanonicalLogEvent(
@@ -212,7 +230,7 @@ public record CanonicalLogEvent(
           errorCode, correlationId, sensitive, devicePlatformType, language,
           serverIp, serverHost, unknownTopLevelFields, unknownMdcFields,
           malformed, rawLine, sourceId, composeProject, containerId, containerName, stream,
-          namespace, pod);
+          namespace, pod, sourceTimestamp);
     }
   }
 }

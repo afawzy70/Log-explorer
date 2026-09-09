@@ -103,15 +103,21 @@ public class FixtureLogSource implements LogSource {
 
   @Override
   public Flux<CanonicalLogEvent> search(SearchRequest request) {
-    // Newest first, malformed/unknown-timestamp events last (not first -
-    // Comparator.nullsLast(...).reversed() is a classic trap: reversing the
-    // whole comparator also reverses the null placement, so it silently
-    // sorts nulls to the FRONT. Reversing only the inner natural-order
-    // comparator keeps nulls pinned last regardless of direction.
+    // Sorted by direction of travel (Legacy Remediation Slice 1 recovery,
+    // mandatory blocker #2: never silently treat FORWARD as BACKWARD),
+    // keyed on the source-native timestamp (mandatory blocker #1 - see
+    // corpus()'s own comment), never the parsed application timestamp -
+    // malformed/unknown-source-timestamp events last regardless of
+    // direction (not first - Comparator.nullsLast(...).reversed() is a
+    // classic trap: reversing the whole comparator also reverses the null
+    // placement, so it silently sorts nulls to the FRONT. Reversing only
+    // the inner natural-order comparator keeps nulls pinned last
+    // regardless of direction).
+    boolean forward = request.direction() == SearchRequest.Direction.FORWARD;
+    Comparator<Instant> nativeOrder = forward ? Comparator.naturalOrder() : Comparator.reverseOrder();
     return Flux.fromIterable(corpus())
         .filter(e -> EventFilters.matches(e, request))
-        .sort(Comparator.comparing(CanonicalLogEvent::timestamp,
-            Comparator.nullsLast(Comparator.reverseOrder())));
+        .sort(Comparator.comparing(CanonicalLogEvent::sourceTimestamp, Comparator.nullsLast(nativeOrder)));
   }
 
   /**
@@ -147,8 +153,24 @@ public class FixtureLogSource implements LogSource {
       synchronized (lock) {
         result = corpus;
         if (result == null) {
-          List<String> lines = generator.generateLines(SEED, CORPUS_SIZE, Instant.now());
-          result = lines.stream().map(line -> parser.parse(line, null)).toList();
+          Instant anchor = Instant.now();
+          List<String> lines = generator.generateLines(SEED, CORPUS_SIZE, anchor);
+          List<CanonicalLogEvent> built = new ArrayList<>(lines.size());
+          for (int i = 0; i < lines.size(); i++) {
+            // Legacy Remediation Slice 1 recovery, mandatory blocker #1:
+            // fixture's own deterministic per-index source-native
+            // timestamp, mirroring FixtureCorpusGenerator#generateLines'
+            // own internal spacing formula exactly (index 0 = oldest) -
+            // assigned regardless of whether the line itself is malformed
+            // (a malformed line skips content-rewriting but still
+            // occupies the same index position, so it still gets a real,
+            // always-known source-native timestamp - never the parsed
+            // application timestamp, which is null for it).
+            Instant sourceTimestamp = anchor.minusSeconds((long) lines.size() - 1 - i);
+            CanonicalLogEvent parsed = parser.parse(lines.get(i), null);
+            built.add(parsed.toBuilder().sourceTimestamp(sourceTimestamp).build());
+          }
+          result = List.copyOf(built);
           corpus = result;
         }
       }

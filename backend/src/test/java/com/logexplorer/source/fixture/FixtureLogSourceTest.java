@@ -72,29 +72,26 @@ class FixtureLogSourceTest {
   }
 
   @Test
-  void malformedEventsWithNoTimestampSortLastNotFirst() {
-    // Comparator.nullsLast(...).reversed() is a real trap: reversing the
-    // whole comparator also reverses null placement, silently sorting
-    // nulls to the front. This test would have caught that bug - it did,
-    // during this phase's own manual verification, before this test
-    // existed to prevent it recurring.
+  void searchResultsAreSortedNewestFirstBySourceNativeTimestampEvenThoughCanonicalTimestampIsNullForMalformedEvents() {
+    // Legacy Remediation Slice 1 recovery, mandatory blocker #1: sort
+    // order (and pagination) now follows the source-native timestamp
+    // (always known, even for a malformed/non-JSON line), not the parsed
+    // application timestamp (null for a malformed line) - so a malformed
+    // event is no longer forced to the very end regardless of when it
+    // actually occurred; it sorts into its correct chronological position
+    // exactly like every other event, which is what makes it pageable at
+    // all (see AUDIT-15-style boundedness note in the verification
+    // report - malformed lines could previously fall "off the edge" of
+    // page 1 and never be reachable at any page).
     List<CanonicalLogEvent> events = source.search(wideOpenRequest().build()).collectList().block();
     assertThat(events).isNotEmpty();
-    int firstMalformedIndex = -1;
-    int lastNonMalformedIndex = -1;
-    for (int i = 0; i < events.size(); i++) {
-      if (events.get(i).malformed()) {
-        if (firstMalformedIndex == -1) {
-          firstMalformedIndex = i;
-        }
-      } else {
-        lastNonMalformedIndex = i;
-      }
+    assertThat(events).anySatisfy(e -> assertThat(e.malformed()).isTrue());
+    for (CanonicalLogEvent e : events) {
+      assertThat(e.sourceTimestamp()).as("every fixture event always has a source-native timestamp, malformed or not").isNotNull();
     }
-    assertThat(firstMalformedIndex).as("at least one malformed event present").isNotEqualTo(-1);
-    assertThat(lastNonMalformedIndex).as("at least one dated event present").isNotEqualTo(-1);
-    assertThat(firstMalformedIndex).as("malformed (no-timestamp) events must sort after every dated event")
-        .isGreaterThan(lastNonMalformedIndex);
+    for (int i = 1; i < events.size(); i++) {
+      assertThat(events.get(i - 1).sourceTimestamp()).isAfterOrEqualTo(events.get(i).sourceTimestamp());
+    }
   }
 
   @Test
@@ -271,6 +268,45 @@ class FixtureLogSourceTest {
     // #1) correctly rejects as a different search - proving the codec
     // works, but not what this test is about.
     SearchRequest.Builder committed = wideOpenRequest();
+
+    Set<String> seen = new HashSet<>();
+    String cursor = null;
+    int guardAgainstInfiniteLoop = 0;
+    do {
+      SearchResult page = searchService.search(committed.cursor(cursor).build()).block();
+      for (CanonicalLogEvent e : page.events()) {
+        assertThat(seen.add(identity(e))).as("no duplicate across pages").isTrue();
+      }
+      cursor = page.nextCursor();
+      guardAgainstInfiniteLoop++;
+      assertThat(guardAgainstInfiniteLoop).isLessThan(50);
+    } while (cursor != null);
+
+    assertThat(seen).isEqualTo(expected);
+  }
+
+  /**
+   * Legacy Remediation Slice 1 recovery, mandatory blocker #2: FORWARD
+   * direction against the real fixture corpus - never silently treated as
+   * BACKWARD. Same invariant as the BACKWARD test above (exhaustive,
+   * exactly-once coverage), proving direction-awareness holds for the
+   * real adapter, not only the generic in-memory test double.
+   */
+  @Test
+  void forwardDirectionMultiPageTraversalVisitsExactlyTheSameEventsAsOneUnpaginatedSearch() {
+    SearchGuardrailsProperties baseline = new SearchGuardrailsProperties();
+    baseline.setDefaultLimit(10_000);
+    SearchService unpaginated = searchServiceFor(baseline);
+    SearchRequest.Builder forwardRequest = wideOpenRequest().direction(SearchRequest.Direction.FORWARD);
+    SearchResult everything = unpaginated.search(forwardRequest.build()).block();
+    assertThat(everything.counts().truncated()).isFalse();
+    Set<String> expected = new HashSet<>();
+    everything.events().forEach(e -> expected.add(identity(e)));
+
+    SearchGuardrailsProperties paged = new SearchGuardrailsProperties();
+    paged.setDefaultLimit(11);
+    SearchService searchService = searchServiceFor(paged);
+    SearchRequest.Builder committed = wideOpenRequest().direction(SearchRequest.Direction.FORWARD);
 
     Set<String> seen = new HashSet<>();
     String cursor = null;
