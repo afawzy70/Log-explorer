@@ -30,6 +30,22 @@ export interface SourceHealth {
 }
 
 /**
+ * `GET /actuator/info` (UI Gap Closure Pass) - the `environment` detail
+ * `EnvironmentInfoContributor` adds server-side: the real, non-guessed
+ * Spring profile(s) this specific running instance has active
+ * (`"default"` when none are). Every field is optional - actuator's own
+ * base info response can genuinely omit this detail entirely (e.g. a
+ * future deployment with actuator's `info` endpoint disabled), and the
+ * frontend must render nothing rather than guess when that happens.
+ */
+export interface EnvironmentInfo {
+  environment?: {
+    activeProfiles?: string[];
+    label?: string;
+  };
+}
+
+/**
  * `GET /api/v1/sources/docker/connection` (Legacy Remediation Slice 3) -
  * the current effective Docker connection, sanitized. `host`/`port` are
  * `null` for LOCAL mode. `runtimeMutationSupported` is always `false` in

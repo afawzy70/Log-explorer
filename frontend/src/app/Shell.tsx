@@ -1,6 +1,7 @@
 import { SourceHealthBadge } from './SourceHealthBadge';
 import { DockerSettingsPanel } from '../features/settings/DockerSettingsPanel';
 import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
+import { EnvironmentBadge } from './EnvironmentBadge';
 import type { SearchState } from './useSearchState';
 import styles from './Shell.module.css';
 
@@ -18,6 +19,7 @@ export function Shell({ state }: ShellProps) {
   return (
     <header className={styles.header}>
       <h1 className={styles.title}>Log Explorer</h1>
+      <EnvironmentBadge />
       {state.selectedSource ? <span className={styles.sourceName}>{state.selectedSource.displayName}</span> : null}
       <div className={styles.spacer} />
       <DockerSettingsPanel />
