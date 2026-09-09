@@ -23,6 +23,23 @@
   overflow: hidden;
 }
 
+/*
+ * Compact density (Legacy Remediation Slice 4) - reduces vertical padding
+ * only, never font size: CLAUDE.md §7's accessibility floor ("do not
+ * reduce readable font size below accessibility expectations") applies to
+ * density the same as everything else, so `font-size` is deliberately
+ * absent from this rule - `.table`'s own `font-size: var(--font-size-sm)`
+ * is unchanged in both densities. Horizontal padding is reduced slightly
+ * too (more rows fit vertically without the row looking cramped
+ * side-to-side), but hit targets (ActionsCell's own trigger button,
+ * min-height enforced by `Button`) are untouched - only spacing shrinks,
+ * never the interactive element itself.
+ */
+.compact th,
+.compact td {
+  padding: var(--space-1) var(--space-2);
+}
+
 .table thead th {
   font-size: var(--font-size-xs);
   text-transform: uppercase;

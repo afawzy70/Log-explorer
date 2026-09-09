@@ -100,6 +100,8 @@ export interface LogEvent {
   rawLine: string | null;
   sourceId: string | null;
   composeProject: string | null;
+  /** Legacy Remediation Slice 3's backend field, mirrored here in Slice 4 so it can be offered as an optional table column - not previously present on this type. */
+  composeService: string | null;
   containerId: string | null;
   containerName: string | null;
   stream: string | null;

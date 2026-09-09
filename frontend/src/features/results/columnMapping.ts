@@ -103,6 +103,16 @@ export function formatTimestampCell(iso: string | null): string {
   return formatter.format(date);
 }
 
+/**
+ * "Container" optional column (Legacy Remediation Slice 4) - the
+ * human-readable container name when the adapter has one (Docker),
+ * falling back to the raw container ID (also non-sensitive - an
+ * infrastructure identifier, not a customer/user identifier).
+ */
+export function resolveContainer(event: LogEvent): string {
+  return event.containerName ?? event.containerId ?? EMPTY_VALUE;
+}
+
 /** Every non-empty, copyable, non-sensitive identifier on an event - the Actions menu's content. */
 export interface CopyableIdentifier {
   label: string;

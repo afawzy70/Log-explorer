@@ -5,6 +5,8 @@ import type { SearchState } from '../../app/useSearchState';
 import { buildCountsSummary } from './counts';
 import { ResultsTable } from './ResultsTable';
 import { QueryPlanDisclosure } from './QueryPlanDisclosure';
+import { TableSettingsControl } from './TableSettingsControl';
+import { useTablePreferences } from './tablePreferences';
 import styles from './ResultsPanel.module.css';
 
 const DAY_MS = TIME_RANGE_PRESETS.find((p) => p.id === DEFAULT_PRESET_ID)!.durationMs;
@@ -40,6 +42,13 @@ function Breadcrumb({ state }: { state: SearchState }) {
  * in this UI to trigger a user-facing cancelled state from.
  */
 export function ResultsPanel({ state }: { state: SearchState }) {
+  // Called unconditionally, before any early return (Rules of Hooks) -
+  // entirely independent of `state`/`SearchState` (Legacy Remediation
+  // Slice 4's own explicit "presentation-only, not part of search state"
+  // requirement): nothing in `useTablePreferences` ever reads or writes
+  // anything search-related.
+  const table = useTablePreferences();
+
   if (state.searchError) {
     return (
       <div className={styles.wrapper}>
@@ -109,6 +118,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
             ? ` — showing results for ${formatInterval(state.lastSearchedRange.start, state.lastSearchedRange.end)}`
             : ''}
         </p>
+        <TableSettingsControl table={table} />
         <RefreshRow state={state} />
       </div>
       <QueryPlanDisclosure queryPlan={queryPlan} />
@@ -117,6 +127,9 @@ export function ResultsPanel({ state }: { state: SearchState }) {
         selectedIndex={state.selectedIndex}
         onInspect={state.openInspector}
         onOpenJourney={state.openJourney}
+        columnOrder={table.preferences.columnOrder}
+        hiddenColumnIds={table.preferences.hiddenColumnIds}
+        density={table.preferences.density}
       />
       {nextCursor ? (
         <div className={styles.loadMoreRow}>
