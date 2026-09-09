@@ -1,11 +1,20 @@
-import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { LiveTailPanel } from './LiveTailPanel';
+import { useLiveTail } from './useLiveTail';
 import type { LiveTailHandle } from './useLiveTail';
 import type { LiveConnectionState } from './liveTailTypes';
+import { BATCH_FLUSH_MS } from './liveTailTypes';
+import { installMockEventSource, latestMockEventSource } from './mockEventSource';
 import type { LogEvent } from '../../shared/api/types';
+
+// jsdom does not implement Element.scrollTo - the follow-newest effect
+// calls it unconditionally whenever the event list is rendered, so this
+// is stubbed globally (not just in the real-scroll describe block below)
+// for every test in this file.
+Element.prototype.scrollTo = vi.fn();
 
 function event(overrides: Partial<LogEvent> = {}): LogEvent {
   return {
@@ -58,12 +67,18 @@ function baseLive(overrides: Partial<LiveTailHandle> = {}): LiveTailHandle {
     clientDroppedCount: 0,
     serverDroppedCount: 0,
     errorMessage: null,
+    reconnectAttempt: 0,
+    reconnectCount: 0,
+    followNewest: true,
+    unseenCount: 0,
     start: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),
     stop: vi.fn(),
     exit: vi.fn(),
     clear: vi.fn(),
+    retry: vi.fn(),
+    setFollowNewest: vi.fn(),
     ...overrides,
   };
 }
@@ -79,10 +94,8 @@ describe('LiveTailPanel', () => {
   it('idle: shows only Start, plus the "not a complete historical record" disclaimer', () => {
     renderPanel('idle');
     expect(screen.getByRole('button', { name: /^start$/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^pause$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^resume$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^stop$/i })).not.toBeInTheDocument();
     expect(screen.getByText(/not a complete historical record/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^pause$/i })).not.toBeInTheDocument();
   });
 
   it('clicking Start in idle calls onStart', async () => {
@@ -96,7 +109,8 @@ describe('LiveTailPanel', () => {
     renderPanel('connecting');
     expect(screen.queryByRole('button', { name: /^start$/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^stop$/i })).toBeInTheDocument();
-    expect(screen.getAllByText(/connecting/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole('status')).toHaveTextContent(/connecting…/i);
+    expect(screen.getAllByText(/connecting…/i)).toHaveLength(2); // state label + empty-state message
   });
 
   it('live: shows Pause and Stop, not Start/Resume', () => {
@@ -119,7 +133,6 @@ describe('LiveTailPanel', () => {
     expect(screen.getByRole('button', { name: /^resume$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^stop$/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^pause$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^start$/i })).not.toBeInTheDocument();
   });
 
   it('clicking Resume while paused calls live.resume', async () => {
@@ -144,10 +157,37 @@ describe('LiveTailPanel', () => {
     expect(screen.queryByRole('button', { name: /^stop$/i })).not.toBeInTheDocument();
   });
 
-  it('error: shows Start (to retry) and surfaces the real error message via role="alert"', () => {
-    renderPanel('error', { errorMessage: 'Live connection lost.' });
-    expect(screen.getByRole('button', { name: /^start$/i })).toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent('Live connection lost.');
+  it('reconnecting: shows the attempt number, Stop remains available, no Pause/Resume/Start', () => {
+    renderPanel('reconnecting', { reconnectAttempt: 2 });
+    expect(screen.getByText(/reconnecting… \(attempt 2\)/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^stop$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^start$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^pause$/i })).not.toBeInTheDocument();
+  });
+
+  it('failed: shows Retry (not Start), and the sanitized error message', () => {
+    renderPanel('failed', { errorMessage: 'Live connection lost after 5 reconnect attempts. Click Retry to try again.' });
+    expect(screen.getByRole('button', { name: /^retry$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^start$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(/click retry to try again/i);
+  });
+
+  it('clicking Retry from failed calls live.retry', async () => {
+    const user = userEvent.setup();
+    const { live } = renderPanel('failed', { errorMessage: 'Live connection lost.' });
+    await user.click(screen.getByRole('button', { name: /^retry$/i }));
+    expect(live.retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('a reconnectCount > 0 shows a persistent, honest continuity notice (never claims exact-once delivery)', () => {
+    renderPanel('live', { reconnectCount: 2 });
+    expect(screen.getByText(/reconnected 2 times this session/i)).toBeInTheDocument();
+    expect(screen.getByText(/may have been missed/i)).toBeInTheDocument();
+  });
+
+  it('reconnectCount === 0 shows no continuity notice', () => {
+    renderPanel('live', { reconnectCount: 0 });
+    expect(screen.queryByText(/reconnected/i)).not.toBeInTheDocument();
   });
 
   it('clicking "Back to search results" calls live.exit', async () => {
@@ -169,7 +209,7 @@ describe('LiveTailPanel', () => {
     expect(counts).toHaveTextContent('Received: 42');
     expect(counts).toHaveTextContent('Visible: 1');
     expect(counts).toHaveTextContent('Buffered while paused: 3');
-    expect(counts).toHaveTextContent('Dropped (display cap): 5');
+    expect(counts).toHaveTextContent('Evicted (retention cap): 5');
     expect(counts).toHaveTextContent('Dropped (server buffer full): 7');
   });
 
@@ -188,7 +228,7 @@ describe('LiveTailPanel', () => {
     expect(screen.getByText(/waiting for new events/i)).toBeInTheDocument();
   });
 
-  it('Clear (UI Parity Acceleration Pass §9) only appears once there is something to clear', () => {
+  it('Clear only appears once there is something to clear', () => {
     renderPanel('live');
     expect(screen.queryByRole('button', { name: /^clear$/i })).not.toBeInTheDocument();
 
@@ -210,8 +250,165 @@ describe('LiveTailPanel', () => {
     expect(screen.getByRole('button', { name: /^clear$/i })).toBeInTheDocument();
   });
 
+  describe('severity filtering (Legacy Remediation Slice 5)', () => {
+    it('shows only events matching the selected severity levels', async () => {
+      const user = userEvent.setup();
+      renderPanel('live', {
+        visibleEvents: [
+          event({ message: 'an info line', severity: 'INFO' }),
+          event({ message: 'an error line', severity: 'ERROR' }),
+        ],
+      });
+      expect(screen.getByText('an info line')).toBeInTheDocument();
+      expect(screen.getByText('an error line')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /^errors only$/i }));
+
+      expect(screen.queryByText('an info line')).not.toBeInTheDocument();
+      expect(screen.getByText('an error line')).toBeInTheDocument();
+    });
+
+    it('the reused SeverityFilter never fires a search - purely local/display filtering', async () => {
+      const user = userEvent.setup();
+      const { live } = renderPanel('live', { visibleEvents: [event()] });
+      await user.click(screen.getByRole('button', { name: /^errors only$/i }));
+      expect(live.start).not.toHaveBeenCalled();
+      expect(live.clear).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('text filtering (Legacy Remediation Slice 5)', () => {
+    it('filters displayed events by message substring, case-insensitively', async () => {
+      const user = userEvent.setup();
+      renderPanel('live', {
+        visibleEvents: [event({ message: 'payment authorized' }), event({ message: 'user logged in' })],
+      });
+
+      await user.type(screen.getByPlaceholderText(/filter displayed events/i), 'PAYMENT');
+
+      expect(screen.getByText('payment authorized')).toBeInTheDocument();
+      expect(screen.queryByText('user logged in')).not.toBeInTheDocument();
+    });
+
+    it('shows a "no events match" message when the filter excludes everything, distinct from the true-empty state', async () => {
+      const user = userEvent.setup();
+      renderPanel('live', { visibleEvents: [event({ message: 'payment authorized' })] });
+      await user.type(screen.getByPlaceholderText(/filter displayed events/i), 'no-such-text');
+      expect(screen.getByText(/no events match the current filter/i)).toBeInTheDocument();
+    });
+
+    it('the counts line reflects filtered vs retained counts distinctly', async () => {
+      const user = userEvent.setup();
+      renderPanel('live', {
+        visibleEvents: [event({ message: 'alpha' }), event({ message: 'beta' })],
+      });
+      await user.type(screen.getByPlaceholderText(/filter displayed events/i), 'alpha');
+      expect(screen.getByText(/visible: 1 \(of 2 retained\)/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('Follow newest (Legacy Remediation Slice 5)', () => {
+    it('the toggle reflects live.followNewest via aria-pressed', () => {
+      renderPanel('live', { followNewest: true });
+      expect(screen.getByRole('button', { name: /follow newest/i })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('clicking the toggle calls setFollowNewest with the opposite value', async () => {
+      const user = userEvent.setup();
+      const { live } = renderPanel('live', { followNewest: true });
+      await user.click(screen.getByRole('button', { name: /follow newest/i }));
+      expect(live.setFollowNewest).toHaveBeenCalledWith(false);
+    });
+
+    it('"Jump to newest" only appears when follow is suspended, and shows the unseen count', () => {
+      renderPanel('live', { followNewest: true, unseenCount: 5 });
+      expect(screen.queryByRole('button', { name: /jump to newest/i })).not.toBeInTheDocument();
+
+      renderPanel('live', { followNewest: false, unseenCount: 5 });
+      expect(screen.getByRole('button', { name: /jump to newest \(5 new\)/i })).toBeInTheDocument();
+    });
+
+    it('clicking "Jump to newest" calls setFollowNewest(true)', async () => {
+      const user = userEvent.setup();
+      const { live } = renderPanel('live', { followNewest: false, unseenCount: 3 });
+      await user.click(screen.getByRole('button', { name: /jump to newest/i }));
+      expect(live.setFollowNewest).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe('real scroll behavior (integration with useLiveTail)', () => {
+    beforeEach(() => {
+      installMockEventSource();
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      delete (globalThis as { EventSource?: unknown }).EventSource;
+    });
+
+    function Harness() {
+      const live = useLiveTail();
+      return <LiveTailPanel live={live} sourceDisplayName="Fixture" onStart={() => live.start('fixture', [])} />;
+    }
+
+    it('scrolling away from the top suspends follow-newest and reveals "Jump to newest"', () => {
+      // fireEvent (not userEvent) throughout - userEvent's own internal
+      // delay/scheduling machinery does not mix reliably with fake timers
+      // in this combination; these are simple discrete clicks/scrolls
+      // with no realistic-typing behavior to simulate.
+      render(<Harness />);
+      fireEvent.click(screen.getByRole('button', { name: /^start$/i }));
+      act(() => latestMockEventSource().emitOpen());
+      act(() => latestMockEventSource().emit('log', event()));
+      act(() => vi.advanceTimersByTime(BATCH_FLUSH_MS));
+
+      expect(screen.queryByRole('button', { name: /jump to newest/i })).not.toBeInTheDocument();
+
+      const list = screen.getByRole('list');
+      Object.defineProperty(list, 'scrollTop', { value: 50, writable: true });
+      fireEvent.scroll(list);
+
+      expect(screen.getByRole('button', { name: /jump to newest/i })).toBeInTheDocument();
+    });
+
+    it('clicking "Jump to newest" restores follow-newest and hides the button again', () => {
+      render(<Harness />);
+      fireEvent.click(screen.getByRole('button', { name: /^start$/i }));
+      act(() => latestMockEventSource().emitOpen());
+      act(() => latestMockEventSource().emit('log', event()));
+      act(() => vi.advanceTimersByTime(BATCH_FLUSH_MS));
+
+      const list = screen.getByRole('list');
+      Object.defineProperty(list, 'scrollTop', { value: 50, writable: true });
+      fireEvent.scroll(list);
+      expect(screen.getByRole('button', { name: /jump to newest/i })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /jump to newest/i }));
+      expect(screen.queryByRole('button', { name: /jump to newest/i })).not.toBeInTheDocument();
+      expect(Element.prototype.scrollTo).toHaveBeenCalled();
+    });
+  });
+
   it('has no detectable accessibility violations in the live state', async () => {
     const { container } = renderPanel('live', { visibleEvents: [event()] });
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('has no detectable accessibility violations in the reconnecting state', async () => {
+    const { container } = renderPanel('reconnecting', { reconnectAttempt: 1 });
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('has no detectable accessibility violations in the failed state', async () => {
+    const { container } = renderPanel('failed', { errorMessage: 'Live connection lost.' });
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('has no detectable accessibility violations with events and active filters', async () => {
+    const { container } = renderPanel('live', {
+      visibleEvents: [event({ message: 'alpha' }), event({ message: 'beta', severity: 'ERROR' })],
+    });
     expect(await axe(container)).toHaveNoViolations();
   });
 });

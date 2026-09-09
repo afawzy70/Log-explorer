@@ -104,16 +104,44 @@ class LokiLogSourceTest {
   }
 
   @Test
-  void capabilitiesReflectConfiguredFlagsHonestlyWhenBothOn() throws IOException {
+  void rawLogQlReflectsConfigurationHonestlyWhenOn() throws IOException {
     mockServer = new MockLokiServer("/api/logs/v1", "application", "namespace", "app");
     LokiProperties properties = propertiesFor(mockServer);
-    properties.setLiveTailSupported(true);
     properties.setRawLogQlEnabled(true);
     LokiLogSource source = sourceFor(properties);
 
-    var capabilities = source.capabilities();
-    assertThat(capabilities.liveTail()).isTrue();
-    assertThat(capabilities.rawLogQL()).isTrue();
+    assertThat(source.capabilities().rawLogQL()).isTrue();
+  }
+
+  @Test
+  void liveTailNeverAdvertisesTrueEvenWhenTheLegacyConfigToggleIsSet() throws IOException {
+    // Legacy Remediation Slice 5 finding: LokiLogSource never overrides
+    // follow(), so honoring `liveTailSupported=true` here would have
+    // advertised a capability that errors on first real use - a "fake
+    // capability" (HANDOVER.md §18.3 "Do not fake it"). This replaces
+    // the old `capabilitiesReflectConfiguredFlagsHonestlyWhenBothOn` test,
+    // which asserted the opposite (now-corrected) behavior.
+    mockServer = new MockLokiServer("/api/logs/v1", "application", "namespace", "app");
+    LokiProperties properties = propertiesFor(mockServer);
+    properties.setLiveTailSupported(true); // the toggle exists for config-binding compatibility only
+    LokiLogSource source = sourceFor(properties);
+
+    assertThat(source.capabilities().liveTail()).isFalse();
+  }
+
+  @Test
+  void followIsGenuinelyRejectedNotJustDishonestlyCapped() throws IOException {
+    // Direct proof the capability-false claim is real, not cosmetic: even
+    // if a caller ignored `capabilities().liveTail()` and called
+    // `follow()` directly, it errors immediately rather than silently
+    // streaming nothing forever (which would be its own kind of dishonesty).
+    mockServer = new MockLokiServer("/api/logs/v1", "application", "namespace", "app");
+    LokiLogSource source = sourceFor(propertiesFor(mockServer));
+
+    reactor.test.StepVerifier.create(
+            source.follow(new com.logexplorer.core.model.FollowRequest("openshift-loki", java.util.List.of())))
+        .expectError(UnsupportedOperationException.class)
+        .verify(java.time.Duration.ofSeconds(2));
   }
 
   @Test

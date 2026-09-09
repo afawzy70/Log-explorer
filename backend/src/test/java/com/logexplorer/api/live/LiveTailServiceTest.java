@@ -192,6 +192,43 @@ class LiveTailServiceTest {
   }
 
   @Test
+  void aLargeBurstAgainstATinyServerBufferNeverOverDeliversToASlowConsumer() {
+    // Legacy Remediation Slice 5 - "Audit this critically... do not leave
+    // an effectively unlimited BUFFER strategy". `DockerLogSource#follow`
+    // itself uses `Flux.create(..., FluxSink.OverflowStrategy.BUFFER)`,
+    // which sounds unbounded read in isolation; this test proves the
+    // actual composed pipeline (this class's own `onBackpressureBuffer(N,
+    // DROP_OLDEST)` immediately downstream) is what really governs
+    // delivery at real scale (a 200-event burst, 20x this test suite's
+    // pre-existing 10-event scenarios) against a tiny 5-slot buffer and a
+    // consumer that only ever asks for 1 - the slow consumer still never
+    // receives more than it asked for, so the burst was never force-fed
+    // to it from an unbounded backlog.
+    LiveTailProperties properties = defaultProperties();
+    properties.setServerBufferSize(5);
+    properties.setHeartbeatInterval(Duration.ofSeconds(30));
+
+    StubLogSource stub = new StubLogSource("live-source", "Live Source", LIVE_CAPABLE);
+    List<CanonicalLogEvent> burst = IntStream.range(0, 200)
+        .mapToObj(i -> CanonicalLogEvent.builder().timestamp(NOW).message("burst-" + i).service("gateway").build())
+        .toList();
+    stub.withFollowFlux(Flux.fromIterable(burst));
+    LiveTailService service = newService(stub, properties);
+
+    FixedDemandSubscriber subscriber = new FixedDemandSubscriber(1);
+    service.follow("live-source", List.of()).subscribe(subscriber);
+
+    waitUntil(() -> !subscriber.received.isEmpty(), Duration.ofSeconds(2));
+    try {
+      Thread.sleep(300);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+    assertThat(subscriber.received).hasSize(1);
+    assertThat(subscriber.received.get(0).event()).isEqualTo("log");
+  }
+
+  @Test
   void theConnectionSurvivesASustainedSlowConsumerWithoutErroringOutFromTheHeartbeatAlone() {
     // A real bug this exact test caught during this phase's own
     // verification: `Flux.interval` (the heartbeat/status source) has no
