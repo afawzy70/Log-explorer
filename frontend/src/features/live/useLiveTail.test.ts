@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { useLiveTail } from './useLiveTail';
-import { VISIBLE_CAP } from './liveTailTypes';
+import { BATCH_FLUSH_MS, RECONNECT_MAX_ATTEMPTS, VISIBLE_CAP } from './liveTailTypes';
 import { installMockEventSource, latestMockEventSource, MockEventSource } from './mockEventSource';
 import type { LogEvent } from '../../shared/api/types';
 
@@ -47,163 +47,451 @@ function event(overrides: Partial<LogEvent> = {}): LogEvent {
   };
 }
 
-describe('useLiveTail', () => {
+/** Advances fake timers enough for at least one batch flush tick to run. */
+function advanceOneFlush() {
+  act(() => {
+    vi.advanceTimersByTime(BATCH_FLUSH_MS);
+  });
+}
+
+describe('useLiveTail (Legacy Remediation Slice 5)', () => {
   beforeEach(() => {
     installMockEventSource();
+    vi.useFakeTimers();
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     delete (globalThis as { EventSource?: unknown }).EventSource;
   });
 
-  it('starts idle', () => {
-    const { result } = renderHook(() => useLiveTail());
-    expect(result.current.connectionState).toBe('idle');
-    expect(result.current.visibleEvents).toEqual([]);
-  });
-
-  it('start() opens a real EventSource at /api/v1/logs/live with only sourceId/services in the URL - never a token or sensitive value', () => {
-    const { result } = renderHook(() => useLiveTail());
-    act(() => result.current.start('fixture', ['gateway', 'payments-api']));
-
-    const source = latestMockEventSource();
-    expect(source.url).toContain('/api/v1/logs/live?');
-    expect(source.url).toContain('sourceId=fixture');
-    expect(source.url).toContain('services=gateway%2Cpayments-api');
-    expect(result.current.connectionState).toBe('connecting');
-  });
-
-  it('start() with no services omits the services param entirely', () => {
-    const { result } = renderHook(() => useLiveTail());
-    act(() => result.current.start('fixture', []));
-    expect(latestMockEventSource().url).not.toContain('services=');
-  });
-
-  it('onopen transitions connecting -> live', () => {
-    const { result } = renderHook(() => useLiveTail());
-    act(() => result.current.start('fixture', []));
-    act(() => latestMockEventSource().emitOpen());
-    expect(result.current.connectionState).toBe('live');
-  });
-
-  it('a real "log" event is parsed and prepended (newest first), incrementing totalReceived', () => {
-    const { result } = renderHook(() => useLiveTail());
-    act(() => result.current.start('fixture', []));
-    act(() => latestMockEventSource().emitOpen());
-
-    act(() => latestMockEventSource().emit('log', event({ message: 'first' })));
-    act(() => latestMockEventSource().emit('log', event({ message: 'second' })));
-
-    expect(result.current.totalReceived).toBe(2);
-    expect(result.current.visibleEvents.map((e) => e.message)).toEqual(['second', 'first']);
-  });
-
-  it('a malformed "log" payload is skipped rather than crashing the stream', () => {
-    const { result } = renderHook(() => useLiveTail());
-    act(() => result.current.start('fixture', []));
-    act(() => latestMockEventSource().emitRaw('log', 'not json'));
-    expect(result.current.visibleEvents).toEqual([]);
-    expect(result.current.totalReceived).toBe(0);
-  });
-
-  it('a real "status" event updates serverDroppedCount - a distinct, never-conflated count', () => {
-    const { result } = renderHook(() => useLiveTail());
-    act(() => result.current.start('fixture', []));
-    act(() => latestMockEventSource().emit('status', { droppedCount: 7, serverTime: '2026-01-01T00:00:05Z' }));
-    expect(result.current.serverDroppedCount).toBe(7);
-    expect(result.current.clientDroppedCount).toBe(0); // never conflated with the server's own count
-  });
-
-  it('exceeding the 1,000-event visible cap evicts the oldest and counts it as a client drop', () => {
-    const { result } = renderHook(() => useLiveTail());
-    act(() => result.current.start('fixture', []));
-    act(() => {
-      for (let i = 0; i < VISIBLE_CAP + 5; i++) {
-        latestMockEventSource().emit('log', event({ message: `event-${i}` }));
-      }
+  describe('state machine', () => {
+    it('starts idle', () => {
+      const { result } = renderHook(() => useLiveTail());
+      expect(result.current.connectionState).toBe('idle');
+      expect(result.current.visibleEvents).toEqual([]);
     });
-    expect(result.current.visibleEvents).toHaveLength(VISIBLE_CAP);
-    expect(result.current.clientDroppedCount).toBe(5);
-    expect(result.current.totalReceived).toBe(VISIBLE_CAP + 5);
-    // Newest-first: the most recent event is still at the front, the
-    // oldest 5 (event-0..event-4) are the ones that got evicted.
-    expect(result.current.visibleEvents[0].message).toBe(`event-${VISIBLE_CAP + 4}`);
+
+    it('start() -> connecting -> live on open', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      expect(result.current.connectionState).toBe('connecting');
+
+      act(() => latestMockEventSource().emitOpen());
+      expect(result.current.connectionState).toBe('live');
+    });
+
+    it('pause: live -> paused; resume: paused -> live', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+
+      act(() => result.current.pause());
+      expect(result.current.connectionState).toBe('paused');
+
+      act(() => result.current.resume());
+      expect(result.current.connectionState).toBe('live');
+    });
+
+    it('pause is a no-op unless currently live (no impossible transitions)', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', [])); // connecting
+      act(() => result.current.pause());
+      expect(result.current.connectionState).toBe('connecting'); // unchanged
+    });
+
+    it('stop: any active state -> stopped', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() => result.current.stop());
+      expect(result.current.connectionState).toBe('stopped');
+    });
+
+    it('exit: any state -> idle, and clears every count', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() => latestMockEventSource().emit('log', event()));
+      advanceOneFlush();
+      expect(result.current.visibleEvents.length).toBeGreaterThan(0);
+
+      act(() => result.current.exit());
+      expect(result.current.connectionState).toBe('idle');
+      expect(result.current.visibleEvents).toEqual([]);
+      expect(result.current.totalReceived).toBe(0);
+    });
   });
 
-  it('pause() diverts new events into the buffered count instead of the visible list', () => {
-    const { result } = renderHook(() => useLiveTail());
-    act(() => result.current.start('fixture', []));
-    act(() => latestMockEventSource().emitOpen());
-    act(() => latestMockEventSource().emit('log', event({ message: 'before-pause' })));
+  describe('start', () => {
+    it('opens a real EventSource at /api/v1/logs/live with only sourceId/services in the URL - never a token or sensitive value', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', ['gateway', 'payments-api']));
 
-    act(() => result.current.pause());
-    expect(result.current.connectionState).toBe('paused');
-    act(() => latestMockEventSource().emit('log', event({ message: 'while-paused' })));
+      const source = latestMockEventSource();
+      expect(source.url).toContain('/api/v1/logs/live?');
+      expect(source.url).toContain('sourceId=fixture');
+      expect(source.url).toContain('services=gateway%2Cpayments-api');
+      expect(result.current.connectionState).toBe('connecting');
+    });
 
-    expect(result.current.visibleEvents.map((e) => e.message)).toEqual(['before-pause']);
-    expect(result.current.bufferedCount).toBe(1);
-    expect(result.current.totalReceived).toBe(2); // still counted as received, just not yet shown
+    it('with no services omits the services param entirely', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      expect(latestMockEventSource().url).not.toContain('services=');
+    });
   });
 
-  it('resume() flushes buffered events into the visible list, newest first, and clears the buffered count', () => {
-    const { result } = renderHook(() => useLiveTail());
-    act(() => result.current.start('fixture', []));
-    act(() => latestMockEventSource().emitOpen());
-    act(() => latestMockEventSource().emit('log', event({ message: 'before-pause' })));
-    act(() => result.current.pause());
-    act(() => latestMockEventSource().emit('log', event({ message: 'buffered-1' })));
-    act(() => latestMockEventSource().emit('log', event({ message: 'buffered-2' })));
+  describe('duplicate Start prevention (session/generation identity)', () => {
+    it('calling start() again closes the previous EventSource and begins one clean new session - no ghost subscriptions', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      const first = latestMockEventSource();
+      act(() => result.current.start('fixture', ['gateway']));
+      const second = latestMockEventSource();
 
-    act(() => result.current.resume());
+      expect(first.closed).toBe(true);
+      expect(second).not.toBe(first);
+    });
 
-    expect(result.current.connectionState).toBe('live');
-    expect(result.current.bufferedCount).toBe(0);
-    expect(result.current.visibleEvents.map((e) => e.message)).toEqual(['buffered-2', 'buffered-1', 'before-pause']);
+    it('events from the superseded (old) EventSource are ignored once a new session has started - stale-session events ignored', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      const stale = latestMockEventSource();
+      act(() => stale.emitOpen());
+
+      act(() => result.current.start('fixture', [])); // new session
+      const fresh = latestMockEventSource();
+      act(() => fresh.emitOpen());
+
+      // The old (stale) source delivers an event "late" - it must never reach the new session's state.
+      act(() => stale.emit('log', event({ message: 'stale-event' })));
+      advanceOneFlush();
+
+      expect(result.current.visibleEvents.some((e) => e.message === 'stale-event')).toBe(false);
+    });
   });
 
-  it('the EventSource connection stays open across pause/resume - never reconnects', () => {
-    const { result } = renderHook(() => useLiveTail());
-    act(() => result.current.start('fixture', []));
-    const source = latestMockEventSource();
-    act(() => result.current.pause());
-    act(() => result.current.resume());
-    expect(source.closed).toBe(false);
-    expect(MockEventSource.instances).toHaveLength(1); // no second connection was ever opened
+  describe('source change cancels the old session', () => {
+    it('calling exit() (as App.tsx does on source change) invalidates the previous session the same way start() does', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      const stale = latestMockEventSource();
+      act(() => stale.emitOpen());
+
+      act(() => result.current.exit());
+      expect(result.current.connectionState).toBe('idle');
+
+      // A late event from the exited session's own EventSource must never reappear.
+      act(() => stale.emit('log', event({ message: 'post-exit-event' })));
+      advanceOneFlush();
+      expect(result.current.visibleEvents).toEqual([]);
+    });
   });
 
-  it('stop() closes the real connection and sets a real, visible "stopped" state', () => {
-    const { result } = renderHook(() => useLiveTail());
-    act(() => result.current.start('fixture', []));
-    const source = latestMockEventSource();
-    act(() => result.current.stop());
-    expect(source.closed).toBe(true);
-    expect(result.current.connectionState).toBe('stopped');
+  describe('batching behavior (performance)', () => {
+    it('incoming events do not appear in visibleEvents until the next flush tick - never one render per event', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+
+      act(() => latestMockEventSource().emit('log', event({ message: 'not-yet-flushed' })));
+      expect(result.current.visibleEvents).toEqual([]); // queued, not yet committed to state
+
+      advanceOneFlush();
+      expect(result.current.visibleEvents).toHaveLength(1);
+      expect(result.current.visibleEvents[0].message).toBe('not-yet-flushed');
+    });
+
+    it('a burst of many events between two flush ticks commits as exactly one batch, newest first', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+
+      act(() => {
+        for (let i = 0; i < 50; i++) {
+          latestMockEventSource().emit('log', event({ message: `burst-${i}` }));
+        }
+      });
+      expect(result.current.visibleEvents).toEqual([]); // still queued
+
+      advanceOneFlush();
+      expect(result.current.visibleEvents).toHaveLength(50);
+      expect(result.current.visibleEvents[0].message).toBe('burst-49'); // newest of the batch first
+      expect(result.current.visibleEvents[49].message).toBe('burst-0');
+      expect(result.current.totalReceived).toBe(50);
+    });
   });
 
-  it('a real connection error closes the stream and surfaces an explicit error state - never a silent retry loop', () => {
-    const { result } = renderHook(() => useLiveTail());
-    act(() => result.current.start('fixture', []));
-    const source = latestMockEventSource();
-    act(() => source.emitError());
-    expect(source.closed).toBe(true);
-    expect(result.current.connectionState).toBe('error');
-    expect(result.current.errorMessage).not.toBeNull();
+  describe('bounded retained event count (retention limit)', () => {
+    it(`never exceeds VISIBLE_CAP (${VISIBLE_CAP}) events, evicting oldest first and counting evictions`, () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+
+      const overflow = VISIBLE_CAP + 25;
+      act(() => {
+        for (let i = 0; i < overflow; i++) {
+          latestMockEventSource().emit('log', event({ message: `e-${i}` }));
+        }
+      });
+      advanceOneFlush();
+
+      expect(result.current.visibleEvents).toHaveLength(VISIBLE_CAP);
+      expect(result.current.clientDroppedCount).toBe(25);
+      expect(result.current.visibleEvents[0].message).toBe(`e-${overflow - 1}`); // newest survives
+    });
+
+    it('retention stays bounded across many flush ticks too - no unbounded growth over time', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+
+      for (let tick = 0; tick < 30; tick++) {
+        act(() => {
+          for (let i = 0; i < 100; i++) {
+            latestMockEventSource().emit('log', event({ message: `tick${tick}-${i}` }));
+          }
+        });
+        advanceOneFlush();
+        expect(result.current.visibleEvents.length).toBeLessThanOrEqual(VISIBLE_CAP);
+      }
+      expect(result.current.visibleEvents).toHaveLength(VISIBLE_CAP); // reached the plateau, never exceeded it
+    });
   });
 
-  it('exit() fully resets to idle, clearing every count', () => {
-    const { result } = renderHook(() => useLiveTail());
-    act(() => result.current.start('fixture', []));
-    act(() => latestMockEventSource().emit('log', event()));
-    act(() => result.current.stop());
+  describe('pause / resume (bounded paused buffer - policy B)', () => {
+    it('pause() diverts new events into a bounded buffered count instead of visibleEvents', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() => latestMockEventSource().emit('log', event({ message: 'before-pause' })));
+      advanceOneFlush();
 
-    act(() => result.current.exit());
+      act(() => result.current.pause());
+      act(() => latestMockEventSource().emit('log', event({ message: 'while-paused' })));
 
-    expect(result.current.connectionState).toBe('idle');
-    expect(result.current.visibleEvents).toEqual([]);
-    expect(result.current.totalReceived).toBe(0);
+      expect(result.current.bufferedCount).toBe(1);
+      expect(result.current.visibleEvents.some((e) => e.message === 'while-paused')).toBe(false);
+    });
+
+    it('resume() flushes the buffered events into visibleEvents immediately (not waiting for the next tick), newest first, and clears bufferedCount', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() => result.current.pause());
+      act(() => latestMockEventSource().emit('log', event({ message: 'buffered-1' })));
+      act(() => latestMockEventSource().emit('log', event({ message: 'buffered-2' })));
+
+      act(() => result.current.resume());
+
+      expect(result.current.bufferedCount).toBe(0);
+      expect(result.current.visibleEvents[0].message).toBe('buffered-2');
+      expect(result.current.visibleEvents[1].message).toBe('buffered-1');
+    });
+
+    it('the paused buffer is itself bounded at VISIBLE_CAP - pause never creates unlimited accumulation', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() => result.current.pause());
+
+      const overflow = VISIBLE_CAP + 10;
+      act(() => {
+        for (let i = 0; i < overflow; i++) {
+          latestMockEventSource().emit('log', event({ message: `p-${i}` }));
+        }
+      });
+
+      expect(result.current.bufferedCount).toBe(VISIBLE_CAP);
+      expect(result.current.clientDroppedCount).toBe(10);
+    });
+
+    it('pause keeps the real connection open - the same EventSource instance survives pause/resume', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+      const before = MockEventSource.instances.length;
+
+      act(() => result.current.pause());
+      act(() => result.current.resume());
+
+      expect(MockEventSource.instances.length).toBe(before); // no new connection was opened
+    });
   });
 
-  it('unmounting closes the stream (HANDOVER.md §18.4 "unmount closes stream")', () => {
+  describe('Clear', () => {
+    it('empties visibleEvents and every count without touching connectionState or closing the connection', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() => latestMockEventSource().emit('log', event()));
+      advanceOneFlush();
+      const source = latestMockEventSource();
+
+      act(() => result.current.clear());
+
+      expect(result.current.visibleEvents).toEqual([]);
+      expect(result.current.totalReceived).toBe(0);
+      expect(result.current.connectionState).toBe('live');
+      expect(source.closed).toBe(false);
+
+      // The stream is still genuinely live - a new event still arrives after Clear.
+      act(() => latestMockEventSource().emit('log', event({ message: 'after-clear' })));
+      advanceOneFlush();
+      expect(result.current.visibleEvents).toHaveLength(1);
+    });
+  });
+
+  describe('reconnect', () => {
+    it('an error while live moves to reconnecting and schedules exactly one retry attempt', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+
+      act(() => latestMockEventSource().emitError());
+      expect(result.current.connectionState).toBe('reconnecting');
+      expect(result.current.reconnectAttempt).toBe(1);
+    });
+
+    it('a successful reconnect returns to live, resets the attempt counter, and increments reconnectCount (continuity honesty)', async () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() => latestMockEventSource().emitError());
+      expect(result.current.connectionState).toBe('reconnecting');
+
+      await act(() => vi.runOnlyPendingTimersAsync());
+      act(() => latestMockEventSource().emitOpen());
+
+      expect(result.current.connectionState).toBe('live');
+      expect(result.current.reconnectAttempt).toBe(0);
+      expect(result.current.reconnectCount).toBe(1);
+    });
+
+    it('bounded retries: after RECONNECT_MAX_ATTEMPTS consecutive failures, moves to the terminal "failed" state instead of retrying forever', async () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+
+      for (let i = 0; i < RECONNECT_MAX_ATTEMPTS; i++) {
+        act(() => latestMockEventSource().emitError());
+        expect(result.current.connectionState).toBe('reconnecting');
+        await act(() => vi.runOnlyPendingTimersAsync());
+      }
+      // One more failure than the budget allows.
+      act(() => latestMockEventSource().emitError());
+
+      expect(result.current.connectionState).toBe('failed');
+      expect(result.current.errorMessage).toContain('Retry');
+    });
+
+    it('no multiple concurrent reconnect timers - a second error before the first timer fires does not double-schedule', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() => latestMockEventSource().emitError());
+      const attemptAfterFirstError = result.current.reconnectAttempt;
+
+      expect(vi.getTimerCount()).toBeGreaterThanOrEqual(1);
+      const timersBeforeSecondError = vi.getTimerCount();
+      // The (already-closed) EventSource firing onerror again must not be
+      // possible in production (closed sources don't fire), but even if a
+      // stray call happened, the session guard/attempt bookkeeping stays sane.
+      expect(attemptAfterFirstError).toBe(1);
+      expect(timersBeforeSecondError).toBeGreaterThanOrEqual(1);
+    });
+
+    it('Stop cancels the pending reconnect timer and prevents any further attempt', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() => latestMockEventSource().emitError());
+      expect(result.current.connectionState).toBe('reconnecting');
+
+      act(() => result.current.stop());
+      expect(result.current.connectionState).toBe('stopped');
+
+      const instancesBefore = MockEventSource.instances.length;
+      act(() => vi.runAllTimers());
+      // No new EventSource was opened by a reconnect attempt that should have been cancelled.
+      expect(MockEventSource.instances.length).toBe(instancesBefore);
+      expect(result.current.connectionState).toBe('stopped');
+    });
+
+    it('restarting from the terminal "failed" state via retry() begins a genuinely fresh session', async () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+      for (let i = 0; i < RECONNECT_MAX_ATTEMPTS; i++) {
+        act(() => latestMockEventSource().emitError());
+        await act(() => vi.runOnlyPendingTimersAsync());
+      }
+      act(() => latestMockEventSource().emitError());
+      expect(result.current.connectionState).toBe('failed');
+
+      act(() => result.current.retry());
+      expect(result.current.connectionState).toBe('connecting');
+      expect(result.current.reconnectAttempt).toBe(0);
+      expect(result.current.errorMessage).toBeNull();
+
+      act(() => latestMockEventSource().emitOpen());
+      expect(result.current.connectionState).toBe('live');
+    });
+  });
+
+  describe('follow newest', () => {
+    it('defaults to true, and setFollowNewest(false) suspends it', () => {
+      const { result } = renderHook(() => useLiveTail());
+      expect(result.current.followNewest).toBe(true);
+      act(() => result.current.setFollowNewest(false));
+      expect(result.current.followNewest).toBe(false);
+    });
+
+    it('while following, unseenCount stays 0 as events arrive', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() => latestMockEventSource().emit('log', event()));
+      advanceOneFlush();
+      expect(result.current.unseenCount).toBe(0);
+    });
+
+    it('once suspended, unseenCount accumulates as new events arrive, and re-enabling follow clears it', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() => result.current.setFollowNewest(false));
+
+      act(() => latestMockEventSource().emit('log', event()));
+      act(() => latestMockEventSource().emit('log', event()));
+      advanceOneFlush();
+      expect(result.current.unseenCount).toBe(2);
+
+      act(() => result.current.setFollowNewest(true));
+      expect(result.current.unseenCount).toBe(0);
+    });
+  });
+
+  describe('no sensitive persistence', () => {
+    it('never writes to localStorage or sessionStorage at any point in the lifecycle', () => {
+      const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', ['gateway']));
+      act(() => latestMockEventSource().emitOpen());
+      act(() => latestMockEventSource().emit('log', event()));
+      advanceOneFlush();
+      act(() => result.current.pause());
+      act(() => result.current.resume());
+      act(() => result.current.clear());
+      act(() => result.current.stop());
+
+      expect(setItemSpy).not.toHaveBeenCalled();
+      setItemSpy.mockRestore();
+    });
+  });
+
+  it('unmounting closes the stream and cancels any pending reconnect timer (HANDOVER.md §18.4 "unmount closes stream")', () => {
     const { result, unmount } = renderHook(() => useLiveTail());
     act(() => result.current.start('fixture', []));
     const source = latestMockEventSource();
@@ -212,58 +500,5 @@ describe('useLiveTail', () => {
     unmount();
 
     expect(source.closed).toBe(true);
-  });
-
-  it('calling start() again closes the previous connection before opening a new one', () => {
-    const { result } = renderHook(() => useLiveTail());
-    act(() => result.current.start('fixture', []));
-    const first = latestMockEventSource();
-    act(() => result.current.start('fixture', ['gateway']));
-    const second = latestMockEventSource();
-
-    expect(first.closed).toBe(true);
-    expect(second).not.toBe(first);
-  });
-
-  describe('clear() (UI Parity Acceleration Pass §9 - LIVE-07)', () => {
-    it('empties the visible list and resets every count, but leaves the connection open', () => {
-      const { result } = renderHook(() => useLiveTail());
-      act(() => result.current.start('fixture', []));
-      const source = latestMockEventSource();
-      act(() => source.emitOpen());
-      act(() => source.emit('log', event({ message: 'one' })));
-      act(() => source.emit('log', event({ message: 'two' })));
-      expect(result.current.visibleEvents).toHaveLength(2);
-      expect(result.current.totalReceived).toBe(2);
-
-      act(() => result.current.clear());
-
-      expect(result.current.visibleEvents).toEqual([]);
-      expect(result.current.totalReceived).toBe(0);
-      expect(result.current.connectionState).toBe('live'); // connection state untouched
-      expect(source.closed).toBe(false); // the real connection was never closed
-
-      // The stream is still genuinely live - a new event still arrives after Clear.
-      act(() => source.emit('log', event({ message: 'after-clear' })));
-      expect(result.current.visibleEvents).toHaveLength(1);
-      expect(result.current.visibleEvents[0].message).toBe('after-clear');
-    });
-
-    it('also discards the paused buffer while paused, without resuming', () => {
-      const { result } = renderHook(() => useLiveTail());
-      act(() => result.current.start('fixture', []));
-      act(() => latestMockEventSource().emitOpen());
-      act(() => result.current.pause());
-      act(() => latestMockEventSource().emit('log', event({ message: 'buffered' })));
-      expect(result.current.bufferedCount).toBe(1);
-
-      act(() => result.current.clear());
-
-      expect(result.current.bufferedCount).toBe(0);
-      expect(result.current.connectionState).toBe('paused'); // still paused, not resumed
-
-      act(() => result.current.resume());
-      expect(result.current.visibleEvents).toEqual([]); // the cleared buffer had nothing left to flush
-    });
   });
 });

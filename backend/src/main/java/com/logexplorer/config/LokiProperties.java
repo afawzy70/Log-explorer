@@ -45,7 +45,21 @@ public class LokiProperties {
   /** Config-gated: raw LogQL is off by default (Phase E wires actual usage; this just reports the flag honestly). */
   private boolean rawLogQlEnabled = false;
 
-  /** Config-gated: only true if the gateway genuinely supports tail - never faked (HANDOVER.md §18.3). */
+  /**
+   * Reserved, currently inert (Legacy Remediation Slice 5 finding -
+   * `docs/verification/LEGACY_REMEDIATION_SLICE_5_REPORT.md`): {@link
+   * LokiLogSource} does not override {@code follow()} at all (the {@link
+   * com.logexplorer.source.LogSource} default rejects it), so this flag
+   * used to let an operator honestly-in-name-only advertise
+   * {@code liveTail=true} for a capability that would immediately error
+   * on first use - a "fake capability" the mission's own "Do not fake
+   * it" rule (HANDOVER.md §18.3) forbids. {@link LokiLogSource#capabilities()}
+   * no longer reads this field at all; it stays here only so existing
+   * `application.yml`/env configuration does not fail to bind. Real Loki
+   * live-tail support (a genuine streaming implementation) was judged out
+   * of Slice 5's own scope - "Do NOT implement a large new Loki streaming
+   * architecture."
+   */
   private boolean liveTailSupported = false;
 
   public String getBaseUrl() {

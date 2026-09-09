@@ -56,10 +56,18 @@ public class LokiLogSource implements LogSource {
 
   @Override
   public SourceCapabilities capabilities() {
-    // rawLogQL and liveTail both reflect real configuration, never assumed
-    // (IMPLEMENTATION_PLAN.md "Phase D" scope item 8).
-    return new SourceCapabilities(
-        true, properties.isLiveTailSupported(), properties.isRawLogQlEnabled(), false, false, false);
+    // rawLogQL reflects real configuration, never assumed
+    // (IMPLEMENTATION_PLAN.md "Phase D" scope item 8). liveTail is
+    // deliberately hardcoded false (Legacy Remediation Slice 5 finding):
+    // this class never overrides `follow()`, so the pre-existing
+    // `LokiProperties#liveTailSupported` config toggle could make this
+    // capability report `true` for a source that would error on the very
+    // first live-tail attempt - a "fake capability" (HANDOVER.md §18.3
+    // "Do not fake it"), never actually exercised because nothing in this
+    // repository ever set that flag true outside its own now-corrected
+    // unit test. Never trust that toggle here again - see
+    // `LokiProperties#liveTailSupported`'s own doc comment.
+    return new SourceCapabilities(true, false, properties.isRawLogQlEnabled(), false, false, false);
   }
 
   @Override

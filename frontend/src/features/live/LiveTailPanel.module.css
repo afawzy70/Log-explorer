@@ -83,6 +83,40 @@
   padding: var(--space-3);
 }
 
+.reconnectNotice {
+  margin: 0 0 var(--space-3) 0;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.filterRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.textFilterLabel {
+  flex: 1;
+  min-width: 180px;
+}
+
+.textFilterInput {
+  width: 100%;
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.jumpButton {
+  margin-bottom: var(--space-3);
+}
+
 .counts {
   margin: 0 0 var(--space-3) 0;
   color: var(--color-text-secondary);
