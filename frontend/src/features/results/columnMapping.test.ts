@@ -42,6 +42,7 @@ function baseEvent(overrides: Partial<LogEvent> = {}): LogEvent {
     rawLine: null,
     sourceId: 'fixture',
     composeProject: null,
+    composeService: null,
     containerId: null,
     containerName: null,
     stream: null,

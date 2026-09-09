@@ -37,6 +37,7 @@ function event(overrides: Partial<LogEvent> = {}): LogEvent {
     rawLine: null,
     sourceId: null,
     composeProject: null,
+    composeService: null,
     containerId: null,
     containerName: null,
     stream: null,

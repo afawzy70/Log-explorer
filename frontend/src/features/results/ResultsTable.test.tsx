@@ -37,6 +37,7 @@ function event(overrides: Partial<LogEvent> = {}): LogEvent {
     rawLine: null,
     sourceId: 'fixture',
     composeProject: null,
+    composeService: null,
     containerId: null,
     containerName: null,
     stream: null,
@@ -170,5 +171,118 @@ describe('ResultsTable', () => {
   it('has no detectable accessibility violations', async () => {
     const { container } = render(<ResultsTable events={[event(), event({ malformed: true, message: null, rawLine: 'x' })]} />);
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  describe('Legacy Remediation Slice 4 - column customization props', () => {
+    it('showing an optional column via hiddenColumnIds renders its genuine field value, Actions still last', () => {
+      const { container } = render(
+        <ResultsTable
+          events={[event({ logger: 'com.example.Gateway' })]}
+          columnOrder={['time', 'level', 'service', 'whatHappened', 'userCustomer', 'correlationTrace', 'logger']}
+          hiddenColumnIds={[]}
+        />,
+      );
+      const headers = screen.getAllByRole('columnheader').map((h) => h.textContent);
+      expect(headers).toEqual([
+        'Time',
+        'Level',
+        'Service',
+        'What happened',
+        'User/Customer',
+        'Correlation/Trace',
+        'Logger',
+        'Actions',
+      ]);
+      expect(container.querySelectorAll('col')).toHaveLength(8);
+      const row = screen.getAllByRole('row')[1];
+      const cells = within(row).getAllByRole('cell');
+      expect(cells).toHaveLength(8);
+      expect(cells[6].textContent).toBe('com.example.Gateway');
+    });
+
+    it('hiding a default column via hiddenColumnIds removes it, Actions unaffected', () => {
+      render(
+        <ResultsTable
+          events={[event()]}
+          columnOrder={['time', 'level', 'service', 'whatHappened', 'userCustomer', 'correlationTrace']}
+          hiddenColumnIds={['service']}
+        />,
+      );
+      const headers = screen.getAllByRole('columnheader').map((h) => h.textContent);
+      expect(headers).toEqual(['Time', 'Level', 'What happened', 'User/Customer', 'Correlation/Trace', 'Actions']);
+    });
+
+    it('reordering columnOrder changes header and cell order together, so rows still correspond correctly to headers', () => {
+      render(
+        <ResultsTable
+          events={[event({ service: 'gateway-svc' })]}
+          columnOrder={['level', 'time', 'service', 'whatHappened', 'userCustomer', 'correlationTrace']}
+          hiddenColumnIds={[]}
+        />,
+      );
+      const headers = screen.getAllByRole('columnheader').map((h) => h.textContent);
+      expect(headers[0]).toBe('Level');
+      expect(headers[1]).toBe('Time');
+      const row = screen.getAllByRole('row')[1];
+      const cells = within(row).getAllByRole('cell');
+      expect(cells[0].textContent).toBe('INFO'); // Level moved to first cell
+      expect(cells[2].textContent).toBe('gateway-svc'); // Service still third
+    });
+
+    it('the mandatory Actions column is always rendered last regardless of columnOrder content', () => {
+      render(
+        <ResultsTable
+          events={[event()]}
+          columnOrder={['correlationTrace', 'userCustomer', 'whatHappened', 'service', 'level', 'time']}
+          hiddenColumnIds={[]}
+        />,
+      );
+      const headers = screen.getAllByRole('columnheader').map((h) => h.textContent);
+      expect(headers[headers.length - 1]).toBe('Actions');
+    });
+
+    it('density="compact" applies the compact CSS class to the table', () => {
+      const { container } = render(<ResultsTable events={[event()]} density="compact" />);
+      const table = container.querySelector('table')!;
+      expect(table.className).toMatch(/compact/i);
+    });
+
+    it('default density ("comfortable") does not apply the compact class', () => {
+      const { container } = render(<ResultsTable events={[event()]} />);
+      const table = container.querySelector('table')!;
+      expect(table.className).not.toMatch(/compact/i);
+    });
+
+    it('column customization does not affect row selection / inspector wiring - onInspect still fires from Actions', async () => {
+      const user = userEvent.setup();
+      const onInspect = vi.fn();
+      render(
+        <ResultsTable
+          events={[event()]}
+          onInspect={onInspect}
+          columnOrder={['level', 'time', 'service', 'whatHappened', 'userCustomer', 'correlationTrace', 'logger']}
+          hiddenColumnIds={[]}
+          density="compact"
+        />,
+      );
+      await user.click(screen.getByRole('button', { name: /actions for this event/i }));
+      await user.click(screen.getByRole('menuitem', { name: /inspect event/i }));
+      expect(onInspect).toHaveBeenCalled();
+    });
+
+    it('the selected row still gets its selected styling with a custom column configuration', () => {
+      const { container } = render(
+        <ResultsTable
+          events={[event(), event({ message: 'second' })]}
+          selectedIndex={1}
+          columnOrder={['level', 'time', 'service', 'whatHappened', 'userCustomer', 'correlationTrace']}
+          hiddenColumnIds={['service']}
+          density="compact"
+        />,
+      );
+      const rows = container.querySelectorAll('tbody tr');
+      expect(rows[1].className).toMatch(/selected/i);
+      expect(rows[0].className).not.toMatch(/selected/i);
+    });
   });
 });

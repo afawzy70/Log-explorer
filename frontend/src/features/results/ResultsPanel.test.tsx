@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
@@ -42,6 +42,7 @@ function baseEvent() {
     rawLine: null,
     sourceId: null,
     composeProject: null,
+    composeService: null,
     containerId: null,
     containerName: null,
     stream: null,
@@ -270,6 +271,166 @@ describe('ResultsPanel', () => {
     // latest page's own returned=1.
     expect(screen.getByText(/showing 3 events loaded/i)).toBeInTheDocument();
     expect(screen.queryByText(/of 1/i)).not.toBeInTheDocument();
+  });
+
+  describe('Legacy Remediation Slice 4 - table settings integration', () => {
+    beforeEach(() => {
+      localStorage.clear();
+    });
+
+    it('renders the Columns control next to Refresh when results exist', () => {
+      render(
+        <ResultsPanel
+          state={baseState({
+            searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+          })}
+        />,
+      );
+      expect(screen.getByRole('button', { name: /^columns$/i })).toBeInTheDocument();
+    });
+
+    it('does not render the Columns control in loading/error/empty-search states', () => {
+      const { rerender } = render(<ResultsPanel state={baseState({ searchLoading: true })} />);
+      expect(screen.queryByRole('button', { name: /^columns$/i })).not.toBeInTheDocument();
+
+      rerender(<ResultsPanel state={baseState()} />);
+      expect(screen.queryByRole('button', { name: /^columns$/i })).not.toBeInTheDocument();
+    });
+
+    it('hiding/showing a column or changing density via the Columns control never calls runSearch, refresh, or loadMore (presentation-only)', async () => {
+      const user = userEvent.setup();
+      const runSearch = vi.fn();
+      const refresh = vi.fn();
+      const loadMore = vi.fn();
+      render(
+        <ResultsPanel
+          state={baseState({
+            searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+            runSearch,
+            refresh,
+            loadMore,
+          })}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /^columns$/i }));
+      await user.click(screen.getByRole('checkbox', { name: 'Logger' }));
+      await user.click(screen.getByRole('button', { name: 'Compact' }));
+      await user.click(screen.getByRole('button', { name: 'Move Service up' }));
+      await user.click(screen.getByRole('button', { name: 'Reset table' }));
+
+      expect(runSearch).not.toHaveBeenCalled();
+      expect(refresh).not.toHaveBeenCalled();
+      expect(loadMore).not.toHaveBeenCalled();
+    });
+
+    it('table configuration is preserved across a Refresh (the table re-renders with the same events, same column props)', async () => {
+      const user = userEvent.setup();
+      render(
+        <ResultsPanel
+          state={baseState({
+            searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+          })}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /^columns$/i }));
+      await user.click(screen.getByRole('checkbox', { name: 'Logger' }));
+      await user.click(screen.getByRole('button', { name: 'Close' }));
+      expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toContain('Logger');
+
+      // Refresh re-renders ResultsPanel with a fresh searchResult (same
+      // component instance) - `useTablePreferences` state is not reset by
+      // this, since it is not part of `SearchState` at all.
+      await user.click(screen.getByRole('button', { name: /refresh/i }));
+      expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toContain('Logger');
+    });
+
+    it('Inspector wiring (openInspector) still works with the Columns control mounted', async () => {
+      const user = userEvent.setup();
+      const openInspector = vi.fn();
+      render(
+        <ResultsPanel
+          state={baseState({
+            searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+            openInspector,
+          })}
+        />,
+      );
+      await user.click(screen.getByRole('button', { name: /actions for this event/i }));
+      await user.click(screen.getByRole('menuitem', { name: /inspect event/i }));
+      expect(openInspector).toHaveBeenCalled();
+    });
+
+    it('Load More still works, and the loaded table keeps the same column configuration', async () => {
+      const user = userEvent.setup();
+      const loadMore = vi.fn();
+      render(
+        <ResultsPanel
+          state={baseState({
+            searchResult: { events: [baseEvent()], counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true }, nextCursor: 'cursor-1', queryPlan: EMPTY_QUERY_PLAN },
+            loadMore,
+          })}
+        />,
+      );
+      await user.click(screen.getByRole('button', { name: /^columns$/i }));
+      await user.click(screen.getByRole('button', { name: 'Compact' }));
+      await user.click(screen.getByRole('button', { name: 'Close' }));
+
+      await user.click(screen.getByRole('button', { name: /load more/i }));
+      expect(loadMore).toHaveBeenCalledTimes(1);
+      const table = screen.getByRole('table');
+      expect(table.className).toMatch(/compact/i);
+    });
+
+    it('the breadcrumb/context ("show surrounding") workflow is unaffected by table settings being mounted', () => {
+      render(
+        <ResultsPanel
+          state={baseState({
+            breadcrumbLabel: 'Context around event',
+            searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+          })}
+        />,
+      );
+      expect(screen.getByText('Context around event')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /back to original search/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^columns$/i })).toBeInTheDocument();
+    });
+
+    it('safe table preferences persist across a full ResultsPanel remount (simulated reload), search state is untouched', () => {
+      const { unmount } = render(
+        <ResultsPanel
+          state={baseState({
+            searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+          })}
+        />,
+      );
+      const raw = localStorage.getItem('logexplorer.tablePreferences.v1');
+      expect(raw).toBeNull(); // nothing persisted yet - no customization made
+      unmount();
+
+      // Simulate a customization + reload by writing a valid preference
+      // directly (as a prior mount's `useTablePreferences` would have) and
+      // remounting.
+      localStorage.setItem(
+        'logexplorer.tablePreferences.v1',
+        JSON.stringify({
+          version: 1,
+          columnOrder: ['time', 'level', 'service', 'whatHappened', 'userCustomer', 'correlationTrace', 'logger', 'thread', 'traceId', 'spanId', 'correlationId', 'journeyId', 'eventId', 'errorCode', 'businessStep', 'uiIdentifier', 'container', 'pod', 'namespace', 'composeProject', 'composeService', 'devicePlatform', 'language'],
+          hiddenColumnIds: ['thread', 'traceId', 'spanId', 'correlationId', 'journeyId', 'eventId', 'errorCode', 'businessStep', 'uiIdentifier', 'container', 'pod', 'namespace', 'composeProject', 'composeService', 'devicePlatform', 'language'],
+          density: 'compact',
+        }),
+      );
+      render(
+        <ResultsPanel
+          state={baseState({
+            searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+          })}
+        />,
+      );
+      expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toContain('Logger');
+      expect(screen.getByRole('table').className).toMatch(/compact/i);
+    });
   });
 
   it('has no detectable accessibility violations in the loading, empty, and results states', async () => {
