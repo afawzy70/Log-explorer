@@ -218,45 +218,119 @@ public class PageCursorCodec {
   /**
    * Keyed HMAC-SHA256 (never a plain/public hash — mandatory blocker #3)
    * over every field that defines "what this search means" (see class
-   * javadoc). Raw sensitive filter values are fed into the keyed digest,
-   * never stored verbatim anywhere in the cursor. Package-private so
-   * {@code SearchService} never needs to import a crypto primitive itself
-   * and {@code PageCursorCodecTest} can assert on it directly.
+   * javadoc), in a canonical, field-boundary-unambiguous encoding (see
+   * {@link #appendField} — mandatory final blocker: "unambiguous HMAC
+   * input encoding"). Raw sensitive filter values are fed into the keyed
+   * digest, never stored verbatim anywhere in the cursor. Package-private
+   * so {@code SearchService} never needs to import a crypto primitive
+   * itself and {@code PageCursorCodecTest} can assert on it directly.
    */
   String requestBindingFingerprint(SearchRequest r) {
     RawSensitiveFields sf = r.sensitiveFilters();
-    String basis = String.join("",
-        n(r.sourceId()), n(r.start()), n(r.end()), n(r.direction()), n(r.limit()),
-        joinSorted(r.services()), joinSorted(r.levels()), n(r.text()),
-        n(r.traceId()), n(r.spanId()), n(r.correlationId()), n(r.journeyId()), n(r.eventId()),
-        n(r.errorCode()), n(r.businessStep()), n(r.uiIdentifier()), n(r.loggerContains()),
-        n(r.devicePlatform()), n(r.language()), n(r.containerId()), n(r.pod()),
-        n(sf.cif()), n(sf.userName()), n(sf.customerId()), n(sf.deviceId()), n(sf.deviceIp()),
-        n(r.query()), n(r.rawLogQl()));
-    return hmacHex(requestBindingSubkey, basis);
+    StringBuilder basis = new StringBuilder();
+    appendField(basis, r.sourceId());
+    appendField(basis, r.start());
+    appendField(basis, r.end());
+    appendField(basis, r.direction());
+    appendField(basis, r.limit());
+    appendOrderInsensitiveList(basis, r.services());
+    appendOrderInsensitiveList(basis, r.levels());
+    appendField(basis, r.text());
+    appendField(basis, r.traceId());
+    appendField(basis, r.spanId());
+    appendField(basis, r.correlationId());
+    appendField(basis, r.journeyId());
+    appendField(basis, r.eventId());
+    appendField(basis, r.errorCode());
+    appendField(basis, r.businessStep());
+    appendField(basis, r.uiIdentifier());
+    appendField(basis, r.loggerContains());
+    appendField(basis, r.devicePlatform());
+    appendField(basis, r.language());
+    appendField(basis, r.containerId());
+    appendField(basis, r.pod());
+    appendField(basis, sf.cif());
+    appendField(basis, sf.userName());
+    appendField(basis, sf.customerId());
+    appendField(basis, sf.deviceId());
+    appendField(basis, sf.deviceIp());
+    appendField(basis, r.query());
+    appendField(basis, r.rawLogQl());
+    return hmacHex(requestBindingSubkey, basis.toString());
   }
 
   /**
    * Keyed HMAC-SHA256 (never a plain/public hash — mandatory blocker #3)
-   * content fingerprint for one event, used only to recognize "the exact
-   * same event, already returned" when two events share the same {@link
+   * content fingerprint for one event, in the same canonical,
+   * field-boundary-unambiguous encoding as {@link #requestBindingFingerprint}
+   * (see {@link #appendField}), used only to recognize "the exact same
+   * event, already returned" when two events share the same {@link
    * CanonicalLogEvent#sourceTimestamp()} at a page boundary. Deliberately
    * never reads {@link CanonicalLogEvent#sensitive()}.
    */
   public String boundaryTieKey(CanonicalLogEvent e) {
-    String basis = String.join("",
-        n(e.sourceId()), n(e.containerId()), n(e.pod()), n(e.stream()), n(e.timestampRaw()),
-        n(e.rawLine()), n(e.message()), n(e.logger()), n(e.thread()),
-        n(e.traceId()), n(e.spanId()), n(e.correlationId()), n(e.journeyId()), n(e.eventId()));
-    return hmacHex(boundaryEventSubkey, basis);
+    StringBuilder basis = new StringBuilder();
+    appendField(basis, e.sourceId());
+    appendField(basis, e.containerId());
+    appendField(basis, e.pod());
+    appendField(basis, e.stream());
+    appendField(basis, e.timestampRaw());
+    appendField(basis, e.rawLine());
+    appendField(basis, e.message());
+    appendField(basis, e.logger());
+    appendField(basis, e.thread());
+    appendField(basis, e.traceId());
+    appendField(basis, e.spanId());
+    appendField(basis, e.correlationId());
+    appendField(basis, e.journeyId());
+    appendField(basis, e.eventId());
+    return hmacHex(boundaryEventSubkey, basis.toString());
   }
 
-  private static String joinSorted(List<String> values) {
-    return values.stream().sorted().reduce((a, b) -> a + "," + b).orElse("");
+  /**
+   * Appends one field to a canonical HMAC-input basis in a
+   * field-boundary-unambiguous ("netstring"-style) encoding: {@code
+   * <UTF-8 byte length>:<value>} for a non-null value, or the literal
+   * {@code N:} sentinel (never a valid length prefix - lengths are always
+   * decimal digits) for {@code null}, so {@code null} can never collide
+   * with an empty string (which encodes as {@code 0:}).
+   *
+   * <p>This is what makes concatenation safe: two different field-value
+   * tuples can never produce the same basis string, because each field's
+   * exact byte length is recorded immediately before it - unlike naive
+   * concatenation (the previous implementation's real bug, e.g. {@code
+   * ["ab","c"]} and {@code ["a","bc"]} both naively joining to {@code
+   * "abc"}). Every field is always appended at the same fixed position in
+   * the sequence (this method never reorders which field goes where), so
+   * two fields swapping values (e.g. {@code sourceId="X", text=""} vs
+   * {@code sourceId="", text="X"}) also never collides - their length
+   * prefixes land in different places in the resulting basis string.
+   */
+  private static void appendField(StringBuilder sb, Object value) {
+    if (value == null) {
+      sb.append("N:");
+      return;
+    }
+    String s = value.toString();
+    sb.append(s.getBytes(StandardCharsets.UTF_8).length).append(':').append(s);
   }
 
-  private static String n(Object value) {
-    return value == null ? " " : value.toString();
+  /**
+   * Appends an order-insensitive collection (the filter semantics for
+   * {@code services}/{@code levels}: a request naming the same set in a
+   * different order means the identical search) as an explicit,
+   * self-delimiting count followed by each element - canonically sorted
+   * first, so two logically-identical sets always produce the same basis
+   * regardless of the order the caller supplied them in - each element
+   * itself going through {@link #appendField}, so element boundaries
+   * within the list are exactly as unambiguous as any other field.
+   */
+  private static void appendOrderInsensitiveList(StringBuilder sb, List<String> values) {
+    List<String> sorted = values.stream().sorted().toList();
+    appendField(sb, String.valueOf(sorted.size()));
+    for (String v : sorted) {
+      appendField(sb, v);
+    }
   }
 
   private static String hmacHex(SecretKeySpec key, String input) {

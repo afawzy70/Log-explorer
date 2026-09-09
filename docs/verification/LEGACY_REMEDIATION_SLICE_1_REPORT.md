@@ -169,6 +169,31 @@ OWNER_ACTION_REQUIRED=NO
 
 **The block above is the original submission's report, kept for the record.** It is superseded by the recovery below — in particular `REAL_DOCKER_MULTI_PAGE` changed from `BLOCKED` to `PASS`.
 
+## Final blocker (PR #18 second review) — unambiguous HMAC input encoding
+
+`PageCursorCodec#requestBindingFingerprint`/`#boundaryTieKey` built their HMAC input with `String.join("", ...)` — plain concatenation, with no marker at all between fields. This is a real collision class, not a cosmetic one: two field-value tuples that differ only in *where* a character sits relative to a field boundary produce the identical basis string, and therefore the identical HMAC — `["ab","c"]` and `["a","bc"]` both naively join to `"abc"`. Concretely, a `SearchRequest` with `sourceId="ab", text="c"` would have signed the exact same bytes as one with `sourceId="a", text="bc"`.
+
+**Fix.** Both methods now build their basis via `appendField` — a netstring-style, field-boundary-unambiguous encoding: every field is written as `<UTF-8 byte length>:<value>` (a `null` is the literal, non-numeric sentinel `N:`, which can never collide with any real length prefix — length prefixes are always decimal digits — so `null` and `""` can never collide either, since empty string encodes as `0:`). Because each field's own byte length is recorded immediately before it, concatenation can never confuse where one field ends and the next begins, for any input. Fields are always appended in the same fixed order, so two fields swapping values (e.g. `sourceId="X", text=""` vs `sourceId="", text="X"`) also can never collide — their length prefixes land at different positions in the resulting basis string. `services`/`levels` (order-insensitive filter semantics — a request naming the same set in a different order is the identical search) are encoded via `appendOrderInsensitiveList`: sorted first, then an explicit, self-delimiting element count, then each element through `appendField` — so list-element boundaries are exactly as unambiguous as any other field, while order-insensitivity is preserved.
+
+**Tests added to `PageCursorCodecTest`** (all passing, all proving the fix, not merely exercising it):
+- `requestBindingFingerprintDistinguishesAmbiguousScalarFieldConcatenation` — the reviewer's own `["ab","c"]` vs `["a","bc"]` example, applied to `sourceId`/`text`.
+- `requestBindingFingerprintDistinguishesNullFromEmptyString`.
+- `requestBindingFingerprintDistinguishesAmbiguousListElementBoundaries` — the same collision class inside `services`.
+- `requestBindingFingerprintDistinguishesTheSameTextualValuesAtDifferentFieldPositions` — `sourceId="X",text=""` vs `sourceId="",text="X"`.
+- `requestBindingFingerprintStaysOrderInsensitiveForServicesAndLevelsDespiteTheCanonicalEncoding` — a regression guard proving the fix didn't accidentally make `services=[a,b]` and `services=[b,a]` bind differently (they must not — same search).
+- The four equivalent tests for `boundaryTieKey` (`message`/`logger` standing in for the two adjacent scalar fields, `rawLine` for the null/empty case).
+
+**Preserved, verified unchanged**: keyed HMAC subkeys, cursor opacity, source-native pagination, direction-aware pagination, no-skip/no-duplicate behavior (re-verified against real Docker after the fix — see below), and all 411 pre-existing backend tests (now 419 with the 8 new ones). No frontend file touched.
+
+**Real-Docker re-verification after the fix** (same host, same `sofra` stack, same query as every prior real-Docker check in this PR):
+
+```
+true_total (single unpaginated fetch, limit=5000): 270, truncated: False
+pages: 2, total_paged: 270 → MATCH
+```
+
+**Backend**: 419/419 (`./mvnw --batch-mode verify`). **Frontend**: 301/301 (unaffected — no frontend file touched). **E2E**: 80/80 locally (full suite, real backend + real browser).
+
 ## Final report (post-recovery)
 
 ```
@@ -192,3 +217,5 @@ REAL_DOCKER_MULTI_PAGE=PASS
 REGRESSIONS=0 introduced by this recovery (the 1 known E2E failure predates it and is unrelated - see above)
 OWNER_ACTION_REQUIRED=NO
 ```
+
+**Superseded by the final blocker fix above** — `BACKEND_TESTS` is now 419/419 (the 8 new canonical-encoding tests), and the E2E flake did not reproduce in the local full-suite re-run after this fix (80/80 - see the real-Docker/local-suite results just above), though it remains a known, pre-existing, unrelated issue that could in principle recur locally on this specific machine.

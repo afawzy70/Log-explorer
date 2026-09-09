@@ -288,6 +288,99 @@ class PageCursorCodecTest {
     assertThat(tieKeys.iterator().next()).isNotEqualTo(plainShaOfMessage);
   }
 
+  // ---------------------------------------------------------------------
+  // Final blocker — "unambiguous HMAC input encoding". A real bug in the
+  // previous implementation: String.join("", ...) concatenates fields
+  // with no boundary marker at all, so ["ab","c"] and ["a","bc"] (or any
+  // two field values that differ only in where a character sits relative
+  // to the field boundary) produced the exact same basis string, and
+  // therefore the exact same HMAC - a real, exploitable collision class,
+  // not merely a byte-string curiosity: it would let a cursor issued for
+  // one search be replayed against a materially different one whose
+  // fields happen to concatenate identically.
+  // ---------------------------------------------------------------------
+
+  @Test
+  void requestBindingFingerprintDistinguishesAmbiguousScalarFieldConcatenation() {
+    // sourceId="ab"+text="c" naively concatenates to the same string as
+    // sourceId="a"+text="bc" - exactly the reviewer's own example, applied
+    // to two real adjacent SearchRequest fields.
+    SearchRequest a = baseRequest().sourceId("ab").text("c").build();
+    SearchRequest b = baseRequest().sourceId("a").text("bc").build();
+
+    assertThat(codec.requestBindingFingerprint(a)).isNotEqualTo(codec.requestBindingFingerprint(b));
+  }
+
+  @Test
+  void requestBindingFingerprintDistinguishesNullFromEmptyString() {
+    SearchRequest withNullText = baseRequest().text(null).build();
+    SearchRequest withEmptyText = baseRequest().text("").build();
+
+    assertThat(codec.requestBindingFingerprint(withNullText))
+        .isNotEqualTo(codec.requestBindingFingerprint(withEmptyText));
+  }
+
+  @Test
+  void requestBindingFingerprintDistinguishesAmbiguousListElementBoundaries() {
+    SearchRequest a = baseRequest().services(java.util.List.of("ab", "c")).build();
+    SearchRequest b = baseRequest().services(java.util.List.of("a", "bc")).build();
+
+    assertThat(codec.requestBindingFingerprint(a)).isNotEqualTo(codec.requestBindingFingerprint(b));
+  }
+
+  @Test
+  void requestBindingFingerprintDistinguishesTheSameTextualValuesAtDifferentFieldPositions() {
+    // Same overall textual content ("X" and ""), but which field carries
+    // which value is swapped - a materially different search, must never
+    // collide.
+    SearchRequest a = baseRequest().sourceId("X").text("").build();
+    SearchRequest b = baseRequest().sourceId("").text("X").build();
+
+    assertThat(codec.requestBindingFingerprint(a)).isNotEqualTo(codec.requestBindingFingerprint(b));
+  }
+
+  @Test
+  void requestBindingFingerprintStaysOrderInsensitiveForServicesAndLevelsDespiteTheCanonicalEncoding() {
+    // The filter semantics of services/levels are a set, not a sequence -
+    // the canonical encoding must still treat differently-ordered but
+    // logically-identical lists as the same search (sorted before
+    // encoding), even though it is now strict about *element* boundaries.
+    SearchRequest a = baseRequest().services(java.util.List.of("gateway", "accounts-api")).build();
+    SearchRequest b = baseRequest().services(java.util.List.of("accounts-api", "gateway")).build();
+
+    assertThat(codec.requestBindingFingerprint(a)).isEqualTo(codec.requestBindingFingerprint(b));
+  }
+
+  @Test
+  void boundaryTieKeyDistinguishesAmbiguousScalarFieldConcatenation() {
+    CanonicalLogEvent a = CanonicalLogEvent.builder()
+        .timestamp(BOUNDARY).sourceTimestamp(BOUNDARY).message("ab").logger("c").build();
+    CanonicalLogEvent b = CanonicalLogEvent.builder()
+        .timestamp(BOUNDARY).sourceTimestamp(BOUNDARY).message("a").logger("bc").build();
+
+    assertThat(codec.boundaryTieKey(a)).isNotEqualTo(codec.boundaryTieKey(b));
+  }
+
+  @Test
+  void boundaryTieKeyDistinguishesNullFromEmptyString() {
+    CanonicalLogEvent withNullRawLine = CanonicalLogEvent.builder()
+        .timestamp(BOUNDARY).sourceTimestamp(BOUNDARY).message("m").rawLine(null).build();
+    CanonicalLogEvent withEmptyRawLine = CanonicalLogEvent.builder()
+        .timestamp(BOUNDARY).sourceTimestamp(BOUNDARY).message("m").rawLine("").build();
+
+    assertThat(codec.boundaryTieKey(withNullRawLine)).isNotEqualTo(codec.boundaryTieKey(withEmptyRawLine));
+  }
+
+  @Test
+  void boundaryTieKeyDistinguishesTheSameTextualValuesAtDifferentFieldPositions() {
+    CanonicalLogEvent a = CanonicalLogEvent.builder()
+        .timestamp(BOUNDARY).sourceTimestamp(BOUNDARY).message("X").logger("").build();
+    CanonicalLogEvent b = CanonicalLogEvent.builder()
+        .timestamp(BOUNDARY).sourceTimestamp(BOUNDARY).message("").logger("X").build();
+
+    assertThat(codec.boundaryTieKey(a)).isNotEqualTo(codec.boundaryTieKey(b));
+  }
+
   private static String sha256Hex(String input) {
     try {
       byte[] digest = MessageDigest.getInstance("SHA-256").digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));

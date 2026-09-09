@@ -89,6 +89,7 @@ Two real hosted runs on this PR branch:
   - `Backend`: PASS (411/411, same as the local run).
   - `Frontend`: PASS (typecheck clean, 301/301 tests, build succeeds).
   - `E2E`: PASS — **80/80** Playwright tests, including "Task 1 - What failed recently?", the one test that failed consistently in this session's *local* E2E re-run (see the "Known, pre-existing, out-of-scope issue" section above). Its hosted-CI pass confirms that failure really was specific to this development machine's own unrelated real Docker daemon — the clean, Docker-free `E2E` runner never triggers that race at all.
+- **Run 3** (after the "unambiguous HMAC input encoding" final blocker fix — `PageCursorCodec` only, `docs/verification/LEGACY_REMEDIATION_SLICE_1_REPORT.md`'s "Final blocker" section — no CI-workflow file itself changed): `<filled in after pushing that commit>`.
 
 ## Tests skipped
 
