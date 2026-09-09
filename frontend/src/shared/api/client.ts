@@ -1,5 +1,7 @@
 import type {
   ContextRequestBody,
+  DockerConnectionCandidate,
+  DockerConnectionSummary,
   JourneyRequestBody,
   ProblemDetail,
   SearchRequestBody,
@@ -94,4 +96,28 @@ export async function fetchJourney(body: JourneyRequestBody, signal?: AbortSigna
     signal,
   });
   return parseJsonOrThrow<SearchResponse>(response);
+}
+
+/**
+ * Docker connection settings (Legacy Remediation Slice 3) - the current
+ * effective configuration, sanitized, read-only.
+ */
+export async function fetchDockerConnectionSummary(signal?: AbortSignal): Promise<DockerConnectionSummary> {
+  const response = await fetch('/api/v1/sources/docker/connection', { signal });
+  return parseJsonOrThrow<DockerConnectionSummary>(response);
+}
+
+/**
+ * Test Connection (Legacy Remediation Slice 3) - `candidate` is ephemeral,
+ * sent as a POST body only, never persisted anywhere by this client and
+ * never applied to the running application's actual Docker connection.
+ */
+export async function testDockerConnection(candidate: DockerConnectionCandidate, signal?: AbortSignal): Promise<SourceHealth> {
+  const response = await fetch('/api/v1/sources/docker/test-connection', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(candidate),
+    signal,
+  });
+  return parseJsonOrThrow<SourceHealth>(response);
 }

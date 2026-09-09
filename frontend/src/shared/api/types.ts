@@ -29,6 +29,37 @@ export interface SourceHealth {
   checkedAt: string;
 }
 
+/**
+ * `GET /api/v1/sources/docker/connection` (Legacy Remediation Slice 3) -
+ * the current effective Docker connection, sanitized. `host`/`port` are
+ * `null` for LOCAL mode. `runtimeMutationSupported` is always `false` in
+ * this deployment (no authenticated admin boundary) - `settingsNote`
+ * explains why and what to do instead.
+ */
+export interface DockerConnectionSummary {
+  mode: 'LOCAL' | 'REMOTE';
+  host: string | null;
+  port: number | null;
+  tlsEnabled: boolean;
+  composeProjectFilter: string | null;
+  runtimeMutationSupported: boolean;
+  settingsNote: string;
+}
+
+/**
+ * `POST /api/v1/sources/docker/test-connection` body - an ephemeral
+ * candidate, never persisted, never applied to the running application.
+ * Never placed in localStorage/sessionStorage/the URL (CLAUDE.md §2 rule 4
+ * - the same standard every other search value already gets).
+ */
+export interface DockerConnectionCandidate {
+  mode: 'LOCAL' | 'REMOTE';
+  host?: string;
+  port?: number;
+  tls?: boolean;
+  tlsCertPath?: string;
+}
+
 /** Already-masked - safe to render as-is, never a "reveal" action (CLAUDE.md §2 rule 5). */
 export interface MaskedSensitiveFields {
   cif: string | null;

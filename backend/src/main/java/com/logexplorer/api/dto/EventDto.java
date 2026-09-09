@@ -44,6 +44,7 @@ public record EventDto(
     String rawLine,
     String sourceId,
     String composeProject,
+    String composeService,
     String containerId,
     String containerName,
     String stream,

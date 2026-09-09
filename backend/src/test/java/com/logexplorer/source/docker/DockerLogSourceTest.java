@@ -26,7 +26,11 @@ import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceHealth;
 import com.logexplorer.core.parse.LogLineParser;
 import com.logexplorer.core.search.PageCursorCodec;
+import com.logexplorer.config.DockerRemoteAllowlistProperties;
 import com.logexplorer.source.LogSourceRegistry;
+import com.logexplorer.source.docker.security.RemoteHostGuard;
+import com.logexplorer.source.docker.security.RemoteHostRejectedException;
+import java.net.InetAddress;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -46,6 +50,7 @@ class DockerLogSourceTest {
   private ReadOnlyDockerClient mockClient;
   private DockerProperties properties;
   private DockerLogSource source;
+  private RemoteHostGuard remoteHostGuard;
 
   @BeforeEach
   void setUp() throws Exception {
@@ -58,7 +63,8 @@ class DockerLogSourceTest {
     when(factory.create(properties)).thenReturn(mockClient);
 
     LogLineParser parser = new LogLineParser(new ObjectMapper());
-    source = new DockerLogSource(factory, properties, parser);
+    remoteHostGuard = new RemoteHostGuard(new DockerRemoteAllowlistProperties(), InetAddress::getAllByName);
+    source = new DockerLogSource(factory, properties, parser, remoteHostGuard);
   }
 
   private Container container(String id, String name, String project, String service, String state) {
@@ -242,6 +248,301 @@ class DockerLogSourceTest {
     List<CanonicalLogEvent> events = source.search(wideOpenRequest().build()).collectList().block();
 
     assertThat(events).hasSize(1);
+  }
+
+  private Container excludedContainer(String id, String name, String project, String service, String state) {
+    Container c = container(id, name, project, service, state);
+    java.util.Map<String, String> labels = new java.util.HashMap<>(c.getLabels());
+    labels.put(ComposeLabels.EXCLUDED, "true");
+    when(c.getLabels()).thenReturn(labels);
+    return c;
+  }
+
+  // --- composeService metadata (Legacy Remediation Slice 3) --------------
+
+  @Test
+  void composeServiceIsPopulatedOnSearchedEventsAlongsideComposeProject() {
+    Container gateway = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(gateway));
+    stubLogs("c1", jsonLine("2026-01-01T00:00:00.000000000Z", "gateway", "hello"));
+
+    CanonicalLogEvent event = source.search(wideOpenRequest().build()).blockFirst();
+
+    assertThat(event.composeProject()).isEqualTo("proj");
+    assertThat(event.composeService()).isEqualTo("gateway");
+  }
+
+  @Test
+  void composeServiceIsPopulatedOnFollowedEvents() throws Exception {
+    Container gateway = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(gateway));
+    stubFollow("c1", jsonLine("2026-01-01T00:00:00.000000000Z", "gateway", "hello"));
+
+    CanonicalLogEvent event = source.follow(new com.logexplorer.core.model.FollowRequest("local-docker", List.of()))
+        .blockFirst(java.time.Duration.ofSeconds(2));
+
+    assertThat(event.composeProject()).isEqualTo("proj");
+    assertThat(event.composeService()).isEqualTo("gateway");
+  }
+
+  // --- Compose project hard boundary matrix (Legacy Remediation Slice 3) -
+  // "Add deterministic tests with at least TWO Compose projects... both
+  // must include overlapping Compose service names, e.g. project-a/payments
+  // and project-b/payments."
+
+  private Container paymentsContainer(String project, String containerId) {
+    return container(containerId, project + "-payments-1", project, "payments", "running");
+  }
+
+  @Test
+  void selectingProjectAReturnsZeroProjectBContainersInDiscoverServices() {
+    properties.setComposeProjectFilter("project-a");
+    Container aPayments = paymentsContainer("project-a", "ca");
+    Container bPayments = paymentsContainer("project-b", "cb");
+    when(mockClient.listContainers(true)).thenReturn(List.of(aPayments, bPayments));
+
+    List<ServiceInfo> services = source.discoverServices().collectList().block();
+
+    assertThat(services).hasSize(1);
+    assertThat(services.get(0).name()).isEqualTo("payments");
+    assertThat(services.get(0).totalCount()).isEqualTo(1); // only project-a's one container, never project-b's
+  }
+
+  @Test
+  void selectingProjectAReturnsZeroProjectBEventsInSearch() {
+    properties.setComposeProjectFilter("project-a");
+    Container aPayments = paymentsContainer("project-a", "ca");
+    Container bPayments = paymentsContainer("project-b", "cb");
+    when(mockClient.listContainers(true)).thenReturn(List.of(aPayments, bPayments));
+    stubLogs("ca", jsonLine("2026-01-01T00:00:00.000000000Z", "payments", "project-a event"));
+    stubLogs("cb", jsonLine("2026-01-01T00:00:01.000000000Z", "payments", "project-b event"));
+
+    List<CanonicalLogEvent> events = source.search(wideOpenRequest().build()).collectList().block();
+
+    assertThat(events).hasSize(1);
+    assertThat(events.get(0).composeProject()).isEqualTo("project-a");
+    assertThat(events.get(0).message()).isEqualTo("project-a event");
+    verify(mockClient, never()).readLogs(eq("cb"), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+  }
+
+  @Test
+  void selectingProjectAReturnsZeroProjectBEventsInFollow() throws Exception {
+    // A real live-tail Flux never completes on its own (it only ever
+    // terminates via cancellation - HANDOVER.md §18.2), so this proves
+    // isolation the same way the pre-existing followOnlyFollowsContainersMatchingTheRequestedServices
+    // test already does: subscribe (non-blocking) and verify which
+    // container(s) followLogs() was actually invoked for, rather than
+    // blocking for a completion signal that will never arrive.
+    properties.setComposeProjectFilter("project-a");
+    Container aPayments = paymentsContainer("project-a", "ca");
+    Container bPayments = paymentsContainer("project-b", "cb");
+    when(mockClient.listContainers(true)).thenReturn(List.of(aPayments, bPayments));
+    when(mockClient.followLogs(any(), any())).thenAnswer(invocation -> invocation.getArgument(1));
+
+    source.follow(new com.logexplorer.core.model.FollowRequest("local-docker", List.of())).subscribe();
+
+    verify(mockClient, org.mockito.Mockito.timeout(2000)).followLogs(eq("ca"), any());
+    verify(mockClient, never()).followLogs(eq("cb"), any());
+  }
+
+  @Test
+  void selectingProjectBIsTheExactReverseAndReturnsZeroProjectAResults() {
+    properties.setComposeProjectFilter("project-b");
+    Container aPayments = paymentsContainer("project-a", "ca");
+    Container bPayments = paymentsContainer("project-b", "cb");
+    when(mockClient.listContainers(true)).thenReturn(List.of(aPayments, bPayments));
+    stubLogs("cb", jsonLine("2026-01-01T00:00:00.000000000Z", "payments", "project-b event"));
+
+    List<CanonicalLogEvent> events = source.search(wideOpenRequest().build()).collectList().block();
+    List<ServiceInfo> services = source.discoverServices().collectList().block();
+
+    assertThat(events).hasSize(1);
+    assertThat(events.get(0).composeProject()).isEqualTo("project-b");
+    assertThat(services).hasSize(1);
+    assertThat(services.get(0).totalCount()).isEqualTo(1);
+  }
+
+  @Test
+  void sameServiceNameInTwoDifferentProjectsNeverMergesIdentityWhenNoProjectFilterIsConfigured() {
+    // No project filter: both containers are legitimately discovered, but
+    // they must never be merged into one another's identity - each event
+    // still carries its own real composeProject, and discoverServices'
+    // per-service running/total count spans both (that is the documented,
+    // correct "no filter configured" behavior - isolation is what the
+    // project filter itself provides, not an implicit default).
+    Container aPayments = paymentsContainer("project-a", "ca");
+    Container bPayments = paymentsContainer("project-b", "cb");
+    when(mockClient.listContainers(true)).thenReturn(List.of(aPayments, bPayments));
+    stubLogs("ca", jsonLine("2026-01-01T00:00:00.000000000Z", "payments", "a"));
+    stubLogs("cb", jsonLine("2026-01-01T00:00:01.000000000Z", "payments", "b"));
+
+    List<CanonicalLogEvent> events = source.search(wideOpenRequest().build()).collectList().block();
+    List<ServiceInfo> services = source.discoverServices().collectList().block();
+
+    assertThat(events).hasSize(2);
+    assertThat(events.stream().map(CanonicalLogEvent::composeProject)).containsExactlyInAnyOrder("project-a", "project-b");
+    assertThat(services).hasSize(1); // one logical "payments" service name...
+    assertThat(services.get(0).totalCount()).isEqualTo(2); // ...spanning both projects' containers, honestly
+  }
+
+  @Test
+  void aBlankComposeProjectFilterBehavesIdenticallyToNoFilterAcrossBothProjects() {
+    properties.setComposeProjectFilter("");
+    Container aPayments = paymentsContainer("project-a", "ca");
+    Container bPayments = paymentsContainer("project-b", "cb");
+    when(mockClient.listContainers(true)).thenReturn(List.of(aPayments, bPayments));
+    stubLogs("ca", jsonLine("2026-01-01T00:00:00.000000000Z", "payments", "a"));
+    stubLogs("cb", jsonLine("2026-01-01T00:00:01.000000000Z", "payments", "b"));
+
+    List<CanonicalLogEvent> events = source.search(wideOpenRequest().build()).collectList().block();
+
+    assertThat(events).hasSize(2);
+  }
+
+  @Test
+  void aTargetProjectWithNoRunningContainersYieldsEmptyResultsNeverAnError() {
+    properties.setComposeProjectFilter("project-with-nothing-running");
+    Container aPayments = paymentsContainer("project-a", "ca");
+    when(mockClient.listContainers(true)).thenReturn(List.of(aPayments));
+
+    List<CanonicalLogEvent> events = source.search(wideOpenRequest().build()).collectList().block();
+    List<ServiceInfo> services = source.discoverServices().collectList().block();
+
+    assertThat(events).isEmpty();
+    assertThat(services).isEmpty();
+  }
+
+  @Test
+  void stoppedContainersRemainReadableWithinAProjectFilterTheSameAsWithoutOne() {
+    properties.setComposeProjectFilter("project-a");
+    Container stopped = container("ca", "project-a-payments-1", "project-a", "payments", "exited");
+    when(mockClient.listContainers(true)).thenReturn(List.of(stopped));
+    stubLogs("ca", jsonLine("2026-01-01T00:00:00.000000000Z", "payments", "from a stopped container"));
+
+    List<CanonicalLogEvent> events = source.search(wideOpenRequest().build()).collectList().block();
+
+    assertThat(events).hasSize(1);
+  }
+
+  // --- self-exclusion (Legacy Remediation Slice 3) ------------------------
+
+  @Test
+  void selfExcludedContainerIsAbsentFromDiscoverServices() {
+    Container excluded = excludedContainer("app", "log-explorer-app-1", "log-explorer", "app", "running");
+    Container ordinary = container("c1", "log-explorer-gateway-1", "log-explorer", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(excluded, ordinary));
+
+    List<ServiceInfo> services = source.discoverServices().collectList().block();
+
+    assertThat(services).extracting(ServiceInfo::name).containsExactly("gateway");
+  }
+
+  @Test
+  void selfExcludedContainerIsAbsentFromSearch() {
+    Container excluded = excludedContainer("app", "log-explorer-app-1", "log-explorer", "app", "running");
+    Container ordinary = container("c1", "log-explorer-gateway-1", "log-explorer", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(excluded, ordinary));
+    stubLogs("app", jsonLine("2026-01-01T00:00:00.000000000Z", "app", "own log line - must never appear"));
+    stubLogs("c1", jsonLine("2026-01-01T00:00:01.000000000Z", "gateway", "unrelated container - must appear"));
+
+    List<CanonicalLogEvent> events = source.search(wideOpenRequest().build()).collectList().block();
+
+    assertThat(events).hasSize(1);
+    assertThat(events.get(0).message()).isEqualTo("unrelated container - must appear");
+    verify(mockClient, never()).readLogs(eq("app"), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+  }
+
+  @Test
+  void selfExcludedContainerIsAbsentFromLiveTail() throws Exception {
+    Container excluded = excludedContainer("app", "log-explorer-app-1", "log-explorer", "app", "running");
+    Container ordinary = container("c1", "log-explorer-gateway-1", "log-explorer", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(excluded, ordinary));
+    when(mockClient.followLogs(any(), any())).thenAnswer(invocation -> invocation.getArgument(1));
+
+    source.follow(new com.logexplorer.core.model.FollowRequest("local-docker", List.of())).subscribe();
+
+    verify(mockClient, org.mockito.Mockito.timeout(2000)).followLogs(eq("c1"), any());
+    verify(mockClient, never()).followLogs(eq("app"), any());
+  }
+
+  @Test
+  void selfExclusionAppliesRegardlessOfAnyConfiguredProjectFilter() {
+    properties.setComposeProjectFilter("log-explorer");
+    Container excluded = excludedContainer("app", "log-explorer-app-1", "log-explorer", "app", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(excluded));
+
+    List<ServiceInfo> services = source.discoverServices().collectList().block();
+
+    assertThat(services).isEmpty();
+  }
+
+  // --- REMOTE mode SSRF-guard integration (Legacy Remediation Slice 3) ---
+  // Exhaustive policy behavior itself lives in RemoteHostGuardTest; these
+  // prove DockerLogSource actually *calls* the guard, fresh, before every
+  // real operation, for a genuinely rejected host.
+
+  @Test
+  void remoteModeWithAForbiddenHostFailsSearchViaTheSharedGuard() {
+    properties.setMode(DockerProperties.Mode.REMOTE);
+    properties.setHost("127.0.0.1"); // loopback - rejected by the real guard's default policy
+
+    org.junit.jupiter.api.Assertions.assertThrows(RemoteHostRejectedException.class,
+        () -> source.search(wideOpenRequest().build()).collectList().block());
+  }
+
+  @Test
+  void remoteModeWithAForbiddenHostFailsDiscoverServicesViaTheSharedGuard() {
+    properties.setMode(DockerProperties.Mode.REMOTE);
+    properties.setHost("169.254.169.254"); // link-local / cloud metadata
+
+    org.junit.jupiter.api.Assertions.assertThrows(RemoteHostRejectedException.class,
+        () -> source.discoverServices().collectList().block());
+  }
+
+  @Test
+  void remoteModeWithAForbiddenHostFailsFollowViaTheSharedGuard() {
+    properties.setMode(DockerProperties.Mode.REMOTE);
+    properties.setHost("10.0.0.5"); // private LAN, not allowlisted by default
+
+    org.junit.jupiter.api.Assertions.assertThrows(RemoteHostRejectedException.class,
+        () -> source.follow(new com.logexplorer.core.model.FollowRequest("local-docker", List.of())).blockFirst());
+  }
+
+  @Test
+  void remoteModeWithAnAllowedPublicHostNeverConsultsTheGuardNegatively() {
+    properties.setMode(DockerProperties.Mode.REMOTE);
+    properties.setHost("192.0.2.10"); // TEST-NET-1 documentation range - not forbidden by default policy
+    when(mockClient.listContainers(true)).thenReturn(List.of());
+
+    List<ServiceInfo> services = source.discoverServices().collectList().block();
+
+    assertThat(services).isEmpty(); // succeeded (no exception), simply nothing to discover
+  }
+
+  @Test
+  void localModeNeverConsultsTheRemoteHostGuardEvenWithAHostSetToAForbiddenValue() {
+    // LOCAL mode ignores host/port entirely - a stray/leftover host value
+    // must never cause LOCAL mode to fail via the REMOTE-only guard.
+    properties.setMode(DockerProperties.Mode.LOCAL);
+    properties.setHost("127.0.0.1");
+    when(mockClient.listContainers(true)).thenReturn(List.of());
+
+    List<ServiceInfo> services = source.discoverServices().collectList().block();
+
+    assertThat(services).isEmpty();
+  }
+
+  @SuppressWarnings("unchecked")
+  private void stubFollow(String containerId, String... rawLinesWithTimestamp) {
+    doAnswer(invocation -> {
+      DockerFollowCallback callback = invocation.getArgument(1);
+      for (String line : rawLinesWithTimestamp) {
+        callback.onNext(new com.github.dockerjava.api.model.Frame(
+            com.github.dockerjava.api.model.StreamType.STDOUT,
+            line.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+      }
+      return callback;
+    }).when(mockClient).followLogs(eq(containerId), any());
   }
 
   @Test

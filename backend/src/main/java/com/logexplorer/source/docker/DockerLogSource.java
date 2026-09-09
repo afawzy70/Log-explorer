@@ -11,6 +11,7 @@ import com.logexplorer.core.model.SourceHealth;
 import com.logexplorer.core.parse.LogLineParser;
 import com.logexplorer.core.search.EventFilters;
 import com.logexplorer.source.LogSource;
+import com.logexplorer.source.docker.security.RemoteHostGuard;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -51,11 +52,30 @@ public class DockerLogSource implements LogSource {
   private final ReadOnlyDockerClient client;
   private final DockerProperties properties;
   private final LogLineParser parser;
+  private final RemoteHostGuard remoteHostGuard;
 
-  public DockerLogSource(DockerClientFactory factory, DockerProperties properties, LogLineParser parser) {
+  public DockerLogSource(DockerClientFactory factory, DockerProperties properties, LogLineParser parser, RemoteHostGuard remoteHostGuard) {
     this.client = factory.create(properties);
     this.properties = properties;
     this.parser = parser;
+    this.remoteHostGuard = remoteHostGuard;
+  }
+
+  /**
+   * Legacy Remediation Slice 3 — "re-resolve before each real connection
+   * attempt to reduce DNS-rebinding risk... apply identically to Test
+   * Connection and runtime Docker construction." {@link DockerClientFactory#create}
+   * already checks once, at this source's own construction (app boot); this
+   * is the second half - a fresh, uncached re-check immediately before
+   * every real Docker operation this adapter performs, for the lifetime of
+   * the long-lived client {@link #client} built at boot. A no-op for
+   * {@link DockerProperties.Mode#LOCAL} (deployment-time configuration
+   * only, not the SSRF-sensitive surface this guard defends).
+   */
+  private void checkRemoteHostIfNeeded() {
+    if (properties.getMode() == DockerProperties.Mode.REMOTE) {
+      remoteHostGuard.checkOrThrow(properties.getHost());
+    }
   }
 
   @Override
@@ -84,6 +104,7 @@ public class DockerLogSource implements LogSource {
   @Override
   public Mono<SourceHealth> health() {
     return Mono.fromCallable(() -> {
+          checkRemoteHostIfNeeded();
           client.ping();
           return new SourceHealth(SourceHealth.Status.UP, "Docker daemon reachable", Instant.now());
         })
@@ -99,6 +120,7 @@ public class DockerLogSource implements LogSource {
   }
 
   private List<ServiceInfo> discoverServicesBlocking() {
+    checkRemoteHostIfNeeded();
     List<Container> containers = client.listContainers(true);
     Map<String, int[]> counts = new TreeMap<>();
     for (Container container : relevantContainers(containers, List.of())) {
@@ -135,7 +157,10 @@ public class DockerLogSource implements LogSource {
    */
   @Override
   public Flux<CanonicalLogEvent> follow(FollowRequest request) {
-    return Mono.fromCallable(() -> relevantContainers(client.listContainers(true), request.services()))
+    return Mono.fromCallable(() -> {
+          checkRemoteHostIfNeeded();
+          return relevantContainers(client.listContainers(true), request.services());
+        })
         .subscribeOn(Schedulers.boundedElastic())
         .flatMapMany(containers -> Flux.<CanonicalLogEvent>create(
             sink -> startFollowing(containers, sink), FluxSink.OverflowStrategy.BUFFER));
@@ -179,6 +204,7 @@ public class DockerLogSource implements LogSource {
     CanonicalLogEvent enriched = parsed.toBuilder()
         .sourceId(id())
         .composeProject(ComposeLabels.project(labels))
+        .composeService(ComposeLabels.service(labels))
         .containerId(container.getId())
         .containerName(firstName(container))
         .stream(line.stream())
@@ -200,6 +226,7 @@ public class DockerLogSource implements LogSource {
   }
 
   private List<CanonicalLogEvent> searchBlocking(SearchRequest request) {
+    checkRemoteHostIfNeeded();
     List<Container> containers = client.listContainers(true);
     List<Container> targets = relevantContainers(containers, request.services()).stream()
         .limit(properties.getMaxContainers())
@@ -257,6 +284,7 @@ public class DockerLogSource implements LogSource {
       CanonicalLogEvent enriched = parsed.toBuilder()
           .sourceId(id())
           .composeProject(ComposeLabels.project(labels))
+          .composeService(ComposeLabels.service(labels))
           .containerId(cl.container().getId())
           .containerName(firstName(cl.container()))
           .stream(cl.line().stream())
@@ -317,6 +345,16 @@ public class DockerLogSource implements LogSource {
     boolean noProjectFilter = projectFilter == null || projectFilter.isBlank();
     return containers.stream()
         .filter(c -> ComposeLabels.isComposeManaged(c.getLabels()))
+        // Self-exclusion (Legacy Remediation Slice 3) - an explicitly
+        // labeled container (e.g. Log Explorer's own, see
+        // docker-compose.yml) is treated as if it did not exist at all,
+        // applied before the project filter so it is excluded regardless
+        // of which project is selected/configured.
+        .filter(c -> !ComposeLabels.isExcluded(c.getLabels()))
+        // Compose project hard boundary (Legacy Remediation Slice 3) - the
+        // single filter point every caller (discoverServices/search/
+        // follow) already routes through; containers from another project
+        // never reach any candidate set built from this method's result.
         .filter(c -> noProjectFilter || projectFilter.equals(ComposeLabels.project(c.getLabels())))
         .filter(c -> requestedServices.isEmpty()
             || requestedServices.contains(ComposeLabels.service(c.getLabels())))

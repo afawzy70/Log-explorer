@@ -1,4 +1,5 @@
 import { SourceHealthBadge } from './SourceHealthBadge';
+import { DockerSettingsPanel } from '../features/settings/DockerSettingsPanel';
 import type { SearchState } from './useSearchState';
 import styles from './Shell.module.css';
 
@@ -18,6 +19,7 @@ export function Shell({ state }: ShellProps) {
       <h1 className={styles.title}>Log Explorer</h1>
       {state.selectedSource ? <span className={styles.sourceName}>{state.selectedSource.displayName}</span> : null}
       <div className={styles.spacer} />
+      <DockerSettingsPanel />
       <SourceHealthBadge health={state.health} loading={state.healthLoading} onRetry={state.retryHealth} />
     </header>
   );

@@ -7,6 +7,7 @@ import com.github.dockerjava.core.DockerClientImpl;
 import com.github.dockerjava.httpclient5.ApacheDockerHttpClient;
 import com.github.dockerjava.transport.DockerHttpClient;
 import com.logexplorer.config.DockerProperties;
+import com.logexplorer.source.docker.security.RemoteHostGuard;
 import java.io.File;
 import java.net.URI;
 import org.springframework.stereotype.Component;
@@ -28,6 +29,12 @@ import org.springframework.stereotype.Component;
 @Component
 public class DockerClientFactory {
 
+  private final RemoteHostGuard remoteHostGuard;
+
+  public DockerClientFactory(RemoteHostGuard remoteHostGuard) {
+    this.remoteHostGuard = remoteHostGuard;
+  }
+
   public ReadOnlyDockerClient create(DockerProperties properties) {
     DockerClientConfig config = buildConfig(properties);
     DockerHttpClient httpClient = new ApacheDockerHttpClient.Builder()
@@ -47,7 +54,11 @@ public class DockerClientFactory {
     if (properties.getMode() == DockerProperties.Mode.LOCAL) {
       // Deliberately do nothing further: the default builder already reads
       // DOCKER_HOST / DOCKER_TLS_VERIFY / DOCKER_CERT_PATH from the
-      // environment, falling back to the platform's local socket.
+      // environment, falling back to the platform's local socket. LOCAL
+      // mode is deployment-time configuration (an env var only the
+      // deployer controls), not the SSRF-sensitive surface the mission
+      // describes - the RemoteHostGuard check below is deliberately
+      // REMOTE-mode only.
       return builder.build();
     }
 
@@ -58,6 +69,11 @@ public class DockerClientFactory {
       throw new IllegalStateException(
           "logexplorer.docker.mode=REMOTE requires logexplorer.docker.host to be set");
     }
+    // SSRF/DNS-rebinding guard (Legacy Remediation Slice 3) - the exact
+    // same policy Test Connection uses, checked fresh here (never cached)
+    // so this covers both real runtime construction and Test Connection's
+    // own reuse of this same method.
+    remoteHostGuard.checkOrThrow(host);
     String scheme = properties.isTls() ? "https" : "tcp";
     URI dockerHost = URI.create(scheme + "://" + host + ":" + properties.getPort());
     builder.withDockerHost(dockerHost.toString());

@@ -1,6 +1,7 @@
 package com.logexplorer.source.docker;
 
 import com.logexplorer.core.model.SourceHealth;
+import com.logexplorer.source.docker.security.RemoteHostRejectedException;
 import java.time.Instant;
 import java.util.Locale;
 
@@ -23,6 +24,23 @@ public final class DockerDiagnostics {
 
   static String classify(Throwable error) {
     Throwable root = rootCause(error);
+
+    // Legacy Remediation Slice 3 - RemoteHostGuard's own rejection is
+    // already a precise, sanitized classification (DNS_FAILURE vs
+    // POLICY_REJECTED), never a raw exception message to pattern-match
+    // against; checked against both the top-level and root-cause throwable
+    // since it is never itself wrapped around another cause.
+    RemoteHostRejectedException rejected = error instanceof RemoteHostRejectedException e ? e
+        : root instanceof RemoteHostRejectedException e ? e : null;
+    if (rejected != null) {
+      return switch (rejected.reason()) {
+        case DNS_FAILURE -> "Cannot reach the configured Docker host. Confirm the host and port are correct.";
+        case POLICY_REJECTED ->
+            "The configured Docker host was rejected by connection policy (SSRF protection). If this is a "
+                + "legitimate private-network Docker host, add it to the remote host allowlist.";
+      };
+    }
+
     String msg = String.valueOf(root.getMessage()).toLowerCase(Locale.ROOT);
 
     // java.net.UnknownHostException's own message is just the raw hostname
@@ -39,7 +57,12 @@ public final class DockerDiagnostics {
       return "TLS handshake failed connecting to the Docker daemon. Confirm the configured TLS certificates "
           + "are valid for this endpoint.";
     }
-    if (msg.contains("timed out") || msg.contains("timeout")) {
+    // Reactor's own .timeout() operator (Legacy Remediation Slice 3's
+    // Test Connection bound) raises java.util.concurrent.TimeoutException
+    // with a message like "Did not observe any item ... within 5000ms" -
+    // the type itself, not message text, is the reliable signal, the same
+    // pattern already used for UnknownHostException above.
+    if (root instanceof java.util.concurrent.TimeoutException || msg.contains("timed out") || msg.contains("timeout")) {
       return "Timed out connecting to the Docker daemon. Confirm the configured host and port are correct "
           + "and reachable.";
     }

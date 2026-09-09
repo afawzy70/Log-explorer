@@ -56,6 +56,7 @@ public class EventMapper {
         event.rawLine(),
         event.sourceId(),
         event.composeProject(),
+        event.composeService(),
         event.containerId(),
         event.containerName(),
         event.stream(),
