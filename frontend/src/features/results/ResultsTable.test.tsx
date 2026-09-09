@@ -173,6 +173,62 @@ describe('ResultsTable', () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 
+  describe('arrow-key row navigation (UI Parity Acceleration Pass §6/§10)', () => {
+    function actionsButtons() {
+      return screen.getAllByRole('button', { name: /actions for this event/i });
+    }
+
+    it('ArrowDown moves focus from the current row to the next row\'s Actions button', async () => {
+      const user = userEvent.setup();
+      render(<ResultsTable events={[event({ message: 'first' }), event({ message: 'second' }), event({ message: 'third' })]} />);
+      const buttons = actionsButtons();
+      buttons[0].focus();
+
+      await user.keyboard('{ArrowDown}');
+      expect(buttons[1]).toHaveFocus();
+
+      await user.keyboard('{ArrowDown}');
+      expect(buttons[2]).toHaveFocus();
+    });
+
+    it('ArrowUp moves focus to the previous row', async () => {
+      const user = userEvent.setup();
+      render(<ResultsTable events={[event({ message: 'first' }), event({ message: 'second' })]} />);
+      const buttons = actionsButtons();
+      buttons[1].focus();
+
+      await user.keyboard('{ArrowUp}');
+      expect(buttons[0]).toHaveFocus();
+    });
+
+    it('ArrowDown on the last row, or ArrowUp on the first row, is a no-op (stays put)', async () => {
+      const user = userEvent.setup();
+      render(<ResultsTable events={[event({ message: 'only' })]} />);
+      const [button] = actionsButtons();
+      button.focus();
+
+      await user.keyboard('{ArrowUp}');
+      expect(button).toHaveFocus();
+      await user.keyboard('{ArrowDown}');
+      expect(button).toHaveFocus();
+    });
+
+    it('works correctly with a custom, reordered column configuration too', async () => {
+      const user = userEvent.setup();
+      render(
+        <ResultsTable
+          events={[event({ message: 'first' }), event({ message: 'second' })]}
+          columnOrder={['level', 'time', 'service', 'whatHappened', 'userCustomer', 'correlationTrace']}
+          hiddenColumnIds={[]}
+        />,
+      );
+      const buttons = actionsButtons();
+      buttons[0].focus();
+      await user.keyboard('{ArrowDown}');
+      expect(buttons[1]).toHaveFocus();
+    });
+  });
+
   describe('Legacy Remediation Slice 4 - column customization props', () => {
     it('showing an optional column via hiddenColumnIds renders its genuine field value, Actions still last', () => {
       const { container } = render(

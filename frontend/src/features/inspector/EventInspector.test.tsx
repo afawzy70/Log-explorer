@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { EventInspector } from './EventInspector';
@@ -113,6 +113,50 @@ describe('EventInspector', () => {
     await user.click(screen.getByRole('button', { name: /next event/i }));
     expect(selectNextEvent).toHaveBeenCalledTimes(1);
     expect(selectPreviousEvent).not.toHaveBeenCalled();
+  });
+
+  it('"]" and "[" navigate next/previous, bounded (UI Parity Acceleration Pass keyboard productivity)', () => {
+    const selectPreviousEvent = vi.fn();
+    const selectNextEvent = vi.fn();
+    render(
+      <EventInspector
+        state={baseState({
+          selectedEvent: fullEvent(),
+          selectedIndex: 0,
+          hasPreviousEvent: false,
+          hasNextEvent: true,
+          selectPreviousEvent,
+          selectNextEvent,
+        })}
+      />,
+    );
+
+    // Dispatched directly (rather than through user-event's keyboard()
+    // DSL, which treats bare "[" / "]" as special-key syntax) so this
+    // test exercises exactly the `e.key` values the real handler checks.
+    fireEvent.keyDown(document, { key: '[' });
+    expect(selectPreviousEvent).not.toHaveBeenCalled(); // bounded - no previous event
+
+    fireEvent.keyDown(document, { key: ']' });
+    expect(selectNextEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it('"[" / "]" are ignored while focus is inside a text field (never hijacks typing)', async () => {
+    const user = userEvent.setup();
+    const selectNextEvent = vi.fn();
+    render(
+      <div>
+        <input aria-label="scratch input" />
+        <EventInspector
+          state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0, hasNextEvent: true, selectNextEvent })}
+        />
+      </div>,
+    );
+
+    const input = screen.getByLabelText('scratch input');
+    await user.click(input);
+    fireEvent.keyDown(input, { key: ']' });
+    expect(selectNextEvent).not.toHaveBeenCalled();
   });
 
   it('Escape closes the inspector', async () => {

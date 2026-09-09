@@ -104,6 +104,50 @@ describe('AdvancedFilters', () => {
     expect(onApply).not.toHaveBeenCalled();
   });
 
+  it('Reset clears the draft fields but never applies or closes the panel (UI Parity Acceleration Pass)', async () => {
+    const user = userEvent.setup();
+    const onApply = vi.fn();
+    render(<AdvancedFilters values={emptyAdvancedFilterValues()} onApply={onApply} />);
+
+    await user.click(screen.getByRole('button', { name: /^more filters$/i }));
+    await user.type(screen.getByLabelText('Trace ID'), 'trace-1');
+    await user.type(screen.getByLabelText('CIF'), 'cif-1');
+    await user.click(screen.getByRole('button', { name: /^reset$/i }));
+
+    expect(screen.getByLabelText('Trace ID')).toHaveValue('');
+    expect(screen.getByLabelText('CIF')).toHaveValue('');
+    expect(onApply).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument(); // Reset does not close the panel
+  });
+
+  it('committed (already-applied) filters remain untouched until Apply, even after Reset', async () => {
+    const user = userEvent.setup();
+    const onApply = vi.fn();
+    const values = { ...emptyAdvancedFilterValues(), traceId: 'already-applied' };
+    render(<AdvancedFilters values={values} onApply={onApply} />);
+
+    await user.click(screen.getByRole('button', { name: /more filters.*1.*active/i }));
+    await user.click(screen.getByRole('button', { name: /^reset$/i }));
+    await user.click(screen.getByRole('button', { name: /cancel/i }));
+
+    // Nothing was ever applied, so the badge still reflects the original committed value.
+    expect(screen.getByRole('button', { name: /more filters.*1.*active/i })).toBeInTheDocument();
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
+  it('Reset then Apply commits the cleared (empty) values', async () => {
+    const user = userEvent.setup();
+    const onApply = vi.fn();
+    const values = { ...emptyAdvancedFilterValues(), traceId: 'seed' };
+    render(<AdvancedFilters values={values} onApply={onApply} />);
+
+    await user.click(screen.getByRole('button', { name: /more filters.*1.*active/i }));
+    await user.click(screen.getByRole('button', { name: /^reset$/i }));
+    await user.click(screen.getByRole('button', { name: /apply/i }));
+
+    expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ traceId: '' }));
+  });
+
   it('has no detectable accessibility violations, closed or open', async () => {
     const user = userEvent.setup();
     const { container } = render(<AdvancedFilters values={emptyAdvancedFilterValues()} onApply={vi.fn()} />);

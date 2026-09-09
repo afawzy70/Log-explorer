@@ -63,6 +63,7 @@ function baseLive(overrides: Partial<LiveTailHandle> = {}): LiveTailHandle {
     resume: vi.fn(),
     stop: vi.fn(),
     exit: vi.fn(),
+    clear: vi.fn(),
     ...overrides,
   };
 }
@@ -185,6 +186,28 @@ describe('LiveTailPanel', () => {
   it('shows an empty-state message rather than nothing when there are no visible events yet', () => {
     renderPanel('live');
     expect(screen.getByText(/waiting for new events/i)).toBeInTheDocument();
+  });
+
+  it('Clear (UI Parity Acceleration Pass §9) only appears once there is something to clear', () => {
+    renderPanel('live');
+    expect(screen.queryByRole('button', { name: /^clear$/i })).not.toBeInTheDocument();
+
+    renderPanel('live', { visibleEvents: [event()] });
+    expect(screen.getByRole('button', { name: /^clear$/i })).toBeInTheDocument();
+  });
+
+  it('clicking Clear calls live.clear, never live.stop or live.exit', async () => {
+    const user = userEvent.setup();
+    const { live } = renderPanel('live', { visibleEvents: [event()] });
+    await user.click(screen.getByRole('button', { name: /^clear$/i }));
+    expect(live.clear).toHaveBeenCalledTimes(1);
+    expect(live.stop).not.toHaveBeenCalled();
+    expect(live.exit).not.toHaveBeenCalled();
+  });
+
+  it('Clear remains available while paused (it does not require an active connection state change)', () => {
+    renderPanel('paused', { visibleEvents: [event()] });
+    expect(screen.getByRole('button', { name: /^clear$/i })).toBeInTheDocument();
   });
 
   it('has no detectable accessibility violations in the live state', async () => {

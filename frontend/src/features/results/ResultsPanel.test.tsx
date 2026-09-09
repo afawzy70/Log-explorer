@@ -433,6 +433,41 @@ describe('ResultsPanel', () => {
     });
   });
 
+  describe('Context summary (UI Parity Acceleration Pass §8)', () => {
+    it('renders only when breadcrumbLabel is set (i.e. a "Show ±30 seconds" context view), never for an ordinary search', () => {
+      const { rerender } = render(
+        <ResultsPanel
+          state={baseState({
+            searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+          })}
+        />,
+      );
+      expect(screen.queryByLabelText(/surrounding-context summary/i)).not.toBeInTheDocument();
+
+      rerender(
+        <ResultsPanel
+          state={baseState({
+            breadcrumbLabel: 'Context — ±30s around 1 Jan 2026, 00:00:00.000 UTC',
+            searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+          })}
+        />,
+      );
+      expect(screen.getByLabelText(/surrounding-context summary/i)).toBeInTheDocument();
+    });
+
+    it('also renders in the zero-result context state (a valid outcome - no other logs in that window)', () => {
+      render(
+        <ResultsPanel
+          state={baseState({
+            breadcrumbLabel: 'Context — ±30s around 1 Jan 2026, 00:00:00.000 UTC',
+            searchResult: { events: [], counts: { estimatedTotal: 0, returned: 0, visible: 0, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+          })}
+        />,
+      );
+      expect(screen.getByLabelText(/surrounding-context summary/i)).toBeInTheDocument();
+    });
+  });
+
   it('has no detectable accessibility violations in the loading, empty, and results states', async () => {
     const { container, rerender } = render(<ResultsPanel state={baseState({ searchLoading: true })} />);
     expect(await axe(container)).toHaveNoViolations();
