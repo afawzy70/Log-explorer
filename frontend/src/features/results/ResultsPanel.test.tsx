@@ -3,8 +3,10 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { ResultsPanel } from './ResultsPanel';
+import { EMPTY_QUERY_PLAN } from '../../shared/api/testFixtures';
 import type { SearchState } from '../../app/useSearchState';
 import { emptyAdvancedFilterValues } from '../search/advancedFilterFields';
+import { emptyQueryAuthoringState } from '../search/QueryBuilder';
 import { DEFAULT_SEVERITY_LEVELS } from '../search/severityLevels';
 import { DEFAULT_PRESET_ID } from '../../shared/time/presets';
 
@@ -74,6 +76,8 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     setTimeRange: vi.fn(),
     advancedFilters: emptyAdvancedFilterValues(),
     applyAdvancedFilters: vi.fn(),
+    queryState: emptyQueryAuthoringState(),
+    applyQuery: vi.fn(),
     applyDetectedField: vi.fn(),
     health: null,
     healthLoading: false,
@@ -124,7 +128,7 @@ describe('ResultsPanel', () => {
       <ResultsPanel
         state={baseState({
           searchError: 'Search failed',
-          searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null },
+          searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
         })}
       />,
     );
@@ -138,7 +142,7 @@ describe('ResultsPanel', () => {
     render(
       <ResultsPanel
         state={baseState({
-          searchResult: { events: [], counts: { estimatedTotal: 0, returned: 0, visible: 0, limit: 200, truncated: false }, nextCursor: null },
+          searchResult: { events: [], counts: { estimatedTotal: 0, returned: 0, visible: 0, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
           setTimeRange,
         })}
       />,
@@ -153,7 +157,7 @@ describe('ResultsPanel', () => {
     render(
       <ResultsPanel
         state={baseState({
-          searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null },
+          searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
           lastSearchedRange: { presetId: DEFAULT_PRESET_ID, start: '2026-01-01T00:00:00Z', end: '2026-01-02T00:00:00Z' },
         })}
       />,
@@ -166,7 +170,7 @@ describe('ResultsPanel', () => {
     const { rerender } = render(
       <ResultsPanel
         state={baseState({
-          searchResult: { events: [baseEvent()], counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true }, nextCursor: 'cursor-1' },
+          searchResult: { events: [baseEvent()], counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true }, nextCursor: 'cursor-1', queryPlan: EMPTY_QUERY_PLAN },
         })}
       />,
     );
@@ -175,7 +179,7 @@ describe('ResultsPanel', () => {
     rerender(
       <ResultsPanel
         state={baseState({
-          searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null },
+          searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
         })}
       />,
     );
@@ -188,7 +192,7 @@ describe('ResultsPanel', () => {
     render(
       <ResultsPanel
         state={baseState({
-          searchResult: { events: [baseEvent()], counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true }, nextCursor: 'cursor-1' },
+          searchResult: { events: [baseEvent()], counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true }, nextCursor: 'cursor-1', queryPlan: EMPTY_QUERY_PLAN },
           loadMore,
         })}
       />,
@@ -206,7 +210,7 @@ describe('ResultsPanel', () => {
     render(
       <ResultsPanel
         state={baseState({
-          searchResult: { events: [baseEvent()], counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true }, nextCursor: 'cursor-1' },
+          searchResult: { events: [baseEvent()], counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true }, nextCursor: 'cursor-1', queryPlan: EMPTY_QUERY_PLAN },
           loadMore,
           loadMoreError: 'Loading more results failed',
         })}
@@ -227,7 +231,7 @@ describe('ResultsPanel', () => {
     render(
       <ResultsPanel
         state={baseState({
-          searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null },
+          searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
           refresh,
           runSearch,
         })}
@@ -243,7 +247,7 @@ describe('ResultsPanel', () => {
     render(
       <ResultsPanel
         state={baseState({
-          searchResult: { events: [], counts: { estimatedTotal: 0, returned: 0, visible: 0, limit: 200, truncated: false }, nextCursor: null },
+          searchResult: { events: [], counts: { estimatedTotal: 0, returned: 0, visible: 0, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
         })}
       />,
     );
@@ -257,7 +261,7 @@ describe('ResultsPanel', () => {
           searchResult: {
             events: [baseEvent(), baseEvent(), baseEvent()],
             counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
-            nextCursor: 'cursor-2',
+            nextCursor: 'cursor-2', queryPlan: EMPTY_QUERY_PLAN,
           },
         })}
       />,
@@ -274,7 +278,7 @@ describe('ResultsPanel', () => {
 
     rerender(
       <ResultsPanel
-        state={baseState({ searchResult: { events: [], counts: { estimatedTotal: 0, returned: 0, visible: 0, limit: 200, truncated: false }, nextCursor: null } })}
+        state={baseState({ searchResult: { events: [], counts: { estimatedTotal: 0, returned: 0, visible: 0, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN } })}
       />,
     );
     expect(await axe(container)).toHaveNoViolations();
@@ -282,7 +286,7 @@ describe('ResultsPanel', () => {
     rerender(
       <ResultsPanel
         state={baseState({
-          searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null },
+          searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
         })}
       />,
     );
@@ -291,7 +295,7 @@ describe('ResultsPanel', () => {
     rerender(
       <ResultsPanel
         state={baseState({
-          searchResult: { events: [baseEvent()], counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true }, nextCursor: 'cursor-1' },
+          searchResult: { events: [baseEvent()], counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true }, nextCursor: 'cursor-1', queryPlan: EMPTY_QUERY_PLAN },
           loadMoreError: 'Loading more results failed',
         })}
       />,

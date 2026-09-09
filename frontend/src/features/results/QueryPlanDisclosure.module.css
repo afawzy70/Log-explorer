@@ -1,0 +1,61 @@
+.details {
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-raised);
+  font-size: var(--font-size-sm);
+}
+
+.summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.body {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.rowLabel {
+  flex: 0 0 160px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.rowContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.code {
+  font-family: var(--font-mono, monospace);
+  word-break: break-word;
+}
+
+.rawBadge {
+  margin-left: var(--space-2);
+  background: var(--color-accent-bg);
+  color: var(--color-accent);
+  border-radius: 999px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  padding: 1px var(--space-2);
+}
+
+.list {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+
+.muted {
+  color: var(--color-text-tertiary);
+}

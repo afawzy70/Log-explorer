@@ -6,6 +6,7 @@ import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceCapabilities;
 import com.logexplorer.core.model.SourceHealth;
+import java.util.List;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -46,5 +47,23 @@ public interface LogSource {
    */
   default Flux<CanonicalLogEvent> follow(FollowRequest request) {
     return Flux.error(new UnsupportedOperationException("Live tail is not supported by source " + id()));
+  }
+
+  /**
+   * Query-plan transparency (Legacy Remediation Slice 2): a human-readable,
+   * already-safe (never a raw sensitive/free-text value — see {@code
+   * core.query.QueryPlanBuilder}'s own javadoc for the exact redaction
+   * boundary) account of what this source genuinely narrowed its own
+   * native query by for {@code request}, as an optimization only. The
+   * default — "nothing genuinely known to be pushed down" — is the honest
+   * answer for every source that doesn't override this (fixture, Docker,
+   * any test double): {@code core.search.EventFilters} still applies every
+   * condition to every fetched event regardless, so an empty list here
+   * never affects correctness, only how much detail the query-plan
+   * disclosure can honestly show. Never fabricate an entry here just to
+   * have something to show.
+   */
+  default List<String> describePushDown(SearchRequest request) {
+    return List.of();
   }
 }

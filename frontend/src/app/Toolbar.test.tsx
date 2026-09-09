@@ -5,6 +5,7 @@ import { axe } from 'jest-axe';
 import { Toolbar } from './Toolbar';
 import type { SearchState } from './useSearchState';
 import { emptyAdvancedFilterValues } from '../features/search/advancedFilterFields';
+import { emptyQueryAuthoringState } from '../features/search/QueryBuilder';
 import { DEFAULT_SEVERITY_LEVELS } from '../features/search/severityLevels';
 import { DEFAULT_PRESET_ID } from '../shared/time/presets';
 
@@ -34,6 +35,8 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     setTimeRange: vi.fn(),
     advancedFilters: emptyAdvancedFilterValues(),
     applyAdvancedFilters: vi.fn(),
+    queryState: emptyQueryAuthoringState(),
+    applyQuery: vi.fn(),
     applyDetectedField: vi.fn(),
     health: null,
     healthLoading: false,

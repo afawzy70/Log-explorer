@@ -52,6 +52,19 @@ final class QueryFields {
     return ACCESSORS.containsKey(normalize(alias));
   }
 
+  /**
+   * Legacy Remediation Slice 2 — "sensitive fields are exact-match lookup
+   * only" (CLAUDE.md §2 rule 1, applied here to the DSL's own three
+   * sensitive aliases). Checked by {@code QueryParser} to reject {@code
+   * contains} against these fields outright, rather than silently
+   * evaluating it (which would let a query enumerate/probe protected
+   * values by substring — the exact class of lookup CLAUDE.md's rule 1
+   * exists to prevent).
+   */
+  static boolean isSensitive(String alias) {
+    return SENSITIVE_ALIASES.contains(normalize(alias));
+  }
+
   static String value(String alias, CanonicalLogEvent event) {
     return ACCESSORS.get(normalize(alias)).apply(event);
   }

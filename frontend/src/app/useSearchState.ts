@@ -20,6 +20,8 @@ import { DEFAULT_SEVERITY_LEVELS } from '../features/search/severityLevels';
 import { emptyAdvancedFilterValues } from '../features/search/advancedFilterFields';
 import type { AdvancedFilterValues } from '../features/search/advancedFilterFields';
 import type { DetectableIdField } from '../features/search/idDetection';
+import { emptyQueryAuthoringState, resolveQueryText, resolveRawLogQl } from '../features/search/QueryBuilder';
+import type { QueryAuthoringState } from '../features/search/QueryBuilder';
 import { DEFAULT_PRESET_ID, TIME_RANGE_PRESETS, CUSTOM_RANGE_ID } from '../shared/time/presets';
 import type { CommittedTimeRange } from '../features/timerange/types';
 import { formatUtcTimestamp } from '../features/inspector/timestampFormat';
@@ -58,6 +60,7 @@ interface SearchSnapshot {
   selectedLevels: string[];
   searchText: string;
   advancedFilters: AdvancedFilterValues;
+  queryState: QueryAuthoringState;
   timeRange: CommittedTimeRange;
   searchResult: SearchResponse | null;
   lastSearchedRange: CommittedTimeRange | null;
@@ -80,6 +83,15 @@ export function useSearchState() {
   const [searchText, setSearchText] = useState('');
   const [timeRange, setTimeRange] = useState<CommittedTimeRange>(defaultTimeRange);
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilterValues>(emptyAdvancedFilterValues);
+  /**
+   * Guided/text/raw-LogQL query authoring (Legacy Remediation Slice 2) -
+   * committed state only; `QueryBuilder` owns its own draft state and only
+   * ever reaches this via `applyQuery` (Apply), the same draft/apply/cancel
+   * shape `advancedFilters` already uses. Composes with every other
+   * structured filter (ANDed server-side, `core.search.EventFilters`) -
+   * never replaces them.
+   */
+  const [queryState, setQueryState] = useState<QueryAuthoringState>(emptyQueryAuthoringState);
 
   const [health, setHealth] = useState<SourceHealth | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
@@ -167,6 +179,17 @@ export function useSearchState() {
     }
     const source = sources.find((s) => s.id === selectedSourceId);
     setSelectedServices([]);
+    // "Raw LogQL... must never be silently translated into normal DSL;
+    // never be accepted by an unsupported source" (Legacy Remediation
+    // Slice 2) - if the newly-selected source doesn't support it, the
+    // committed query mode is defensively switched back to guided rather
+    // than leaving a mode selected the toolbar can no longer even show a
+    // control for. The typed raw-LogQL text itself is preserved (never
+    // silently discarded), only the *active* mode changes - switching back
+    // to a capable source, or the user reopening Query, still finds it.
+    if (source && !source.capabilities.rawLogQL) {
+      setQueryState((prev) => (prev.mode === 'rawLogQl' ? { ...prev, mode: 'guided' } : prev));
+    }
     if (source?.capabilities.serviceDiscovery) {
       fetchSourceServices(selectedSourceId)
         .then(setServices)
@@ -185,6 +208,10 @@ export function useSearchState() {
   const applyAdvancedFilters = useCallback((next: AdvancedFilterValues) => {
     setSearchText(next.text);
     setAdvancedFilters({ ...next, text: '' });
+  }, []);
+
+  const applyQuery = useCallback((next: QueryAuthoringState) => {
+    setQueryState(next);
   }, []);
 
   const buildRequestBody = useCallback(
@@ -215,10 +242,12 @@ export function useSearchState() {
         cif: advancedFilters.cif || undefined,
         deviceId: advancedFilters.deviceId || undefined,
         deviceIp: advancedFilters.deviceIp || undefined,
+        query: resolveQueryText(queryState),
+        rawLogQl: resolveRawLogQl(queryState),
         cursor,
       };
     },
-    [selectedSourceId, timeRange, selectedServices, selectedLevels, searchText, advancedFilters],
+    [selectedSourceId, timeRange, selectedServices, selectedLevels, searchText, advancedFilters, queryState],
   );
 
   /** Aborts whatever request is currently in flight, so its result can never race a newer one. */
@@ -302,7 +331,7 @@ export function useSearchState() {
           }
           const seen = new Set(prev.events.map(eventIdentity));
           const newEvents = result.events.filter((e) => !seen.has(eventIdentity(e)));
-          return { events: [...prev.events, ...newEvents], counts: result.counts, nextCursor: result.nextCursor };
+          return { events: [...prev.events, ...newEvents], counts: result.counts, nextCursor: result.nextCursor, queryPlan: result.queryPlan };
         });
       })
       .catch((error: unknown) => {
@@ -349,11 +378,12 @@ export function useSearchState() {
       selectedLevels,
       searchText,
       advancedFilters,
+      queryState,
       timeRange,
       searchResult,
       lastSearchedRange,
     }),
-    [selectedServices, selectedLevels, searchText, advancedFilters, timeRange, searchResult, lastSearchedRange],
+    [selectedServices, selectedLevels, searchText, advancedFilters, queryState, timeRange, searchResult, lastSearchedRange],
   );
 
   /** "Preserves and restores the original search state" (HANDOVER.md §17.5, applied here to both Phase H detour actions) - only the true original is ever kept, never a chain of detours. */
@@ -370,6 +400,7 @@ export function useSearchState() {
     setSelectedLevels(snapshot.selectedLevels);
     setSearchText(snapshot.searchText);
     setAdvancedFilters(snapshot.advancedFilters);
+    setQueryState(snapshot.queryState);
     setTimeRange(snapshot.timeRange);
     setSearchResult(snapshot.searchResult);
     setLastSearchedRange(snapshot.lastSearchedRange);
@@ -504,6 +535,8 @@ export function useSearchState() {
     setTimeRange,
     advancedFilters,
     applyAdvancedFilters,
+    queryState,
+    applyQuery,
     applyDetectedField,
     health,
     healthLoading,

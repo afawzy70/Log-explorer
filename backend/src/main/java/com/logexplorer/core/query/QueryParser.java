@@ -94,7 +94,19 @@ public final class QueryParser {
     if (!QueryFields.isKnown(fieldToken.text())) {
       throw new QuerySyntaxException("Unknown field '" + fieldToken.text() + "'", fieldToken.position());
     }
+    int operatorPosition = peek().position();
     Operator operator = parseOperator();
+    // Legacy Remediation Slice 2 — "sensitive fields are exact-match lookup
+    // only" (CLAUDE.md §2 rule 1): the parser rejects the query outright
+    // rather than silently downgrading `contains` to `=` or evaluating a
+    // substring match against a protected value. `!=` is still allowed —
+    // it is exact-match semantics too (a negated equality), not a fuzzy
+    // match, so it carries none of the enumeration risk `contains` does.
+    if (operator == Operator.CONTAINS && QueryFields.isSensitive(fieldToken.text())) {
+      throw new QuerySyntaxException(
+          "'contains' is not allowed for sensitive field '" + fieldToken.text() + "' — use '=' or '!=' for exact match only",
+          operatorPosition);
+    }
     Token valueToken = expect(TokenType.STRING, "a quoted string");
     return new Comparison(QueryFields.normalize(fieldToken.text()), operator, valueToken.text());
   }

@@ -29,6 +29,8 @@ public class StubLogSource implements LogSource {
   private Flux<CanonicalLogEvent> followFlux = Flux.empty();
   private Mono<SourceHealth> health = Mono.just(new SourceHealth(SourceHealth.Status.UP, "ok", Instant.now()));
   private Flux<ServiceInfo> services = Flux.empty();
+  /** Legacy Remediation Slice 2 — what {@link #describePushDown} reports, for tests exercising query-plan transparency without a real Loki adapter. */
+  private java.util.List<String> pushDown = java.util.List.of();
 
   /** The most recent {@link FollowRequest} this source was asked to follow with (Phase J). */
   public volatile FollowRequest lastFollowRequest;
@@ -66,6 +68,16 @@ public class StubLogSource implements LogSource {
   public StubLogSource withFollowFlux(Flux<CanonicalLogEvent> flux) {
     this.followFlux = flux;
     return this;
+  }
+
+  public StubLogSource withPushDown(java.util.List<String> pushDown) {
+    this.pushDown = pushDown;
+    return this;
+  }
+
+  @Override
+  public java.util.List<String> describePushDown(SearchRequest request) {
+    return pushDown;
   }
 
   @Override

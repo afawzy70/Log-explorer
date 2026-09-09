@@ -137,15 +137,50 @@ public class LokiLogSource implements LogSource {
       }
       return request.rawLogQl();
     }
+    return LogQlSelectorBuilder.build(
+        properties.getNamespaceLabelKey(), properties.getNamespace(), properties.getServiceLabelKey(),
+        resolvePushedDownServices(request));
+  }
 
+  /**
+   * The exact service list {@link #buildSelector} pushes down as an exact-
+   * match label — request-supplied services take priority; otherwise
+   * {@code LogQlDslPlanner}'s narrow, provably-safe single {@code service =
+   * "..."} DSL extraction. Shared with {@link #describePushDown} so the
+   * query-plan disclosure can never drift from what was actually queried.
+   */
+  private List<String> resolvePushedDownServices(SearchRequest request) {
     List<String> requestedServices = request.services();
     if (requestedServices.isEmpty()) {
       requestedServices = LogQlDslPlanner.extractServiceEquality(request.query())
           .map(List::of)
           .orElse(requestedServices);
     }
-    return LogQlSelectorBuilder.build(
-        properties.getNamespaceLabelKey(), properties.getNamespace(), properties.getServiceLabelKey(), requestedServices);
+    return requestedServices;
+  }
+
+  /**
+   * Legacy Remediation Slice 2 — genuinely reports the same narrowing
+   * {@link #buildSelector} applies, never more: raw LogQL replaces the
+   * selector entirely (nothing else is "pushed down," the whole query is
+   * source-native); otherwise the fixed namespace (source configuration,
+   * not user input, so always safe to show) and, only when exactly one
+   * service resolves, that single exact-match label — the same "safe
+   * single exact-match pushdown" boundary {@link LogQlSelectorBuilder}'s
+   * own javadoc documents.
+   */
+  @Override
+  public List<String> describePushDown(SearchRequest request) {
+    if (request.rawLogQl() != null && !request.rawLogQl().isBlank()) {
+      return List.of("Raw LogQL executed verbatim against Loki (bypasses the generated selector entirely)");
+    }
+    List<String> conditions = new ArrayList<>();
+    conditions.add("namespace = \"" + properties.getNamespace() + "\" (Loki stream label, from source configuration)");
+    List<String> pushedServices = resolvePushedDownServices(request);
+    if (pushedServices.size() == 1) {
+      conditions.add("service = \"" + pushedServices.get(0) + "\" (Loki stream label, exact match)");
+    }
+    return conditions;
   }
 
   private List<CanonicalLogEvent> toEvents(LokiQueryResponse response, SearchRequest request, boolean forward) {

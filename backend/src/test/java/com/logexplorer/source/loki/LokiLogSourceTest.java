@@ -405,6 +405,63 @@ class LokiLogSourceTest {
   }
 
   @Test
+  void describePushDownReportsNamespaceAndTheSingleExactMatchServiceThatWasActuallyPushed() throws IOException {
+    // Legacy Remediation Slice 2 - describePushDown() must never drift from
+    // buildSelector()'s own actual behavior (they share
+    // resolvePushedDownServices()); this proves the two agree for the
+    // exact-match single-service case.
+    mockServer = new MockLokiServer("/api/logs/v1", "application", "namespace", "app");
+    LokiProperties properties = propertiesFor(mockServer);
+    LokiLogSource source = sourceFor(properties);
+
+    SearchRequest request = SearchRequest.builder()
+        .sourceId(source.id())
+        .start(Instant.parse("2025-01-01T00:00:00Z"))
+        .end(Instant.parse("2027-01-01T00:00:00Z"))
+        .services(List.of("gateway"))
+        .build();
+
+    assertThat(source.describePushDown(request)).containsExactly(
+        "namespace = \"my-namespace\" (Loki stream label, from source configuration)",
+        "service = \"gateway\" (Loki stream label, exact match)");
+  }
+
+  @Test
+  void describePushDownReportsOnlyNamespaceWhenMultipleServicesCannotBeSafelyPushedDown() throws IOException {
+    mockServer = new MockLokiServer("/api/logs/v1", "application", "namespace", "app");
+    LokiProperties properties = propertiesFor(mockServer);
+    LokiLogSource source = sourceFor(properties);
+
+    SearchRequest request = SearchRequest.builder()
+        .sourceId(source.id())
+        .start(Instant.parse("2025-01-01T00:00:00Z"))
+        .end(Instant.parse("2027-01-01T00:00:00Z"))
+        .services(List.of("gateway", "auth"))
+        .build();
+
+    assertThat(source.describePushDown(request)).containsExactly(
+        "namespace = \"my-namespace\" (Loki stream label, from source configuration)");
+  }
+
+  @Test
+  void describePushDownReportsRawLogQlModeAndNothingElseWhenRawLogQlIsUsed() throws IOException {
+    mockServer = new MockLokiServer("/api/logs/v1", "application", "namespace", "app");
+    LokiProperties properties = propertiesFor(mockServer);
+    properties.setRawLogQlEnabled(true);
+    LokiLogSource source = sourceFor(properties);
+
+    SearchRequest request = SearchRequest.builder()
+        .sourceId(source.id())
+        .start(Instant.parse("2025-01-01T00:00:00Z"))
+        .end(Instant.parse("2027-01-01T00:00:00Z"))
+        .rawLogQl("{namespace=\"my-namespace\"}")
+        .build();
+
+    assertThat(source.describePushDown(request)).containsExactly(
+        "Raw LogQL executed verbatim against Loki (bypasses the generated selector entirely)");
+  }
+
+  @Test
   void rawLogQlIsUsedVerbatimAsTheSelectorWhenEnabled() throws IOException {
     mockServer = new MockLokiServer("/api/logs/v1", "application", "namespace", "app");
     LokiProperties properties = propertiesFor(mockServer);

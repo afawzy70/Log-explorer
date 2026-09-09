@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useSearchState } from './useSearchState';
+import { EMPTY_QUERY_PLAN } from '../shared/api/testFixtures';
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -128,7 +129,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('first')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
 
@@ -153,7 +154,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('fresh')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events[0].message).toBe('fresh'));
@@ -162,7 +163,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('stale')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     // Give any (incorrect) stale update a chance to land, then assert it didn't.
@@ -180,7 +181,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-1')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
-        nextCursor: 'cursor-abc',
+        nextCursor: 'cursor-abc', queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
@@ -192,7 +193,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-2')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
 
@@ -209,7 +210,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-1')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
-        nextCursor: 'cursor-abc',
+        nextCursor: 'cursor-abc', queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
@@ -223,7 +224,7 @@ describe('useSearchState', () => {
         // this) alongside one genuinely new event.
         events: [eventWithMessage('page-1'), eventWithMessage('page-2')],
         counts: { estimatedTotal: null, returned: 2, visible: 2, limit: 2, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
 
@@ -240,7 +241,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-1')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
-        nextCursor: 'cursor-abc',
+        nextCursor: 'cursor-abc', queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
@@ -263,7 +264,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-2')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
 
@@ -280,7 +281,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-1')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
-        nextCursor: 'cursor-abc',
+        nextCursor: 'cursor-abc', queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
@@ -294,7 +295,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-2')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
 
@@ -312,7 +313,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-1')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
-        nextCursor: 'cursor-abc',
+        nextCursor: 'cursor-abc', queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
@@ -323,7 +324,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-2')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(2));
@@ -336,7 +337,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-1')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
-        nextCursor: 'cursor-def',
+        nextCursor: 'cursor-def', queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
 
@@ -354,7 +355,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('only-page')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
@@ -382,7 +383,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('one'), eventWithMessage('two'), eventWithMessage('three')],
         counts: { estimatedTotal: null, returned: 3, visible: 3, limit: 200, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(3));
@@ -454,7 +455,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('related')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.journeyResult?.events[0].message).toBe('related'));
@@ -499,7 +500,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('surrounding')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events[0].message).toBe('surrounding'));
@@ -512,5 +513,120 @@ describe('useSearchState', () => {
     act(() => result.current.showContext({ ...result.current.searchResult!.events[0], timestamp: null }));
     await new Promise((r) => setTimeout(r, 20));
     expect(contextCalls).toHaveLength(0);
+  });
+
+  describe('query authoring (Legacy Remediation Slice 2)', () => {
+    it('applyQuery composes the committed query into the next search request, alongside every other filter', async () => {
+      const result = await renderReady();
+
+      act(() =>
+        result.current.applyQuery({
+          mode: 'text',
+          text: 'service = "gateway"',
+          tree: { kind: 'group', id: 'root', combinator: 'AND', children: [] },
+          rawLogQl: '',
+        }),
+      );
+      act(() => result.current.runSearch());
+
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      expect(searchCalls[0].body).toContain('"query":"service = \\"gateway\\""');
+      expect(searchCalls[0].body).not.toContain('"rawLogQl"');
+    });
+
+    it('a raw-LogQL query sends rawLogQl, never query, in the request body', async () => {
+      const result = await renderReady();
+
+      act(() =>
+        result.current.applyQuery({
+          mode: 'rawLogQl',
+          rawLogQl: '{namespace="prod"}',
+          text: '',
+          tree: { kind: 'group', id: 'root', combinator: 'AND', children: [] },
+        }),
+      );
+      act(() => result.current.runSearch());
+
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      expect(searchCalls[0].body).toContain('"rawLogQl":"{namespace=\\"prod\\"}"');
+      expect(searchCalls[0].body).not.toContain('"query"');
+    });
+
+    it('an empty (never-applied) query state sends neither query nor rawLogQl', async () => {
+      const result = await renderReady();
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      expect(searchCalls[0].body).not.toContain('"query"');
+      expect(searchCalls[0].body).not.toContain('"rawLogQl"');
+    });
+
+    it('"show context" (a detour) preserves the committed query, and "back to original search" restores it', async () => {
+      const result = await searchedWithThreeEvents();
+      const applied = {
+        mode: 'text' as const,
+        text: 'level = "ERROR"',
+        tree: { kind: 'group' as const, id: 'root', combinator: 'AND' as const, children: [] },
+        rawLogQl: '',
+      };
+      act(() => result.current.applyQuery(applied));
+
+      const event = result.current.searchResult!.events[0];
+      act(() => result.current.showContext(event));
+      await waitFor(() => expect(contextCalls).toHaveLength(1));
+      contextCalls[0].resolve(
+        jsonResponse({
+          events: [eventWithMessage('surrounding')],
+          counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await waitFor(() => expect(result.current.searchResult?.events[0].message).toBe('surrounding'));
+      // The query text itself is not sent to /context (it has no such
+      // field) - but the committed queryState must still be intact.
+      expect(result.current.queryState).toEqual(applied);
+
+      act(() => result.current.restoreOriginalSearch());
+      expect(result.current.queryState).toEqual(applied);
+    });
+
+    it('selecting a source without rawLogQL capability defensively switches an active raw-LogQL mode back to guided, without discarding the typed text', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((input: RequestInfo | URL) => {
+          const url = typeof input === 'string' ? input : input.toString();
+          if (url.endsWith('/api/v1/sources')) {
+            return Promise.resolve(
+              jsonResponse([
+                SOURCES_RESPONSE[0],
+                { id: 'no-raw-logql', displayName: 'No Raw LogQL', capabilities: { ...SOURCES_RESPONSE[0].capabilities, rawLogQL: false } },
+              ]),
+            );
+          }
+          if (url.includes('/health')) {
+            return Promise.resolve(jsonResponse({ status: 'UP', message: 'ok', checkedAt: '2026-01-01T00:00:00Z' }));
+          }
+          if (url.includes('/services')) {
+            return Promise.resolve(jsonResponse([]));
+          }
+          throw new Error(`Unexpected fetch in this test: ${url}`);
+        }),
+      );
+      const result = await renderReady();
+      act(() =>
+        result.current.applyQuery({
+          mode: 'rawLogQl',
+          rawLogQl: '{namespace="prod"}',
+          text: '',
+          tree: { kind: 'group', id: 'root', combinator: 'AND', children: [] },
+        }),
+      );
+      expect(result.current.queryState.mode).toBe('rawLogQl');
+
+      act(() => result.current.setSelectedSourceId('no-raw-logql'));
+      await waitFor(() => expect(result.current.selectedSourceId).toBe('no-raw-logql'));
+
+      expect(result.current.queryState.mode).toBe('guided');
+      expect(result.current.queryState.rawLogQl).toBe('{namespace="prod"}');
+    });
   });
 });
