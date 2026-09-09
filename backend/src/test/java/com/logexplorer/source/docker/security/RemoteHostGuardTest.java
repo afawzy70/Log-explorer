@@ -128,6 +128,48 @@ class RemoteHostGuardTest {
     assertThatThrownBy(() -> guard.checkOrThrow("host")).isInstanceOf(RemoteHostRejectedException.class);
   }
 
+  /**
+   * Pre-merge self-audit finding (Slice 3, section 4 "allowlist safety"):
+   * {@code InetAddress.getByName("")} resolves to the loopback address, so
+   * a blank CIDR list entry (e.g. a stray trailing comma in a
+   * comma-separated env var, producing an empty element) must never be
+   * allowed to silently become "allowlist 127.0.0.1/32" - that would let a
+   * config typo accidentally reopen the loopback SSRF path Test Connection
+   * otherwise blocks by default.
+   */
+  @Test
+  void aBlankCidrAllowlistEntryNeverAccidentallyAllowlistsLoopback() {
+    DockerRemoteAllowlistProperties allowlist = emptyAllowlist();
+    allowlist.setCidrs(List.of("10.20.0.0/16", "", "  "));
+    RemoteHostGuard guard = guardWith(allowlist, fixedResolver("host", "127.0.0.1"));
+
+    assertThatThrownBy(() -> guard.checkOrThrow("host"))
+        .isInstanceOf(RemoteHostRejectedException.class)
+        .satisfies(e -> assertThat(((RemoteHostRejectedException) e).reason())
+            .isEqualTo(RemoteHostRejectedException.Reason.POLICY_REJECTED));
+  }
+
+  @Test
+  void aMalformedCidrPrefixFailsClosedRatherThanThrowingAnUncaughtException() {
+    DockerRemoteAllowlistProperties allowlist = emptyAllowlist();
+    allowlist.setCidrs(List.of("10.20.0.0/not-a-number"));
+    RemoteHostGuard guard = guardWith(allowlist, fixedResolver("host", "10.20.5.5"));
+
+    // The malformed entry must never match (fail closed) and must never
+    // itself crash the check with a NumberFormatException - the private
+    // address is still correctly rejected by the default-deny policy.
+    assertThatThrownBy(() -> guard.checkOrThrow("host")).isInstanceOf(RemoteHostRejectedException.class);
+  }
+
+  @Test
+  void anOutOfRangeCidrPrefixFailsClosedRatherThanThrowingAnUncaughtException() {
+    DockerRemoteAllowlistProperties allowlist = emptyAllowlist();
+    allowlist.setCidrs(List.of("10.20.0.0/999", "10.20.0.0/-1"));
+    RemoteHostGuard guard = guardWith(allowlist, fixedResolver("host", "10.20.5.5"));
+
+    assertThatThrownBy(() -> guard.checkOrThrow("host")).isInstanceOf(RemoteHostRejectedException.class);
+  }
+
   @Test
   void allowlistedHostnameIsAcceptedEvenWhenItResolvesToAPrivateAddress() {
     DockerRemoteAllowlistProperties allowlist = emptyAllowlist();

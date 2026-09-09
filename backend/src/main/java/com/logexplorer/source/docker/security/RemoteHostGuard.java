@@ -1,7 +1,6 @@
 package com.logexplorer.source.docker.security;
 
 import com.logexplorer.config.DockerRemoteAllowlistProperties;
-import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.List;
@@ -122,9 +121,22 @@ public class RemoteHostGuard {
   }
 
   private boolean matchesCidr(InetAddress address, String cidr) {
+    // A blank/empty allowlist entry (e.g. a stray trailing comma in a
+    // comma-separated env var producing an empty list element) must never
+    // silently become a usable CIDR - InetAddress.getByName("") resolves
+    // to the loopback address, which would otherwise turn a config typo
+    // into an accidental allowlisting of 127.0.0.1 (a real SSRF-into-
+    // localhost path, since Test Connection accepts a caller-supplied
+    // candidate host). Reject outright before any resolution is attempted.
     String trimmed = cidr.trim();
+    if (trimmed.isEmpty()) {
+      return false;
+    }
     int slash = trimmed.indexOf('/');
     String baseHost = slash >= 0 ? trimmed.substring(0, slash) : trimmed;
+    if (baseHost.isEmpty()) {
+      return false;
+    }
     InetAddress base;
     try {
       base = InetAddress.getByName(baseHost);
@@ -139,9 +151,26 @@ public class RemoteHostGuard {
     if (addressBytes.length != baseBytes.length) {
       return false; // IPv4 vs IPv6 family mismatch - never cross-match
     }
-    int prefixLength = slash >= 0
-        ? Integer.parseInt(trimmed.substring(slash + 1))
-        : (base instanceof Inet4Address ? 32 : 128);
+
+    int maxPrefixLength = baseBytes.length * 8; // 32 for IPv4, 128 for IPv6
+    int prefixLength;
+    if (slash >= 0) {
+      try {
+        prefixLength = Integer.parseInt(trimmed.substring(slash + 1));
+      } catch (NumberFormatException e) {
+        // A non-numeric prefix ("/abc") must fail closed, not throw an
+        // uncaught exception that could take down an unrelated real
+        // Docker operation over one bad allowlist entry.
+        return false;
+      }
+      if (prefixLength < 0 || prefixLength > maxPrefixLength) {
+        // An out-of-range prefix ("/999", "/-1") must fail closed rather
+        // than risk an out-of-bounds byte-array read below.
+        return false;
+      }
+    } else {
+      prefixLength = maxPrefixLength;
+    }
 
     int fullBytes = prefixLength / 8;
     int remainderBits = prefixLength % 8;
