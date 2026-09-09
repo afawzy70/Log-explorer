@@ -6,6 +6,7 @@ import { EventInspector } from '../features/inspector/EventInspector';
 import { JourneyView } from '../features/journey/JourneyView';
 import { LiveTailPanel } from '../features/live/LiveTailPanel';
 import { useLiveTail } from '../features/live/useLiveTail';
+import { useLiveKeyboardShortcuts } from '../features/live/useLiveKeyboardShortcuts';
 import { useSearchState } from './useSearchState';
 import { useGlobalShortcuts } from './useGlobalShortcuts';
 import styles from './App.module.css';
@@ -30,6 +31,7 @@ export default function App() {
   useGlobalShortcuts(state.runSearch);
 
   const liveModeActive = live.connectionState !== 'idle';
+  useLiveKeyboardShortcuts(live, liveModeActive);
 
   // "Source navigation ... closes stream" (HANDOVER.md §18.4) - changing
   // the active source mid-tail means the investigator has moved on from

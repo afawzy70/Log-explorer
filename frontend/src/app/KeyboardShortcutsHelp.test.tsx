@@ -62,4 +62,16 @@ describe('KeyboardShortcutsHelp', () => {
     await user.click(screen.getByRole('button', { name: /keyboard shortcuts/i }));
     expect(await axe(container)).toHaveNoViolations();
   });
+
+  it('documents the four new Live keyboard shortcuts (UI Gap Closure Pass)', async () => {
+    const user = userEvent.setup();
+    render(<KeyboardShortcutsHelp />);
+    await user.click(screen.getByRole('button', { name: /keyboard shortcuts/i }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent(/pause \/ resume live/i);
+    expect(dialog).toHaveTextContent(/stop live/i);
+    expect(dialog).toHaveTextContent(/clear live events/i);
+    expect(dialog).toHaveTextContent(/toggle follow newest/i);
+  });
 });
