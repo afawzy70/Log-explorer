@@ -6,6 +6,7 @@ import { buildCountsSummary } from './counts';
 import { ResultsTable } from './ResultsTable';
 import { QueryPlanDisclosure } from './QueryPlanDisclosure';
 import { TableSettingsControl } from './TableSettingsControl';
+import { ContextSummary } from './ContextSummary';
 import { useTablePreferences } from './tablePreferences';
 import styles from './ResultsPanel.module.css';
 
@@ -87,6 +88,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
     return (
       <div className={styles.wrapper}>
         <Breadcrumb state={state} />
+        {state.breadcrumbLabel ? <ContextSummary events={events} range={state.lastSearchedRange} /> : null}
         <RefreshRow state={state} />
         <QueryPlanDisclosure queryPlan={queryPlan} />
         <p className={styles.empty}>
@@ -111,6 +113,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
   return (
     <div className={styles.wrapper}>
       <Breadcrumb state={state} />
+      {state.breadcrumbLabel ? <ContextSummary events={events} range={state.lastSearchedRange} /> : null}
       <div className={styles.summaryRow}>
         <p className={styles.summary}>
           {buildCountsSummary(counts, events.length)}

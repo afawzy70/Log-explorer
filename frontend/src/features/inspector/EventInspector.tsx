@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { SearchState } from '../../app/useSearchState';
+import { isTypingTarget } from '../../shared/keyboard/isTypingTarget';
 import { InspectorHeader } from './InspectorHeader';
 import { OverviewSection } from './OverviewSection';
 import { ActorClientSection } from './ActorClientSection';
@@ -36,6 +37,21 @@ export function EventInspector({ state }: { state: SearchState }) {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         state.closeInspector();
+        return;
+      }
+      // "[" / "]" previous/next (UI Parity Acceleration Pass §10 -
+      // deliberately not ArrowLeft/ArrowRight, which the resize handle
+      // already binds locally to widen/narrow the panel; a global
+      // listener here would otherwise double-fire alongside it whenever
+      // the handle has focus. Guarded against typing targets so it never
+      // hijacks a literal "[" typed into All Fields' own search box.
+      if (isTypingTarget(e.target)) {
+        return;
+      }
+      if (e.key === '[' && state.hasPreviousEvent) {
+        state.selectPreviousEvent();
+      } else if (e.key === ']' && state.hasNextEvent) {
+        state.selectNextEvent();
       }
     }
     document.addEventListener('keydown', onKeyDown);

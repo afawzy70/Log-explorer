@@ -3,7 +3,7 @@ import { Button } from '../../shared/ui/Button';
 import { VisuallyHidden } from '../../shared/ui/VisuallyHidden';
 import { useDismissableLayer } from '../../shared/ui/useDismissableLayer';
 import { usePopoverTrigger } from '../../shared/ui/usePopoverTrigger';
-import { ADVANCED_FILTER_GROUPS, countActiveAdvancedFilters } from './advancedFilterFields';
+import { ADVANCED_FILTER_GROUPS, countActiveAdvancedFilters, emptyAdvancedFilterValues } from './advancedFilterFields';
 import type { AdvancedFilterValues } from './advancedFilterFields';
 import styles from './AdvancedFilters.module.css';
 
@@ -47,6 +47,19 @@ export function AdvancedFilters({ values, onApply }: AdvancedFiltersProps) {
 
   function setField(key: keyof AdvancedFilterValues, fieldValue: string) {
     setDraft((prev) => ({ ...prev, [key]: fieldValue }));
+  }
+
+  /**
+   * "Reset" (UI Parity Acceleration Pass §4 - the More Filters workflow's
+   * mandatory Apply/Cancel/Reset trio, alongside the pre-existing
+   * Apply/Cancel): clears every field in the *draft* only - exactly like
+   * typing over each field by hand - never applies on its own. The
+   * committed filters (and any already-running search) stay untouched
+   * until the investigator explicitly clicks Apply afterward, same as any
+   * other draft edit.
+   */
+  function handleReset() {
+    setDraft(emptyAdvancedFilterValues());
   }
 
   return (
@@ -97,6 +110,9 @@ export function AdvancedFilters({ values, onApply }: AdvancedFiltersProps) {
             ))}
           </div>
           <div className={styles.actions}>
+            <Button variant="ghost" onClick={handleReset}>
+              Reset
+            </Button>
             <Button variant="ghost" onClick={closeWithoutApplying}>
               Cancel
             </Button>

@@ -56,6 +56,11 @@ export function LiveTailPanel({ live, sourceDisplayName, onStart }: LiveTailPane
               Stop
             </Button>
           ) : null}
+          {live.visibleEvents.length > 0 ? (
+            <Button variant="ghost" onClick={live.clear}>
+              Clear
+            </Button>
+          ) : null}
         </div>
       </div>
 
