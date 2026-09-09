@@ -53,7 +53,8 @@ public record SearchRequest(
     RawSensitiveFields sensitiveFilters,
     QueryExpr query,
     String rawLogQl,
-    String cursor
+    String cursor,
+    Instant pageBoundary
 ) {
 
   public SearchRequest {
@@ -64,6 +65,30 @@ public record SearchRequest(
   }
 
   public enum Direction { FORWARD, BACKWARD }
+
+  /**
+   * A copy of this request with only {@code pageBoundary} replaced - used
+   * exclusively by {@code api.SearchService} (Legacy Remediation Slice 1
+   * recovery, mandatory blocker #1) to hand a {@code LogSource} the
+   * decoded, plain (non-sensitive) source-native instant to continue
+   * pagination from, while {@code start}/{@code end} (the canonical
+   * committed search window - unchanged, still enforced by {@code
+   * core.search.EventFilters} against {@link CanonicalLogEvent#timestamp()})
+   * and every filter field stay byte-for-byte identical to the original
+   * request. {@code null} means "page 1 - no continuation in progress."
+   * Every {@code LogSource} implementation may use this as a hint to
+   * narrow its own native query further (for pagination depth/efficiency)
+   * but must never rely on it alone for correctness - {@code SearchService}
+   * always re-applies an exact, direction-aware filter against {@link
+   * CanonicalLogEvent#sourceTimestamp()} afterward.
+   */
+  public SearchRequest withPageBoundary(Instant boundary) {
+    return new SearchRequest(
+        sourceId, start, end, direction, limit, services, levels, text,
+        traceId, spanId, correlationId, journeyId, eventId, errorCode,
+        businessStep, uiIdentifier, loggerContains, devicePlatform, language,
+        containerId, pod, sensitiveFilters, query, rawLogQl, cursor, boundary);
+  }
 
   @Override
   public String toString() {
@@ -92,6 +117,7 @@ public record SearchRequest(
         + ", query=" + (query == null ? "null" : "[REDACTED]")
         + ", rawLogQl=" + (rawLogQl == null ? "null" : "[REDACTED]")
         + ", cursor=" + cursor
+        + ", pageBoundary=" + pageBoundary
         + "]";
   }
 
@@ -125,6 +151,7 @@ public record SearchRequest(
     private QueryExpr query;
     private String rawLogQl;
     private String cursor;
+    private Instant pageBoundary;
 
     public Builder sourceId(String v) { this.sourceId = v; return this; }
     public Builder start(Instant v) { this.start = v; return this; }
@@ -148,6 +175,8 @@ public record SearchRequest(
     public Builder containerId(String v) { this.containerId = v; return this; }
     public Builder pod(String v) { this.pod = v; return this; }
     public Builder cursor(String v) { this.cursor = v; return this; }
+    /** Test-only convenience — production callers use {@link SearchRequest#withPageBoundary}. */
+    public Builder pageBoundary(Instant v) { this.pageBoundary = v; return this; }
 
     /**
      * Builds the raw sensitive-filter holder from plain strings, entirely
@@ -188,7 +217,7 @@ public record SearchRequest(
           sourceId, start, end, direction, limit, services, levels, text,
           traceId, spanId, correlationId, journeyId, eventId, errorCode,
           businessStep, uiIdentifier, loggerContains, devicePlatform, language,
-          containerId, pod, sensitiveFilters, query, rawLogQl, cursor);
+          containerId, pod, sensitiveFilters, query, rawLogQl, cursor, pageBoundary);
     }
   }
 }

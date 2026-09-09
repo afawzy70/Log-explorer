@@ -1,0 +1,193 @@
+name: CI
+
+# Runs on every PR targeting main and on every push to main. Each job
+# checks out its own copy of the repo and installs its own toolchain, so
+# the three jobs run independently and in parallel for the fastest honest
+# signal - see docs/verification/CI_GITHUB_ACTIONS_REPORT.md for the full
+# rationale behind every choice in this file.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# A newer push to the same PR/branch cancels whatever CI run was already
+# in flight for it, so runners are never spent on stale commits.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: this workflow only ever reads the repository (checkout,
+# build, test) - it never pushes a commit, comments, or writes any GitHub
+# resource, and never references a repository secret, so it needs nothing
+# beyond read access.
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # The full normal Maven lifecycle through `verify` - unit tests,
+      # the *ApiIntegrationTest classes (already bound to the same
+      # surefire execution, this project has no separate failsafe
+      # binding), the leak/security tests (LogLeakTest, QueryLeakTest,
+      # LokiTokenLeakTest, SerializationLeakTest, CursorLeakTest), the
+      # ArchitectureTest rules, and every Slice 1 pagination/cursor test
+      # (PageCursorCodecTest, SearchServicePaginationTest, and the
+      # per-adapter pagination tests in DockerLogSourceTest/
+      # LokiLogSourceTest/FixtureLogSourceTest). Never -DskipTests, never
+      # a weakened/partial goal - a red test here must fail this job.
+      - name: Build and test (./mvnw verify)
+        working-directory: backend
+        run: ./mvnw --batch-mode verify
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24' # this repo's actual, verified toolchain version - see the CI report's "Node version" note
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # npm ci (never npm install) - installs exactly what
+      # package-lock.json pins, and fails outright if the lockfile and
+      # package.json have drifted, which `npm install` would silently
+      # "fix" instead of catching.
+      - name: Install dependencies (npm ci)
+        working-directory: frontend
+        run: npm ci
+
+      - name: Typecheck (tsc -b, both tsconfig.app.json and tsconfig.node.json)
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Unit/component tests (vitest)
+        working-directory: frontend
+        run: npm run test
+
+      - name: Production build
+        working-directory: frontend
+        run: npm run build
+
+  e2e:
+    name: E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies (npm ci)
+        working-directory: frontend
+        run: npm ci
+
+      # Chromium only - every existing spec is written against Chromium's
+      # default project (playwright.config.ts defines no other browser
+      # project), and installing the others would only slow this job down
+      # for no coverage gain.
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      # A direct `spring-boot:run` goal invocation (not a lifecycle phase)
+      # never runs tests on its own - the Backend job above is the one
+      # place tests are required to pass; this just needs a running
+      # instance of the real backend. `dev` activates FixtureLogSource
+      # (`@Profile({"dev","test"})`), the deterministic, synthetic source
+      # every E2E spec drives - no real external Docker/OpenShift/Loki is
+      # ever reached from this job, matching "PR CI must not depend on
+      # real external infrastructure" (that stays live/external
+      # verification, reported separately - see the CI report).
+      # No --offline: this job's own Maven dependency cache is entirely
+      # separate from the Backend job's (different job, different runner,
+      # and this is the workflow's own first-ever run with nothing to
+      # restore yet either way) - it must be allowed to resolve from Maven
+      # Central like any other fresh checkout. That is ordinary build-time
+      # dependency resolution, not "real external infrastructure" in the
+      # sense this job otherwise avoids (real Docker/OpenShift/Loki).
+      - name: Start backend (SPRING_PROFILES_ACTIVE=dev, fixture source)
+        working-directory: backend
+        run: |
+          SPRING_PROFILES_ACTIVE=dev nohup ./mvnw --batch-mode --quiet spring-boot:run > /tmp/backend.log 2>&1 &
+          echo $! > /tmp/backend.pid
+
+      # Generous budget (up to 6 minutes): a cold Maven cache on this
+      # job's own first run needs to download the full dependency tree
+      # before Spring Boot even starts - subsequent runs restore
+      # actions/setup-java's cache and come up in seconds.
+      - name: Wait for backend readiness
+        run: |
+          for i in $(seq 1 180); do
+            if curl -sf http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'; then
+              echo "Backend is up after $((i * 2))s"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Backend did not become healthy in time"
+          tail -n 200 /tmp/backend.log
+          exit 1
+
+      # playwright.config.ts's own webServer directive starts the
+      # frontend dev server (`npm run dev`) and waits for it - this step
+      # only needs the backend already running (above) and Chromium
+      # installed (above). `reuseExistingServer: !process.env.CI` in that
+      # config means CI always launches a fresh dev server, never
+      # silently reuses a stray leftover one.
+      - name: Run E2E tests (npx playwright test)
+        working-directory: frontend
+        run: npx playwright test
+
+      - name: Stop backend
+        if: always()
+        run: kill "$(cat /tmp/backend.pid)" 2>/dev/null || true
+
+      # Never uploaded on success - only exists/is needed to debug a
+      # failure. 7-day retention: enough to debug a recent PR, not
+      # indefinite storage. The HTML report/traces/screenshots can
+      # contain rendered fixture-source content (synthetic, never real
+      # customer data - see FixtureCorpusGenerator) and this project's own
+      # masking already applies before anything reaches the browser, so
+      # nothing sensitive is captured here by construction; the backend
+      # log is plain Spring Boot startup/request logging, never a raw
+      # sensitive value or secret (CLAUDE.md §2 rule 2 - enforced by
+      # LogLeakTest/QueryLeakTest/CursorLeakTest in the Backend job).
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
+
+      - name: Upload backend log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-log
+          path: /tmp/backend.log
+          retention-days: 7

@@ -205,8 +205,34 @@ public class DockerLogSource implements LogSource {
         .limit(properties.getMaxContainers())
         .toList();
 
+    boolean forward = request.direction() == SearchRequest.Direction.FORWARD;
     Integer since = request.start() != null ? (int) request.start().getEpochSecond() : null;
     Integer until = request.end() != null ? (int) request.end().getEpochSecond() : null;
+
+    // Legacy Remediation Slice 1 recovery, mandatory blocker #1/#2: narrow
+    // the Docker-side read further using the *source-native* pagination
+    // boundary (Docker's own receive clock - never the parsed application
+    // timestamp), so successive pages can reach genuinely older/newer
+    // history instead of always re-reading the same tail-capped window.
+    // This is a best-effort narrowing only (second-granularity, since
+    // that is all Docker's since/until accept) - exact, nanosecond-precise
+    // exclusion of already-returned events happens in SearchService
+    // regardless, so an imprecise narrowing here can never cause a skip or
+    // a duplicate, only (in the worst case) a slightly less efficient read.
+    Instant boundary = request.pageBoundary();
+    if (boundary != null) {
+      if (forward) {
+        long candidateSince = boundary.getEpochSecond();
+        if (since == null || candidateSince > since) {
+          since = (int) candidateSince;
+        }
+      } else {
+        long candidateUntil = boundary.getEpochSecond() + 1;
+        if (until == null || candidateUntil < until) {
+          until = (int) candidateUntil;
+        }
+      }
+    }
 
     List<ContainerLine> merged = new ArrayList<>();
     for (Container container : targets) {
@@ -215,12 +241,13 @@ public class DockerLogSource implements LogSource {
       }
     }
 
-    // Deterministic merge across containers: Docker's own receive
-    // timestamp, newest first, containerId as a stable tiebreaker for
-    // equal timestamps (never left to HTTP-response arrival order).
+    // Deterministic merge across containers, in direction-of-travel order
+    // (mandatory blocker #2: never silently treat FORWARD as BACKWARD) -
+    // Docker's own receive timestamp, containerId as a stable tiebreaker
+    // for equal timestamps (never left to HTTP-response arrival order).
+    Comparator<Instant> nativeOrder = forward ? Comparator.naturalOrder() : Comparator.reverseOrder();
     merged.sort(
-        Comparator.<ContainerLine, Instant>comparing(
-                cl -> cl.line().dockerTimestamp(), Comparator.nullsLast(Comparator.reverseOrder()))
+        Comparator.<ContainerLine, Instant>comparing(cl -> cl.line().dockerTimestamp(), Comparator.nullsLast(nativeOrder))
             .thenComparing(cl -> cl.container().getId()));
 
     List<CanonicalLogEvent> events = new ArrayList<>(merged.size());
@@ -233,6 +260,10 @@ public class DockerLogSource implements LogSource {
           .containerId(cl.container().getId())
           .containerName(firstName(cl.container()))
           .stream(cl.line().stream())
+          // Mandatory blocker #1: always set, even for a malformed/
+          // non-JSON line whose parsed `timestamp` is null - Docker
+          // always knows when it received the line.
+          .sourceTimestamp(cl.line().dockerTimestamp())
           .build();
       // Container/time-range filtering above narrows which containers and
       // Docker-API-level range we even read; this applies every remaining

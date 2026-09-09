@@ -13,14 +13,25 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.dockerjava.api.model.Container;
+import com.logexplorer.api.SearchService;
 import com.logexplorer.config.DockerProperties;
+import com.logexplorer.config.SearchGuardrailsProperties;
+import com.logexplorer.config.SourcesProperties;
+import com.logexplorer.core.guard.ConcurrencyGuard;
+import com.logexplorer.core.guard.SearchGuardrails;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.SearchRequest;
+import com.logexplorer.core.model.SearchResult;
 import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceHealth;
 import com.logexplorer.core.parse.LogLineParser;
+import com.logexplorer.core.search.PageCursorCodec;
+import com.logexplorer.source.LogSourceRegistry;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.test.StepVerifier;
@@ -91,6 +102,30 @@ class DockerLogSourceTest {
   private String jsonLineWithTraceId(String timestamp, String service, String message, String traceId) {
     return timestamp + " {\"@timestamp\":\"" + timestamp + "\",\"message\":\"" + message
         + "\",\"application\":\"" + service + "\",\"mdc\":{\"traceId\":\"" + traceId + "\"}}\n";
+  }
+
+  /**
+   * Legacy Remediation Slice 1 recovery, mandatory blocker #1's own
+   * required test #1: the Docker receive-timestamp prefix (parsed as
+   * {@code dockerTimestamp}/{@code sourceTimestamp}) and the JSON
+   * payload's own {@code @timestamp} (parsed as the canonical, displayed
+   * {@code timestamp}) are deliberately different values.
+   */
+  private String jsonLineDivergentTimestamps(String dockerTimestamp, String appTimestamp, String service, String message) {
+    return dockerTimestamp + " {\"@timestamp\":\"" + appTimestamp + "\",\"message\":\"" + message
+        + "\",\"application\":\"" + service + "\",\"mdc\":{}}\n";
+  }
+
+  /**
+   * A real, plain-text (non-JSON) line - Docker still supplies a real
+   * receive timestamp for it (the leading prefix), but {@code
+   * LogLineParser} cannot extract any application {@code @timestamp} from
+   * it, so the parsed canonical {@code timestamp} is {@code null} - the
+   * exact shape found via this slice's own real-Docker verification
+   * (mandatory blocker #1's required test #3).
+   */
+  private String malformedLine(String dockerTimestamp, String content) {
+    return dockerTimestamp + " " + content + "\n";
   }
 
   @Test
@@ -380,6 +415,217 @@ class DockerLogSourceTest {
     subscription.dispose();
 
     verify(mockCloseable, org.mockito.Mockito.timeout(2000)).close();
+  }
+
+  /**
+   * Legacy Remediation Slice 1 - real multi-page traversal against {@link
+   * DockerLogSource} (mocked I/O, real merge/sort/{@code EventFilters})
+   * driven by a real {@link SearchService}, including two containers
+   * logging at the exact same instant straddling every page boundary -
+   * mandatory architecture correction #3 ("Loki duplicate-timestamp
+   * safety") applies identically to Docker's own cross-container ties.
+   */
+  @Test
+  void searchServicePaginationAcrossTwoContainersWithTiedTimestampsVisitsEveryEventExactlyOnce() {
+    Container c1 = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    Container c2 = container("c2", "proj-accounts-1", "proj", "accounts-api", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(c1, c2));
+
+    stubLogs("c1",
+        jsonLine("2026-01-01T00:00:00.000000000Z", "gateway", "c1-a"),
+        jsonLine("2025-12-31T23:59:59.000000000Z", "gateway", "c1-b"),
+        jsonLine("2025-12-31T23:59:58.000000000Z", "gateway", "c1-c"));
+    stubLogs("c2",
+        jsonLine("2026-01-01T00:00:00.000000000Z", "accounts-api", "c2-a"),
+        jsonLine("2025-12-31T23:59:59.000000000Z", "accounts-api", "c2-b"),
+        jsonLine("2025-12-31T23:59:58.000000000Z", "accounts-api", "c2-c"));
+
+    SearchGuardrailsProperties properties = new SearchGuardrailsProperties();
+    properties.setDefaultLimit(2);
+    properties.setMaxTimeRange(java.time.Duration.ofDays(800)); // wideOpenRequest() itself spans ~2 years
+    SearchService searchService = searchServiceFor(properties);
+
+    SearchResult page1 = searchService.search(wideOpenRequest().build()).block();
+    assertThat(page1.events()).extracting(CanonicalLogEvent::message).containsExactlyInAnyOrder("c1-a", "c2-a");
+    assertThat(page1.nextCursor()).isNotNull();
+
+    SearchResult page2 = searchService.search(wideOpenRequest().cursor(page1.nextCursor()).build()).block();
+    assertThat(page2.events()).extracting(CanonicalLogEvent::message).containsExactlyInAnyOrder("c1-b", "c2-b");
+    assertThat(page2.nextCursor()).isNotNull();
+
+    SearchResult page3 = searchService.search(wideOpenRequest().cursor(page2.nextCursor()).build()).block();
+    assertThat(page3.events()).extracting(CanonicalLogEvent::message).containsExactlyInAnyOrder("c1-c", "c2-c");
+    assertThat(page3.counts().truncated()).isFalse();
+    assertThat(page3.nextCursor()).isNull();
+
+    List<String> all = new ArrayList<>();
+    page1.events().forEach(e -> all.add(e.message()));
+    page2.events().forEach(e -> all.add(e.message()));
+    page3.events().forEach(e -> all.add(e.message()));
+    assertThat(new HashSet<>(all)).as("no event skipped or duplicated across pages").hasSize(6);
+  }
+
+  @Test
+  void paginationThroughSearchServiceEventuallyExhaustsAndTerminates() {
+    Container c1 = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(c1));
+    String[] lines = new String[12];
+    for (int i = 0; i < 12; i++) {
+      lines[i] = jsonLine(String.format("2026-01-01T00:00:%02d.000000000Z", 59 - i), "gateway", "event-" + i);
+    }
+    stubLogs("c1", lines);
+
+    SearchGuardrailsProperties properties = new SearchGuardrailsProperties();
+    properties.setDefaultLimit(5);
+    properties.setMaxTimeRange(java.time.Duration.ofDays(800)); // wideOpenRequest() itself spans ~2 years
+    SearchService searchService = searchServiceFor(properties);
+
+    Set<String> seen = new HashSet<>();
+    String cursor = null;
+    int guardAgainstInfiniteLoop = 0;
+    do {
+      SearchResult page = searchService.search(wideOpenRequest().cursor(cursor).build()).block();
+      for (CanonicalLogEvent e : page.events()) {
+        assertThat(seen.add(e.message())).as("no duplicate across pages").isTrue();
+      }
+      cursor = page.nextCursor();
+      guardAgainstInfiniteLoop++;
+      assertThat(guardAgainstInfiniteLoop).isLessThan(20);
+    } while (cursor != null);
+
+    assertThat(seen).hasSize(12);
+  }
+
+  /**
+   * Legacy Remediation Slice 1 recovery, mandatory blocker #1's required
+   * tests #1/#2: pagination must follow Docker's own engine (receive)
+   * timestamp, never the JSON payload's {@code @timestamp} - here they
+   * actively disagree about ordering (two events sharing the *same*
+   * application timestamp but with genuinely different engine
+   * timestamps), so a canonical-timestamp-based implementation would
+   * produce the wrong page contents/boundary.
+   */
+  @Test
+  void paginationFollowsDockerEngineTimestampEvenWhenTheApplicationTimestampDisagreesAboutOrder() {
+    Container c1 = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(c1));
+
+    // All four share the exact same JSON @timestamp; engine timestamps
+    // genuinely differ and descend a -> d (the true receive order).
+    stubLogs("c1",
+        jsonLineDivergentTimestamps("2026-01-01T00:00:00.000000000Z", "2025-06-01T00:00:00.000000000Z", "gateway", "a"),
+        jsonLineDivergentTimestamps("2025-12-31T23:59:59.000000000Z", "2025-06-01T00:00:00.000000000Z", "gateway", "b"),
+        jsonLineDivergentTimestamps("2025-12-31T23:59:58.000000000Z", "2025-06-01T00:00:00.000000000Z", "gateway", "c"),
+        jsonLineDivergentTimestamps("2025-12-31T23:59:57.000000000Z", "2025-06-01T00:00:00.000000000Z", "gateway", "d"));
+
+    SearchGuardrailsProperties properties = new SearchGuardrailsProperties();
+    properties.setDefaultLimit(2);
+    properties.setMaxTimeRange(java.time.Duration.ofDays(800));
+    SearchService searchService = searchServiceFor(properties);
+
+    SearchResult page1 = searchService.search(wideOpenRequest().build()).block();
+    // Newest-first BY ENGINE TIME is a,b - all four share the same
+    // application timestamp, so this would be an arbitrary/undefined
+    // order if pagination (wrongly) used the canonical timestamp instead.
+    assertThat(page1.events()).extracting(CanonicalLogEvent::message).containsExactly("a", "b");
+
+    SearchResult page2 = searchService.search(wideOpenRequest().cursor(page1.nextCursor()).build()).block();
+    assertThat(page2.events()).extracting(CanonicalLogEvent::message).containsExactly("c", "d");
+    assertThat(page2.counts().truncated()).isFalse();
+    assertThat(page2.nextCursor()).isNull();
+  }
+
+  /**
+   * Legacy Remediation Slice 1 recovery, mandatory blocker #1's required
+   * test #3: plain-text/malformed Docker lines have canonical {@code
+   * timestamp=null} but a real, valid Docker engine timestamp - real
+   * multi-page traversal through several such lines proves they are now
+   * pageable (before this recovery, an all-malformed page could not
+   * produce a safe cursor boundary at all - the exact real bug found via
+   * this slice's own live-Docker verification, see the verification
+   * report).
+   */
+  @Test
+  void malformedNonJsonDockerLinesAreRealPageableAcrossMultiplePagesUsingTheEngineTimestamp() {
+    Container c1 = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(c1));
+
+    String[] lines = new String[7];
+    for (int i = 0; i < 7; i++) {
+      lines[i] = malformedLine(String.format("2026-01-01T00:00:%02d.000000000Z", 59 - i), "plain text log line " + i);
+    }
+    stubLogs("c1", lines);
+
+    SearchGuardrailsProperties properties = new SearchGuardrailsProperties();
+    properties.setDefaultLimit(3);
+    properties.setMaxTimeRange(java.time.Duration.ofDays(800));
+    SearchService searchService = searchServiceFor(properties);
+
+    Set<String> seen = new HashSet<>();
+    String cursor = null;
+    int guardAgainstInfiniteLoop = 0;
+    do {
+      SearchResult page = searchService.search(wideOpenRequest().cursor(cursor).build()).block();
+      assertThat(page.events()).as("every event is a malformed fallback with no canonical timestamp")
+          .allSatisfy(e -> {
+            assertThat(e.malformed()).isTrue();
+            assertThat(e.timestamp()).isNull();
+            assertThat(e.sourceTimestamp()).as("but the Docker engine timestamp is always known").isNotNull();
+          });
+      for (CanonicalLogEvent e : page.events()) {
+        assertThat(seen.add(e.rawLine())).as("no duplicate across pages").isTrue();
+      }
+      cursor = page.nextCursor();
+      guardAgainstInfiniteLoop++;
+      assertThat(guardAgainstInfiniteLoop)
+          .as("malformed lines must be genuinely pageable now, not stuck on page 1 forever")
+          .isLessThan(10);
+    } while (cursor != null);
+
+    assertThat(seen).hasSize(7);
+  }
+
+  @Test
+  void forwardDirectionPaginationAgainstDockerAdvancesTowardNewerEngineTimestampsWithNoSkipOrDuplicate() {
+    // Legacy Remediation Slice 1 recovery, mandatory blocker #2: FORWARD
+    // must move the boundary toward *newer* engine timestamps - never
+    // silently treated as BACKWARD.
+    Container c1 = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(c1));
+
+    String[] lines = new String[7];
+    for (int i = 0; i < 7; i++) {
+      // event-0 has the oldest engine timestamp, event-6 the newest.
+      lines[i] = jsonLine(String.format("2026-01-01T00:00:%02d.000000000Z", i), "gateway", "event-" + i);
+    }
+    stubLogs("c1", lines);
+
+    SearchGuardrailsProperties properties = new SearchGuardrailsProperties();
+    properties.setDefaultLimit(3);
+    properties.setMaxTimeRange(java.time.Duration.ofDays(800));
+    SearchService searchService = searchServiceFor(properties);
+
+    SearchRequest.Builder request = wideOpenRequest().direction(SearchRequest.Direction.FORWARD);
+
+    SearchResult page1 = searchService.search(request.build()).block();
+    assertThat(page1.events()).extracting(CanonicalLogEvent::message)
+        .containsExactly("event-0", "event-1", "event-2");
+
+    SearchResult page2 = searchService.search(request.cursor(page1.nextCursor()).build()).block();
+    assertThat(page2.events()).extracting(CanonicalLogEvent::message)
+        .containsExactly("event-3", "event-4", "event-5");
+
+    SearchResult page3 = searchService.search(request.cursor(page2.nextCursor()).build()).block();
+    assertThat(page3.events()).extracting(CanonicalLogEvent::message).containsExactly("event-6");
+    assertThat(page3.counts().truncated()).isFalse();
+    assertThat(page3.nextCursor()).isNull();
+  }
+
+  private SearchService searchServiceFor(SearchGuardrailsProperties properties) {
+    SearchGuardrails guardrails = new SearchGuardrails(properties);
+    ConcurrencyGuard concurrencyGuard = new ConcurrencyGuard(properties);
+    LogSourceRegistry registry = new LogSourceRegistry(List.of(source), new SourcesProperties());
+    return new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()));
   }
 
   private SearchRequest.Builder wideOpenRequest() {

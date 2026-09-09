@@ -81,13 +81,36 @@ public class LokiLogSource implements LogSource {
   @Override
   public Flux<CanonicalLogEvent> search(SearchRequest request) {
     String selector = buildSelector(request);
+    boolean forward = request.direction() == SearchRequest.Direction.FORWARD;
 
     Instant start = request.start() != null ? request.start() : Instant.now().minusSeconds(3600);
     Instant end = request.end() != null ? request.end() : Instant.now();
-    String direction = request.direction() == SearchRequest.Direction.FORWARD ? "forward" : "backward";
+    long startNanos = toNanos(start);
+    long endNanos = toNanos(end);
 
-    return queryClient.queryRange(selector, toNanos(start), toNanos(end), properties.getMaxResultsPerQuery(), direction)
-        .map(response -> toEvents(response, request))
+    // Legacy Remediation Slice 1 recovery, mandatory blocker #1/#2: narrow
+    // the Loki-side query further using the *source-native* pagination
+    // boundary (Loki's own stream-entry nanosecond timestamp - never the
+    // parsed application timestamp), so successive pages reach genuinely
+    // older/newer history rather than re-querying the same
+    // maxResultsPerQuery-capped window. Best-effort only, at full
+    // nanosecond precision this time (unlike Docker's second-granularity
+    // API) - exact exclusion of already-returned events still happens in
+    // SearchService regardless, so an off-by-a-little narrowing here can
+    // never cause a skip or a duplicate.
+    Instant boundary = request.pageBoundary();
+    if (boundary != null) {
+      long boundaryNanos = toNanos(boundary);
+      if (forward) {
+        startNanos = Math.max(startNanos, boundaryNanos);
+      } else {
+        endNanos = Math.min(endNanos, boundaryNanos + 1);
+      }
+    }
+
+    String direction = forward ? "forward" : "backward";
+    return queryClient.queryRange(selector, startNanos, endNanos, properties.getMaxResultsPerQuery(), direction)
+        .map(response -> toEvents(response, request, forward))
         .flatMapMany(Flux::fromIterable);
   }
 
@@ -125,7 +148,7 @@ public class LokiLogSource implements LogSource {
         properties.getNamespaceLabelKey(), properties.getNamespace(), properties.getServiceLabelKey(), requestedServices);
   }
 
-  private List<CanonicalLogEvent> toEvents(LokiQueryResponse response, SearchRequest request) {
+  private List<CanonicalLogEvent> toEvents(LokiQueryResponse response, SearchRequest request, boolean forward) {
     List<CanonicalLogEvent> events = new ArrayList<>();
     if (response.data() == null || response.data().result() == null) {
       return events;
@@ -145,22 +168,39 @@ public class LokiLogSource implements LogSource {
             .pod(labels == null ? null : labels.get(properties.getPodLabelKey()))
             .containerName(labels == null ? null : labels.get(properties.getContainerLabelKey()))
             .stream("stdout")
+            // Mandatory blocker #1: Loki's own stream-entry nanosecond
+            // timestamp (value[0]) - always present per the API's own
+            // contract, distinct from and possibly different than the
+            // parsed application timestamp inside the JSON payload.
+            .sourceTimestamp(parseNanos(value.get(0)))
             .build();
         if (EventFilters.matches(enriched, request)) {
           events.add(enriched);
         }
       }
     }
-    // Merge and sort (scope item 4): newest first across every stream,
-    // malformed/unknown-timestamp events last - same convention as every
-    // other source (see FixtureLogSource/DockerLogSource for the
-    // nullsLast(reverseOrder()) vs reversed(nullsLast(...)) trap this
-    // avoids).
-    events.sort(Comparator.comparing(CanonicalLogEvent::timestamp, Comparator.nullsLast(Comparator.reverseOrder())));
+    // Merge and sort in direction-of-travel order (mandatory blocker #2:
+    // never silently treat FORWARD as BACKWARD) - Loki's own native
+    // stream-entry timestamp, malformed/unknown-source-timestamp events
+    // last regardless of direction (see FixtureLogSource/DockerLogSource
+    // for the nullsLast(reverseOrder()) vs reversed(nullsLast(...)) trap
+    // this avoids).
+    Comparator<Instant> nativeOrder = forward ? Comparator.naturalOrder() : Comparator.reverseOrder();
+    events.sort(Comparator.comparing(CanonicalLogEvent::sourceTimestamp, Comparator.nullsLast(nativeOrder)));
     return events;
   }
 
   private long toNanos(Instant instant) {
     return instant.getEpochSecond() * 1_000_000_000L + instant.getNano();
+  }
+
+  /** Loki's {@code value[0]} - a plain nanoseconds-since-epoch decimal string, per its own API contract. */
+  private static Instant parseNanos(String nanosString) {
+    try {
+      long nanos = Long.parseLong(nanosString);
+      return Instant.ofEpochSecond(0L, nanos);
+    } catch (NumberFormatException | NullPointerException e) {
+      return null;
+    }
   }
 }
