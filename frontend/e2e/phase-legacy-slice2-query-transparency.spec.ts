@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { captureScreenshot } from './helpers';
 
 /*
  * Legacy Remediation Slice 2 — QUERY TRANSPARENCY & ADVANCED QUERY
@@ -78,6 +79,7 @@ test.describe('Legacy Remediation Slice 2 — query transparency & advanced quer
     await values.nth(1).fill('ERROR');
 
     await expect(page.getByText('service = "payments-api" AND level = "ERROR"')).toBeVisible();
+    await captureScreenshot(page, 'legacy-slice2', 'guided-query-and-before-apply');
     await page.getByRole('button', { name: /^apply$/i }).click();
     await search(page);
 
@@ -88,6 +90,7 @@ test.describe('Legacy Remediation Slice 2 — query transparency & advanced quer
       expect(row.service).toBe('payments-api');
       expect(row.level).toBe('ERROR');
     }
+    await captureScreenshot(page, 'legacy-slice2', 'guided-query-and-results');
   });
 
   test('2. nested guided query service = X AND (level = ERROR OR level = WARN) executes and every row satisfies it', async ({ page }) => {
@@ -332,5 +335,6 @@ test.describe('Legacy Remediation Slice 2 — query transparency & advanced quer
     await expect(page.getByText('Raw LogQL', { exact: true })).toBeVisible();
     await expect(page.getByText('Raw LogQL executed verbatim against Loki (bypasses the generated selector entirely)')).toBeVisible();
     await expect(page.getByText(/none.*no structured filters or query conditions are active/i)).toBeVisible();
+    await captureScreenshot(page, 'legacy-slice2', 'raw-logql-query-plan-disclosure');
   });
 });
