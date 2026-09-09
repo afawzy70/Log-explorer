@@ -2,6 +2,7 @@ import type {
   ContextRequestBody,
   DockerConnectionCandidate,
   DockerConnectionSummary,
+  EnvironmentInfo,
   JourneyRequestBody,
   ProblemDetail,
   SearchRequestBody,
@@ -48,6 +49,12 @@ export async function fetchSourceHealth(sourceId: string, signal?: AbortSignal):
 export async function fetchSourceServices(sourceId: string, signal?: AbortSignal): Promise<ServiceInfo[]> {
   const response = await fetch(`/api/v1/sources/${encodeURIComponent(sourceId)}/services`, { signal });
   return parseJsonOrThrow<ServiceInfo[]>(response);
+}
+
+/** UI Gap Closure Pass - the real, running instance's active Spring profile(s), never a guess (`EnvironmentInfoContributor`). */
+export async function fetchEnvironmentInfo(signal?: AbortSignal): Promise<EnvironmentInfo> {
+  const response = await fetch('/actuator/info', { signal });
+  return parseJsonOrThrow<EnvironmentInfo>(response);
 }
 
 /**

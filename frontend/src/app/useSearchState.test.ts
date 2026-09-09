@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { useSearchState } from './useSearchState';
+import { eventIdentity, useSearchState } from './useSearchState';
 import { EMPTY_QUERY_PLAN } from '../shared/api/testFixtures';
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+}
+
+function eventWithMessageAndTimestamp(message: string, timestamp: string) {
+  return { ...eventWithMessage(message), timestamp };
 }
 
 function eventWithMessage(message: string) {
@@ -514,6 +518,171 @@ describe('useSearchState', () => {
     act(() => result.current.showContext({ ...result.current.searchResult!.events[0], timestamp: null }));
     await new Promise((r) => setTimeout(r, 20));
     expect(contextCalls).toHaveLength(0);
+  });
+
+  describe('Context ordering (UI Gap Closure Pass)', () => {
+    it('sorts the resulting context events chronologically ascending (oldest first), regardless of the order the server returned them in', async () => {
+      const result = await searchedWithThreeEvents();
+      const rootEvent = result.current.searchResult!.events[0];
+
+      act(() => result.current.showContext(rootEvent));
+      await waitFor(() => expect(contextCalls).toHaveLength(1));
+      contextCalls[0].resolve(
+        jsonResponse({
+          events: [
+            eventWithMessageAndTimestamp('third', '2026-01-01T12:00:20Z'),
+            eventWithMessageAndTimestamp('first', '2026-01-01T12:00:00Z'),
+            eventWithMessageAndTimestamp('second', '2026-01-01T12:00:10Z'),
+          ],
+          counts: { estimatedTotal: null, returned: 3, visible: 3, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+
+      await waitFor(() => expect(result.current.searchResult?.events[0]?.message).toBe('first'));
+      expect(result.current.searchResult?.events.map((e) => e.message)).toEqual(['first', 'second', 'third']);
+    });
+
+    it('puts events with a missing/unparseable timestamp last, stably, rather than crashing or producing NaN order', async () => {
+      const result = await searchedWithThreeEvents();
+      const rootEvent = result.current.searchResult!.events[0];
+
+      act(() => result.current.showContext(rootEvent));
+      await waitFor(() => expect(contextCalls).toHaveLength(1));
+      contextCalls[0].resolve(
+        jsonResponse({
+          events: [
+            { ...eventWithMessageAndTimestamp('no-timestamp', '2026-01-01T12:00:05Z'), timestamp: null },
+            eventWithMessageAndTimestamp('later', '2026-01-01T12:00:10Z'),
+            eventWithMessageAndTimestamp('earlier', '2026-01-01T12:00:00Z'),
+          ],
+          counts: { estimatedTotal: null, returned: 3, visible: 3, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+
+      await waitFor(() => expect(result.current.searchResult?.events[0]?.message).toBe('earlier'));
+      expect(result.current.searchResult?.events.map((e) => e.message)).toEqual(['earlier', 'later', 'no-timestamp']);
+    });
+
+    it('captures the clicked event\'s identity as contextRootIdentity, for the table to mark it - independent of selectedIndex/inspector state', async () => {
+      const result = await searchedWithThreeEvents();
+      const rootEvent = result.current.searchResult!.events[0];
+      expect(result.current.contextRootIdentity).toBeNull();
+
+      act(() => result.current.showContext(rootEvent));
+      expect(result.current.contextRootIdentity).toBe(eventIdentity(rootEvent));
+      expect(result.current.selectedEvent).toBeNull(); // the inspector is closed, not auto-opened on the root event
+
+      await waitFor(() => expect(contextCalls).toHaveLength(1));
+      contextCalls[0].resolve(
+        jsonResponse({
+          events: [eventWithMessage('surrounding')],
+          counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await waitFor(() => expect(result.current.searchResult?.events[0].message).toBe('surrounding'));
+      // The root identity survives the fetch resolving - it's independent of the result contents.
+      expect(result.current.contextRootIdentity).toBe(eventIdentity(rootEvent));
+    });
+
+    it('a fresh runSearch clears contextRootIdentity', async () => {
+      const result = await searchedWithThreeEvents();
+      const rootEvent = result.current.searchResult!.events[0];
+      act(() => result.current.showContext(rootEvent));
+      expect(result.current.contextRootIdentity).not.toBeNull();
+
+      act(() => result.current.runSearch());
+      expect(result.current.contextRootIdentity).toBeNull();
+    });
+
+    it('restoreOriginalSearch clears contextRootIdentity and restores the pristine, never-sorted original result', async () => {
+      const result = await searchedWithThreeEvents();
+      const originalOrder = result.current.searchResult!.events.map((e) => e.message);
+      const rootEvent = result.current.searchResult!.events[0];
+
+      act(() => result.current.showContext(rootEvent));
+      await waitFor(() => expect(contextCalls).toHaveLength(1));
+      contextCalls[0].resolve(
+        jsonResponse({
+          events: [eventWithMessageAndTimestamp('b', '2026-01-01T12:00:10Z'), eventWithMessageAndTimestamp('a', '2026-01-01T12:00:00Z')],
+          counts: { estimatedTotal: null, returned: 2, visible: 2, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(2));
+
+      act(() => result.current.restoreOriginalSearch());
+      expect(result.current.contextRootIdentity).toBeNull();
+      expect(result.current.searchResult?.events.map((e) => e.message)).toEqual(originalOrder);
+    });
+
+    it('loadMore on a context view re-sorts the whole accumulated (still-bounded) set ascending again, never trusting append order alone', async () => {
+      const result = await searchedWithThreeEvents();
+      const rootEvent = result.current.searchResult!.events[0];
+
+      act(() => result.current.showContext(rootEvent));
+      await waitFor(() => expect(contextCalls).toHaveLength(1));
+      contextCalls[0].resolve(
+        jsonResponse({
+          events: [eventWithMessageAndTimestamp('b', '2026-01-01T12:00:10Z'), eventWithMessageAndTimestamp('a', '2026-01-01T12:00:00Z')],
+          counts: { estimatedTotal: null, returned: 2, visible: 2, limit: 1, truncated: true },
+          nextCursor: 'context-cursor-1', queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(2));
+      expect(result.current.searchResult?.events.map((e) => e.message)).toEqual(['a', 'b']);
+
+      // "Load more" on a context view goes through the general /search
+      // endpoint (buildRequestBody, scoped to the now-committed context
+      // window/service - see showContext's own comment), appending a page
+      // whose own order must not be trusted.
+      act(() => result.current.loadMore());
+      // searchCalls[0] was already consumed by searchedWithThreeEvents() above -
+      // "load more" on a context view goes through /search, so this is its 2nd call.
+      await waitFor(() => expect(searchCalls).toHaveLength(2));
+      searchCalls[1].resolve(
+        jsonResponse({
+          events: [eventWithMessageAndTimestamp('d', '2026-01-01T12:00:25Z'), eventWithMessageAndTimestamp('c', '2026-01-01T12:00:20Z')],
+          counts: { estimatedTotal: null, returned: 2, visible: 2, limit: 1, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+
+      await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(4));
+      expect(result.current.searchResult?.events.map((e) => e.message)).toEqual(['a', 'b', 'c', 'd']);
+    });
+
+    it('loadMore on an ordinary (non-context) search still preserves exact append order - never reordered', async () => {
+      const result = await renderReady();
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      searchCalls[0].resolve(
+        jsonResponse({
+          events: [eventWithMessageAndTimestamp('newer', '2026-01-01T12:00:10Z')],
+          counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
+          nextCursor: 'cursor-1', queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
+      expect(result.current.breadcrumbLabel).toBeNull(); // an ordinary search, not a context view
+
+      act(() => result.current.loadMore());
+      await waitFor(() => expect(searchCalls).toHaveLength(2));
+      searchCalls[1].resolve(
+        jsonResponse({
+          events: [eventWithMessageAndTimestamp('older', '2026-01-01T12:00:00Z')],
+          counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+
+      await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(2));
+      // Append order preserved exactly (newer page-1, then older page-2) -
+      // never re-sorted to chronological ascending, unlike a context view.
+      expect(result.current.searchResult?.events.map((e) => e.message)).toEqual(['newer', 'older']);
+    });
   });
 
   describe('query authoring (Legacy Remediation Slice 2)', () => {

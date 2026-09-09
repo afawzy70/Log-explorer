@@ -28,32 +28,78 @@
   padding: 1px var(--space-2);
 }
 
+/*
+ * A genuine docked right-side drawer (UI Gap Closure Pass), not an
+ * anchored popover - `position: fixed` relative to the viewport, full
+ * height, so it can never inherit the toolbar-wrap left-edge-reachability
+ * bug a popover here once had (see `.actions`' own comment below), and
+ * the four field groups no longer need an internal scroll to reach the
+ * action row on a typical screen. Deliberately no dimming backdrop -
+ * "results remain visible beside it" (the mission's own requirement) -
+ * `useDismissableLayer` still closes it on outside click/Escape without
+ * one. `prefers-reduced-motion` gets an instant appearance, never a slide.
+ */
 .panel {
-  position: absolute;
-  top: calc(100% + var(--space-2));
+  position: fixed;
+  top: 0;
   right: 0;
-  z-index: 20;
+  bottom: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
   background: var(--color-bg-raised);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-left: var(--border-width) solid var(--color-border);
   box-shadow: var(--shadow-md);
   padding: var(--space-4);
-  width: 560px;
-  max-width: calc(100vw - var(--space-6));
-  max-height: min(560px, 80vh);
-  overflow-y: auto;
+  width: 420px;
+  max-width: 100vw;
+  overflow: hidden;
+  animation: slideIn 180ms ease-out;
 }
 
-.groups {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-4);
-}
-
-@media (max-width: 480px) {
-  .groups {
-    grid-template-columns: 1fr;
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
   }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    animation: none;
+  }
+}
+
+/* Full-width on narrow screens (mission: "may become full-width... if more usable") - same right-docked slide-in, just spanning the whole viewport. */
+@media (max-width: 640px) {
+  .panel {
+    width: 100vw;
+  }
+}
+
+.heading {
+  margin: 0 0 var(--space-4);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+/*
+ * Only this region scrolls when content overflows - never the whole
+ * panel - so Reset/Cancel/Apply (in `.actions`, a sibling below this,
+ * outside the scroll area) always stay visible at the drawer's own
+ * bottom, unreachable-behind-a-scroll never happens again (the exact
+ * real bug the popover-anchored predecessor had - see `.actions`' own
+ * comment).
+ */
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .group {
@@ -88,16 +134,18 @@
 }
 
 /*
- * Deliberately `justify-content: flex-end`, every button anchored to the
- * panel's own right edge (never `space-between`) - this panel is
- * `position: absolute; right: 0` relative to its trigger (Toolbar.module.css),
- * so if the toolbar wraps and the trigger ends up near the page's LEFT
- * edge, the panel's own left edge can fall at a deeply negative page X
- * coordinate; a button anchored to that structurally-fragile left edge
- * (an earlier draft put Reset there via `space-between`) can end up
- * genuinely unreachable, with no scroll mechanism able to bring it back
- * on-screen (found via this pass's own real-browser E2E run, not a code
- * read - see docs/verification/UI_PARITY_ACCELERATION_REPORT.md).
+ * `justify-content: flex-end` (never `space-between`) - a historical note,
+ * not a live risk any more: when this panel was still an absolute-
+ * positioned popover anchored to its trigger, `space-between` once put
+ * Reset at the panel's own structurally-fragile left edge, which could
+ * land off-screen with no way to scroll back to it if the toolbar wrapped
+ * (found via real-browser E2E, not a code read - see `docs/verification/
+ * UI_PARITY_ACCELERATION_REPORT.md`). UI Gap Closure Pass: now that this
+ * is a `position: fixed` drawer anchored to the *viewport*, not a trigger,
+ * that failure mode is structurally impossible regardless of layout - kept
+ * `flex-end` anyway since it is still the right visual choice for a footer
+ * action row, and `.groups`' own `overflow-y: auto` (not the whole panel's)
+ * is what actually keeps this row permanently reachable now.
  */
 .actions {
   margin-top: var(--space-3);

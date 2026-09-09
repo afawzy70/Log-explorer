@@ -4,6 +4,8 @@ import { COLUMN_REGISTRY_BY_ID, DEFAULT_COLUMN_ORDER, DEFAULT_HIDDEN_COLUMN_IDS,
 import type { ColumnId } from './columnRegistry';
 import { ActionsCell } from './ActionsCell';
 import type { TableDensity } from './tablePreferences';
+import { eventIdentity } from '../../app/useSearchState';
+import { VisuallyHidden } from '../../shared/ui/VisuallyHidden';
 import styles from './ResultsTable.module.css';
 
 /**
@@ -56,6 +58,15 @@ export interface ResultsTableProps {
   /** Subset of `columnOrder` currently hidden - defaults to every optional column (i.e. exactly the seven-column default). */
   hiddenColumnIds?: ColumnId[];
   density?: TableDensity;
+  /**
+   * UI Gap Closure Pass - "Context ordering": when set (only ever true in
+   * a "Show ±30 seconds" context view), marks the row whose
+   * {@link eventIdentity} matches as the original event the investigator
+   * was looking at, independent of `selectedIndex`/the inspector's own
+   * open state - conveyed via both a visible marker and `aria-current`
+   * (never color alone).
+   */
+  contextRootIdentity?: string | null;
 }
 
 /** ArrowDown/ArrowUp within the table body move focus to the next/previous row's Actions button - see the module doc comment above. */
@@ -90,6 +101,7 @@ export function ResultsTable({
   columnOrder = DEFAULT_COLUMN_ORDER,
   hiddenColumnIds = DEFAULT_HIDDEN_COLUMN_IDS,
   density = 'comfortable',
+  contextRootIdentity = null,
 }: ResultsTableProps) {
   const hiddenSet = new Set(hiddenColumnIds);
   const visibleColumns = columnOrder
@@ -119,23 +131,33 @@ export function ResultsTable({
           </tr>
         </thead>
         <tbody onKeyDown={handleRowKeyDown}>
-          {events.map((event, index) => (
-            // Index is stable for the lifetime of one rendered result set
-            // (events are never reordered/added mid-render - a fresh
-            // search always replaces the whole list) and the backend
-            // gives no other stable per-event id to key on.
-            // eslint-disable-next-line react/no-array-index-key
-            <tr key={index} className={index === selectedIndex ? styles.selectedRow : undefined}>
-              {visibleColumns.map((col) => (
-                <td key={col.id} className={col.cellClassName}>
-                  {col.render(event, { onOpenJourney })}
+          {events.map((event, index) => {
+            const isContextRoot = contextRootIdentity != null && eventIdentity(event) === contextRootIdentity;
+            const rowClassName = [
+              index === selectedIndex ? styles.selectedRow : null,
+              isContextRoot ? styles.contextRootRow : null,
+            ]
+              .filter(Boolean)
+              .join(' ') || undefined;
+            return (
+              // Index is stable for the lifetime of one rendered result set
+              // (events are never reordered/added mid-render - a fresh
+              // search always replaces the whole list) and the backend
+              // gives no other stable per-event id to key on.
+              // eslint-disable-next-line react/no-array-index-key
+              <tr key={index} className={rowClassName} aria-current={isContextRoot ? 'location' : undefined}>
+                {visibleColumns.map((col) => (
+                  <td key={col.id} className={col.cellClassName}>
+                    {col.render(event, { onOpenJourney })}
+                  </td>
+                ))}
+                <td className={styles.actionsCell}>
+                  {isContextRoot ? <VisuallyHidden>Original event you were investigating</VisuallyHidden> : null}
+                  <ActionsCell event={event} onInspect={() => onInspect?.(index)} />
                 </td>
-              ))}
-              <td className={styles.actionsCell}>
-                <ActionsCell event={event} onInspect={() => onInspect?.(index)} />
-              </td>
-            </tr>
-          ))}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

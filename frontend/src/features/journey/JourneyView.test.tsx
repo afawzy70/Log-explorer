@@ -61,6 +61,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     selectPreviousEvent: vi.fn(),
     selectNextEvent: vi.fn(),
     breadcrumbLabel: null,
+    contextRootIdentity: null,
     restoreOriginalSearch: vi.fn(),
     showContext: vi.fn(),
     journeyQuery: null,

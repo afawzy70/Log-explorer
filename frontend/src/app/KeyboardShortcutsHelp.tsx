@@ -18,6 +18,10 @@ const SHORTCUTS: ShortcutEntry[] = [
   { keys: '[ / ]', description: 'Previous / next event (when the inspector is open)' },
   { keys: 'Esc', description: 'Close the inspector or an open popover' },
   { keys: '?', description: 'Open this shortcuts help' },
+  { keys: 'P', description: 'Pause / resume Live (while Live is the active view)' },
+  { keys: 'S', description: 'Stop Live (while Live is the active view)' },
+  { keys: 'C', description: 'Clear Live events (while Live is the active view)' },
+  { keys: 'F', description: 'Toggle Follow newest (while Live is the active view)' },
 ];
 
 /**

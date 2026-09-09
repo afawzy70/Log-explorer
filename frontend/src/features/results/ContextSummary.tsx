@@ -9,21 +9,20 @@ import styles from './ContextSummary.module.css';
  * "Show ±30 seconds" context summary (UI Parity Acceleration Pass §8 -
  * OLD's own context workflow showed event/service/error counts, the
  * bounded duration/window with timezone, and an explicit non-causality
- * note; the pre-pass NEW implementation only showed a one-line breadcrumb
- * label, none of these). Rendered only while `state.breadcrumbLabel` is
- * set - the exact, sole signal `useSearchState.ts#showContext` sets and
- * every other flow leaves `null` (see that hook's own comment) - so this
- * never appears above an ordinary historical search result.
+ * note; the pre-Slice-4-parity-pass implementation only showed a one-line
+ * breadcrumb label, none of these). Rendered only while
+ * `state.breadcrumbLabel` is set - the exact, sole signal
+ * `useSearchState.ts#showContext` sets and every other flow leaves `null`
+ * (see that hook's own comment) - so this never appears above an ordinary
+ * historical search result.
  *
- * <p>Deliberately still newest-first, matching the main results table
- * beneath it and CLAUDE.md §4's own fixed-order invariant, rather than
- * switching to the journey view's ascending order: reordering a page that
- * "Load more" can still append to (via the same cursor-based pagination
- * every other search result uses) risks a silent order/cursor mismatch
- * this pass's own risk budget did not justify - see the UI Parity
- * Acceleration report's own "deferred" section. The note below is honest
- * about this rather than claiming a chronological presentation NEW does
- * not actually have.
+ * <p><b>Chronological ascending</b> (UI Gap Closure Pass - what happened
+ * before the event, the event itself, what happened after): unlike the
+ * main results table's own fixed newest-first invariant (CLAUDE.md §4),
+ * which is unchanged. `useSearchState.ts#showContext`/`#loadMore` do the
+ * actual sorting (re-sorting the whole bounded context set again after
+ * every "Load more", never trusting append order alone) - this component
+ * only ever renders whatever order it's given.
  */
 export function ContextSummary({ events, range }: { events: LogEvent[]; range: CommittedTimeRange | null }) {
   const errorCount = events.filter((e) => e.severity?.toUpperCase() === 'ERROR').length;
@@ -58,7 +57,8 @@ export function ContextSummary({ events, range }: { events: LogEvent[]; range: C
         ) : null}
       </dl>
       <p className={styles.disclaimer}>
-        Sorted newest first, same as the main results table — this order does not indicate causality between events.
+        Sorted chronologically, oldest first — this order does not indicate causality between events. The highlighted
+        row below is the original event you were investigating.
       </p>
     </div>
   );

@@ -41,11 +41,32 @@ function defaultTimeRange(): CommittedTimeRange {
  * `protectedFields`, the frontend never sees a raw sensitive value to
  * begin with).
  */
-function eventIdentity(e: LogEvent): string {
+export function eventIdentity(e: LogEvent): string {
   return [
     e.timestamp, e.sourceId, e.containerId, e.pod, e.stream, e.rawLine ?? e.message,
     e.logger, e.thread, e.traceId, e.spanId, e.correlationId, e.journeyId, e.eventId,
   ].join('');
+}
+
+/**
+ * UI Gap Closure Pass - "Context ordering": chronological ascending for a
+ * "Show ±30 seconds" context view (what happened before -> the event -> what
+ * happened after), while the general historical results table stays
+ * newest-first, unchanged (CLAUDE.md §4). A pure, bounded (context data is
+ * always a small ±30s window, even after a rare "Load more") array copy -
+ * never mutates its argument, never touches the ordinary search path.
+ * Null/unparseable timestamps sort last, stably, rather than throwing or
+ * producing NaN comparisons.
+ */
+function sortByTimestampAscending(events: LogEvent[]): LogEvent[] {
+  const timeOf = (e: LogEvent): number => {
+    if (!e.timestamp) {
+      return Number.POSITIVE_INFINITY;
+    }
+    const parsed = Date.parse(e.timestamp);
+    return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed;
+  };
+  return [...events].sort((a, b) => timeOf(a) - timeOf(b));
 }
 
 /**
@@ -116,6 +137,15 @@ export function useSearchState() {
   /** "Show ±30 seconds" breadcrumb (HANDOVER.md §16.7 "breadcrumb back to the original search"). */
   const [breadcrumbLabel, setBreadcrumbLabel] = useState<string | null>(null);
   const [originalSnapshot, setOriginalSnapshot] = useState<SearchSnapshot | null>(null);
+  /**
+   * UI Gap Closure Pass - the identity (`eventIdentity`) of the event a
+   * "Show ±30 seconds" context view is centered on, so the resulting
+   * (now chronologically-ascending) table can mark that row as "the
+   * original event you were investigating" - independent of
+   * `selectedIndex`/the inspector's own open state, which the context
+   * fetch itself already closes (see `showContext`).
+   */
+  const [contextRootIdentity, setContextRootIdentity] = useState<string | null>(null);
 
   /**
    * "Find this trace/correlation/journey/event" (IMPLEMENTATION_PLAN.md
@@ -276,6 +306,7 @@ export function useSearchState() {
     setSelectedIndex(null);
     setBreadcrumbLabel(null);
     setOriginalSnapshot(null);
+    setContextRootIdentity(null);
     setJourneyQuery(null);
     setJourneyResult(null);
     setJourneyError(null);
@@ -323,6 +354,11 @@ export function useSearchState() {
     const controller = supersedeActiveRequest();
     setLoadingMore(true);
     setLoadMoreError(null);
+    // Captured once per call, not read inside the `.then` - a fresh
+    // `loadMore` closure is created whenever `breadcrumbLabel` changes
+    // (it's a dependency below), so this always reflects whether the page
+    // being appended still belongs to a context view.
+    const isContextView = breadcrumbLabel !== null;
     runSearchApi(body, controller.signal)
       .then((result) => {
         setSearchResult((prev) => {
@@ -331,7 +367,21 @@ export function useSearchState() {
           }
           const seen = new Set(prev.events.map(eventIdentity));
           const newEvents = result.events.filter((e) => !seen.has(eventIdentity(e)));
-          return { events: [...prev.events, ...newEvents], counts: result.counts, nextCursor: result.nextCursor, queryPlan: result.queryPlan };
+          const combined = [...prev.events, ...newEvents];
+          // "Context ordering" (UI Gap Closure Pass): re-sort the whole
+          // (still-bounded - a ±30s context window) accumulated set
+          // ascending again after every append, rather than assuming
+          // append order already matches - the general search endpoint's
+          // own page order is otherwise unspecified relative to a
+          // chronological-ascending presentation. Historical (non-context)
+          // results are entirely unaffected - they keep the exact append
+          // order they always had.
+          return {
+            events: isContextView ? sortByTimestampAscending(combined) : combined,
+            counts: result.counts,
+            nextCursor: result.nextCursor,
+            queryPlan: result.queryPlan,
+          };
         });
       })
       .catch((error: unknown) => {
@@ -345,7 +395,7 @@ export function useSearchState() {
           setLoadingMore(false);
         }
       });
-  }, [buildRequestBody, searchResult]);
+  }, [buildRequestBody, searchResult, breadcrumbLabel]);
 
   const events = searchResult?.events ?? [];
   const selectedEvent: LogEvent | null = selectedIndex != null ? (events[selectedIndex] ?? null) : null;
@@ -407,6 +457,7 @@ export function useSearchState() {
     setOriginalSnapshot(null);
     setBreadcrumbLabel(null);
     setSelectedIndex(null);
+    setContextRootIdentity(null);
   }, [originalSnapshot]);
 
   /**
@@ -483,6 +534,12 @@ export function useSearchState() {
       setSelectedServices(nextServices);
       setTimeRange(nextTimeRange);
       setBreadcrumbLabel(`Context — ±30s around ${formatUtcTimestamp(event.timestamp)}`);
+      // Captured before the fetch, from the exact event the investigator
+      // clicked - so the resulting (re-ordered) context table can mark
+      // this same row, even though its position in the array is about to
+      // change (see the render below and ResultsTable's own
+      // `contextRootIdentity` prop).
+      setContextRootIdentity(eventIdentity(event));
 
       const controller = supersedeActiveRequest();
       setSearchLoading(true);
@@ -498,7 +555,14 @@ export function useSearchState() {
         controller.signal,
       )
         .then((result) => {
-          setSearchResult(result);
+          // "Context ordering" (UI Gap Closure Pass): chronological
+          // ascending for a bounded ±30s window - what happened before,
+          // the event itself, what happened after - rather than the main
+          // table's own newest-first convention (CLAUDE.md §4's fixed-
+          // order invariant governs the historical results table only;
+          // this is a deliberately distinct, dedicated view, matching the
+          // journey timeline's own precedent for ascending order).
+          setSearchResult({ ...result, events: sortByTimestampAscending(result.events) });
           setLastSearchedRange(nextTimeRange);
         })
         .catch((error: unknown) => {
@@ -568,6 +632,7 @@ export function useSearchState() {
     selectPreviousEvent,
     selectNextEvent,
     breadcrumbLabel,
+    contextRootIdentity,
     restoreOriginalSearch,
     showContext,
     journeyQuery,

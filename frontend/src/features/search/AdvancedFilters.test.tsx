@@ -156,4 +156,61 @@ describe('AdvancedFilters', () => {
     await user.click(screen.getByRole('button', { name: /^more filters$/i }));
     expect(await axe(container)).toHaveNoViolations();
   });
+
+  describe('drawer conversion (UI Gap Closure Pass)', () => {
+    it('the "More filters" heading is now visibly present, not just an accessible-name-only heading', async () => {
+      const user = userEvent.setup();
+      render(<AdvancedFilters values={emptyAdvancedFilterValues()} onApply={vi.fn()} />);
+      await user.click(screen.getByRole('button', { name: /^more filters$/i }));
+
+      const heading = screen.getByRole('heading', { name: 'More filters' });
+      expect(heading).toBeInTheDocument();
+      expect(heading).toHaveTextContent('More filters');
+    });
+
+    it('moves focus to the drawer heading when it opens', async () => {
+      const user = userEvent.setup();
+      render(<AdvancedFilters values={emptyAdvancedFilterValues()} onApply={vi.fn()} />);
+      const trigger = screen.getByRole('button', { name: /^more filters$/i });
+
+      await user.click(trigger);
+      expect(screen.getByRole('heading', { name: 'More filters' })).toHaveFocus();
+    });
+
+    it('returns focus to the trigger button after closing (Cancel)', async () => {
+      const user = userEvent.setup();
+      render(<AdvancedFilters values={emptyAdvancedFilterValues()} onApply={vi.fn()} />);
+      const trigger = screen.getByRole('button', { name: /^more filters$/i });
+
+      await user.click(trigger);
+      await user.click(screen.getByRole('button', { name: /cancel/i }));
+      expect(trigger).toHaveFocus();
+    });
+
+    it('opening the drawer never calls onApply - opening does not execute a search', async () => {
+      const user = userEvent.setup();
+      const onApply = vi.fn();
+      render(<AdvancedFilters values={emptyAdvancedFilterValues()} onApply={onApply} />);
+      await user.click(screen.getByRole('button', { name: /^more filters$/i }));
+      expect(onApply).not.toHaveBeenCalled();
+    });
+
+    it('results (arbitrary sibling content) remain visible while the drawer is open - no dimming/blocking overlay', async () => {
+      const user = userEvent.setup();
+      render(
+        <div>
+          <AdvancedFilters values={emptyAdvancedFilterValues()} onApply={vi.fn()} />
+          <div data-testid="results-area">a result row</div>
+        </div>,
+      );
+
+      await user.click(screen.getByRole('button', { name: /^more filters$/i }));
+      const resultsArea = screen.getByTestId('results-area');
+      // Genuinely visible (not display:none/visibility:hidden/zero-size) and
+      // not covered by a dimming backdrop element - the mission's own
+      // "results remain visible behind/beside it" requirement.
+      expect(resultsArea).toBeVisible();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+  });
 });

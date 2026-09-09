@@ -133,6 +133,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
         columnOrder={table.preferences.columnOrder}
         hiddenColumnIds={table.preferences.hiddenColumnIds}
         density={table.preferences.density}
+        contextRootIdentity={state.breadcrumbLabel ? state.contextRootIdentity : null}
       />
       {nextCursor ? (
         <div className={styles.loadMoreRow}>

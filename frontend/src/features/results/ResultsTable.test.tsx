@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { ResultsTable } from './ResultsTable';
+import { eventIdentity } from '../../app/useSearchState';
 import type { LogEvent } from '../../shared/api/types';
 
 function event(overrides: Partial<LogEvent> = {}): LogEvent {
@@ -339,6 +340,52 @@ describe('ResultsTable', () => {
       const rows = container.querySelectorAll('tbody tr');
       expect(rows[1].className).toMatch(/selected/i);
       expect(rows[0].className).not.toMatch(/selected/i);
+    });
+  });
+
+  describe('contextRootIdentity (UI Gap Closure Pass) - marking the original event under investigation', () => {
+    it('marks the matching row with the contextRootRow class and aria-current="location"', () => {
+      const root = event({ message: 'the one under investigation' });
+      const other = event({ message: 'a neighbor' });
+      const { container } = render(
+        <ResultsTable events={[other, root]} contextRootIdentity={eventIdentity(root)} />,
+      );
+      const rows = container.querySelectorAll('tbody tr');
+      expect(rows[0].className).not.toMatch(/contextRoot/i);
+      expect(rows[0]).not.toHaveAttribute('aria-current');
+      expect(rows[1].className).toMatch(/contextRoot/i);
+      expect(rows[1]).toHaveAttribute('aria-current', 'location');
+    });
+
+    it('renders a visually-hidden "Original event you were investigating" label on the matching row only', () => {
+      const root = event({ message: 'the one under investigation' });
+      const other = event({ message: 'a neighbor' });
+      render(<ResultsTable events={[other, root]} contextRootIdentity={eventIdentity(root)} />);
+      expect(screen.getByText('Original event you were investigating')).toBeInTheDocument();
+      const rows = screen.getAllByRole('row').slice(1);
+      expect(within(rows[0]).queryByText('Original event you were investigating')).toBeNull();
+      expect(within(rows[1]).getByText('Original event you were investigating')).toBeInTheDocument();
+    });
+
+    it('marks no row at all when contextRootIdentity is null/unset - never a false positive match', () => {
+      const { container } = render(<ResultsTable events={[event(), event({ message: 'second' })]} />);
+      const rows = container.querySelectorAll('tbody tr');
+      rows.forEach((row) => {
+        expect(row.className).not.toMatch(/contextRoot/i);
+        expect(row).not.toHaveAttribute('aria-current');
+      });
+      expect(screen.queryByText('Original event you were investigating')).toBeNull();
+    });
+
+    it('combines correctly with .selectedRow when the same row is both selected and the context root', () => {
+      const root = event({ message: 'the one under investigation' });
+      const { container } = render(
+        <ResultsTable events={[root]} contextRootIdentity={eventIdentity(root)} selectedIndex={0} />,
+      );
+      const row = container.querySelector('tbody tr')!;
+      expect(row.className).toMatch(/selected/i);
+      expect(row.className).toMatch(/contextRoot/i);
+      expect(row).toHaveAttribute('aria-current', 'location');
     });
   });
 });

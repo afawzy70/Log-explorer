@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../shared/ui/Button';
 import { VisuallyHidden } from '../../shared/ui/VisuallyHidden';
 import { useDismissableLayer } from '../../shared/ui/useDismissableLayer';
@@ -13,21 +13,42 @@ export interface AdvancedFiltersProps {
 }
 
 /**
- * "More filters + active count" (IMPLEMENTATION_PLAN.md "Phase F" scope
- * item 2), grouped by user question (scope item 6). Draft/apply/cancel:
- * edits only ever exist in this component's own local draft state until
- * Apply - opening, typing, and even closing via Cancel/Escape/outside
- * click never fires a search (`onApply` is the only path that reaches the
- * parent, and applying still only updates filter state - the toolbar's
- * own Search button is what actually runs a query).
+ * "More filters" (IMPLEMENTATION_PLAN.md "Phase F" scope item 2), grouped
+ * by user question (scope item 6). UI Gap Closure Pass: upgraded from a
+ * compact anchored popover to a genuine right-side drawer (`docs/
+ * verification/UI_GAP_CLOSURE_REPORT.md`) - full viewport height, so the
+ * four field groups no longer need the popover's own internal
+ * `overflow-y: auto` scroll to reach Apply/Cancel/Reset on a typical
+ * screen. `position: fixed`, not part of the toolbar's own layout flow, so
+ * it can never inherit the exact left-edge-reachability bug a popover here
+ * once had (see `AdvancedFilters.module.css`'s own comment on `.actions`).
+ * Deliberately no dimming backdrop - results stay visible beside it,
+ * exactly as before, just now via a real docked panel rather than a
+ * floating one. Draft/apply/cancel is unchanged: edits only ever exist in
+ * this component's own local draft state until Apply - opening, typing,
+ * and even closing via Cancel/Escape/outside click never fires a search
+ * (`onApply` is the only path that reaches the parent, and applying still
+ * only updates filter state - the toolbar's own Search button is what
+ * actually runs a query).
  */
 export function AdvancedFilters({ values, onApply }: AdvancedFiltersProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
   const popover = usePopoverTrigger();
   const [draft, setDraft] = useState<AdvancedFilterValues>(values);
   const headingId = useId();
 
   useDismissableLayer(wrapperRef, popover.isOpen, closeWithoutApplying);
+
+  // Focus moves into the drawer's own heading when it opens (a real,
+  // now-prominent full-height panel, unlike the compact popover this
+  // replaces) - `usePopoverTrigger#close` already returns focus to the
+  // trigger on the way out, so this completes the round trip.
+  useEffect(() => {
+    if (popover.isOpen) {
+      headingRef.current?.focus();
+    }
+  }, [popover.isOpen]);
 
   const activeCount = countActiveAdvancedFilters(values);
 
@@ -84,8 +105,8 @@ export function AdvancedFilters({ values, onApply }: AdvancedFiltersProps) {
 
       {popover.isOpen ? (
         <div className={styles.panel} role="dialog" aria-labelledby={headingId}>
-          <h2 id={headingId}>
-            <VisuallyHidden>More filters</VisuallyHidden>
+          <h2 id={headingId} className={styles.heading} ref={headingRef} tabIndex={-1}>
+            More filters
           </h2>
           <div className={styles.groups}>
             {ADVANCED_FILTER_GROUPS.map((group) => (
