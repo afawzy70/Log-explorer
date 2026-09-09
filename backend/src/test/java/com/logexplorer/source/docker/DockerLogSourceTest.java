@@ -635,10 +635,46 @@ class DockerLogSourceTest {
   }
 
   @Test
-  void healthReportsUpWhenPingSucceeds() {
+  void healthReportsUpWhenPingSucceedsAndAtLeastOneContainerMatches() {
     // mockClient.ping() is a no-op void call by default (Mockito) - succeeds.
+    Container gateway = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(gateway));
+
     StepVerifier.create(source.health())
-        .assertNext(h -> assertThat(h.status()).isEqualTo(SourceHealth.Status.UP))
+        .assertNext(h -> {
+          assertThat(h.status()).isEqualTo(SourceHealth.Status.UP);
+          assertThat(h.warnings()).isEmpty();
+        })
+        .verifyComplete();
+  }
+
+  /**
+   * Legacy Remediation Slice 6 — reachable but nothing to search is a real,
+   * observable degradation (any search against this source will silently
+   * return zero results), distinct from an actual connectivity failure.
+   */
+  @Test
+  void healthReportsDegradedWhenPingSucceedsButNoContainersMatch() {
+    when(mockClient.listContainers(true)).thenReturn(List.of());
+
+    StepVerifier.create(source.health())
+        .assertNext(h -> {
+          assertThat(h.status()).isEqualTo(SourceHealth.Status.DEGRADED);
+          assertThat(h.message()).contains("no containers matched");
+          assertThat(h.warnings()).hasSize(1);
+          assertThat(h.warnings().get(0)).doesNotContain("Exception"); // fixed, sanitized text, never a raw error
+        })
+        .verifyComplete();
+  }
+
+  /** A non-Compose-managed container present in the daemon must not count as "matched" - reuses the exact same {@code relevantContainers} filter every other operation goes through. */
+  @Test
+  void healthReportsDegradedWhenOnlyNonMatchingContainersArePresent() {
+    Container unmanaged = container("c1", "some-unrelated-container", null, null, "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(unmanaged));
+
+    StepVerifier.create(source.health())
+        .assertNext(h -> assertThat(h.status()).isEqualTo(SourceHealth.Status.DEGRADED))
         .verifyComplete();
   }
 

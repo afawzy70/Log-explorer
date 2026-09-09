@@ -36,6 +36,20 @@ class SourcesApiIntegrationTest {
       stub.withServices(Flux.just(new ServiceInfo("gateway", 1, 1), new ServiceInfo("accounts-api", 2, 2)));
       return stub;
     }
+
+    @Bean
+    StubLogSource degradedTestSource() {
+      StubLogSource stub = new StubLogSource(
+          "degraded-source",
+          "Degraded Test Source",
+          new SourceCapabilities(true, false, false, true, false, false));
+      stub.withHealth(Mono.just(new SourceHealth(
+          SourceHealth.Status.DEGRADED,
+          "reachable, but degraded",
+          Instant.now(),
+          java.util.List.of("a sanitized degradation reason"))));
+      return stub;
+    }
   }
 
   @Autowired
@@ -68,6 +82,36 @@ class SourcesApiIntegrationTest {
         .expectBody()
         .jsonPath("$.status").isEqualTo("UP")
         .jsonPath("$.message").isEqualTo("reachable");
+  }
+
+  /**
+   * Legacy Remediation Slice 6 - the health response now carries real
+   * capability availability (the same {@link SourceCapabilities} the
+   * source itself declares - "capability truth", never a second, possibly
+   * divergent source of truth) and a genuinely measured latency, never a
+   * fabricated one.
+   */
+  @Test
+  void healthEndpointCarriesTheSourcesOwnRealCapabilitiesAndAMeasuredLatency() {
+    webTestClient.get().uri("/api/v1/sources/test-source/health")
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody()
+        .jsonPath("$.capabilities.historicalSearch").isEqualTo(true)
+        .jsonPath("$.capabilities.liveTail").isEqualTo(false)
+        .jsonPath("$.capabilities.serviceDiscovery").isEqualTo(true)
+        .jsonPath("$.latencyMs").isNumber()
+        .jsonPath("$.warnings").isArray();
+  }
+
+  @Test
+  void healthEndpointReportsDegradedWithASanitizedWarningWhenTheStubSaysSo() {
+    webTestClient.get().uri("/api/v1/sources/degraded-source/health")
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody()
+        .jsonPath("$.status").isEqualTo("DEGRADED")
+        .jsonPath("$.warnings[0]").isEqualTo("a sanitized degradation reason");
   }
 
   @Test
