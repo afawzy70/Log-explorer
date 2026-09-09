@@ -84,18 +84,35 @@ export interface ResultCounts {
   truncated: boolean;
 }
 
+/**
+ * Query-plan transparency (Legacy Remediation Slice 2). Every field is
+ * already safe to render as-is - the backend (`core.query.QueryPlanBuilder`)
+ * redacts every DSL/free-text literal and the five protected structured
+ * filters before this DTO is ever built; `resolvedQuery`/`*Conditions` never
+ * carry a raw sensitive value.
+ */
+export interface QueryPlan {
+  resolvedQuery: string;
+  rawLogQlMode: boolean;
+  pushedDownConditions: string[];
+  postFilterConditions: string[];
+  notes: string[];
+}
+
 export interface SearchResponse {
   events: LogEvent[];
   counts: ResultCounts;
   nextCursor: string | null;
+  queryPlan: QueryPlan;
 }
 
 export type SearchDirection = 'FORWARD' | 'BACKWARD';
 
 /**
  * Never persisted (localStorage or URL) as a whole - CLAUDE.md §2 rule 4.
- * `query`/`rawLogQl` (Phase E) are intentionally omitted: no UI control in
- * this phase's scope produces them.
+ * `query` (Legacy Remediation Slice 2 guided/text authoring) and
+ * `rawLogQl` (Slice 2's capability-gated expert mode) are exactly the same
+ * class of value as `text` - never persisted, never put in a URL.
  */
 export interface SearchRequestBody {
   sourceId: string;
@@ -122,6 +139,8 @@ export interface SearchRequestBody {
   customerId?: string;
   deviceId?: string;
   deviceIp?: string;
+  query?: string;
+  rawLogQl?: string;
   cursor?: string;
 }
 

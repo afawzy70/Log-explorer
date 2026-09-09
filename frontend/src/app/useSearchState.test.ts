@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useSearchState } from './useSearchState';
+import { EMPTY_QUERY_PLAN } from '../shared/api/testFixtures';
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -128,7 +129,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('first')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
 
@@ -153,7 +154,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('fresh')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events[0].message).toBe('fresh'));
@@ -162,7 +163,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('stale')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     // Give any (incorrect) stale update a chance to land, then assert it didn't.
@@ -180,7 +181,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-1')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
-        nextCursor: 'cursor-abc',
+        nextCursor: 'cursor-abc', queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
@@ -192,7 +193,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-2')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
 
@@ -209,7 +210,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-1')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
-        nextCursor: 'cursor-abc',
+        nextCursor: 'cursor-abc', queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
@@ -223,7 +224,7 @@ describe('useSearchState', () => {
         // this) alongside one genuinely new event.
         events: [eventWithMessage('page-1'), eventWithMessage('page-2')],
         counts: { estimatedTotal: null, returned: 2, visible: 2, limit: 2, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
 
@@ -240,7 +241,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-1')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
-        nextCursor: 'cursor-abc',
+        nextCursor: 'cursor-abc', queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
@@ -263,7 +264,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-2')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
 
@@ -280,7 +281,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-1')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
-        nextCursor: 'cursor-abc',
+        nextCursor: 'cursor-abc', queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
@@ -294,7 +295,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-2')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
 
@@ -312,7 +313,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-1')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
-        nextCursor: 'cursor-abc',
+        nextCursor: 'cursor-abc', queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
@@ -323,7 +324,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-2')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(2));
@@ -336,7 +337,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('page-1')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
-        nextCursor: 'cursor-def',
+        nextCursor: 'cursor-def', queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
 
@@ -354,7 +355,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('only-page')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
@@ -382,7 +383,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('one'), eventWithMessage('two'), eventWithMessage('three')],
         counts: { estimatedTotal: null, returned: 3, visible: 3, limit: 200, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(3));
@@ -454,7 +455,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('related')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.journeyResult?.events[0].message).toBe('related'));
@@ -499,7 +500,7 @@ describe('useSearchState', () => {
       jsonResponse({
         events: [eventWithMessage('surrounding')],
         counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
-        nextCursor: null,
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
       }),
     );
     await waitFor(() => expect(result.current.searchResult?.events[0].message).toBe('surrounding'));

@@ -302,7 +302,7 @@ export function useSearchState() {
           }
           const seen = new Set(prev.events.map(eventIdentity));
           const newEvents = result.events.filter((e) => !seen.has(eventIdentity(e)));
-          return { events: [...prev.events, ...newEvents], counts: result.counts, nextCursor: result.nextCursor };
+          return { events: [...prev.events, ...newEvents], counts: result.counts, nextCursor: result.nextCursor, queryPlan: result.queryPlan };
         });
       })
       .catch((error: unknown) => {

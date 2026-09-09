@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
+import { EMPTY_QUERY_PLAN } from '../shared/api/testFixtures';
 
 const SENTINEL_TEXT = 'RAW-SEARCH-TEXT-SENTINEL';
 const SENTINEL_CIF = 'RAW-CIF-SENTINEL';
@@ -63,7 +64,7 @@ describe('persistence: nothing ever written to localStorage/sessionStorage/the U
           // separately from the persistence assertions below.
           expect(String(init.body)).toContain(SENTINEL_TEXT);
           expect(String(init.body)).toContain(SENTINEL_CIF);
-          return jsonResponse({ events: [], counts: { estimatedTotal: 0, returned: 0, visible: 0, limit: 200, truncated: false }, nextCursor: null });
+          return jsonResponse({ events: [], counts: { estimatedTotal: 0, returned: 0, visible: 0, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN });
         }
         throw new Error(`Unexpected fetch: ${url}`);
       }),

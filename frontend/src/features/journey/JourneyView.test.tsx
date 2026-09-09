@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { JourneyView } from './JourneyView';
+import { EMPTY_QUERY_PLAN } from '../../shared/api/testFixtures';
 import type { SearchState } from '../../app/useSearchState';
 import { emptyAdvancedFilterValues } from '../search/advancedFilterFields';
 import { DEFAULT_SEVERITY_LEVELS } from '../search/severityLevels';
@@ -96,7 +97,7 @@ describe('JourneyView', () => {
       <JourneyView
         state={baseState({
           journeyQuery: { field: 'traceId', value: 'trace-x' },
-          journeyResult: { events: [], counts: { estimatedTotal: null, returned: 0, visible: 0, limit: 200, truncated: false }, nextCursor: null },
+          journeyResult: { events: [], counts: { estimatedTotal: null, returned: 0, visible: 0, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
         })}
       />,
     );
@@ -109,7 +110,7 @@ describe('JourneyView', () => {
       <JourneyView
         state={baseState({
           journeyQuery: { field: 'journeyId', value: 'journey-1' },
-          journeyResult: { events, counts: { estimatedTotal: null, returned: 2, visible: 2, limit: 200, truncated: false }, nextCursor: null },
+          journeyResult: { events, counts: { estimatedTotal: null, returned: 2, visible: 2, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
         })}
       />,
     );
@@ -125,7 +126,7 @@ describe('JourneyView', () => {
       <JourneyView
         state={baseState({
           journeyQuery: { field: 'journeyId', value: 'journey-1' },
-          journeyResult: { events, counts: { estimatedTotal: null, returned: 2, visible: 2, limit: 200, truncated: false }, nextCursor: null },
+          journeyResult: { events, counts: { estimatedTotal: null, returned: 2, visible: 2, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
         })}
       />,
     );
@@ -153,7 +154,7 @@ describe('JourneyView', () => {
       <JourneyView
         state={baseState({
           journeyQuery: { field: 'traceId', value: 'trace-1' },
-          journeyResult: { events, counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null },
+          journeyResult: { events, counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
         })}
       />,
     );
