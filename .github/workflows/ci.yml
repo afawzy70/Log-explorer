@@ -59,7 +59,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20' # matches Dockerfile's `FROM node:20-alpine` frontend-build stage
+          node-version: '24' # this repo's actual, verified toolchain version - see the CI report's "Node version" note
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -97,7 +97,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -122,17 +122,28 @@ jobs:
       # ever reached from this job, matching "PR CI must not depend on
       # real external infrastructure" (that stays live/external
       # verification, reported separately - see the CI report).
+      # No --offline: this job's own Maven dependency cache is entirely
+      # separate from the Backend job's (different job, different runner,
+      # and this is the workflow's own first-ever run with nothing to
+      # restore yet either way) - it must be allowed to resolve from Maven
+      # Central like any other fresh checkout. That is ordinary build-time
+      # dependency resolution, not "real external infrastructure" in the
+      # sense this job otherwise avoids (real Docker/OpenShift/Loki).
       - name: Start backend (SPRING_PROFILES_ACTIVE=dev, fixture source)
         working-directory: backend
         run: |
-          SPRING_PROFILES_ACTIVE=dev nohup ./mvnw --batch-mode --quiet --offline spring-boot:run > /tmp/backend.log 2>&1 &
+          SPRING_PROFILES_ACTIVE=dev nohup ./mvnw --batch-mode --quiet spring-boot:run > /tmp/backend.log 2>&1 &
           echo $! > /tmp/backend.pid
 
+      # Generous budget (up to 6 minutes): a cold Maven cache on this
+      # job's own first run needs to download the full dependency tree
+      # before Spring Boot even starts - subsequent runs restore
+      # actions/setup-java's cache and come up in seconds.
       - name: Wait for backend readiness
         run: |
-          for i in $(seq 1 60); do
+          for i in $(seq 1 180); do
             if curl -sf http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'; then
-              echo "Backend is up after ${i}0s"
+              echo "Backend is up after $((i * 2))s"
               exit 0
             fi
             sleep 2
