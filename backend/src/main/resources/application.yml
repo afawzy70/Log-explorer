@@ -57,6 +57,9 @@ logexplorer:
     request-timeout: 15s
     connect-timeout: 5s
     raw-log-ql-enabled: false
+    # Reserved, currently inert (Legacy Remediation Slice 5) - Loki's
+    # capabilities().liveTail() is hardcoded false regardless of this
+    # value; see LokiProperties#liveTailSupported's own doc comment.
     live-tail-supported: false
   live:
     max-concurrent-tails: 4
