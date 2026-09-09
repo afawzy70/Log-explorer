@@ -40,6 +40,12 @@ logexplorer:
     default-tail-lines: 2000
     request-timeout: 10s
     connect-timeout: 5s
+    remote-allowlist:
+      # SSRF/DNS-rebinding policy (Legacy Remediation Slice 3) - empty by
+      # default, deny-by-default for loopback/link-local/private-LAN/
+      # cloud-metadata addresses. See source.docker.security.RemoteHostGuard.
+      cidrs: []
+      hostnames: []
   loki:
     gateway-prefix: /api/logs/v1
     tenant: application

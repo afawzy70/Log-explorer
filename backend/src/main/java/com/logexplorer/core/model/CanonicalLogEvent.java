@@ -22,6 +22,18 @@ import java.util.Map;
  * too). None of these are sensitive; each is left {@code null} by
  * anything that doesn't have it (the fixture source has none of them).
  *
+ * <p>{@code composeService} (Legacy Remediation Slice 3, {@code
+ * docs/LEGACY_TO_NEW_REMEDIATION_PLAN.md} §"Slice 3") is the raw {@code
+ * com.docker.compose.service} label value — deliberately distinct from the
+ * already-existing {@link #service()} (the canonical, cross-source field
+ * derived from the log line's own {@code application}/source-metadata,
+ * used for search/filter/display everywhere). The two usually agree but
+ * are not guaranteed to: {@code composeService} is Compose's own view of
+ * "which service container this container is," independent of whatever
+ * the application itself claims in its log payload, and exists purely as
+ * transparent Docker-adapter provenance metadata, the same class of field
+ * {@code composeProject}/{@code containerId} already are.
+ *
  * <p>{@code sourceTimestamp} (Legacy Remediation Slice 1 recovery,
  * mandatory blocker #1 — "use source-native pagination position") is the
  * adapter's own native clock for this event — Docker's log-frame receive
@@ -67,6 +79,7 @@ public record CanonicalLogEvent(
     String rawLine,
     String sourceId,
     String composeProject,
+    String composeService,
     String containerId,
     String containerName,
     String stream,
@@ -138,6 +151,7 @@ public record CanonicalLogEvent(
         .rawLine(rawLine)
         .sourceId(sourceId)
         .composeProject(composeProject)
+        .composeService(composeService)
         .containerId(containerId)
         .containerName(containerName)
         .stream(stream)
@@ -178,6 +192,7 @@ public record CanonicalLogEvent(
     private String rawLine;
     private String sourceId;
     private String composeProject;
+    private String composeService;
     private String containerId;
     private String containerName;
     private String stream;
@@ -215,6 +230,7 @@ public record CanonicalLogEvent(
     public Builder rawLine(String v) { this.rawLine = v; return this; }
     public Builder sourceId(String v) { this.sourceId = v; return this; }
     public Builder composeProject(String v) { this.composeProject = v; return this; }
+    public Builder composeService(String v) { this.composeService = v; return this; }
     public Builder containerId(String v) { this.containerId = v; return this; }
     public Builder containerName(String v) { this.containerName = v; return this; }
     public Builder stream(String v) { this.stream = v; return this; }
@@ -229,7 +245,7 @@ public record CanonicalLogEvent(
           traceId, spanId, journeyId, eventId, businessStep, uiIdentifier,
           errorCode, correlationId, sensitive, devicePlatformType, language,
           serverIp, serverHost, unknownTopLevelFields, unknownMdcFields,
-          malformed, rawLine, sourceId, composeProject, containerId, containerName, stream,
+          malformed, rawLine, sourceId, composeProject, composeService, containerId, containerName, stream,
           namespace, pod, sourceTimestamp);
     }
   }

@@ -3,6 +3,7 @@ package com.logexplorer.source.docker;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.logexplorer.core.model.SourceHealth;
+import com.logexplorer.source.docker.security.RemoteHostRejectedException;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.UnknownHostException;
@@ -13,6 +14,29 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class DockerDiagnosticsTest {
+
+  @Test
+  void policyRejectionIsClassifiedDistinctlyFromAGenericConnectivityFailure() {
+    // Legacy Remediation Slice 3
+    assertThat(DockerDiagnostics.classify(
+        new RemoteHostRejectedException(RemoteHostRejectedException.Reason.POLICY_REJECTED, "rejected")))
+        .containsIgnoringCase("polic");
+  }
+
+  @Test
+  void guardDnsFailureIsClassifiedTheSameWayAnUnknownHostExceptionIs() {
+    assertThat(DockerDiagnostics.classify(
+        new RemoteHostRejectedException(RemoteHostRejectedException.Reason.DNS_FAILURE, "unresolved")))
+        .contains("Cannot reach");
+  }
+
+  @Test
+  void remoteHostRejectionClassificationNeverEchoesTheGuardsOwnMessage() {
+    String sentinel = "RAW-GUARD-MESSAGE-SENTINEL-host.invalid";
+    String classified = DockerDiagnostics.classify(
+        new RemoteHostRejectedException(RemoteHostRejectedException.Reason.POLICY_REJECTED, sentinel));
+    assertThat(classified).doesNotContain(sentinel);
+  }
 
   @Test
   void connectionRefusedIsClassifiedActionably() {
