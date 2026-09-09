@@ -89,11 +89,58 @@ Real Docker was reachable in this environment (this host's own unrelated `sofra`
 
 - `docs/LEGACY_TO_NEW_VERIFIED_CAPABILITY_MATRIX.md` — rows `TABLE-08`, `SEARCH-11`, `SEARCH-16` updated in place with this slice's real evidence and reclassified `NEW_FULL`/`PRESERVE_AS_IS`. No other row touched. The matrix's overall summary counts and `READY_FOR_REMEDIATION_PLAN_REVIEW` line in `docs/LEGACY_PARITY_OWNER_SUMMARY.md` are **not** updated by this report — per the mission's explicit instruction, this report does not claim the entire legacy remediation is complete; only Slice 1 is.
 
+## Recovery (PR #18 first review) — source-native pagination, direction-awareness, keyed fingerprints
+
+The section above is the original Slice 1 submission. The reviewer identified three architecture blockers before merge; this section records the fix, superseding the affected claims above (kept intact for the historical record of what was found and why).
+
+**Blocker 1 fixed — source-native pagination position.** `CanonicalLogEvent` gained a new internal-only field, `sourceTimestamp` (Docker's own log-frame receive time / Loki's stream-entry nanosecond timestamp / fixture's own deterministic per-index instant) — never exposed to the frontend (`EventDto`/`EventMapper` untouched; grep-verified). Pagination continuation (`SearchService`, `PageCursorCodec`, every `LogSource#search`'s own sort) now follows this native clock exclusively, never the parsed application `timestamp` (which is `null` for a malformed/non-JSON line even though the source-native clock is always known). This directly closes the "known, deliberate non-scope" gap noted above: real-Docker re-verification against the exact same data now produces a genuine, safe cursor (see below) instead of the previous honest-but-blocked `nextCursor: null`.
+
+**Blocker 2 fixed — direction-aware continuation.** Every adapter now sorts by `sourceTimestamp` in true direction-of-travel order (descending for `BACKWARD`, ascending for `FORWARD` — previously always descending regardless of the requested direction, in both `SearchService` and, independently, inside `LokiLogSource` itself). `SearchService`'s dedup/boundary logic is direction-aware end to end, and a cursor's direction is part of its request-binding fingerprint (a `BACKWARD` cursor can never continue a `FORWARD` search or vice versa).
+
+**Blocker 3 fixed — keyed cursor fingerprints.** `PageCursorCodec` now derives two HMAC-SHA256 subkeys (`request-binding`, `boundary-event`) from the master signing key via `HMAC(masterKey, label)`, replacing the previous plain/public SHA-256 fingerprints. A plain SHA-256 is computable by anyone without this process's key, making a low-entropy raw value (e.g. a CIF) offline-guessable by hashing candidates and comparing to what was embedded in the cursor; a keyed HMAC is not. `PageCursorCodecTest` directly proves: same input + same key → stable fingerprint; same input + a second process's independently-generated key → a different fingerprint; the keyed fingerprint never coincides with an independently-computed plain SHA-256 of the same basis string.
+
+**A real bug found via this recovery's own new tests** (not the original submission): a tied-`sourceTimestamp` group spanning more than one page (more tied events than fit on a single page) lost track of earlier-consumed events once the boundary "moved on" to a later page's own tie-key subset, becoming eligible to reappear on a third page. Fixed by carrying the incoming cursor's tie keys forward whenever the new page's boundary is still the *same* native instant as the incoming cursor's own boundary (`SearchService#buildNextCursor`). Covered by `SearchServicePaginationTest#forwardDirectionHandlesTiedSourceTimestampsAtAPageBoundaryWithNoSkipOrDuplicate` and the equivalent Loki/Docker adapter tests below.
+
+**`REAL_DOCKER_MULTI_PAGE` upgraded from BLOCKED to PASS.** Re-ran the exact same real-Docker query from the original submission (this host's own unrelated `sofra` Compose stack — `caddy`/`db`/`web`, all still non-JSON/malformed-parsing logs) after the fix:
+
+```
+$ curl -s -X POST http://127.0.0.1:8080/api/v1/logs/search -H "Content-Type: application/json" \
+    -d '{"sourceId":"local-docker","start":"2026-09-03T00:00:00Z","end":"2026-09-09T23:59:59Z"}'
+→ returned=200, counts={estimatedTotal: null, truncated: true}, nextCursor: <a real, non-null cursor>
+```
+
+Paged through to exhaustion (both directions) and cross-checked against one unpaginated fetch (`limit=5000`) for exact count conservation — the strongest verification available externally, since `sourceTimestamp` is deliberately never exposed in the HTTP response for a raw per-event identity check from outside the process:
+
+```
+BACKWARD: true_total (single unpaginated fetch) = 270; paged (2 pages) total = 270 → MATCH
+FORWARD:  page 0 returned=200 truncated=true; page 1 returned=70 truncated=false → total 270 → MATCH
+```
+
+Malformed, non-JSON Docker container logs — the exact real-world case that was structurally blocked before this recovery — are now genuinely pageable in both directions, with no skip and no duplicate, confirmed against real, non-synthetic data.
+
+**Existing tests adjusted only where mandatorily necessitated by the sort-key change** (not unrelated cleanup): `FixtureLogSourceTest#malformedEventsWithNoTimestampSortLastNotFirst` asserted the *old*, now-superseded behavior ("malformed events always sort last") and was rewritten to assert the new, correct one (malformed events interleave by their real `sourceTimestamp` position — the entire point of the fix); two `LokiLogSourceTest` mocks used trivial placeholder `value[0]` integers (`"1"`, `"2"`, `"3"`) that never mattered while sort was canonical-timestamp-only — now that sort follows `value[0]`, they were given realistic, meaningfully-ordered nanosecond values instead.
+
+**New tests added**, matching the reviewer's own required list precisely:
+- `DockerLogSourceTest#paginationFollowsDockerEngineTimestampEvenWhenTheApplicationTimestampDisagreesAboutOrder` — engine timestamp ≠ JSON `@timestamp`, including multiple events sharing one application timestamp with genuinely different engine timestamps.
+- `DockerLogSourceTest#malformedNonJsonDockerLinesAreRealPageableAcrossMultiplePagesUsingTheEngineTimestamp` — plain-text/malformed Docker logs, canonical `timestamp=null`, real multi-page traversal.
+- `DockerLogSourceTest#forwardDirectionPaginationAgainstDockerAdvancesTowardNewerEngineTimestampsWithNoSkipOrDuplicate`.
+- `LokiLogSourceTest#paginationFollowsLokiValueZeroEvenWhenTheApplicationTimestampDisagreesAboutOrder` — `value[0]` ≠ JSON `@timestamp`.
+- `LokiLogSourceTest#identicalTimestampsAtALokiPageBoundaryAreNeverSkippedOrDuplicated` (fixed, see above) — multiple Loki events sharing an identical source-native timestamp.
+- `LokiLogSourceTest#forwardDirectionPaginationAgainstLokiAdvancesTowardNewerValueZeroTimestampsWithTiedBoundariesAndNoSkipOrDuplicate`.
+- `FixtureLogSourceTest#forwardDirectionMultiPageTraversalVisitsExactlyTheSameEventsAsOneUnpaginatedSearch`.
+- `SearchServicePaginationTest#paginationFollowsSourceNativeTimestampEvenWhenTheApplicationTimestampDisagreesAboutOrder`, `#forwardDirectionPaginationAdvancesTowardNewerEventsAndNeverSkipsOrDuplicates`, `#forwardDirectionHandlesTiedSourceTimestampsAtAPageBoundaryWithNoSkipOrDuplicate`, `#aCursorIssuedForOneDirectionIsRejectedWhenReplayedWithTheOppositeDirection`.
+- `PageCursorCodecTest` — 9 new tests specifically for keyed fingerprints (stability under the same key, divergence under a different key, rejection when a cursor is decoded by a different process's codec, and explicit non-coincidence with an independently-computed plain SHA-256).
+
+**Backend regression run after the recovery: 411/411** (`./mvnw --batch-mode verify`, the exact CI command — see `docs/verification/CI_GITHUB_ACTIONS_REPORT.md`). Full local Playwright suite re-run: 79/80 — the one failure is a real, pre-existing, out-of-scope bug (unrelated to any of the three blockers), documented in the CI report rather than fixed here per the recovery's own scope boundary.
+
+A known, pre-existing, genuinely-defensive-only residual gap remains, now much narrower than before the fix: if every event on a page somehow has no `sourceTimestamp` at all (should never happen — every adapter always sets one, even for malformed/non-JSON lines, which is exactly what this recovery fixed), pagination still honestly reports `truncated=true`/`estimatedTotal=null` with no cursor, rather than silently claiming completeness (`SearchServicePaginationTest#aPageOfEntirelySourceTimestamplessEventsReportsTruncatedHonestlyEvenThoughNoCursorCanBeOffered`).
+
 ## Known, deliberate non-scope (unchanged by this slice)
 
 - Slices 2–9 of `docs/LEGACY_TO_NEW_REMEDIATION_PLAN.md` (query transparency, Docker connection UI, results-table configurability, live-tail resilience, etc.) — not started.
-- `CanonicalLogEvent` gained no new field; `eventIdentity`/`eventFingerprint` are computed, not stored.
-- The rare timestamp-less-page-with-more-data case (found above) reports `truncated=true` with no way to page further — an honest limitation, not silently worked around; a future slice could special-case Docker's own receive-timestamp as a fallback boundary key if this proves to matter for real JSON-emitting workloads too, but that was not needed to satisfy this slice's own acceptance criteria and would be new scope.
+- ~~`CanonicalLogEvent` gained no new field~~ — **superseded by the recovery above**: it now carries `sourceTimestamp`, internal-only, never sent to the browser.
+- The rare timestamp-less-page-with-more-data case is now far narrower (see the recovery section above): it can only occur if an adapter fails to set `sourceTimestamp` at all, which none of the three real adapters ever do (every one of them always knows its own native clock, even for a malformed line) — the case that used to trigger this constantly (all-malformed real Docker pages) is exactly what the recovery fixed.
+- The pre-existing, unrelated `useSearchState.ts` services-fetch race found during local E2E re-verification (see `docs/verification/CI_GITHUB_ACTIONS_REPORT.md`) — not fixed here, out of this recovery's scope.
 
 ## Final report
 
@@ -117,5 +164,31 @@ REFRESH=PASS
 TABLE_GEOMETRY=PASS
 REAL_DOCKER_MULTI_PAGE=BLOCKED
 REGRESSIONS=0 (two pre-existing Playwright specs required a small, directly-necessitated fix for the larger fixture corpus — see above; both green)
+OWNER_ACTION_REQUIRED=NO
+```
+
+**The block above is the original submission's report, kept for the record.** It is superseded by the recovery below — in particular `REAL_DOCKER_MULTI_PAGE` changed from `BLOCKED` to `PASS`.
+
+## Final report (post-recovery)
+
+```
+SLICE=1_RECOVERY
+STATUS=PASS
+BRANCH=phase/legacy-slice-1-result-set-completeness
+BASE_SHA=55ee9e51797b324e384cd8a24e0ae3f39e1aeb30
+HEAD_SHA=570fa20 (Slice 1 recovery commit; CI added in a following commit on the same branch/PR)
+PR=https://github.com/afawzy70/Log-explorer/pull/18
+BACKEND_TESTS=411/411
+FRONTEND_TESTS=301/301 (unchanged by the recovery - no frontend file touched)
+E2E_TESTS=79/80 (1 known, pre-existing, unrelated failure - see "Known, deliberate non-scope" and docs/verification/CI_GITHUB_ACTIONS_REPORT.md)
+SOURCE_NATIVE_DOCKER_CURSOR=PASS
+SOURCE_NATIVE_LOKI_CURSOR=PASS
+MALFORMED_DOCKER_MULTI_PAGE=PASS
+FORWARD_PAGINATION=PASS
+BACKWARD_PAGINATION=PASS
+CURSOR_KEYED_FINGERPRINTS=PASS
+NO_SKIP_NO_DUPLICATE=PASS
+REAL_DOCKER_MULTI_PAGE=PASS
+REGRESSIONS=0 introduced by this recovery (the 1 known E2E failure predates it and is unrelated - see above)
 OWNER_ACTION_REQUIRED=NO
 ```
