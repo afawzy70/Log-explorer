@@ -9,6 +9,8 @@ import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.ResultCounts;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.SearchResult;
+import com.logexplorer.core.query.QueryPlan;
+import com.logexplorer.core.query.QueryPlanBuilder;
 import com.logexplorer.core.search.PageCursor;
 import com.logexplorer.core.search.PageCursorCodec;
 import com.logexplorer.source.LogSource;
@@ -105,6 +107,11 @@ public class SearchService {
       PageCursor cursor = cursorCodec.decodeAndValidate(request);
       SearchRequest scoped = cursor == null ? request : request.withPageBoundary(cursor.boundarySourceTimestamp());
 
+      // Query-plan transparency (Legacy Remediation Slice 2) - computed
+      // from the same source/request the actual fetch below uses, so the
+      // disclosure can never drift from what was really queried.
+      QueryPlan queryPlan = QueryPlanBuilder.build(request, source.describePushDown(scoped));
+
       Flux<CanonicalLogEvent> guarded = concurrencyGuard.guard(source.search(scoped));
 
       // Every LogSource implementation already fully materializes its own
@@ -120,7 +127,7 @@ public class SearchService {
       return guarded
           .collectList()
           .timeout(validated.timeout())
-          .map(list -> toResult(list, validated.effectiveLimit(), request, cursor));
+          .map(list -> toResult(list, validated.effectiveLimit(), request, cursor, queryPlan));
     });
   }
 
@@ -140,7 +147,8 @@ public class SearchService {
     }
   }
 
-  private SearchResult toResult(List<CanonicalLogEvent> fetched, int effectiveLimit, SearchRequest originalRequest, PageCursor incoming) {
+  private SearchResult toResult(
+      List<CanonicalLogEvent> fetched, int effectiveLimit, SearchRequest originalRequest, PageCursor incoming, QueryPlan queryPlan) {
     boolean backward = originalRequest.direction() != SearchRequest.Direction.FORWARD;
 
     List<CanonicalLogEvent> deduped = incoming == null
@@ -166,7 +174,7 @@ public class SearchService {
     Integer estimatedTotal = (incoming == null && !truncated) ? page.size() : null;
 
     ResultCounts counts = new ResultCounts(estimatedTotal, page.size(), page.size(), effectiveLimit, truncated);
-    return new SearchResult(page, counts, nextCursor);
+    return new SearchResult(page, counts, nextCursor, queryPlan);
   }
 
   /**

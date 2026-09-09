@@ -131,6 +131,41 @@ class QueryParserTest {
     }
   }
 
+  // --- sensitive-field operator restriction (Legacy Remediation Slice 2) ---
+
+  @Test
+  void exactMatchIsAllowedForEverySensitiveAlias() {
+    for (String alias : new String[] {"userName", "customerId", "cif"}) {
+      assertThat(QueryParser.parse(alias + " = \"x\"")).as("alias " + alias).isInstanceOf(Comparison.class);
+      assertThat(QueryParser.parse(alias + " != \"x\"")).as("alias " + alias).isInstanceOf(Comparison.class);
+    }
+  }
+
+  @Test
+  void containsIsRejectedForEverySensitiveAlias() {
+    for (String alias : new String[] {"userName", "customerId", "cif"}) {
+      assertThatThrownBy(() -> QueryParser.parse(alias + " contains \"x\""))
+          .as("alias " + alias)
+          .isInstanceOf(QuerySyntaxException.class)
+          .hasMessageContaining("not allowed")
+          .hasMessageContaining(alias);
+    }
+  }
+
+  @Test
+  void containsIsStillAllowedForNonSensitiveFields() {
+    assertThat(QueryParser.parse("message contains \"x\"")).isInstanceOf(Comparison.class);
+    assertThat(QueryParser.parse("logger contains \"x\"")).isInstanceOf(Comparison.class);
+  }
+
+  @Test
+  void sensitiveFieldOperatorRejectionNeverEchoesTheAttemptedLiteral() {
+    String sentinel = "SENSITIVE-CONTAINS-SENTINEL-91a2";
+    assertThatThrownBy(() -> QueryParser.parse("cif contains \"" + sentinel + "\""))
+        .isInstanceOf(QuerySyntaxException.class)
+        .satisfies(e -> assertThat(e.getMessage()).doesNotContain(sentinel));
+  }
+
   // --- malformed -------------------------------------------------------
 
   @Test

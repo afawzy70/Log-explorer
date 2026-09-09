@@ -2,6 +2,7 @@ package com.logexplorer.api;
 
 import com.logexplorer.api.dto.ContextRequestDto;
 import com.logexplorer.api.dto.JourneyRequestDto;
+import com.logexplorer.api.dto.QueryPlanDto;
 import com.logexplorer.api.dto.SearchRequestDto;
 import com.logexplorer.api.dto.SearchResponseDto;
 import com.logexplorer.core.model.CanonicalLogEvent;
@@ -34,7 +35,8 @@ public class SearchController {
         .map(result -> new SearchResponseDto(
             result.events().stream().map(eventMapper::toDto).toList(),
             result.counts(),
-            result.nextCursor()));
+            result.nextCursor(),
+            QueryPlanDto.from(result.queryPlan())));
   }
 
   /**
@@ -50,7 +52,8 @@ public class SearchController {
         .map(result -> new SearchResponseDto(
             result.events().stream().map(eventMapper::toDto).toList(),
             result.counts(),
-            result.nextCursor()));
+            result.nextCursor(),
+            QueryPlanDto.from(result.queryPlan())));
   }
 
   /**
@@ -74,7 +77,8 @@ public class SearchController {
           return new SearchResponseDto(
               ascending.stream().map(eventMapper::toDto).toList(),
               result.counts(),
-              result.nextCursor());
+              result.nextCursor(),
+              QueryPlanDto.from(result.queryPlan()));
         });
   }
 }
