@@ -6,6 +6,7 @@ import { JourneyView } from './JourneyView';
 import { EMPTY_QUERY_PLAN } from '../../shared/api/testFixtures';
 import type { SearchState } from '../../app/useSearchState';
 import { emptyAdvancedFilterValues } from '../search/advancedFilterFields';
+import { emptyQueryAuthoringState } from '../search/QueryBuilder';
 import { DEFAULT_SEVERITY_LEVELS } from '../search/severityLevels';
 import { DEFAULT_PRESET_ID } from '../../shared/time/presets';
 import { fullEvent } from '../inspector/testEventFixture';
@@ -36,6 +37,8 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     setTimeRange: vi.fn(),
     advancedFilters: emptyAdvancedFilterValues(),
     applyAdvancedFilters: vi.fn(),
+    queryState: emptyQueryAuthoringState(),
+    applyQuery: vi.fn(),
     applyDetectedField: vi.fn(),
     health: null,
     healthLoading: false,

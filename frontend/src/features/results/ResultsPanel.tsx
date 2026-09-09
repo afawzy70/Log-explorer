@@ -4,6 +4,7 @@ import { DEFAULT_PRESET_ID, TIME_RANGE_PRESETS } from '../../shared/time/presets
 import type { SearchState } from '../../app/useSearchState';
 import { buildCountsSummary } from './counts';
 import { ResultsTable } from './ResultsTable';
+import { QueryPlanDisclosure } from './QueryPlanDisclosure';
 import styles from './ResultsPanel.module.css';
 
 const DAY_MS = TIME_RANGE_PRESETS.find((p) => p.id === DEFAULT_PRESET_ID)!.durationMs;
@@ -70,7 +71,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
     );
   }
 
-  const { events, counts, nextCursor } = state.searchResult;
+  const { events, counts, nextCursor, queryPlan } = state.searchResult;
 
   if (events.length === 0) {
     const oneDayAgo = new Date(Date.now() - DAY_MS);
@@ -78,6 +79,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
       <div className={styles.wrapper}>
         <Breadcrumb state={state} />
         <RefreshRow state={state} />
+        <QueryPlanDisclosure queryPlan={queryPlan} />
         <p className={styles.empty}>
           No results for this range.{' '}
           <Button
@@ -109,6 +111,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
         </p>
         <RefreshRow state={state} />
       </div>
+      <QueryPlanDisclosure queryPlan={queryPlan} />
       <ResultsTable
         events={events}
         selectedIndex={state.selectedIndex}

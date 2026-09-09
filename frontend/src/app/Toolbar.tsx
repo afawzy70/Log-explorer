@@ -6,6 +6,7 @@ import { getTimeRangeDisplayLabel } from '../features/timerange/label';
 import { SeverityFilter } from '../features/search/SeverityFilter';
 import { UniversalSearch } from '../features/search/UniversalSearch';
 import { AdvancedFilters } from '../features/search/AdvancedFilters';
+import { QueryBuilder } from '../features/search/QueryBuilder';
 import { ActiveFilters } from '../features/search/ActiveFilters';
 import type { SearchState } from './useSearchState';
 import styles from './Toolbar.module.css';
@@ -24,6 +25,7 @@ export interface ToolbarProps {
  */
 export function Toolbar({ state, onStartLive }: ToolbarProps) {
   const liveTailSupported = state.selectedSource?.capabilities.liveTail ?? false;
+  const rawLogQlSupported = state.selectedSource?.capabilities.rawLogQL ?? false;
 
   return (
     <div>
@@ -45,6 +47,7 @@ export function Toolbar({ state, onStartLive }: ToolbarProps) {
         <Button variant="primary" onClick={state.runSearch} disabled={state.searchLoading}>
           {state.searchLoading ? 'Searching…' : 'Search'}
         </Button>
+        <QueryBuilder value={state.queryState} onApply={state.applyQuery} rawLogQlSupported={rawLogQlSupported} />
         {liveTailSupported ? (
           // Only ever rendered when the active source's own capabilities
           // say it supports live tail (never assumed, never shown for a
