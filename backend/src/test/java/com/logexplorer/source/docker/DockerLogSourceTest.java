@@ -635,6 +635,140 @@ class DockerLogSourceTest {
   }
 
   @Test
+  void capabilitiesReportComposeProjectScopingTrueUxR3() {
+    assertThat(source.capabilities().composeProjectScoping()).isTrue();
+  }
+
+  // --- UX-R3: per-request Compose project scope, overlapping service names ---
+
+  /**
+   * The mission's own mandatory scenario: two real Compose projects, each
+   * with a service named identically ("api"), overlapping on purpose.
+   * Proves the per-request {@code composeProject} - not just the static
+   * deployment-time filter already covered above - is a genuine hard
+   * boundary that a same-named service in the *other* project can never
+   * cross, in either direction.
+   */
+  @Test
+  void perRequestComposeProjectIsolatesOverlappingSameNamedServicesInEitherDirection() {
+    Container projectAApi = container("a1", "project-a-api-1", "project-a", "api", "running");
+    Container projectBApi = container("b1", "project-b-api-1", "project-b", "api", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(projectAApi, projectBApi));
+    stubLogs("a1", jsonLine("2026-01-01T00:00:00.000000000Z", "api", "MARKER-PROJECT-A-ONLY"));
+    stubLogs("b1", jsonLine("2026-01-01T00:00:00.000000000Z", "api", "MARKER-PROJECT-B-ONLY"));
+
+    List<CanonicalLogEvent> fromA = source.search(wideOpenRequest().composeProject("project-a").build())
+        .collectList().block();
+    assertThat(fromA).extracting(CanonicalLogEvent::message).containsExactly("MARKER-PROJECT-A-ONLY");
+    assertThat(fromA).extracting(CanonicalLogEvent::composeProject).containsOnly("project-a");
+
+    List<CanonicalLogEvent> fromB = source.search(wideOpenRequest().composeProject("project-b").build())
+        .collectList().block();
+    assertThat(fromB).extracting(CanonicalLogEvent::message).containsExactly("MARKER-PROJECT-B-ONLY");
+    assertThat(fromB).extracting(CanonicalLogEvent::composeProject).containsOnly("project-b");
+  }
+
+  @Test
+  void perRequestComposeProjectTakesPrecedenceOverTheStaticDeploymentTimeFilter() {
+    properties.setComposeProjectFilter("project-a"); // deployment-time default
+    Container projectAApi = container("a1", "project-a-api-1", "project-a", "api", "running");
+    Container projectBApi = container("b1", "project-b-api-1", "project-b", "api", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(projectAApi, projectBApi));
+    stubLogs("b1", jsonLine("2026-01-01T00:00:00.000000000Z", "api", "from b"));
+
+    // The caller explicitly selected project-b for this one request -
+    // that always wins over whatever the deployer's own static default is.
+    List<CanonicalLogEvent> events = source.search(wideOpenRequest().composeProject("project-b").build())
+        .collectList().block();
+    assertThat(events).extracting(CanonicalLogEvent::composeProject).containsOnly("project-b");
+  }
+
+  @Test
+  void aMaliciousOrInvalidComposeProjectStringSafelyMatchesZeroContainersRatherThanFailingOpen() {
+    Container projectAApi = container("a1", "project-a-api-1", "project-a", "api", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(projectAApi));
+    stubLogs("a1", jsonLine("2026-01-01T00:00:00.000000000Z", "api", "should never be returned"));
+
+    // Deliberately excludes blank/whitespace-only strings - those mean "no
+    // selection" by this codebase's own established convention (see
+    // `aBlankComposeProjectFilterIsTreatedAsNoFilterNotAsAnEmptyProjectName`
+    // above), not an attack; every value here is non-blank but still
+    // guaranteed to never equal a real project's own label.
+    for (String malicious : new String[] {
+        "project-a; DROP TABLE x", "../../etc/passwd", "*", "project-a ", "does-not-exist",
+    }) {
+      List<CanonicalLogEvent> events = source.search(wideOpenRequest().composeProject(malicious).build())
+          .collectList().block();
+      assertThat(events).as("composeProject=%s must fail safe (zero results), never leak project-a", malicious).isEmpty();
+    }
+  }
+
+  @Test
+  void discoverComposeProjectsReturnsEveryRealDistinctProjectSortedNeverScopedByAPreviouslySelectedProject() {
+    properties.setComposeProjectFilter("project-a"); // must not narrow discovery itself
+    Container a = container("a1", "project-a-api-1", "project-a", "api", "running");
+    Container b = container("b1", "project-b-api-1", "project-b", "api", "running");
+    Container excluded = excludedContainer("x1", "log-explorer-1", "log-explorer", "app", "running");
+    Container nonCompose = container("n1", "some-plain-container", null, null, "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(b, a, excluded, nonCompose, a));
+
+    List<String> projects = source.discoverComposeProjects();
+
+    assertThat(projects).containsExactly("project-a", "project-b"); // sorted, distinct, self-excluded/non-Compose omitted
+  }
+
+  @Test
+  void discoverComposeProjectsReturnsEmptyTruthfullyWhenNoneExist() {
+    when(mockClient.listContainers(true)).thenReturn(List.of());
+    assertThat(source.discoverComposeProjects()).isEmpty();
+  }
+
+  @Test
+  void discoverServicesScopedToOneProjectNeverSeesTheOverlappingSameNamedServiceInTheOtherProject() {
+    Container projectAApi = container("a1", "project-a-api-1", "project-a", "api", "running");
+    Container projectAWeb = container("a2", "project-a-web-1", "project-a", "web", "running");
+    Container projectBApi = container("b1", "project-b-api-1", "project-b", "api", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(projectAApi, projectAWeb, projectBApi));
+
+    List<ServiceInfo> servicesA = source.discoverServices("project-a").collectList().block();
+    assertThat(servicesA).extracting(ServiceInfo::name).containsExactlyInAnyOrder("api", "web");
+
+    List<ServiceInfo> servicesB = source.discoverServices("project-b").collectList().block();
+    assertThat(servicesB).extracting(ServiceInfo::name).containsExactly("api");
+    // Same service *name* in both projects, but discovering project-b's
+    // "api" must never be conflated with project-a's own "api" container -
+    // proven by project-a having exactly 2 services (api+web) and
+    // project-b having exactly 1 (api), never 2 or 3.
+  }
+
+  @Test
+  void unscopedDiscoverServicesStillWorksUnchangedForBackwardCompatibility() {
+    Container container = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(container));
+    List<ServiceInfo> services = source.discoverServices().collectList().block();
+    assertThat(services).extracting(ServiceInfo::name).containsExactly("gateway");
+  }
+
+  @Test
+  void followRespectsThePerRequestComposeProjectForOverlappingSameNamedServices() {
+    // The mission's overlapping-service-name scenario, for Live: both
+    // projects have a container running a service literally named "api" -
+    // selecting project-a must only ever start following project-a's own
+    // container, never project-b's, even though the service name alone
+    // cannot tell them apart.
+    Container projectAApi = container("a1", "project-a-api-1", "project-a", "api", "running");
+    Container projectBApi = container("b1", "project-b-api-1", "project-b", "api", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(projectAApi, projectBApi));
+    when(mockClient.followLogs(any(), any())).thenAnswer(invocation -> invocation.getArgument(1));
+
+    source.follow(new com.logexplorer.core.model.FollowRequest("local-docker", List.of(), "project-a"))
+        .subscribe();
+
+    verify(mockClient, org.mockito.Mockito.timeout(2000)).followLogs(eq("a1"), any());
+    verify(mockClient, never()).followLogs(eq("b1"), any());
+  }
+
+  @Test
   void healthReportsUpWhenPingSucceedsAndAtLeastOneContainerMatches() {
     // mockClient.ping() is a no-op void call by default (Mockito) - succeeds.
     Container gateway = container("c1", "proj-gateway-1", "proj", "gateway", "running");

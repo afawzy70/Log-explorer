@@ -31,7 +31,7 @@ class SourcesApiIntegrationTest {
       StubLogSource stub = new StubLogSource(
           "test-source",
           "Test Source",
-          new SourceCapabilities(true, false, false, true, false, false));
+          new SourceCapabilities(true, false, false, true, false, false, false));
       stub.withHealth(Mono.just(new SourceHealth(SourceHealth.Status.UP, "reachable", Instant.now())));
       stub.withServices(Flux.just(new ServiceInfo("gateway", 1, 1), new ServiceInfo("accounts-api", 2, 2)));
       return stub;
@@ -42,7 +42,7 @@ class SourcesApiIntegrationTest {
       StubLogSource stub = new StubLogSource(
           "degraded-source",
           "Degraded Test Source",
-          new SourceCapabilities(true, false, false, true, false, false));
+          new SourceCapabilities(true, false, false, true, false, false, false));
       stub.withHealth(Mono.just(new SourceHealth(
           SourceHealth.Status.DEGRADED,
           "reachable, but degraded",

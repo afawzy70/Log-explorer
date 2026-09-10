@@ -84,6 +84,23 @@ function AppContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.selectedSourceId]);
 
+  // UX-R3 §19 - "Live + project switch must not continue streaming Project
+  // A under Project B scope": switching the selected Compose project always
+  // exits Live first, exactly like a source change above - never a silent
+  // reuse of the old stream under the new scope header. Deliberately does
+  // NOT auto-restart Live under the new project; the investigator explicitly
+  // starts it again if they still want a live stream there.
+  const previousComposeProjectRef = useRef(state.selectedComposeProject);
+  useEffect(() => {
+    if (previousComposeProjectRef.current !== state.selectedComposeProject) {
+      previousComposeProjectRef.current = state.selectedComposeProject;
+      if (liveModeActive) {
+        live.exit();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.selectedComposeProject]);
+
   return (
     <div>
       {/*
@@ -100,7 +117,9 @@ function AppContent() {
         <Toolbar
           state={state}
           onStartLive={
-            state.selectedSourceId ? () => live.start(state.selectedSourceId!, state.selectedServices) : undefined
+            state.selectedSourceId
+              ? () => live.start(state.selectedSourceId!, state.selectedServices, state.selectedComposeProject ?? undefined)
+              : undefined
           }
         />
       </div>
@@ -111,7 +130,10 @@ function AppContent() {
               <LiveTailPanel
                 live={live}
                 sourceDisplayName={state.selectedSource?.displayName ?? state.selectedSourceId ?? ''}
-                onStart={() => state.selectedSourceId && live.start(state.selectedSourceId, state.selectedServices)}
+                onStart={() =>
+                  state.selectedSourceId &&
+                  live.start(state.selectedSourceId, state.selectedServices, state.selectedComposeProject ?? undefined)
+                }
               />
             </Suspense>
           ) : state.journeyQuery ? (

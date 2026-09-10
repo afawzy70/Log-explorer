@@ -105,12 +105,14 @@ describe('LiveTailPanel', () => {
     expect(onStart).toHaveBeenCalledTimes(1);
   });
 
-  it('connecting: shows Stop but not Start/Pause/Resume, and a connecting message', () => {
+  it('connecting: shows Stop but not Start/Pause/Resume, a connecting badge, and a connecting message', () => {
     renderPanel('connecting');
     expect(screen.queryByRole('button', { name: /^start$/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^stop$/i })).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent(/connecting…/i);
-    expect(screen.getAllByText(/connecting…/i)).toHaveLength(2); // state label + empty-state message
+    // UX-R3 §16 - one authoritative status badge (never a second,
+    // possibly-disagreeing state label) plus the separate empty-list message.
+    expect(screen.getByRole('status')).toHaveTextContent(/connecting/i);
+    expect(screen.getByText(/^connecting…$/i)).toBeInTheDocument(); // empty-state message, distinct element
   });
 
   it('live: shows Pause and Stop, not Start/Resume', () => {
@@ -133,6 +135,31 @@ describe('LiveTailPanel', () => {
     expect(screen.getByRole('button', { name: /^resume$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^stop$/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^pause$/i })).not.toBeInTheDocument();
+  });
+
+  it('UX-R3 §16: the state badge itself (not only a secondary caption) carries visibly distinct text per state - never color alone, and never the same "LIVE" text regardless of state', () => {
+    const states: Array<[LiveConnectionState, RegExp]> = [
+      ['connecting', /^connecting$/i],
+      ['live', /^live$/i],
+      ['paused', /^paused$/i],
+      ['reconnecting', /^reconnecting/i],
+      ['stopped', /^stopped$/i],
+      ['failed', /^connection failed$/i],
+    ];
+    const seenTexts = new Set<string>();
+    for (const [state, expected] of states) {
+      const { unmount } = renderPanel(state);
+      const badge = screen.getByRole('status');
+      expect(badge).toHaveTextContent(expected);
+      seenTexts.add(badge.textContent ?? '');
+      unmount();
+    }
+    // Every one of the 6 states produced a genuinely distinct badge string
+    // - this is the concrete regression test for the friction found via
+    // real rendered evidence (BEFORE-K-live-paused.png): the badge used to
+    // say "LIVE" for every one of these states, distinguished only by a
+    // small secondary "Paused" caption.
+    expect(seenTexts.size).toBe(states.length);
   });
 
   it('clicking Resume while paused calls live.resume', async () => {
@@ -159,7 +186,7 @@ describe('LiveTailPanel', () => {
 
   it('reconnecting: shows the attempt number, Stop remains available, no Pause/Resume/Start', () => {
     renderPanel('reconnecting', { reconnectAttempt: 2 });
-    expect(screen.getByText(/reconnecting… \(attempt 2\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/reconnecting \(attempt 2\)/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^stop$/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^start$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^pause$/i })).not.toBeInTheDocument();

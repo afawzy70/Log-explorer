@@ -28,13 +28,44 @@
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: var(--color-severity-error);
+  background: currentColor;
   opacity: 0.5;
 }
 
 .liveDotActive {
   opacity: 1;
   animation: pulse 1.4s ease-in-out infinite;
+}
+
+/*
+ * UX-R3 §16 - one tone per state family, each paired with the badge's own
+ * distinct text (`liveBadgeText`) so meaning never rides on color alone.
+ * Restrained, not novelty animation: only the LIVE dot pulses (unchanged
+ * from before), every other state is static.
+ */
+.toneLive {
+  background: var(--color-severity-error-bg);
+  color: var(--color-severity-error);
+}
+
+.tonePaused {
+  background: var(--color-severity-warn-bg);
+  color: var(--color-severity-warn);
+}
+
+.toneConnecting {
+  background: var(--color-severity-info-bg);
+  color: var(--color-severity-info);
+}
+
+.toneFailed {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.toneStopped {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -56,11 +87,6 @@
   margin: 0;
   font-size: var(--font-size-lg);
   font-weight: 600;
-}
-
-.stateLabel {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
 }
 
 .controls {

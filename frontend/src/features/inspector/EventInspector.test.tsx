@@ -32,6 +32,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     serviceDiscovery: true,
     queryStatistics: false,
     contextView: true,
+    composeProjectScoping: false,
   };
   return {
     sources: [{ id: 'local-docker', displayName: 'Local Docker', capabilities: caps }],
@@ -42,6 +43,11 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     services: [],
     selectedServices: [],
     setSelectedServices: vi.fn(),
+    selectedComposeProject: null,
+    setSelectedComposeProject: vi.fn(),
+    composeProjects: [],
+    composeProjectsLoading: false,
+    composeProjectsError: null,
     selectedLevels: DEFAULT_SEVERITY_LEVELS,
     setSelectedLevels: vi.fn(),
     searchText: '',

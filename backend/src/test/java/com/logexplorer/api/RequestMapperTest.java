@@ -25,7 +25,7 @@ class RequestMapperTest {
 
   @Test
   void windowIsExactlyThirtySecondsOnEachSideOfTheTimestamp() {
-    SearchRequest request = mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, null, null, null));
+    SearchRequest request = mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, null, null, null, null));
 
     assertThat(request.start()).isEqualTo(TIMESTAMP.minus(Duration.ofSeconds(30)));
     assertThat(request.end()).isEqualTo(TIMESTAMP.plus(Duration.ofSeconds(30)));
@@ -33,27 +33,33 @@ class RequestMapperTest {
 
   @Test
   void serviceIsCarriedAsASingleElementServicesFilterWhenPresent() {
-    SearchRequest request = mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, "gateway", null, null));
+    SearchRequest request = mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, "gateway", null, null, null));
     assertThat(request.services()).containsExactly("gateway");
   }
 
   @Test
   void aBlankOrMissingServiceProducesNoServiceFilterRatherThanAnEmptyStringFilter() {
-    assertThat(mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, null, null, null)).services()).isEmpty();
-    assertThat(mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, "  ", null, null)).services()).isEmpty();
+    assertThat(mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, null, null, null, null)).services()).isEmpty();
+    assertThat(mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, "  ", null, null, null)).services()).isEmpty();
   }
 
   @Test
   void containerIdAndPodAreCarriedThroughUnchanged() {
-    SearchRequest request = mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, null, "c1", "pod-abc"));
+    SearchRequest request = mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, null, "c1", "pod-abc", null));
     assertThat(request.containerId()).isEqualTo("c1");
     assertThat(request.pod()).isEqualTo("pod-abc");
   }
 
   @Test
   void sourceIdIsCarriedThroughUnchanged() {
-    SearchRequest request = mapper.toContextDomain(new ContextRequestDto("openshift-loki", TIMESTAMP, null, null, null));
+    SearchRequest request = mapper.toContextDomain(new ContextRequestDto("openshift-loki", TIMESTAMP, null, null, null, null));
     assertThat(request.sourceId()).isEqualTo("openshift-loki");
+  }
+
+  @Test
+  void composeProjectIsCarriedThroughUnchangedForContextUxR3() {
+    SearchRequest request = mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, null, null, null, "project-a"));
+    assertThat(request.composeProject()).isEqualTo("project-a");
   }
 
   private static final Instant START = Instant.parse("2026-01-01T00:00:00Z");
@@ -61,7 +67,7 @@ class RequestMapperTest {
 
   @Test
   void journeyIdFieldMapsToTheJourneyIdFilterOnly() {
-    SearchRequest request = mapper.toJourneyDomain(new JourneyRequestDto("local-docker", START, END, "journeyId", "j-1"));
+    SearchRequest request = mapper.toJourneyDomain(new JourneyRequestDto("local-docker", START, END, "journeyId", "j-1", null));
     assertThat(request.journeyId()).isEqualTo("j-1");
     assertThat(request.correlationId()).isNull();
     assertThat(request.traceId()).isNull();
@@ -70,31 +76,37 @@ class RequestMapperTest {
 
   @Test
   void correlationIdFieldMapsToTheCorrelationIdFilterOnly() {
-    SearchRequest request = mapper.toJourneyDomain(new JourneyRequestDto("local-docker", START, END, "correlationId", "c-1"));
+    SearchRequest request = mapper.toJourneyDomain(new JourneyRequestDto("local-docker", START, END, "correlationId", "c-1", null));
     assertThat(request.correlationId()).isEqualTo("c-1");
     assertThat(request.journeyId()).isNull();
   }
 
   @Test
   void traceIdFieldMapsToTheTraceIdFilterOnly() {
-    SearchRequest request = mapper.toJourneyDomain(new JourneyRequestDto("local-docker", START, END, "traceId", "t-1"));
+    SearchRequest request = mapper.toJourneyDomain(new JourneyRequestDto("local-docker", START, END, "traceId", "t-1", null));
     assertThat(request.traceId()).isEqualTo("t-1");
     assertThat(request.journeyId()).isNull();
   }
 
   @Test
   void eventIdFieldMapsToTheEventIdFilterOnly() {
-    SearchRequest request = mapper.toJourneyDomain(new JourneyRequestDto("local-docker", START, END, "eventId", "e-1"));
+    SearchRequest request = mapper.toJourneyDomain(new JourneyRequestDto("local-docker", START, END, "eventId", "e-1", null));
     assertThat(request.eventId()).isEqualTo("e-1");
     assertThat(request.journeyId()).isNull();
   }
 
   @Test
   void sourceIdAndTimeRangeAreCarriedThroughUnchangedNeverWidened() {
-    SearchRequest request = mapper.toJourneyDomain(new JourneyRequestDto("openshift-loki", START, END, "traceId", "t-1"));
+    SearchRequest request = mapper.toJourneyDomain(new JourneyRequestDto("openshift-loki", START, END, "traceId", "t-1", null));
     assertThat(request.sourceId()).isEqualTo("openshift-loki");
     assertThat(request.start()).isEqualTo(START);
     assertThat(request.end()).isEqualTo(END);
+  }
+
+  @Test
+  void composeProjectIsCarriedThroughUnchangedForJourneyUxR3() {
+    SearchRequest request = mapper.toJourneyDomain(new JourneyRequestDto("local-docker", START, END, "traceId", "t-1", "project-b"));
+    assertThat(request.composeProject()).isEqualTo("project-b");
   }
 
   @Test
@@ -104,7 +116,7 @@ class RequestMapperTest {
     // structurally, not just by convention: nothing else is even a legal
     // value for `field`.
     for (String sensitive : new String[] {"cif", "userName", "customerId", "deviceId", "deviceIp", "bogus"}) {
-      assertThatThrownBy(() -> mapper.toJourneyDomain(new JourneyRequestDto("local-docker", START, END, sensitive, "x")))
+      assertThatThrownBy(() -> mapper.toJourneyDomain(new JourneyRequestDto("local-docker", START, END, sensitive, "x", null)))
           .isInstanceOf(GuardrailViolationException.class)
           .satisfies(e -> assertThat(((GuardrailViolationException) e).reason())
               .isEqualTo(GuardrailViolationException.Reason.INVALID_JOURNEY_FIELD));

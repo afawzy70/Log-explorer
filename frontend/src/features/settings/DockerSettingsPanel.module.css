@@ -73,6 +73,21 @@
   margin: 0 0 var(--space-2);
 }
 
+.maskingSection {
+  border-top: var(--border-width) solid var(--color-border);
+  padding-top: var(--space-2);
+}
+
+.maskingList {
+  margin: 0;
+  padding-left: var(--space-5);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-1) var(--space-3);
+}
+
 .testSection {
   border-top: var(--border-width) solid var(--color-border);
   padding-top: var(--space-2);

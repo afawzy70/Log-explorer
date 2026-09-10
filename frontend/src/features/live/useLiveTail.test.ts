@@ -140,6 +140,36 @@ describe('useLiveTail (Legacy Remediation Slice 5)', () => {
       act(() => result.current.start('fixture', []));
       expect(latestMockEventSource().url).not.toContain('services=');
     });
+
+    it('UX-R3 §19: threads a request-scoped composeProject into the URL when supplied, still never a sensitive value', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('local-docker', [], 'project-a'));
+      const source = latestMockEventSource();
+      expect(source.url).toContain('sourceId=local-docker');
+      expect(source.url).toContain('composeProject=project-a');
+    });
+
+    it('with no composeProject omits the param entirely - unscoped Live, unchanged from before UX-R3', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      expect(latestMockEventSource().url).not.toContain('composeProject=');
+    });
+
+    it('retry() after a terminal failure re-starts with the exact same composeProject scope, never silently dropping it', async () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('local-docker', [], 'project-a'));
+      act(() => latestMockEventSource().emitOpen());
+
+      for (let i = 0; i < RECONNECT_MAX_ATTEMPTS; i++) {
+        act(() => latestMockEventSource().emitError());
+        await act(() => vi.runOnlyPendingTimersAsync());
+      }
+      act(() => latestMockEventSource().emitError());
+      expect(result.current.connectionState).toBe('failed');
+
+      act(() => result.current.retry());
+      expect(latestMockEventSource().url).toContain('composeProject=project-a');
+    });
   });
 
   describe('duplicate Start prevention (session/generation identity)', () => {

@@ -59,6 +59,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     serviceDiscovery: true,
     queryStatistics: false,
     contextView: false,
+    composeProjectScoping: false,
   };
   return {
     sources: [{ id: 'fixture', displayName: 'Fixture', capabilities: caps }],
@@ -69,6 +70,11 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     services: [],
     selectedServices: [],
     setSelectedServices: vi.fn(),
+    selectedComposeProject: null,
+    setSelectedComposeProject: vi.fn(),
+    composeProjects: [],
+    composeProjectsLoading: false,
+    composeProjectsError: null,
     selectedLevels: DEFAULT_SEVERITY_LEVELS,
     setSelectedLevels: vi.fn(),
     searchText: '',

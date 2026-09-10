@@ -37,7 +37,7 @@ class LiveTailControllerTest {
     @Bean
     StubLogSource liveCapableTestSource() {
       StubLogSource stub = new StubLogSource("live-capable-source", "Live Capable Source",
-          new SourceCapabilities(true, true, false, false, false, false));
+          new SourceCapabilities(true, true, false, false, false, false, false));
       stub.withFollowFlux(Flux.just(
           CanonicalLogEvent.builder()
               .timestamp(NOW)
@@ -51,7 +51,7 @@ class LiveTailControllerTest {
     @Bean
     StubLogSource liveIncapableTestSource() {
       return new StubLogSource("live-incapable-source", "Live Incapable Source",
-          new SourceCapabilities(true, false, false, false, false, false));
+          new SourceCapabilities(true, false, false, false, false, false, false));
     }
   }
 

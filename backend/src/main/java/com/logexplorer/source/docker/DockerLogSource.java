@@ -98,7 +98,7 @@ public class DockerLogSource implements LogSource {
     // serviceDiscovery are declared true regardless of whether any
     // container happens to be running right now (an empty container list
     // means an empty stream, not an unsupported capability).
-    return new SourceCapabilities(true, true, false, true, false, false);
+    return new SourceCapabilities(true, true, false, true, false, false, true);
   }
 
   /**
@@ -126,7 +126,7 @@ public class DockerLogSource implements LogSource {
     return Mono.fromCallable(() -> {
           checkRemoteHostIfNeeded();
           client.ping();
-          List<Container> relevant = relevantContainers(client.listContainers(true), List.of());
+          List<Container> relevant = relevantContainers(client.listContainers(true), List.of(), null);
           if (relevant.isEmpty()) {
             return new SourceHealth(
                 SourceHealth.Status.DEGRADED,
@@ -142,16 +142,27 @@ public class DockerLogSource implements LogSource {
 
   @Override
   public Flux<ServiceInfo> discoverServices() {
-    return Mono.fromCallable(this::discoverServicesBlocking)
+    return discoverServices(null);
+  }
+
+  /**
+   * UX-R3 §7/§9 — scoped to one Compose project when {@code composeProject}
+   * is non-blank, exactly the same hard boundary {@link #relevantContainers}
+   * already enforces for search/live - service discovery routes through
+   * the identical chokepoint, never a separate/looser filter.
+   */
+  @Override
+  public Flux<ServiceInfo> discoverServices(String composeProject) {
+    return Mono.fromCallable(() -> discoverServicesBlocking(composeProject))
         .subscribeOn(Schedulers.boundedElastic())
         .flatMapMany(Flux::fromIterable);
   }
 
-  private List<ServiceInfo> discoverServicesBlocking() {
+  private List<ServiceInfo> discoverServicesBlocking(String composeProject) {
     checkRemoteHostIfNeeded();
     List<Container> containers = client.listContainers(true);
     Map<String, int[]> counts = new TreeMap<>();
-    for (Container container : relevantContainers(containers, List.of())) {
+    for (Container container : relevantContainers(containers, List.of(), composeProject)) {
       String service = ComposeLabels.service(container.getLabels());
       if (service == null) {
         continue;
@@ -165,6 +176,32 @@ public class DockerLogSource implements LogSource {
     List<ServiceInfo> result = new ArrayList<>();
     counts.forEach((name, countPair) -> result.add(new ServiceInfo(name, countPair[0], countPair[1])));
     return result;
+  }
+
+  /**
+   * UX-R3 §7 — real, currently-visible Compose projects on this
+   * connection (the canonical {@code com.docker.compose.project} label,
+   * never a container-name guess). Deliberately does *not* go through
+   * {@link #relevantContainers} - that method's whole point is applying
+   * the effective project filter (static-config or per-request), and
+   * discovery must show every real project regardless of any filter,
+   * static or previously-selected, or a deployment/session already
+   * scoped to one project could never discover any other to switch to.
+   * Self-excluded/unmanaged containers are still filtered out (the same
+   * rule, just inlined). Sorted for a stable, deterministic UI list.
+   */
+  @Override
+  public List<String> discoverComposeProjects() {
+    checkRemoteHostIfNeeded();
+    List<Container> containers = client.listContainers(true);
+    return containers.stream()
+        .filter(c -> ComposeLabels.isComposeManaged(c.getLabels()))
+        .filter(c -> !ComposeLabels.isExcluded(c.getLabels()))
+        .map(c -> ComposeLabels.project(c.getLabels()))
+        .filter(p -> p != null && !p.isBlank())
+        .distinct()
+        .sorted()
+        .toList();
   }
 
   @Override
@@ -187,7 +224,7 @@ public class DockerLogSource implements LogSource {
   public Flux<CanonicalLogEvent> follow(FollowRequest request) {
     return Mono.fromCallable(() -> {
           checkRemoteHostIfNeeded();
-          return relevantContainers(client.listContainers(true), request.services());
+          return relevantContainers(client.listContainers(true), request.services(), request.composeProject());
         })
         .subscribeOn(Schedulers.boundedElastic())
         .flatMapMany(containers -> Flux.<CanonicalLogEvent>create(
@@ -256,7 +293,7 @@ public class DockerLogSource implements LogSource {
   private List<CanonicalLogEvent> searchBlocking(SearchRequest request) {
     checkRemoteHostIfNeeded();
     List<Container> containers = client.listContainers(true);
-    List<Container> targets = relevantContainers(containers, request.services()).stream()
+    List<Container> targets = relevantContainers(containers, request.services(), request.composeProject()).stream()
         .limit(properties.getMaxContainers())
         .toList();
 
@@ -357,7 +394,25 @@ public class DockerLogSource implements LogSource {
     }
   }
 
-  private List<Container> relevantContainers(List<Container> containers, List<String> requestedServices) {
+  /**
+   * @param requestedComposeProject UX-R3 §7/§8/§9 - a caller-supplied,
+   *     request/session-scoped project selection (never a global mutation
+   *     of {@link DockerProperties}). When non-blank, this takes
+   *     precedence over the deployment-time-static {@code
+   *     properties.getComposeProjectFilter()} - a caller that has
+   *     genuinely selected a project always means exactly that project,
+   *     regardless of what the deployer's own static filter says. There is
+   *     no separate "is this a real project" allow-list check here: the
+   *     equality filter below can only ever match a container whose own
+   *     real {@code com.docker.compose.project} label equals the supplied
+   *     value, so a malicious/invalid/made-up project string is
+   *     structurally incapable of matching anything and safely narrows to
+   *     zero containers - the same fail-safe property the pre-existing
+   *     static filter already had, extended unchanged to the per-request
+   *     case.
+   */
+  private List<Container> relevantContainers(
+      List<Container> containers, List<String> requestedServices, String requestedComposeProject) {
     // A real bug found via Phase K's own Compose end-to-end verification:
     // Compose's `env_file` mechanism passes a declared-but-empty .env line
     // (e.g. "LOGEXPLORER_DOCKER_COMPOSE_PROJECT_FILTER=") through as the
@@ -369,8 +424,10 @@ public class DockerLogSource implements LogSource {
     // this codebase's own established convention for the same class of
     // optional string field (see DockerClientFactory#buildConfig's own
     // `host == null || host.isBlank()` check).
-    String projectFilter = properties.getComposeProjectFilter();
-    boolean noProjectFilter = projectFilter == null || projectFilter.isBlank();
+    String effectiveProjectFilter = (requestedComposeProject != null && !requestedComposeProject.isBlank())
+        ? requestedComposeProject
+        : properties.getComposeProjectFilter();
+    boolean noProjectFilter = effectiveProjectFilter == null || effectiveProjectFilter.isBlank();
     return containers.stream()
         .filter(c -> ComposeLabels.isComposeManaged(c.getLabels()))
         // Self-exclusion (Legacy Remediation Slice 3) - an explicitly
@@ -379,11 +436,12 @@ public class DockerLogSource implements LogSource {
         // applied before the project filter so it is excluded regardless
         // of which project is selected/configured.
         .filter(c -> !ComposeLabels.isExcluded(c.getLabels()))
-        // Compose project hard boundary (Legacy Remediation Slice 3) - the
-        // single filter point every caller (discoverServices/search/
-        // follow) already routes through; containers from another project
-        // never reach any candidate set built from this method's result.
-        .filter(c -> noProjectFilter || projectFilter.equals(ComposeLabels.project(c.getLabels())))
+        // Compose project hard boundary (Legacy Remediation Slice 3,
+        // extended UX-R3) - the single filter point every caller
+        // (discoverComposeProjects/discoverServices/search/follow)
+        // already routes through; containers from another project never
+        // reach any candidate set built from this method's result.
+        .filter(c -> noProjectFilter || effectiveProjectFilter.equals(ComposeLabels.project(c.getLabels())))
         .filter(c -> requestedServices.isEmpty()
             || requestedServices.contains(ComposeLabels.service(c.getLabels())))
         .toList();

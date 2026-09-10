@@ -19,6 +19,8 @@ public record ContextRequestDto(
     @NotNull Instant timestamp,
     String service,
     String containerId,
-    String pod
+    String pod,
+    /** UX-R3 §9 — request-scoped Docker Compose project selection, never sensitive. */
+    String composeProject
 ) {
 }

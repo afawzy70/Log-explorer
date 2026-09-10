@@ -1,5 +1,6 @@
 import { Button } from '../shared/ui/Button';
 import { SourceSelect } from '../features/search/SourceSelect';
+import { ComposeProjectSelect } from '../features/search/ComposeProjectSelect';
 import { ServiceMultiSelect } from '../features/search/ServiceMultiSelect';
 import { TimeRangeControl } from '../features/timerange/TimeRangeControl';
 import { getTimeRangeDisplayLabel } from '../features/timerange/label';
@@ -21,16 +22,22 @@ export interface ToolbarProps {
 
 /**
  * Default toolbar order (IMPLEMENTATION_PLAN.md "Phase F" scope item 2):
- * source -> service multi-select -> time range -> severity -> universal
- * search -> Search -> Live (only when capability true) -> More filters +
- * active count. Advanced Query no longer has its own top-level trigger
- * here (UX-R1 §2, owner decision) - it now renders from inside
+ * source -> Compose project (only when capability true, UX-R3 §5/§9) ->
+ * service multi-select -> time range -> severity -> universal search ->
+ * Search -> Live (only when capability true) -> More filters + active
+ * count. Compose project sits directly after source, mirroring the
+ * mission's own CONNECTION -> DOCKER ENGINE -> COMPOSE PROJECT -> SEARCH
+ * mental model (§6) - it narrows which services/results a source can ever
+ * show, so it belongs before the service filter that further narrows
+ * within it. Advanced Query no longer has its own top-level trigger here
+ * (UX-R1 §2, owner decision) - it now renders from inside
  * `AdvancedFilters`' own drawer, under More filters, so Search stays the
  * single strongest primary action in this row.
  */
 export function Toolbar({ state, onStartLive }: ToolbarProps) {
   const liveTailSupported = state.selectedSource?.capabilities.liveTail ?? false;
   const rawLogQlSupported = state.selectedSource?.capabilities.rawLogQL ?? false;
+  const composeProjectScopingSupported = state.selectedSource?.capabilities.composeProjectScoping ?? false;
 
   function removeAdvancedField(key: keyof AdvancedFilterValues) {
     state.applyAdvancedFilters({ ...state.advancedFilters, text: state.searchText, [key]: '' });
@@ -44,6 +51,15 @@ export function Toolbar({ state, onStartLive }: ToolbarProps) {
     <div>
       <div className={styles.toolbar}>
         <SourceSelect sources={state.sources} selectedId={state.selectedSourceId} onChange={state.setSelectedSourceId} />
+        {composeProjectScopingSupported ? (
+          <ComposeProjectSelect
+            projects={state.composeProjects}
+            selected={state.selectedComposeProject}
+            loading={state.composeProjectsLoading}
+            error={state.composeProjectsError}
+            onChange={state.setSelectedComposeProject}
+          />
+        ) : null}
         <ServiceMultiSelect
           services={state.services}
           selected={state.selectedServices}

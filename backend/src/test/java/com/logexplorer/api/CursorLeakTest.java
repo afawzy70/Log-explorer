@@ -45,7 +45,7 @@ class CursorLeakTest {
     @Bean
     StubLogSource cursorLeakTestSource() {
       StubLogSource stub = new StubLogSource("cursor-leak-test-source", "Cursor Leak Test Source",
-          new SourceCapabilities(true, false, false, false, false, false));
+          new SourceCapabilities(true, false, false, false, false, false, false));
       List<CanonicalLogEvent> events = IntStream.range(0, 5)
           .mapToObj(i -> CanonicalLogEvent.builder()
               .timestamp(Instant.parse("2026-01-01T00:00:00Z").minusSeconds(i))

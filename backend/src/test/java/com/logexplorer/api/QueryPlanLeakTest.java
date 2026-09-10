@@ -53,7 +53,7 @@ class QueryPlanLeakTest {
     @Bean
     StubLogSource queryPlanLeakTestSource() {
       StubLogSource stub = new StubLogSource("query-plan-leak-test-source", "Query Plan Leak Test Source",
-          new SourceCapabilities(true, false, false, false, false, false));
+          new SourceCapabilities(true, false, false, false, false, false, false));
       stub.withSearchFlux(Flux.just(
           CanonicalLogEvent.builder().timestamp(Instant.parse("2026-01-01T00:00:30Z")).message("ordinary event").build()));
       return stub;

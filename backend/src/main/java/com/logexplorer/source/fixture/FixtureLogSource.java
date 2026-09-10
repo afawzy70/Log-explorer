@@ -55,7 +55,7 @@ public class FixtureLogSource implements LogSource {
    */
   private static final int CORPUS_SIZE = 250;
   private static final SourceCapabilities CAPABILITIES =
-      new SourceCapabilities(true, true, false, true, false, false);
+      new SourceCapabilities(true, true, false, true, false, false, false);
 
   /** Every 6th tick emits a burst instead of one event - the "manual check... including a burst" (IMPLEMENTATION_PLAN.md "Phase J") needs a real, reproducible burst, not left to chance. */
   private static final Duration TICK_INTERVAL = Duration.ofMillis(700);

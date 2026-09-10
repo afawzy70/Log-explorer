@@ -67,7 +67,7 @@ public class LokiLogSource implements LogSource {
     // repository ever set that flag true outside its own now-corrected
     // unit test. Never trust that toggle here again - see
     // `LokiProperties#liveTailSupported`'s own doc comment.
-    return new SourceCapabilities(true, false, properties.isRawLogQlEnabled(), false, false, false);
+    return new SourceCapabilities(true, false, properties.isRawLogQlEnabled(), false, false, false, false);
   }
 
   @Override

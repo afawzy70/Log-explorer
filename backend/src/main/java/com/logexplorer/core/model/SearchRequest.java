@@ -54,7 +54,16 @@ public record SearchRequest(
     QueryExpr query,
     String rawLogQl,
     String cursor,
-    Instant pageBoundary
+    Instant pageBoundary,
+    /**
+     * UX-R3 §7/§8/§9 — a request/session-scoped Docker Compose project
+     * selection (never persisted server-side, never a global mutation of
+     * {@code DockerProperties}). Only {@code DockerLogSource} interprets
+     * it; every other source (Fixture, Loki) simply ignores it, the same
+     * way {@code containerId}/{@code pod} already only mean something to
+     * one source each.
+     */
+    String composeProject
 ) {
 
   public SearchRequest {
@@ -87,7 +96,7 @@ public record SearchRequest(
         sourceId, start, end, direction, limit, services, levels, text,
         traceId, spanId, correlationId, journeyId, eventId, errorCode,
         businessStep, uiIdentifier, loggerContains, devicePlatform, language,
-        containerId, pod, sensitiveFilters, query, rawLogQl, cursor, boundary);
+        containerId, pod, sensitiveFilters, query, rawLogQl, cursor, boundary, composeProject);
   }
 
   @Override
@@ -118,6 +127,7 @@ public record SearchRequest(
         + ", rawLogQl=" + (rawLogQl == null ? "null" : "[REDACTED]")
         + ", cursor=" + cursor
         + ", pageBoundary=" + pageBoundary
+        + ", composeProject=" + composeProject
         + "]";
   }
 
@@ -152,6 +162,7 @@ public record SearchRequest(
     private String rawLogQl;
     private String cursor;
     private Instant pageBoundary;
+    private String composeProject;
 
     public Builder sourceId(String v) { this.sourceId = v; return this; }
     public Builder start(Instant v) { this.start = v; return this; }
@@ -177,6 +188,8 @@ public record SearchRequest(
     public Builder cursor(String v) { this.cursor = v; return this; }
     /** Test-only convenience — production callers use {@link SearchRequest#withPageBoundary}. */
     public Builder pageBoundary(Instant v) { this.pageBoundary = v; return this; }
+    /** UX-R3 §7/§8/§9 — request/session-scoped Compose project selection. */
+    public Builder composeProject(String v) { this.composeProject = v; return this; }
 
     /**
      * Builds the raw sensitive-filter holder from plain strings, entirely
@@ -217,7 +230,7 @@ public record SearchRequest(
           sourceId, start, end, direction, limit, services, levels, text,
           traceId, spanId, correlationId, journeyId, eventId, errorCode,
           businessStep, uiIdentifier, loggerContains, devicePlatform, language,
-          containerId, pod, sensitiveFilters, query, rawLogQl, cursor, pageBoundary);
+          containerId, pod, sensitiveFilters, query, rawLogQl, cursor, pageBoundary, composeProject);
     }
   }
 }
