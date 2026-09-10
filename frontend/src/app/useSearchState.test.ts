@@ -1008,4 +1008,217 @@ describe('useSearchState', () => {
       expect(searchCalls[1].body).toBe(searchCalls[0].body);
     });
   });
+
+  describe('UX-R3 §15 — "Last 30 minutes" preset (Decision A)', () => {
+    it('recomputes on every explicit Search, exactly like every other relative preset - effectiveStart/effectiveEnd both advance', async () => {
+      const result = await renderReady();
+      act(() => result.current.setTimeRange({ presetId: '30m', start: '2020-01-01T00:00:00.000Z', end: '2020-01-01T00:30:00.000Z' }));
+
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      const firstStart = searchCalls[0].body.match(/"start":"([^"]+)"/)?.[1];
+      const firstEnd = searchCalls[0].body.match(/"end":"([^"]+)"/)?.[1];
+      expect(firstStart).toBeTruthy();
+      expect(firstEnd).toBeTruthy();
+      // Exactly 30 minutes, not silently widened/narrowed by the recompute.
+      expect(new Date(firstEnd!).getTime() - new Date(firstStart!).getTime()).toBe(30 * 60 * 1000);
+
+      await new Promise((r) => setTimeout(r, 60)); // a real wall-clock gap
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(2));
+      const secondEnd = searchCalls[1].body.match(/"end":"([^"]+)"/)?.[1];
+
+      expect(new Date(secondEnd!).getTime()).toBeGreaterThan(new Date(firstEnd!).getTime());
+      expect(result.current.timeRange.presetId).toBe('30m'); // never silently swapped to a different preset
+    });
+
+    it('never recomputes a Custom absolute range even when it happens to be exactly 30 minutes wide', async () => {
+      const result = await renderReady();
+      const customRange = { presetId: CUSTOM_RANGE_ID, start: '2020-06-01T00:00:00.000Z', end: '2020-06-01T00:30:00.000Z' };
+      act(() => result.current.setTimeRange(customRange));
+
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      await new Promise((r) => setTimeout(r, 60));
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(2));
+
+      expect(searchCalls[1].body).toContain('"start":"2020-06-01T00:00:00.000Z"');
+      expect(searchCalls[1].body).toContain('"end":"2020-06-01T00:30:00.000Z"');
+      expect(result.current.timeRange).toEqual(customRange);
+    });
+  });
+
+  describe('Compose project scope (UX-R3 §9/§11) - discovery, request scoping, and the project-switch lifecycle', () => {
+    const COMPOSE_SOURCE_RESPONSE = [
+      {
+        id: 'local-docker',
+        displayName: 'Local Docker',
+        capabilities: {
+          historicalSearch: true,
+          liveTail: false,
+          rawLogQL: false,
+          serviceDiscovery: true,
+          queryStatistics: false,
+          contextView: false,
+          composeProjectScoping: true,
+        },
+      },
+    ];
+
+    async function renderComposeReady() {
+      const { result } = renderHook(() => useSearchState());
+      await waitFor(() => expect(result.current.selectedSourceId).toBe('local-docker'));
+      return result;
+    }
+
+    let serviceCalls: string[];
+    let composeProjectsCallCount: number;
+
+    function stubComposeAwareFetch(composeProjects: string[] = ['project-a', 'project-b']) {
+      serviceCalls = [];
+      composeProjectsCallCount = 0;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+          const url = typeof input === 'string' ? input : input.toString();
+          if (url.endsWith('/api/v1/sources')) {
+            return Promise.resolve(jsonResponse(COMPOSE_SOURCE_RESPONSE));
+          }
+          if (url.includes('/health')) {
+            return Promise.resolve(jsonResponse({ status: 'UP', message: 'ok', checkedAt: '2026-01-01T00:00:00Z' }));
+          }
+          if (url.includes('/compose-projects')) {
+            composeProjectsCallCount += 1;
+            return Promise.resolve(jsonResponse(composeProjects));
+          }
+          if (url.includes('/services')) {
+            serviceCalls.push(url);
+            return Promise.resolve(jsonResponse([]));
+          }
+          if (url.endsWith('/api/v1/logs/search')) {
+            return new Promise<Response>((resolve, reject) => {
+              const signal = init?.signal as AbortSignal | undefined;
+              signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+              searchCalls.push({ body: String(init?.body), resolve, reject });
+            });
+          }
+          throw new Error(`Unexpected fetch in this test: ${url}`);
+        }),
+      );
+    }
+
+    it('discovers real Compose projects for a composeProjectScoping source on load, and exposes the truthful list', async () => {
+      stubComposeAwareFetch(['project-a', 'project-b']);
+      const result = await renderComposeReady();
+      await waitFor(() => expect(result.current.composeProjects).toEqual(['project-a', 'project-b']));
+      expect(result.current.selectedComposeProject).toBeNull(); // "All projects" - the unscoped default, never auto-selected
+    });
+
+    it('a real discovery failure is surfaced as composeProjectsError, never silently swallowed', async () => {
+      serviceCalls = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((input: RequestInfo | URL) => {
+          const url = typeof input === 'string' ? input : input.toString();
+          if (url.endsWith('/api/v1/sources')) {
+            return Promise.resolve(jsonResponse(COMPOSE_SOURCE_RESPONSE));
+          }
+          if (url.includes('/health')) {
+            return Promise.resolve(jsonResponse({ status: 'UP', message: 'ok', checkedAt: '2026-01-01T00:00:00Z' }));
+          }
+          if (url.includes('/compose-projects')) {
+            return Promise.reject(new Error('discovery unreachable'));
+          }
+          if (url.includes('/services')) {
+            return Promise.resolve(jsonResponse([]));
+          }
+          throw new Error(`Unexpected fetch in this test: ${url}`);
+        }),
+      );
+      const result = await renderComposeReady();
+      await waitFor(() => expect(result.current.composeProjectsError).toBe('discovery unreachable'));
+    });
+
+    it('selecting a project clears the result set and pagination immediately, and never auto-fires a new search', async () => {
+      stubComposeAwareFetch();
+      const result = await renderComposeReady();
+      await waitFor(() => expect(result.current.composeProjects).toEqual(['project-a', 'project-b']));
+
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      searchCalls[0].resolve(
+        jsonResponse({
+          events: [eventWithMessage('project-a-row')],
+          counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
+
+      act(() => result.current.setSelectedComposeProject('project-a'));
+
+      // Cleared synchronously with the project change itself - "never show
+      // Project A rows under a Project B scope header" (§11) must hold for
+      // every render, not just eventually.
+      expect(result.current.searchResult).toBeNull();
+      expect(result.current.selectedIndex).toBeNull();
+
+      // No new search was fired automatically - only the two calls from
+      // the explicit runSearch() above exist.
+      await new Promise((r) => setTimeout(r, 20));
+      expect(searchCalls).toHaveLength(1);
+    });
+
+    it('selecting a project aborts a still-in-flight search from the previous scope, so its late response can never land', async () => {
+      stubComposeAwareFetch();
+      const result = await renderComposeReady();
+      await waitFor(() => expect(result.current.composeProjects).toEqual(['project-a', 'project-b']));
+
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      const staleCall = searchCalls[0];
+
+      act(() => result.current.setSelectedComposeProject('project-a'));
+      expect(result.current.searchResult).toBeNull();
+
+      // The stale call resolves late, after the project switch - it must
+      // never repopulate the (now project-scoped) view.
+      staleCall.resolve(
+        jsonResponse({
+          events: [eventWithMessage('stale-cross-project-row')],
+          counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      expect(result.current.searchResult).toBeNull();
+    });
+
+    it('switching the Compose project refetches services scoped to the new project, distinct from the initial unscoped fetch', async () => {
+      stubComposeAwareFetch();
+      const result = await renderComposeReady();
+      await waitFor(() => expect(result.current.composeProjects).toEqual(['project-a', 'project-b']));
+      await waitFor(() => expect(serviceCalls.length).toBeGreaterThanOrEqual(1));
+      expect(serviceCalls[0]).not.toContain('composeProject');
+
+      act(() => result.current.setSelectedComposeProject('project-a'));
+      await waitFor(() => expect(serviceCalls.some((u) => u.includes('composeProject=project-a'))).toBe(true));
+    });
+
+    it('a selected Compose project is carried through the search request body; "All projects" omits it entirely', async () => {
+      stubComposeAwareFetch();
+      const result = await renderComposeReady();
+      await waitFor(() => expect(result.current.composeProjects).toEqual(['project-a', 'project-b']));
+
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      expect(searchCalls[0].body).not.toContain('composeProject');
+
+      act(() => result.current.setSelectedComposeProject('project-a'));
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(2));
+      expect(searchCalls[1].body).toContain('"composeProject":"project-a"');
+    });
+  });
 });

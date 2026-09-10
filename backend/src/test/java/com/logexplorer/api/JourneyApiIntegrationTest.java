@@ -38,7 +38,7 @@ class JourneyApiIntegrationTest {
       // applies EventFilters itself), so it cannot honestly demonstrate
       // an empty result.
       return new StubLogSource("journey-empty-test-source", "Journey Empty Test Source",
-          new SourceCapabilities(true, false, false, false, false, false));
+          new SourceCapabilities(true, false, false, false, false, false, false));
     }
 
     @Bean
@@ -47,7 +47,7 @@ class JourneyApiIntegrationTest {
       // from journeyTestSource so this doesn't need to mutate (and then
       // restore) that shared singleton's flux.
       StubLogSource stub = new StubLogSource("journey-truncation-test-source", "Journey Truncation Test Source",
-          new SourceCapabilities(true, false, false, false, false, false));
+          new SourceCapabilities(true, false, false, false, false, false, false));
       java.util.List<CanonicalLogEvent> many = new java.util.ArrayList<>();
       for (int i = 0; i < 201; i++) {
         many.add(CanonicalLogEvent.builder()
@@ -64,7 +64,7 @@ class JourneyApiIntegrationTest {
     @Bean
     StubLogSource journeyTestSource() {
       StubLogSource stub = new StubLogSource("journey-test-source", "Journey Test Source",
-          new SourceCapabilities(true, false, false, false, false, false));
+          new SourceCapabilities(true, false, false, false, false, false, false));
       // Deliberately out of order (newest first, like every real source
       // this project has - FixtureLogSource/DockerLogSource both always
       // sort that way regardless of `direction`) plus one malformed event

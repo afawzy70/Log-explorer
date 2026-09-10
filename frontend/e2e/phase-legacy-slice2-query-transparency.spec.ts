@@ -40,7 +40,7 @@ import { captureScreenshot } from './helpers';
 
 async function gotoFixture(page: Page) {
   await page.goto('/');
-  await page.selectOption('select', 'fixture');
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
   await page.getByRole('button', { name: /^all$/i }).click(); // severity: All
 }
 
@@ -324,7 +324,7 @@ test.describe('Legacy Remediation Slice 2 — query transparency & advanced quer
     });
 
     await page.goto('/');
-    await page.selectOption('select', 'mock-loki');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('mock-loki');
 
     const queryDialog = await openQuery(page);
     const rawTab = page.getByRole('tab', { name: /raw logql/i });

@@ -27,7 +27,7 @@ import type { Page } from '@playwright/test';
 
 async function gotoFixtureWithLast1Hour(page: Page) {
   await page.goto('/');
-  await page.selectOption('select', 'fixture');
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
   await page.getByRole('button', { name: 'Last 1 day', exact: true }).click();
   await page.getByRole('menuitemradio', { name: /last 1 hour/i }).click();
 }
@@ -95,7 +95,7 @@ test.describe('UX-R2 — search freshness: relative presets advance, custom rang
   test('a CUSTOM absolute range never auto-advances - repeated Search sends the exact same window', async ({ page }) => {
     const bodies = captureSearchRequests(page);
     await page.goto('/');
-    await page.selectOption('select', 'fixture');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
 
     await page.getByRole('button', { name: 'Last 1 day', exact: true }).click();
     await page.getByRole('button', { name: /custom/i }).click();

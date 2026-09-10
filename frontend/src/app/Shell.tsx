@@ -15,12 +15,42 @@ export interface ShellProps {
  * never a duplicated "Multi-Source Log Explorer" + "Log Explorer" pair
  * (CLAUDE.md §7 / scope item 1), and no fabricated branding.
  */
+/**
+ * UX-R3 §12 - the selected Compose project must stay visible in the main
+ * investigation workspace, not only inside Settings, and remain visible
+ * across Search results/inspector/context/Live (this header renders above
+ * `.mainRow` unconditionally in `App.tsx`, so it never disappears when
+ * those views swap). Rendered only when the active source actually has a
+ * real Compose-project concept (`composeProjectScoping`) and a project is
+ * currently selected - "All projects" (the unscoped default) adds no new
+ * chip, since it changes nothing about today's pre-UX-R3 behavior.
+ */
+function ScopeTrail({ state }: ShellProps) {
+  if (!state.selectedSource) {
+    return null;
+  }
+  const showProject = state.selectedSource.capabilities.composeProjectScoping && state.selectedComposeProject;
+  return (
+    <span className={styles.sourceName}>
+      {state.selectedSource.displayName}
+      {showProject ? (
+        <>
+          <span className={styles.scopeSeparator} aria-hidden="true">
+            ›
+          </span>
+          <span className={styles.scopeProject}>{state.selectedComposeProject}</span>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
 export function Shell({ state }: ShellProps) {
   return (
     <header className={styles.header}>
       <h1 className={styles.title}>Log Explorer</h1>
       <EnvironmentBadge />
-      {state.selectedSource ? <span className={styles.sourceName}>{state.selectedSource.displayName}</span> : null}
+      <ScopeTrail state={state} />
       <div className={styles.spacer} />
       <DockerSettingsPanel />
       <KeyboardShortcutsHelp />

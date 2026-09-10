@@ -32,7 +32,7 @@ class QueryPlanApiIntegrationTest {
     @Bean
     StubLogSource queryPlanNoPushDownSource() {
       StubLogSource stub = new StubLogSource("query-plan-no-pushdown-source", "No Pushdown Source",
-          new SourceCapabilities(true, false, false, false, false, false));
+          new SourceCapabilities(true, false, false, false, false, false, false));
       stub.withSearchFlux(Flux.just(
           CanonicalLogEvent.builder().timestamp(Instant.parse("2026-01-01T00:00:30Z")).service("gateway").message("ok").build()));
       return stub;
@@ -41,7 +41,7 @@ class QueryPlanApiIntegrationTest {
     @Bean
     StubLogSource queryPlanPushDownSource() {
       StubLogSource stub = new StubLogSource("query-plan-pushdown-source", "Pushdown Source",
-          new SourceCapabilities(true, false, true, false, false, false));
+          new SourceCapabilities(true, false, true, false, false, false, false));
       stub.withSearchFlux(Flux.just(
           CanonicalLogEvent.builder().timestamp(Instant.parse("2026-01-01T00:00:30Z")).service("gateway").message("ok").build()));
       stub.withPushDown(List.of("namespace = \"prod\" (Loki stream label, from source configuration)"));

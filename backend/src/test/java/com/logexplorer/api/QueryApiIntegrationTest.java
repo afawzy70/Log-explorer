@@ -40,7 +40,7 @@ class QueryApiIntegrationTest {
     @Bean
     StubLogSource dslTestSource() {
       StubLogSource stub = new StubLogSource("dsl-test-source", "DSL Test Source",
-          new SourceCapabilities(true, false, false, false, false, false));
+          new SourceCapabilities(true, false, false, false, false, false, false));
       stub.withSearchFlux(Flux.just(
           CanonicalLogEvent.builder()
               .timestamp(Instant.parse("2026-01-01T00:00:30Z"))
@@ -60,7 +60,7 @@ class QueryApiIntegrationTest {
     @Bean
     StubLogSource rawLogQlCapableSource() {
       StubLogSource stub = new StubLogSource("raw-logql-capable-source", "Raw LogQL Capable",
-          new SourceCapabilities(true, false, true, false, false, false));
+          new SourceCapabilities(true, false, true, false, false, false, false));
       stub.withSearchFlux(Flux.just(
           CanonicalLogEvent.builder().timestamp(Instant.parse("2026-01-01T00:00:30Z")).message("ok").build()));
       return stub;

@@ -89,15 +89,26 @@ export function LiveTailPanel({ live, sourceDisplayName, onStart }: LiveTailPane
         <Button variant="ghost" onClick={live.exit}>
           ← Back to search results
         </Button>
-        <span className={styles.liveBadge} aria-hidden="true">
-          <span className={[styles.liveDot, connectionState === 'live' ? styles.liveDotActive : ''].join(' ')} />
-          LIVE
-        </span>
-        <h1 className={styles.title}>{sourceDisplayName}</h1>
-        <span className={styles.stateLabel} role="status">
-          {stateLabel(connectionState)}
+        {/*
+         * UX-R3 §16 - one authoritative, state-driven indicator, not two
+         * that can disagree. Before this change, the pill always read
+         * "LIVE" in the same red regardless of state, and only a small
+         * secondary gray caption actually said "Paused" - easy to miss at
+         * a glance (`docs/verification/UX_R3_EVIDENCE/BEFORE-K-live-paused.png`).
+         * Now the badge itself carries both the text (never color-only)
+         * and the tone for every state the real runtime state machine can
+         * be in - CONNECTING/LIVE/PAUSED/RECONNECTING/STOPPED at minimum,
+         * plus this app's own FAILED terminal state.
+         */}
+        <span className={[styles.liveBadge, liveBadgeToneClass(connectionState)].join(' ')} role="status">
+          <span
+            className={[styles.liveDot, connectionState === 'live' ? styles.liveDotActive : ''].join(' ')}
+            aria-hidden="true"
+          />
+          {liveBadgeText(connectionState)}
           {connectionState === 'reconnecting' ? ` (attempt ${live.reconnectAttempt})` : ''}
         </span>
+        <h1 className={styles.title}>{sourceDisplayName}</h1>
         <div className={styles.controls}>
           {canStart ? (
             <Button variant="primary" onClick={onStart}>
@@ -209,21 +220,40 @@ export function LiveTailPanel({ live, sourceDisplayName, onStart }: LiveTailPane
   );
 }
 
-function stateLabel(state: LiveTailHandle['connectionState']): string {
+/** UX-R3 §16 - the exact text every state renders in the badge; always present alongside the tone, never color-only. */
+function liveBadgeText(state: LiveTailHandle['connectionState']): string {
   switch (state) {
     case 'idle':
-      return 'Not started';
+      return 'NOT STARTED';
     case 'connecting':
-      return 'Connecting…';
+      return 'CONNECTING';
     case 'live':
-      return 'Live';
+      return 'LIVE';
     case 'paused':
-      return 'Paused';
+      return 'PAUSED';
     case 'reconnecting':
-      return 'Reconnecting…';
+      return 'RECONNECTING';
     case 'stopped':
-      return 'Stopped';
+      return 'STOPPED';
     case 'failed':
-      return 'Connection failed';
+      return 'CONNECTION FAILED';
+  }
+}
+
+/** UX-R3 §16 - a distinct visual tone per state family, always paired with `liveBadgeText`'s own distinct text. */
+function liveBadgeToneClass(state: LiveTailHandle['connectionState']): string {
+  switch (state) {
+    case 'live':
+      return styles.toneLive;
+    case 'paused':
+      return styles.tonePaused;
+    case 'connecting':
+    case 'reconnecting':
+      return styles.toneConnecting;
+    case 'failed':
+      return styles.toneFailed;
+    case 'stopped':
+    case 'idle':
+      return styles.toneStopped;
   }
 }

@@ -26,7 +26,7 @@ import { assertNoHorizontalOverflow, captureScreenshot, setViewport } from './he
 
 async function selectFixtureSource(page: Page) {
   await page.goto('/');
-  await page.selectOption('select', 'fixture');
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
 }
 
 function panelOf(page: Page) {
@@ -131,7 +131,7 @@ test.describe('Legacy Remediation Slice 5 — Live resilience, follow-newest, fi
     // test id for a one-off case.
     const stateLabel = panel.locator('[role="status"]').first();
 
-    await expect(stateLabel).toHaveText(/reconnecting… \(attempt 1\)/i, { timeout: 5_000 });
+    await expect(stateLabel).toHaveText(/reconnecting \(attempt 1\)/i, { timeout: 5_000 });
     await captureScreenshot(page, 'legacy-slice5', 'reconnecting-state');
 
     // Stop intercepting once the deliberate single failure has been

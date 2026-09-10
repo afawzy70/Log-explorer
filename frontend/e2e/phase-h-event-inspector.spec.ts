@@ -12,7 +12,7 @@ import { assertNoHorizontalOverflow, assertNoOverlap, captureScreenshot, setView
 
 async function runRealSearch(page: import('@playwright/test').Page) {
   await page.goto('/');
-  await page.selectOption('select', 'fixture');
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
   await page.getByRole('button', { name: /^search$/i }).click();
   await expect(page.getByRole('table')).toBeVisible({ timeout: 10_000 });
   await expect(page.locator('tbody tr').first()).toBeVisible();

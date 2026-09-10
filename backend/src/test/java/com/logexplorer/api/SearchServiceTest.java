@@ -155,7 +155,7 @@ class SearchServiceTest {
   @Test
   void rawLogQlIsAllowedForASourceThatAdvertisesTheCapability() {
     StubLogSource lokiLike = new StubLogSource(
-        "openshift-loki", "OpenShift Loki", new SourceCapabilities(true, false, true, false, false, false));
+        "openshift-loki", "OpenShift Loki", new SourceCapabilities(true, false, true, false, false, false, false));
     lokiLike.withSearchFlux(Flux.fromIterable(events(1)));
     SearchGuardrails guardrails = new SearchGuardrails(properties);
     ConcurrencyGuard concurrencyGuard = new ConcurrencyGuard(properties);

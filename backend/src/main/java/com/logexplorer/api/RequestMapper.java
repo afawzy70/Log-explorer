@@ -62,6 +62,7 @@ public class RequestMapper {
         .query(dto.query())
         .rawLogQl(dto.rawLogQl())
         .cursor(dto.cursor())
+        .composeProject(dto.composeProject())
         .build();
   }
 
@@ -85,6 +86,7 @@ public class RequestMapper {
         .services(dto.service() == null || dto.service().isBlank() ? List.of() : List.of(dto.service()))
         .containerId(dto.containerId())
         .pod(dto.pod())
+        .composeProject(dto.composeProject())
         .build();
   }
 
@@ -104,7 +106,8 @@ public class RequestMapper {
     SearchRequest.Builder builder = SearchRequest.builder()
         .sourceId(dto.sourceId())
         .start(dto.start())
-        .end(dto.end());
+        .end(dto.end())
+        .composeProject(dto.composeProject());
     switch (dto.field()) {
       case "journeyId" -> builder.journeyId(dto.value());
       case "correlationId" -> builder.correlationId(dto.value());

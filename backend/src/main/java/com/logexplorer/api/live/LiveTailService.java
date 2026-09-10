@@ -46,6 +46,11 @@ public class LiveTailService {
   }
 
   public Flux<ServerSentEvent<Object>> follow(String sourceId, List<String> services) {
+    return follow(sourceId, services, null);
+  }
+
+  /** UX-R3 §9/§19 — {@code composeProject} threads the same request-scoped Compose boundary Search/Context/Journey already carry into Live. */
+  public Flux<ServerSentEvent<Object>> follow(String sourceId, List<String> services, String composeProject) {
     return Flux.defer(() -> {
       LogSource source = registry.require(sourceId);
       if (!source.capabilities().liveTail()) {
@@ -54,7 +59,7 @@ public class LiveTailService {
       }
 
       AtomicLong droppedCount = new AtomicLong();
-      Flux<ServerSentEvent<Object>> logEvents = source.follow(new FollowRequest(sourceId, services))
+      Flux<ServerSentEvent<Object>> logEvents = source.follow(new FollowRequest(sourceId, services, composeProject))
           // "Bounded buffers; backpressure with a dropped-count notice"
           // (HANDOVER.md §18.4) - a slow SSE consumer (or a burst from the
           // source) must never accumulate an unbounded backlog server-side;

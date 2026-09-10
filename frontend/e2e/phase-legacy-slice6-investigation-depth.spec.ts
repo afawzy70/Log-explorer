@@ -21,7 +21,7 @@ import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, set
 
 async function gotoFixture(page: Page) {
   await page.goto('/');
-  await page.selectOption('select', 'fixture');
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
   await page.getByRole('button', { name: /^all$/i }).click(); // severity: All
 }
 
@@ -71,7 +71,7 @@ async function openInspectorAndShowContext(page: Page) {
 test.describe('Legacy Remediation Slice 6 — Investigation depth, gap visibility & richer source health', () => {
   test('1. a healthy source shows Healthy with real, truthful capability/latency details on demand', async ({ page }) => {
     await page.goto('/');
-    await page.selectOption('select', 'fixture');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
     await expect(page.getByText(/\bhealthy\b/i)).toBeVisible({ timeout: 10_000 });
 
     await page.getByRole('button', { name: /source health details/i }).click();
@@ -96,7 +96,7 @@ test.describe('Legacy Remediation Slice 6 — Investigation depth, gap visibilit
       }),
     );
     await page.goto('/');
-    await page.selectOption('select', 'local-docker');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('local-docker');
 
     await expect(page.getByText(/\bdegraded\b/i)).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/\bunhealthy\b/i)).not.toBeVisible();
@@ -107,7 +107,7 @@ test.describe('Legacy Remediation Slice 6 — Investigation depth, gap visibilit
 
   test('3. an unavailable source shows an honest unavailable state with a sanitized (never raw) message', async ({ page }) => {
     await page.goto('/');
-    await page.selectOption('select', 'openshift-loki');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('openshift-loki');
     await expect(page.getByText(/\bunhealthy\b/i)).toBeVisible({ timeout: 10_000 });
 
     await page.getByRole('button', { name: /source health details/i }).click();
@@ -270,7 +270,7 @@ test.describe('Legacy Remediation Slice 6 — Investigation depth, gap visibilit
 
   test('14. existing Live workflows remain green after the health-model change', async ({ page }) => {
     await page.goto('/');
-    await page.selectOption('select', 'fixture');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
     await page.getByRole('button', { name: /^live$/i }).click();
     const panel = page.getByTestId('live-tail-panel');
     await expect(panel.getByRole('status')).toHaveText(/^live$/i, { timeout: 10_000 });

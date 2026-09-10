@@ -17,6 +17,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     serviceDiscovery: true,
     queryStatistics: false,
     contextView: false,
+    composeProjectScoping: false,
   };
   return {
     sources: [{ id: 'fixture', displayName: 'Fixture', capabilities: caps }],
@@ -27,6 +28,11 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     services: [],
     selectedServices: [],
     setSelectedServices: vi.fn(),
+    selectedComposeProject: null,
+    setSelectedComposeProject: vi.fn(),
+    composeProjects: [],
+    composeProjectsLoading: false,
+    composeProjectsError: null,
     selectedLevels: DEFAULT_SEVERITY_LEVELS,
     setSelectedLevels: vi.fn(),
     searchText: '',
@@ -106,6 +112,39 @@ describe('Toolbar', () => {
     expect(screen.queryByRole('button', { name: /live/i })).not.toBeInTheDocument();
   });
 
+  it('UX-R3 §5/§9: never shows the Compose project selector when the active source does not advertise composeProjectScoping', () => {
+    render(<Toolbar state={baseState()} />);
+    expect(screen.queryByLabelText(/compose project/i)).not.toBeInTheDocument();
+  });
+
+  it('UX-R3 §5/§9/§12: shows the Compose project selector, positioned after source and before service, only when the active source advertises composeProjectScoping', () => {
+    const caps = {
+      historicalSearch: true,
+      liveTail: false,
+      rawLogQL: false,
+      serviceDiscovery: true,
+      queryStatistics: false,
+      contextView: false,
+      composeProjectScoping: true,
+    };
+    const { container } = render(
+      <Toolbar
+        state={baseState({
+          selectedSource: { id: 'local-docker', displayName: 'Local Docker', capabilities: caps },
+          composeProjects: ['project-a', 'project-b'],
+        })}
+      />,
+    );
+
+    const source = screen.getByRole('combobox', { name: /^source$/i });
+    const project = screen.getByLabelText(/compose project/i);
+    const service = screen.getByRole('button', { name: /all services/i });
+    const all = Array.from(container.querySelectorAll('*'));
+
+    expect(all.indexOf(source)).toBeLessThan(all.indexOf(project));
+    expect(all.indexOf(project)).toBeLessThan(all.indexOf(service));
+  });
+
   it('shows a Live button, positioned before More filters, only when the active source advertises liveTail', () => {
     const caps = {
       historicalSearch: true,
@@ -114,6 +153,7 @@ describe('Toolbar', () => {
       serviceDiscovery: false,
       queryStatistics: false,
       contextView: false,
+      composeProjectScoping: false,
     };
     const { container } = render(
       <Toolbar
@@ -138,6 +178,7 @@ describe('Toolbar', () => {
       serviceDiscovery: false,
       queryStatistics: false,
       contextView: false,
+      composeProjectScoping: false,
     };
     const onStartLive = vi.fn();
     render(

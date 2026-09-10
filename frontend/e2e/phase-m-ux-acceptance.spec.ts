@@ -14,7 +14,7 @@ test.describe('Task 1 - What failed recently?', () => {
     page,
   }) => {
     await page.goto('/');
-    await page.selectOption('select', 'fixture');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
 
     // "select service" - ServiceMultiSelect is a live checkbox dropdown
     // (no Apply step of its own); checking a box updates selection
@@ -80,7 +80,7 @@ test.describe('Task 2 - What happened for a user/customer?', () => {
     page,
   }) => {
     await page.goto('/');
-    await page.selectOption('select', 'fixture');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
 
     await page.getByRole('button', { name: /^more filters$/i }).click();
     // Real, deterministic, already-fake fixture values (FixtureCorpusGenerator:
@@ -116,7 +116,7 @@ test.describe('Task 2 - What happened for a user/customer?', () => {
 test.describe('Task 3 - Follow a request', () => {
   test('the click-based "Find this Trace ID" path opens the real cross-service timeline', async ({ page }) => {
     await page.goto('/');
-    await page.selectOption('select', 'fixture');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
     await page.getByRole('button', { name: /^search$/i }).click();
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10_000 });
 
@@ -145,7 +145,7 @@ test.describe('Task 3 - Follow a request', () => {
     // representative externally-sourced ID shape, not a value copied from
     // this session's own results table.
     await page.goto('/');
-    await page.selectOption('select', 'fixture');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
     const search = page.getByRole('textbox', { name: /search messages/i });
     await search.fill('3fa85f64-5717-4562-b3fc-2c963f66afa6');
     await expect(page.getByRole('button', { name: /search as trace id/i })).toBeVisible();
@@ -160,7 +160,7 @@ test.describe('Task 4 - Explain one event', () => {
     page,
   }) => {
     await page.goto('/');
-    await page.selectOption('select', 'fixture');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
     await page.getByRole('button', { name: /^search$/i }).click();
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10_000 });
 
@@ -192,7 +192,7 @@ test.describe('Task 4 - Explain one event', () => {
 
   test('select by keyboard alone (Tab + Enter, no mouse click)', async ({ page }) => {
     await page.goto('/');
-    await page.selectOption('select', 'fixture');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
     await page.getByRole('button', { name: /^search$/i }).click();
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10_000 });
 
@@ -217,7 +217,7 @@ test.describe('Task 4 - Explain one event', () => {
 test.describe('Task 5 - Monitor live logs', () => {
   test('start, pause, resume, follow, stop - state, counts, and cleanup all verify', async ({ page }) => {
     await page.goto('/');
-    await page.selectOption('select', 'fixture');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
     await page.getByRole('button', { name: /^live$/i }).click();
     const panel = page.getByTestId('live-tail-panel');
     await expect(panel).toBeVisible();
@@ -254,7 +254,7 @@ test.describe('Task 6 - Failure states', () => {
     page,
   }) => {
     await page.goto('/');
-    await page.selectOption('select', 'openshift-loki');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('openshift-loki');
     await expect(page.getByText(/unavailable|unhealthy|not reachable|error/i).first()).toBeVisible({ timeout: 10_000 });
     await captureScreenshot(page, 'm', 'task6-source-unavailable');
   });
@@ -263,7 +263,7 @@ test.describe('Task 6 - Failure states', () => {
     page,
   }) => {
     await page.goto('/');
-    await page.selectOption('select', 'openshift-loki');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('openshift-loki');
     // openshift-loki's own real capabilities report serviceDiscovery:false -
     // the service multi-select must not silently claim "0 services" as if
     // it asked and got none; the honest behavior is to not offer the
@@ -273,7 +273,7 @@ test.describe('Task 6 - Failure states', () => {
 
   test('no results - a real, narrow query against real fixture data', async ({ page }) => {
     await page.goto('/');
-    await page.selectOption('select', 'fixture');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
     await page.getByRole('button', { name: /^more filters$/i }).click();
     await page.getByLabel(/^trace id$/i).fill('this-trace-id-genuinely-does-not-exist-anywhere');
     await page.getByRole('button', { name: /^apply$/i }).click();
@@ -286,7 +286,7 @@ test.describe('Task 6 - Failure states', () => {
     page,
   }) => {
     await page.goto('/');
-    await page.selectOption('select', 'fixture');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
     await page.getByRole('button', { name: 'Last 1 day', exact: true }).click(); // exact name - the ActiveFilters remove-time-range chip (UX-R1 §3) also mentions "Last 1 day"
     await page.getByRole('button', { name: /custom/i }).click();
     await page.getByLabel(/^start$/i).fill('2026-01-02T00:00');
@@ -298,7 +298,7 @@ test.describe('Task 6 - Failure states', () => {
 
   test('truncated results - the counts summary honestly states truncation when a limit is hit', async ({ page }) => {
     await page.goto('/');
-    await page.selectOption('select', 'fixture');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
     await page.getByRole('button', { name: /^more filters$/i }).click();
     // A tiny limit against the fixture's large deterministic corpus all but
     // guarantees truncation.
@@ -316,7 +316,7 @@ test.describe('Task 6 - Failure states', () => {
     page,
   }) => {
     await page.goto('/');
-    await page.selectOption('select', 'fixture');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
     await page.getByRole('button', { name: /^search$/i }).click();
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10_000 });
     // The fixture corpus deterministically includes a malformed line once

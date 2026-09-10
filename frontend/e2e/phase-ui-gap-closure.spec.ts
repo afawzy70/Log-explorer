@@ -17,7 +17,7 @@ import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, set
 
 async function gotoFixture(page: Page) {
   await page.goto('/');
-  await page.selectOption('select', 'fixture');
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
   await page.getByRole('button', { name: /^all$/i }).click(); // severity: All
 }
 
@@ -153,7 +153,7 @@ test.describe('UI Gap Closure Pass', () => {
     page,
   }) => {
     await page.goto('/');
-    await page.selectOption('select', 'fixture');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
     await page.getByRole('button', { name: /^live$/i }).click();
     const panel = page.getByTestId('live-tail-panel');
     await expect(panel.getByRole('status')).toHaveText(/^live$/i, { timeout: 10_000 }); // 15. existing Start-on-click control

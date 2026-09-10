@@ -41,7 +41,7 @@ public class StubLogSource implements LogSource {
   public volatile SearchRequest lastRequest;
 
   public StubLogSource(String id) {
-    this(id, id, new SourceCapabilities(true, false, false, true, false, false));
+    this(id, id, new SourceCapabilities(true, false, false, true, false, false, false));
   }
 
   public StubLogSource(String id, String displayName, SourceCapabilities capabilities) {

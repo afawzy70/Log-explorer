@@ -30,7 +30,7 @@ import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, set
 
 async function gotoFixture(page: Page) {
   await page.goto('/');
-  await page.selectOption('select', 'fixture');
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
   await page.getByRole('button', { name: /^all$/i }).click(); // severity: All
 }
 
@@ -146,7 +146,7 @@ test.describe('UI Parity Acceleration Pass', () => {
 
   test('10. keyboard navigation and help: Ctrl+Enter runs search, "/" focuses search, ArrowDown moves row focus, "?" opens help, Escape dismisses it', async ({ page }) => {
     await page.goto('/');
-    await page.selectOption('select', 'fixture');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
     await page.getByRole('button', { name: /^all$/i }).click();
 
     await page.keyboard.press('Control+Enter');
@@ -171,7 +171,7 @@ test.describe('UI Parity Acceleration Pass', () => {
 
   test('11. Live: Clear empties the view without stopping the connection', async ({ page }) => {
     await page.goto('/');
-    await page.selectOption('select', 'fixture'); // Fixture advertises liveTail=true
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture'); // Fixture advertises liveTail=true
     await page.getByRole('button', { name: /^live$/i }).click();
     const panel = page.getByTestId('live-tail-panel');
     await expect(panel).toBeVisible();

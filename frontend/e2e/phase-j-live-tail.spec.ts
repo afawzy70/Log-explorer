@@ -20,7 +20,7 @@ import { assertNoHorizontalOverflow, captureScreenshot, setViewport, setZoom } f
 
 async function selectFixtureSource(page: import('@playwright/test').Page) {
   await page.goto('/');
-  await page.selectOption('select', 'fixture');
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
 }
 
 function panelOf(page: import('@playwright/test').Page) {
@@ -35,7 +35,7 @@ test('the Live button is only shown for a source whose real capabilities adverti
   // false (CLAUDE.md "never show Live for a source that cannot support
   // it") - confirmed against the real /api/v1/sources response, not
   // assumed.
-  await page.selectOption('select', 'openshift-loki');
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('openshift-loki');
   await expect(page.getByRole('button', { name: /^live$/i })).not.toBeVisible();
 });
 

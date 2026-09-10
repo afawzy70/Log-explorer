@@ -34,6 +34,15 @@ public class DockerProperties {
   /** REMOTE mode + tls=true only: directory containing ca.pem/cert.pem/key.pem. */
   private String tlsCertPath;
 
+  /**
+   * UX-R3 §6 — REMOTE mode only: a purely cosmetic display/identity label
+   * (e.g. "QA Docker", "Integration Server") for the Settings summary.
+   * Never affects connection identity, authorization, or which host/port
+   * is actually dialed — {@code DockerClientFactory} never reads this
+   * field at all.
+   */
+  private String connectionName;
+
   /** Optional: only discover/search containers belonging to this Compose project. */
   private String composeProjectFilter;
 
@@ -80,6 +89,14 @@ public class DockerProperties {
 
   public void setTlsCertPath(String tlsCertPath) {
     this.tlsCertPath = tlsCertPath;
+  }
+
+  public String getConnectionName() {
+    return connectionName;
+  }
+
+  public void setConnectionName(String connectionName) {
+    this.connectionName = connectionName;
   }
 
   public String getComposeProjectFilter() {

@@ -5,7 +5,15 @@ import { axe } from 'jest-axe';
 import { SourceSelect } from './SourceSelect';
 import type { SourceInfo } from '../../shared/api/types';
 
-const CAPS = { historicalSearch: true, liveTail: false, rawLogQL: false, serviceDiscovery: true, queryStatistics: false, contextView: false };
+const CAPS = {
+  historicalSearch: true,
+  liveTail: false,
+  rawLogQL: false,
+  serviceDiscovery: true,
+  queryStatistics: false,
+  contextView: false,
+  composeProjectScoping: false,
+};
 const SOURCES: SourceInfo[] = [
   { id: 'fixture', displayName: 'Fixture', capabilities: CAPS },
   { id: 'local-docker', displayName: 'Local Docker Compose', capabilities: CAPS },

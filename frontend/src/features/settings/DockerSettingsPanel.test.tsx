@@ -23,6 +23,7 @@ function localSummary(overrides: Partial<DockerConnectionSummary> = {}): DockerC
     composeProjectFilter: null,
     runtimeMutationSupported: false,
     settingsNote: 'Permanent connection changes require deployment/runtime configuration and a restart.',
+    connectionName: null,
     ...overrides,
   };
 }
@@ -80,6 +81,56 @@ describe('DockerSettingsPanel', () => {
     await open(user);
 
     await waitFor(() => expect(screen.getByText('project-a')).toBeInTheDocument());
+  });
+
+  it('UX-R3 §6: shows the Connection name for REMOTE mode when configured', async () => {
+    mockFetchSummary.mockResolvedValue(
+      localSummary({ mode: 'REMOTE', host: '203.0.113.5', port: 2375, connectionName: 'QA Docker' }),
+    );
+    const user = userEvent.setup();
+    const { container } = render(<DockerSettingsPanel />);
+    await open(user);
+
+    await waitFor(() => expect(mockFetchSummary).toHaveBeenCalled());
+    const summary = within(container.querySelector('dl')!);
+    expect(summary.getByText('Connection name')).toBeInTheDocument();
+    expect(summary.getByText('QA Docker')).toBeInTheDocument();
+  });
+
+  it('UX-R3 §6: shows "Not set" for REMOTE mode with no configured Connection name - never fabricated', async () => {
+    mockFetchSummary.mockResolvedValue(
+      localSummary({ mode: 'REMOTE', host: '203.0.113.5', port: 2375, connectionName: null }),
+    );
+    const user = userEvent.setup();
+    const { container } = render(<DockerSettingsPanel />);
+    await open(user);
+
+    await waitFor(() => expect(mockFetchSummary).toHaveBeenCalled());
+    const summary = within(container.querySelector('dl')!);
+    expect(summary.getByText('Not set')).toBeInTheDocument();
+  });
+
+  it('UX-R3 §6: never shows Connection name for LOCAL mode - it is a REMOTE-only, purely cosmetic field', async () => {
+    mockFetchSummary.mockResolvedValue(localSummary({ mode: 'LOCAL' }));
+    const user = userEvent.setup();
+    render(<DockerSettingsPanel />);
+    await open(user);
+
+    await waitFor(() => expect(mockFetchSummary).toHaveBeenCalled());
+    expect(screen.queryByText('Connection name')).not.toBeInTheDocument();
+  });
+
+  it('UX-R3 §14: shows the informational protected-field masking panel, listing all five sensitive fields, with no reveal/unmask/copy action', async () => {
+    const user = userEvent.setup();
+    render(<DockerSettingsPanel />);
+    await open(user);
+    await waitFor(() => expect(mockFetchSummary).toHaveBeenCalled());
+
+    expect(screen.getByText(/protected field masking/i)).toBeInTheDocument();
+    for (const field of ['CIF', 'Username', 'Customer ID', 'Device ID', 'Device IP']) {
+      expect(screen.getByText(field)).toBeInTheDocument();
+    }
+    expect(screen.queryByRole('button', { name: /reveal|unmask|copy/i })).not.toBeInTheDocument();
   });
 
   it('shows a sanitized error if the summary fetch fails', async () => {

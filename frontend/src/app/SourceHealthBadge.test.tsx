@@ -12,7 +12,15 @@ function health(overrides: Partial<SourceHealthDetail> = {}): SourceHealthDetail
     checkedAt: '2026-01-01T00:00:00Z',
     warnings: [],
     latencyMs: 12,
-    capabilities: { historicalSearch: true, liveTail: true, rawLogQL: false, serviceDiscovery: true, queryStatistics: false, contextView: false },
+    capabilities: {
+      historicalSearch: true,
+      liveTail: true,
+      rawLogQL: false,
+      serviceDiscovery: true,
+      queryStatistics: false,
+      contextView: false,
+      composeProjectScoping: false,
+    },
     ...overrides,
   };
 }

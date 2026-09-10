@@ -7,6 +7,8 @@ export interface SourceCapabilities {
   serviceDiscovery: boolean;
   queryStatistics: boolean;
   contextView: boolean;
+  /** UX-R3 — whether this source has a real Docker Compose "investigation scope" concept at all (true only for `local-docker`). Never inferred from the source id/name. */
+  composeProjectScoping: boolean;
 }
 
 export interface SourceInfo {
@@ -78,6 +80,8 @@ export interface DockerConnectionSummary {
   composeProjectFilter: string | null;
   runtimeMutationSupported: boolean;
   settingsNote: string;
+  /** UX-R3 §6 — REMOTE mode only, purely cosmetic (e.g. "QA Docker"); `null` for LOCAL or when unset. */
+  connectionName: string | null;
 }
 
 /**
@@ -209,6 +213,8 @@ export interface SearchRequestBody {
   query?: string;
   rawLogQl?: string;
   cursor?: string;
+  /** UX-R3 §7/§8/§9 — request/session-scoped Docker Compose project selection, never sensitive. */
+  composeProject?: string;
 }
 
 /**
@@ -224,6 +230,8 @@ export interface ContextRequestBody {
   service?: string;
   containerId?: string;
   pod?: string;
+  /** UX-R3 §9 — request-scoped Docker Compose project selection. */
+  composeProject?: string;
 }
 
 /** The exact four non-sensitive identifiers "Find this X" (IMPLEMENTATION_PLAN.md "Phase I") can search by - never a sensitive field, structurally. */
@@ -241,6 +249,8 @@ export interface JourneyRequestBody {
   end: string;
   field: JourneyField;
   value: string;
+  /** UX-R3 §9 — request-scoped Docker Compose project selection. */
+  composeProject?: string;
 }
 
 /** RFC 7807, as GlobalExceptionHandler produces it. */

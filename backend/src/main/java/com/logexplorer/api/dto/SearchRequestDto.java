@@ -42,7 +42,9 @@ public record SearchRequestDto(
     String deviceIp,
     String query,
     String rawLogQl,
-    String cursor
+    String cursor,
+    /** UX-R3 §7/§8/§9 — request-scoped Docker Compose project selection, never sensitive. */
+    String composeProject
 ) {
 
   @Override
@@ -74,6 +76,7 @@ public record SearchRequestDto(
         + ", query=" + redacted(query)
         + ", rawLogQl=" + redacted(rawLogQl)
         + ", cursor=" + cursor
+        + ", composeProject=" + composeProject
         + "]";
   }
 

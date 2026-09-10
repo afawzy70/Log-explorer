@@ -47,9 +47,28 @@ export async function fetchSourceHealth(sourceId: string, signal?: AbortSignal):
   return parseJsonOrThrow<SourceHealthDetail>(response);
 }
 
-export async function fetchSourceServices(sourceId: string, signal?: AbortSignal): Promise<ServiceInfo[]> {
-  const response = await fetch(`/api/v1/sources/${encodeURIComponent(sourceId)}/services`, { signal });
+/** UX-R3 §7/§8 — `composeProject`, when supplied, scopes discovery to that one project's own hard boundary (never a frontend-only filter). */
+export async function fetchSourceServices(
+  sourceId: string,
+  composeProject?: string,
+  signal?: AbortSignal,
+): Promise<ServiceInfo[]> {
+  const query = composeProject ? `?composeProject=${encodeURIComponent(composeProject)}` : '';
+  const response = await fetch(`/api/v1/sources/${encodeURIComponent(sourceId)}/services${query}`, { signal });
   return parseJsonOrThrow<ServiceInfo[]>(response);
+}
+
+/**
+ * UX-R3 §7 — real, currently-visible Docker Compose projects on this
+ * source's own connection (canonical `com.docker.compose.project` label,
+ * never a container-name guess, never fabricated). Empty for a source
+ * with no real Compose-project concept - callers gate on {@link
+ * SourceCapabilities.composeProjectScoping}, never this list's emptiness
+ * alone, to tell "unsupported" apart from "supported, currently empty."
+ */
+export async function fetchComposeProjects(sourceId: string, signal?: AbortSignal): Promise<string[]> {
+  const response = await fetch(`/api/v1/sources/${encodeURIComponent(sourceId)}/compose-projects`, { signal });
+  return parseJsonOrThrow<string[]>(response);
 }
 
 /** UI Gap Closure Pass - the real, running instance's active Spring profile(s), never a guess (`EnvironmentInfoContributor`). */

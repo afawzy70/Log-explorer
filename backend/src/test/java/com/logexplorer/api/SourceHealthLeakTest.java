@@ -32,7 +32,7 @@ class SourceHealthLeakTest {
   @Test
   void aRawConnectionFailureMessageNeverReachesTheSerializedHealthDto() throws Exception {
     SourceHealth health = DockerDiagnostics.toHealth(new ConnectException(RAW_EXCEPTION_DETAIL));
-    SourceHealthDto dto = SourceHealthDto.of(health, 5L, new SourceCapabilities(true, true, false, true, false, false));
+    SourceHealthDto dto = SourceHealthDto.of(health, 5L, new SourceCapabilities(true, true, false, true, false, false, false));
 
     String json = objectMapper.writeValueAsString(dto);
 
@@ -51,7 +51,7 @@ class SourceHealthLeakTest {
         "Docker daemon reachable, but no containers matched the configured Compose project filter",
         Instant.now(),
         List.of("No containers matched the configured Compose project filter"));
-    SourceHealthDto dto = SourceHealthDto.of(health, 3L, new SourceCapabilities(true, true, false, true, false, false));
+    SourceHealthDto dto = SourceHealthDto.of(health, 3L, new SourceCapabilities(true, true, false, true, false, false, false));
 
     String json = objectMapper.writeValueAsString(dto);
 

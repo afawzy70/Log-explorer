@@ -31,6 +31,37 @@ public interface LogSource {
   Flux<ServiceInfo> discoverServices();
 
   /**
+   * UX-R3 — service discovery scoped to one Docker Compose project, for
+   * sources where {@link SourceCapabilities#composeProjectScoping()} is
+   * true. The default delegates to the unscoped {@link #discoverServices()}
+   * unchanged, so every existing source (Fixture, Loki) needs no override
+   * at all — only {@code DockerLogSource} genuinely has a project concept.
+   * {@code composeProject} being {@code null}/blank means "no project
+   * scope requested," identical to calling {@link #discoverServices()}.
+   */
+  default Flux<ServiceInfo> discoverServices(String composeProject) {
+    return discoverServices();
+  }
+
+  /**
+   * UX-R3 — real Docker Compose projects currently visible on this
+   * source's own connection, keyed by the canonical {@code
+   * com.docker.compose.project} label (never inferred from container
+   * names, never fabricated). Empty for every source that doesn't have a
+   * real Compose-project concept at all ({@link
+   * SourceCapabilities#composeProjectScoping()} false) - the frontend
+   * relies on that capability flag, not this list's emptiness alone, to
+   * decide whether to show project selection UI (a Docker engine that is
+   * reachable but genuinely has zero Compose projects also returns an
+   * empty list here, and capability-gating is what keeps that
+   * indistinguishable-by-list-alone case from being shown as "unsupported"
+   * instead of "supported, currently empty").
+   */
+  default List<String> discoverComposeProjects() {
+    return List.of();
+  }
+
+  /**
    * Bounded historical search. Implementations do their own source-side
    * filtering where possible, but callers (the search orchestrator) apply
    * guardrails (limit, timeout, cancellation) regardless — an

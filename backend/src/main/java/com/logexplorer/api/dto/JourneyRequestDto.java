@@ -21,6 +21,8 @@ public record JourneyRequestDto(
     @NotNull Instant start,
     @NotNull Instant end,
     @NotBlank String field,
-    @NotBlank String value
+    @NotBlank String value,
+    /** UX-R3 §9 — request-scoped Docker Compose project selection, never sensitive. */
+    String composeProject
 ) {
 }

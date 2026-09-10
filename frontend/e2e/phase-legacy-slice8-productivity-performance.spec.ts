@@ -21,8 +21,13 @@ const STORAGE_KEY = 'logexplorer.tablePreferences.v1';
 
 async function gotoFixture(page: Page) {
   await page.goto('/');
-  await page.selectOption('select', 'fixture');
-  await expect(page.getByRole('combobox')).toHaveValue('fixture');
+  // Named, not a bare 'select'/'combobox' locator - UX-R3's Compose
+  // project selector (rendered whenever the active source supports
+  // it) is a second real <select role="combobox">, which an unnamed
+  // locator would ambiguously match once any Compose-scoped source
+  // (e.g. local-docker) is ever selected or is the page's own default.
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
+  await expect(page.getByRole('combobox', { name: 'Source', exact: true })).toHaveValue('fixture');
 }
 
 async function search(page: Page) {
@@ -180,7 +185,7 @@ test.describe('Legacy Remediation Slice 8 — productivity, safe preferences & f
     await page.getByRole('textbox', { name: /search messages/i }).fill('E2E-RELOAD-SENTINEL');
 
     await page.reload();
-    await expect(page.getByRole('combobox')).not.toHaveValue(''); // sources reload; source selection itself is not a persisted preference
+    await expect(page.getByRole('combobox', { name: 'Source', exact: true })).not.toHaveValue(''); // sources reload; source selection itself is not a persisted preference
 
     // Source selection is explicitly NOT a persisted preference (confirmed
     // above), so the post-reload default source is not guaranteed to be
@@ -190,8 +195,8 @@ test.describe('Legacy Remediation Slice 8 — productivity, safe preferences & f
     // whatever source the app happened to default to. Selects directly
     // (not via `gotoFixture`, which also does its own `page.goto('/')`) so
     // this stays a reload, not an additional navigation.
-    await page.selectOption('select', 'fixture');
-    await expect(page.getByRole('combobox')).toHaveValue('fixture');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
+    await expect(page.getByRole('combobox', { name: 'Source', exact: true })).toHaveValue('fixture');
 
     // The safe preference (density) survived the reload...
     await search(page);
@@ -220,7 +225,7 @@ test.describe('Legacy Remediation Slice 8 — productivity, safe preferences & f
     expect(page.url()).not.toContain('E2E-SENSITIVE');
 
     await page.reload();
-    await expect(page.getByRole('combobox')).not.toHaveValue('');
+    await expect(page.getByRole('combobox', { name: 'Source', exact: true })).not.toHaveValue('');
     await expect(page.getByRole('textbox', { name: /search messages/i })).toHaveValue('');
     await expect(page.getByRole('button', { name: /^more filters/i })).not.toContainText('1');
   });

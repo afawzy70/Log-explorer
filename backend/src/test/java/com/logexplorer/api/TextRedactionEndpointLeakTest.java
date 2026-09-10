@@ -51,7 +51,7 @@ class TextRedactionEndpointLeakTest {
     @Bean
     StubLogSource redactionEndpointTestSource() {
       return new StubLogSource("redaction-endpoint-test-source", "Redaction Endpoint Test Source",
-          new SourceCapabilities(true, false, false, false, false, true));
+          new SourceCapabilities(true, false, false, false, false, true, false));
     }
   }
 

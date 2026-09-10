@@ -77,7 +77,8 @@ public class DockerSettingsController {
         false,
         "Permanent connection changes require deployment/runtime configuration "
             + "(environment variables or application.yml) and an application restart — "
-            + "there is no in-app way to persist a different Docker connection at runtime.");
+            + "there is no in-app way to persist a different Docker connection at runtime.",
+        remote ? blankToNull(properties.getConnectionName()) : null);
   }
 
   /**

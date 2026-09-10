@@ -33,7 +33,7 @@ async function openDockerSettings(page: Page) {
 test.describe('Legacy Remediation Slice 3 — Docker connection/settings workspace', () => {
   test('1. opening Docker settings after a search never loses the current results', async ({ page }) => {
     await page.goto('/');
-    await page.selectOption('select', 'fixture');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
     await page.getByRole('button', { name: /^search$/i }).click();
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10_000 });
     const urlBefore = page.url();

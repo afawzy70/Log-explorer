@@ -12,6 +12,12 @@ export interface TimeRangePreset {
  */
 export const TIME_RANGE_PRESETS: TimeRangePreset[] = [
   { id: '15m', label: 'Last 15 minutes', durationMs: 15 * 60 * 1000 },
+  // UX-R3 §2 Decision A / §15 - same moving-relative recompute mechanism as
+  // every other preset here (`recomputeRelativeRange` in useSearchState.ts
+  // is generic over this table by id/durationMs; this entry needs no other
+  // code change). Placed between 15m and 1h to keep the list monotonically
+  // increasing by duration.
+  { id: '30m', label: 'Last 30 minutes', durationMs: 30 * 60 * 1000 },
   { id: '1h', label: 'Last 1 hour', durationMs: 60 * 60 * 1000 },
   { id: '4h', label: 'Last 4 hours', durationMs: 4 * 60 * 60 * 1000 },
   { id: '1d', label: 'Last 1 day', durationMs: 24 * 60 * 60 * 1000 },

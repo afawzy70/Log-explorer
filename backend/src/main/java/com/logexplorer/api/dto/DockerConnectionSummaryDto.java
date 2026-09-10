@@ -22,6 +22,8 @@ public record DockerConnectionSummaryDto(
     boolean tlsEnabled,
     String composeProjectFilter,
     boolean runtimeMutationSupported,
-    String settingsNote
+    String settingsNote,
+    /** UX-R3 §6 — REMOTE mode only, cosmetic only (e.g. "QA Docker"); {@code null} for LOCAL or when unset. */
+    String connectionName
 ) {
 }

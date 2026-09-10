@@ -59,7 +59,7 @@ class LogLeakTest {
     @Bean
     StubLogSource logLeakTestSource() {
       StubLogSource stub = new StubLogSource("log-leak-test-source", "Log Leak Test Source",
-          new SourceCapabilities(true, false, false, false, false, false));
+          new SourceCapabilities(true, false, false, false, false, false, false));
       stub.withSearchFlux(Flux.just(
           CanonicalLogEvent.builder()
               .timestamp(Instant.parse("2026-01-01T00:00:30Z"))

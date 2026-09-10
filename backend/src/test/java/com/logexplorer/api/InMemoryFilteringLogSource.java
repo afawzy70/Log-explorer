@@ -47,7 +47,7 @@ class InMemoryFilteringLogSource implements LogSource {
 
   @Override
   public SourceCapabilities capabilities() {
-    return new SourceCapabilities(true, false, false, false, false, false);
+    return new SourceCapabilities(true, false, false, false, false, false, false);
   }
 
   @Override

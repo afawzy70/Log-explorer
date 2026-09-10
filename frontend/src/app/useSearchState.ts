@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  fetchComposeProjects,
   fetchContext,
   fetchJourney,
   fetchSourceHealth,
@@ -135,6 +136,21 @@ export function useSearchState() {
 
   const [services, setServices] = useState<ServiceInfo[]>([]);
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
+  /**
+   * UX-R3 §7/§8/§9 — the request/session-scoped Docker Compose "investigation
+   * scope" (never a global mutation of backend config; travels on each
+   * request the same way every other structured filter already does).
+   * `null` means "no project selected" - every relevant Docker operation
+   * then falls back to the deployment's own static `composeProjectFilter`
+   * (or no filter at all), the same behavior this app already had before
+   * this slice. Reset to `null` whenever the source itself changes (a new
+   * source is a new scope entirely) - see the source-change effect below.
+   */
+  const [selectedComposeProject, setSelectedComposeProject] = useState<string | null>(null);
+  /** Real projects discovered on the current source's own connection (empty when unsupported or genuinely none exist - the caller distinguishes those via `selectedSource.capabilities.composeProjectScoping`). */
+  const [composeProjects, setComposeProjects] = useState<string[]>([]);
+  const [composeProjectsLoading, setComposeProjectsLoading] = useState(false);
+  const [composeProjectsError, setComposeProjectsError] = useState<string | null>(null);
   const [selectedLevels, setSelectedLevels] = useState<string[]>(DEFAULT_SEVERITY_LEVELS);
   const [searchText, setSearchText] = useState('');
   const [timeRange, setTimeRange] = useState<CommittedTimeRange>(defaultTimeRange);
@@ -251,6 +267,16 @@ export function useSearchState() {
     }
     const source = sources.find((s) => s.id === selectedSourceId);
     setSelectedServices([]);
+    // UX-R3 §7 - a new source is an entirely new scope; whatever Compose
+    // project was selected for the *previous* source can never carry over
+    // (its own project-switch effect below handles clearing stale results/
+    // requests - this just makes sure that effect actually fires by
+    // changing the value, even the common case of switching from one
+    // Docker-like source to a different one where a same-named project
+    // might otherwise look unchanged).
+    setSelectedComposeProject(null);
+    setComposeProjects([]);
+    setComposeProjectsError(null);
     // "Raw LogQL... must never be silently translated into normal DSL;
     // never be accepted by an unsupported source" (Legacy Remediation
     // Slice 2) - if the newly-selected source doesn't support it, the
@@ -269,9 +295,62 @@ export function useSearchState() {
     } else {
       setServices([]);
     }
+    if (source?.capabilities.composeProjectScoping) {
+      setComposeProjectsLoading(true);
+      fetchComposeProjects(selectedSourceId)
+        .then(setComposeProjects)
+        .catch((error: unknown) =>
+          setComposeProjectsError(error instanceof Error ? error.message : 'Failed to discover Compose projects'),
+        )
+        .finally(() => setComposeProjectsLoading(false));
+    }
     checkHealth(selectedSourceId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSourceId]);
+
+  /**
+   * UX-R3 §11 (project-switch lifecycle) - fires whenever the selected
+   * Compose project itself changes (including "unselected" -> a real
+   * project, and switching directly between two real projects). Mirrors
+   * `runSearch`'s own "fresh search" resets, but deliberately does NOT
+   * fire a new search - matching this app's consistent "explicit search"
+   * behavior everywhere else. Unlike a plain source switch (which leaves
+   * stale results on screen until the next explicit Search, unchanged
+   * prior behavior), a Compose project switch clears the result set
+   * immediately: the mission's own explicit requirement is "never show
+   * Project A rows under a Project B scope header," and the scope header
+   * itself (the toolbar's own active-scope indicator) changes the instant
+   * this state changes, so the two must never be allowed to disagree even
+   * for one render.
+   */
+  useEffect(() => {
+    if (!selectedSourceId) {
+      return;
+    }
+    const source = sources.find((s) => s.id === selectedSourceId);
+    if (!source?.capabilities.composeProjectScoping) {
+      return; // this source has no project concept - nothing to switch
+    }
+    activeRequestRef.current?.abort(); // stale in-flight A request must never resolve into B's view
+    setSearchResult(null);
+    setSearchError(null);
+    setLoadMoreError(null);
+    setLastSearchedRange(null);
+    setSelectedIndex(null);
+    setBreadcrumbLabel(null);
+    setOriginalSnapshot(null);
+    setContextRootIdentity(null);
+    setJourneyQuery(null);
+    setJourneyResult(null);
+    setJourneyError(null);
+    setSelectedServices([]); // B's own service set is about to be (re)discovered - A's selections cannot carry over
+    if (source.capabilities.serviceDiscovery) {
+      fetchSourceServices(selectedSourceId, selectedComposeProject ?? undefined)
+        .then(setServices)
+        .catch(() => setServices([]));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedComposeProject]);
 
   const applyDetectedField = useCallback((field: DetectableIdField, value: string) => {
     setAdvancedFilters((prev) => ({ ...prev, [field]: value }));
@@ -337,9 +416,10 @@ export function useSearchState() {
         query: resolveQueryText(queryState),
         rawLogQl: resolveRawLogQl(queryState),
         cursor,
+        composeProject: selectedComposeProject ?? undefined,
       };
     },
-    [selectedSourceId, timeRange, selectedServices, selectedLevels, searchText, advancedFilters, queryState],
+    [selectedSourceId, timeRange, selectedServices, selectedLevels, searchText, advancedFilters, queryState, selectedComposeProject],
   );
 
   /** Aborts whatever request is currently in flight, so its result can never race a newer one. */
@@ -572,7 +652,14 @@ export function useSearchState() {
       const controller = supersedeActiveRequest();
       setJourneyLoading(true);
       fetchJourney(
-        { sourceId: selectedSourceId, start: timeRange.start, end: timeRange.end, field, value },
+        {
+          sourceId: selectedSourceId,
+          start: timeRange.start,
+          end: timeRange.end,
+          field,
+          value,
+          composeProject: selectedComposeProject ?? undefined,
+        },
         controller.signal,
       )
         .then((result) => setJourneyResult(result))
@@ -588,7 +675,7 @@ export function useSearchState() {
           }
         });
     },
-    [selectedSourceId, timeRange, closeInspector],
+    [selectedSourceId, timeRange, closeInspector, selectedComposeProject],
   );
 
   /** "Preserves and restores the original search state": closing journey mode never had anything to restore - `searchResult`/the toolbar's filters were never touched while it was open. */
@@ -640,6 +727,7 @@ export function useSearchState() {
           service: event.service ?? undefined,
           containerId: event.containerId ?? undefined,
           pod: event.pod ?? undefined,
+          composeProject: selectedComposeProject ?? undefined,
         },
         controller.signal,
       )
@@ -666,7 +754,7 @@ export function useSearchState() {
           }
         });
     },
-    [selectedSourceId, snapshotOriginalIfAbsent, closeInspector],
+    [selectedSourceId, snapshotOriginalIfAbsent, closeInspector, selectedComposeProject],
   );
 
   const selectedSource = sources.find((s) => s.id === selectedSourceId) ?? null;
@@ -680,6 +768,11 @@ export function useSearchState() {
     services,
     selectedServices,
     setSelectedServices,
+    selectedComposeProject,
+    setSelectedComposeProject,
+    composeProjects,
+    composeProjectsLoading,
+    composeProjectsError,
     selectedLevels,
     setSelectedLevels,
     searchText,

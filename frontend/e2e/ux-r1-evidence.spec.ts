@@ -5,7 +5,7 @@ const PHASE = 'UX_R1_EVIDENCE';
 
 async function gotoFixture(page: import('@playwright/test').Page) {
   await page.goto('/');
-  await page.selectOption('select', 'fixture');
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
 }
 
 test.describe('UX-R1 mandatory visual verification (§14) - real rendered app, real dev backend', () => {
