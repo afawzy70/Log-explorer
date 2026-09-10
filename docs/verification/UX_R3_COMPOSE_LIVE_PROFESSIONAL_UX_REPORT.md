@@ -446,3 +446,88 @@ was deliberately left untouched this slice (§13) — not marked done.
 message named has a corresponding register row; no new finding surfaced
 during this pass that isn't already captured above or in the register
 itself.
+
+---
+
+## CI_RECOVERY
+
+PR #34's first GitHub Actions run showed `Backend=PASS`, `Frontend=PASS`,
+`Windows Desktop=PASS`, `E2E=FAIL` (1 failed, 1 flaky, 195 passed). This
+section documents that real failure and its fix — it is not rewritten
+away; the original run remains visible in the PR's own Checks history.
+
+```
+CI_FAILURE_ROOT_CAUSE=frontend/e2e/ux-r3-after-evidence.spec.ts's own "D/E:
+  Compose project discovery" test assumed a real Docker Compose project
+  (logexplorer-evidence-demo) that only ever existed on the author's local
+  machine - GitHub-hosted CI runners have no real external Docker
+  environment for this app's backend to discover against (documented in
+  .github/workflows/ci.yml's own E2E-job comment), so composeProjects
+  stayed empty/errored there and the toolbar's Compose-project <select>
+  correctly stayed disabled (see "No-Compose state" below) - the test then
+  timed out at 30s trying to select an option that could never exist.
+CLASSIFICATION=B (TEST ENVIRONMENT ASSUMPTION)
+PRODUCT_BUG=NO - the disabled selector was the CORRECT, truthful behavior
+  for an environment with zero discoverable Compose projects; "fixing" the
+  product to enable selection with no real backing data would itself have
+  been the defect (a fabricated selectable project).
+RECOVERY=stubbed the Compose-discovery HTTP boundary (compose-projects,
+  services, health) for this one UI-evidence test with a realistic,
+  contract-shaped response, exactly as this project's own established
+  precedent already does for Live-reconnecting evidence
+  (alwaysFailLiveConnections) and for Legacy Slice 6's degraded-health
+  evidence (page.route('**/local-docker/health', ...)) - never invented a
+  new pattern. The real, unstubbed, live Docker isolation proof (two real
+  overlapping-service-name Compose projects, zero cross-project leakage)
+  remains completely intact and unchanged in this report's own "Real
+  two-Compose-project overlapping-service-name isolation proof" section
+  above - this recovery did not touch, weaken, or replace it.
+UI_CONTRACT_TEST=frontend/e2e/ux-r3-after-evidence.spec.ts's "D/E" and new
+  "D2: No Compose projects detected" tests - both explicitly labeled
+  [UI_CONTRACT_TEST] in their own test names and given a doc comment
+  distinguishing them from real-Docker evidence. They prove the frontend's
+  own rendering contract (loading -> populated/disabled selector ->
+  selection -> ScopeTrail update) against a stubbed, schema-accurate API
+  response; they do NOT claim to prove backend cross-project isolation.
+REAL_DOCKER_INTEGRATION_TEST=unchanged - this report's own isolation-proof
+  table (discovery/services/search/pagination/Live SSE/context, two real
+  Compose projects, unique markers, zero leakage) remains the sole source
+  of backend-isolation evidence, exactly as before this recovery.
+SOURCE_LOCATOR_FLAKINESS_FIXED=YES - gotoFixture/gotoLocalDocker's
+  page.getByLabel('Source') (which ambiguously matched both the actual
+  Source <select> and SourceHealthBadge's unrelated "Source health
+  details" button, since Playwright's getByLabel matches any
+  labelled/aria-labelled element, not only <select>) now uses
+  page.getByLabel('Source', { exact: true }). Searched every UX-R3-authored
+  spec (ux-r3-before-evidence.spec.ts, ux-r3-after-evidence.spec.ts) for
+  the same class of broad/non-exact label locator; no other instance
+  found - getByLabel('Mode') and getByLabel(/compose project/i) each have
+  exactly one matching element on the page at all times.
+RETRY_DEPENDENCY_REMOVED=YES - full local E2E re-run (198/198, including
+  the 2 new tests) passed with zero retries needed
+  (npx playwright test --workers=2, no "(retry #1)" lines in the output).
+```
+
+Full validation re-run after the fix (no product code was touched in this
+recovery, only the E2E spec file):
+
+```
+BACKEND_TESTS=PASS (606/606, unchanged - no backend code touched)
+FRONTEND_TESTS=PASS (662/662, unchanged - no frontend product code touched)
+TYPECHECK=PASS (clean)
+PRODUCTION_BUILD=PASS (clean, identical bundle sizes - no product code touched)
+E2E_LOCAL=PASS (198/198, 0 retries, 0 flaky - was 197 before the new "no-Compose" test)
+```
+
+Live→Search re-confirmed unchanged (no new UX scope, per the recovery
+mission's own instruction): `phase-legacy-slice5-live-resilience.spec.ts`'s
+8 tests remain green, including "12-13. a connection failure shows
+RECONNECTING, then a successful retry returns to LIVE" and "14. Stop
+during reconnect cancels the pending retry" - stream-closed/reconnect-
+timers-cancelled/no-stale-events-into-Search all still hold, exactly as
+verified earlier in this same report's §16-§19.
+
+Skill status, restated (already fully diagnosed above, not re-investigated):
+`UX_SKILL_REGISTERED=YES`, `UX_SKILL_DISCOVERABLE=YES in a fresh session,
+NO in this one`, `UX_SKILL_LOADED=NO this session`, `PROTOCOL=LERUX-1`,
+`BLOCKER=session-lifetime skill-indexing cache`, `MANUAL_FALLBACK_USED=YES`.

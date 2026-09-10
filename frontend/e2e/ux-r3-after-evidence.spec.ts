@@ -10,12 +10,55 @@ async function gotoFixture(page: Page) {
   // source (e.g. local-docker, if it happens to be the initial default)
   // renders a second <select> in the toolbar, which a bare 'select'
   // locator would ambiguously match.
-  await page.getByLabel('Source').selectOption('fixture');
+  await page.getByLabel('Source', { exact: true }).selectOption('fixture');
+}
+
+/**
+ * CI's E2E job has no real external Docker (see `.github/workflows/ci.yml`'s
+ * own comment) - discovery against local-docker would legitimately return
+ * an error/empty list there, same as this project's established precedent
+ * for Live reconnecting (`alwaysFailLiveConnections` below) and for the
+ * real-Docker freshness/isolation proofs generally (evidenced live,
+ * separately, never committed as a spec that assumes a real Docker
+ * environment). Stubbing discovery deterministically keeps this evidence
+ * capture reliable in both environments; the real, live, unstubbed
+ * discovery/selection/isolation behavior is proven separately in
+ * `docs/verification/UX_R3_COMPOSE_LIVE_PROFESSIONAL_UX_REPORT.md`.
+ */
+async function stubComposeDiscovery(page: Page, projects: string[]) {
+  await page.route('**/api/v1/sources/local-docker/compose-projects', (route: Route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(projects) }),
+  );
+  await page.route('**/api/v1/sources/local-docker/services*', (route: Route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+  );
+  await page.route('**/api/v1/sources/local-docker/health', (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        status: 'UP',
+        message: 'ok',
+        checkedAt: new Date().toISOString(),
+        warnings: [],
+        latencyMs: 5,
+        capabilities: {
+          historicalSearch: true,
+          liveTail: true,
+          rawLogQL: false,
+          serviceDiscovery: true,
+          queryStatistics: false,
+          contextView: false,
+          composeProjectScoping: true,
+        },
+      }),
+    }),
+  );
 }
 
 async function gotoLocalDocker(page: Page) {
   await page.goto('/');
-  await page.getByLabel('Source').selectOption('local-docker');
+  await page.getByLabel('Source', { exact: true }).selectOption('local-docker');
   // Compose project discovery fires on source select - wait for the
   // toolbar's Compose project control to actually appear before
   // interacting with it, rather than racing the fetch.
@@ -43,7 +86,19 @@ test.describe('UX-R3 AFTER evidence - real rendered UI, post-redesign', () => {
     await expect(page.getByRole('button', { name: /reveal|unmask|copy/i })).toHaveCount(0);
   });
 
-  test('D/E: Compose project discovery - real projects offered, active scope visible once selected', async ({ page }) => {
+  test('D/E: Compose project discovery - projects offered, active scope visible once selected [UI_CONTRACT_TEST]', async ({ page }) => {
+    // This is a UI_CONTRACT_TEST: it proves the frontend's own rendering
+    // contract (loading -> populated selector -> selection -> ScopeTrail
+    // update) against a stubbed, realistic API response - CI's own E2E
+    // runner has no real external Docker (`.github/workflows/ci.yml`'s own
+    // comment), so it cannot itself create real Compose projects. It does
+    // NOT claim to prove backend cross-project isolation - that is a
+    // REAL_DOCKER_INTEGRATION_TEST, proven separately, live, against a real
+    // Docker Engine and two real overlapping-service-name projects; see
+    // docs/verification/UX_R3_COMPOSE_LIVE_PROFESSIONAL_UX_REPORT.md's
+    // "Real two-Compose-project overlapping-service-name isolation proof"
+    // table for that evidence.
+    await stubComposeDiscovery(page, ['logexplorer-evidence-demo', 'project-b']);
     await gotoLocalDocker(page);
     await captureScreenshot(page, PHASE, 'AFTER-D-compose-project-discovered');
 
@@ -51,6 +106,15 @@ test.describe('UX-R3 AFTER evidence - real rendered UI, post-redesign', () => {
     // The active-scope trail in the header must reflect the selection immediately.
     await expect(page.locator('header').getByText('logexplorer-evidence-demo')).toBeVisible();
     await captureScreenshot(page, PHASE, 'AFTER-E-compose-project-selected-scope-visible');
+  });
+
+  test('D2: No Compose projects detected - truthful empty state, never a fabricated selectable project [UI_CONTRACT_TEST]', async ({ page }) => {
+    await stubComposeDiscovery(page, []);
+    await gotoLocalDocker(page);
+
+    await expect(page.getByText(/no docker compose projects detected on this docker engine/i)).toBeVisible();
+    await expect(page.getByLabel(/compose project/i)).toBeDisabled();
+    await captureScreenshot(page, PHASE, 'AFTER-D2-no-compose-projects-truthful-empty-state');
   });
 
   test('F: Last 30 minutes preset selectable', async ({ page }) => {
