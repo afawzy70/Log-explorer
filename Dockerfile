@@ -48,8 +48,17 @@ COPY --from=backend-build /backend/target/*.jar app.jar
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chown logexplorer:logexplorer app.jar && chmod +x /usr/local/bin/docker-entrypoint.sh
 
-EXPOSE 8080
-ENV SERVER_PORT=8080
+EXPOSE 3434
+# Legacy Remediation Slice 9 §B/§K: 3434 is the project's formal default
+# port. SERVER_ADDRESS=0.0.0.0 (not the application's own 127.0.0.1
+# default - see application.yml's own comment) because this process runs
+# inside the container's own network namespace, where Docker's host-side
+# port publish (docker-compose.yml scopes that publish to 127.0.0.1) is
+# what actually enforces "never reachable beyond the host's own
+# loopback" - binding to 127.0.0.1 *inside* the container would make it
+# unreachable even from its own published port.
+ENV SERVER_PORT=3434
+ENV SERVER_ADDRESS=0.0.0.0
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=6 \
   CMD wget -q -O- http://127.0.0.1:${SERVER_PORT}/actuator/health | grep -q '"status":"UP"' || exit 1
 

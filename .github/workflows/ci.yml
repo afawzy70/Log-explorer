@@ -142,7 +142,7 @@ jobs:
       - name: Wait for backend readiness
         run: |
           for i in $(seq 1 180); do
-            if curl -sf http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'; then
+            if curl -sf http://127.0.0.1:3434/actuator/health | grep -q '"status":"UP"'; then
               echo "Backend is up after $((i * 2))s"
               exit 0
             fi

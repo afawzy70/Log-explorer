@@ -21,6 +21,17 @@ metadata:
 data:
   LOGEXPLORER_SOURCES_DISABLED: "local-docker"
 
+  # Legacy Remediation Slice 9 §B: the application's own default bind is
+  # 127.0.0.1 (correct for a same-machine desktop deployment), but this
+  # process runs inside its own pod network namespace here - kubelet's
+  # readiness/liveness probes and the Service in front of it (service.yaml)
+  # both connect over the pod network, not loopback, so it must bind
+  # 0.0.0.0 to be reachable at all. The Service/any NetworkPolicy is the
+  # actual boundary that scopes reachability in this deployment, exactly as
+  # docker-compose.yml's host-side port publish does for the container
+  # deployment.
+  SERVER_ADDRESS: "0.0.0.0"
+
   # --- OpenShift Loki source (Phase D) ---------------------------------
   LOGEXPLORER_LOKI_BASE_URL: "https://loki-gateway.example-namespace.svc.cluster.local:8080"
   LOGEXPLORER_LOKI_GATEWAY_PREFIX: "/api/logs/v1"

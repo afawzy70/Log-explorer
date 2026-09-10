@@ -54,7 +54,7 @@ spec:
           image: log-explorer:latest # REPLACE with your own registry-qualified image tag
           ports:
             - name: http
-              containerPort: 8080
+              containerPort: 3434
               protocol: TCP
           envFrom:
             - configMapRef:
