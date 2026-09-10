@@ -30,12 +30,30 @@
   padding: var(--space-4);
   width: 340px;
   max-width: calc(100vw - var(--space-6));
+  /* Grouped, registry-derived content (Legacy Remediation Slice 8) can run
+     taller than the old flat list - bounded so it never pushes the Close
+     button off a short/narrow viewport; only this region scrolls. */
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
 }
 
 .heading {
   font-size: var(--font-size-sm);
   font-weight: 600;
   margin: 0 0 var(--space-3);
+}
+
+.group {
+  margin-bottom: var(--space-3);
+}
+
+.groupTitle {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-text-secondary);
 }
 
 .list {

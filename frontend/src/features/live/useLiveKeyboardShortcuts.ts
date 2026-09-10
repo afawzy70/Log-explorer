@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { isTypingTarget } from '../../shared/keyboard/isTypingTarget';
+import { useRef } from 'react';
+import { useShortcut } from '../../shared/keyboard/ShortcutRegistry';
 import type { LiveTailHandle } from './useLiveTail';
 
 /**
@@ -11,77 +11,97 @@ import type { LiveTailHandle } from './useLiveTail';
  * "keyboard shortcut availability must not be required for using the
  * feature" (the mission's own wording) - this hook is purely additive.
  *
- * Single letters, never a modifier combination, and deliberately scoped to
- * only fire while the Live panel is actually the active view (`isActive`) -
- * the exact same window `App.tsx` already uses to decide whether to render
- * `LiveTailPanel` at all, so these bindings can never fire from the
- * historical search screen. Guarded by {@link isTypingTarget} so typing
- * "p"/"s"/"c"/"f" into the Live-local text filter (or anywhere else) is
- * never hijacked. Registers and tears down exactly one document listener,
- * whose effect dependency array (`isActive`) ensures it is removed the
- * moment Live mode ends - no duplicate/leaked global listener across
- * repeated Start/Stop/exit cycles.
+ * <p><b>Legacy Remediation Slice 8</b> - migrated onto the shared {@link
+ * useShortcut} registry (one `document` listener for the whole app, not a
+ * second one here). `isActive` (the exact same window `App.tsx` already
+ * uses to decide whether to render `LiveTailPanel` at all) is now a
+ * runtime guard inside each shortcut's own `test`, not a
+ * register/unregister toggle - these four bindings stay registered (and
+ * therefore always listed in the shortcuts-help popover, even while
+ * viewing historical search) but only ever *match* a keydown while Live is
+ * actually the active view. Single letters, never a modifier combination,
+ * guarded against typing targets by the registry's own default.
  */
-export function useLiveKeyboardShortcuts(live: LiveTailHandle, isActive: boolean): void {
-  // Always holds the latest `live` without needing it in the effect's own
-  // dependency array below - `live` is a fresh object every render (its
-  // individual functions are memoized, the object itself is not), so
-  // depending on it directly would tear down and re-add the document
-  // listener far more often than necessary; a ref keeps exactly one
-  // listener registered for the entire time `isActive` stays true, while
-  // still always reading current state when a key is actually pressed.
-  const liveRef = useRef(live);
-  liveRef.current = live;
+/** True for an un-modified press of the given single letter (case-insensitive), never a browser/system chord. */
+function isBareLetter(e: KeyboardEvent, letter: string): boolean {
+  return e.key.toLowerCase() === letter && !e.ctrlKey && !e.metaKey && !e.altKey;
+}
 
-  useEffect(() => {
-    if (!isActive) {
-      return;
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.ctrlKey || event.metaKey || event.altKey || isTypingTarget(event.target)) {
-        return;
+export function useLiveKeyboardShortcuts(live: LiveTailHandle, isActive: boolean): void {
+  // Always holds the latest `live`/`isActive` - test()/onTrigger() close
+  // over this ref rather than the arguments directly, so useShortcut's own
+  // internal effect (keyed only on a stable `id`) never needs to
+  // re-register when either value changes on a later render.
+  const stateRef = useRef({ live, isActive });
+  stateRef.current = { live, isActive };
+
+  useShortcut({
+    id: 'live.pauseResume',
+    keys: 'P',
+    description: 'Pause / resume Live (while Live is the active view)',
+    group: 'Live',
+    test: (e) => {
+      if (!isBareLetter(e, 'p')) {
+        return false;
       }
-      const current = liveRef.current;
-      switch (event.key) {
-        case 'p':
-        case 'P':
-          if (current.connectionState === 'live') {
-            event.preventDefault();
-            current.pause();
-          } else if (current.connectionState === 'paused') {
-            event.preventDefault();
-            current.resume();
-          }
-          break;
-        case 's':
-        case 'S':
-          if (
-            current.connectionState === 'live' ||
-            current.connectionState === 'paused' ||
-            current.connectionState === 'connecting' ||
-            current.connectionState === 'reconnecting'
-          ) {
-            event.preventDefault();
-            current.stop();
-          }
-          break;
-        case 'c':
-        case 'C':
-          if (current.visibleEvents.length > 0) {
-            event.preventDefault();
-            current.clear();
-          }
-          break;
-        case 'f':
-        case 'F':
-          event.preventDefault();
-          current.setFollowNewest(!current.followNewest);
-          break;
-        default:
-          break;
+      const { live: current, isActive: active } = stateRef.current;
+      return active && (current.connectionState === 'live' || current.connectionState === 'paused');
+    },
+    onTrigger: () => {
+      const current = stateRef.current.live;
+      if (current.connectionState === 'live') {
+        current.pause();
+      } else if (current.connectionState === 'paused') {
+        current.resume();
       }
-    }
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [isActive]);
+    },
+  });
+
+  useShortcut({
+    id: 'live.stop',
+    keys: 'S',
+    description: 'Stop Live (while Live is the active view)',
+    group: 'Live',
+    test: (e) => {
+      if (!isBareLetter(e, 's')) {
+        return false;
+      }
+      const { live: current, isActive: active } = stateRef.current;
+      return (
+        active &&
+        (current.connectionState === 'live' ||
+          current.connectionState === 'paused' ||
+          current.connectionState === 'connecting' ||
+          current.connectionState === 'reconnecting')
+      );
+    },
+    onTrigger: () => stateRef.current.live.stop(),
+  });
+
+  useShortcut({
+    id: 'live.clear',
+    keys: 'C',
+    description: 'Clear Live events (while Live is the active view)',
+    group: 'Live',
+    test: (e) => {
+      if (!isBareLetter(e, 'c')) {
+        return false;
+      }
+      const { live: current, isActive: active } = stateRef.current;
+      return active && current.visibleEvents.length > 0;
+    },
+    onTrigger: () => stateRef.current.live.clear(),
+  });
+
+  useShortcut({
+    id: 'live.toggleFollowNewest',
+    keys: 'F',
+    description: 'Toggle Follow newest (while Live is the active view)',
+    group: 'Live',
+    test: (e) => isBareLetter(e, 'f') && stateRef.current.isActive,
+    onTrigger: () => {
+      const current = stateRef.current.live;
+      current.setFollowNewest(!current.followNewest);
+    },
+  });
 }

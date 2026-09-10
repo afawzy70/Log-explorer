@@ -91,6 +91,7 @@ export function AdvancedFilters({ values, onApply }: AdvancedFiltersProps) {
         className={styles.trigger}
         aria-haspopup="true"
         aria-expanded={popover.isOpen}
+        data-shortcut="more-filters-trigger"
         onClick={() => (popover.isOpen ? closeWithoutApplying() : openPanel())}
       >
         <span>More filters</span>

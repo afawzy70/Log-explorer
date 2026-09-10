@@ -8,3 +8,9 @@
   flex: 1 1 auto;
   min-width: 0;
 }
+
+.lazyFallback {
+  color: var(--color-text-secondary);
+  padding: var(--space-6) 0;
+  text-align: center;
+}

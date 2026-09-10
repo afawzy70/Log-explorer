@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { SearchState } from '../../app/useSearchState';
-import { isTypingTarget } from '../../shared/keyboard/isTypingTarget';
+import { useShortcut } from '../../shared/keyboard/ShortcutRegistry';
 import { InspectorHeader } from './InspectorHeader';
 import { OverviewSection } from './OverviewSection';
 import { ActorClientSection } from './ActorClientSection';
@@ -30,34 +30,51 @@ export function EventInspector({ state }: { state: SearchState }) {
     }
   }, [event]);
 
-  useEffect(() => {
-    if (!event) {
-      return;
-    }
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        state.closeInspector();
-        return;
-      }
-      // "[" / "]" previous/next (UI Parity Acceleration Pass §10 -
-      // deliberately not ArrowLeft/ArrowRight, which the resize handle
-      // already binds locally to widen/narrow the panel; a global
-      // listener here would otherwise double-fire alongside it whenever
-      // the handle has focus. Guarded against typing targets so it never
-      // hijacks a literal "[" typed into All Fields' own search box.
-      if (isTypingTarget(e.target)) {
-        return;
-      }
-      if (e.key === '[' && state.hasPreviousEvent) {
-        state.selectPreviousEvent();
-      } else if (e.key === ']' && state.hasNextEvent) {
-        state.selectNextEvent();
-      }
-    }
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [event]);
+  // Legacy Remediation Slice 8 - migrated onto the shared shortcut
+  // registry (one document listener for the whole app). EventInspector is
+  // always mounted (App.tsx renders it unconditionally), so these three
+  // register once, for the app's lifetime, and are therefore always
+  // listed in the shortcuts-help popover - `state.selectedEvent`/
+  // `hasPreviousEvent`/`hasNextEvent` are read fresh via `stateRef` at
+  // keypress time and gate each `test`, so a keypress genuinely does
+  // nothing while the inspector is closed or already at a bound.
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  useShortcut({
+    id: 'inspector.close',
+    keys: 'Esc',
+    description: 'Close the inspector',
+    group: 'Results & inspector',
+    // Escape must dismiss even while a text input inside the inspector
+    // (e.g. All Fields' own search box) has focus - unchanged from the
+    // pre-Slice-8 behavior, which never guarded Escape with isTypingTarget
+    // (only "["/"]" were guarded).
+    allowWhileTyping: true,
+    test: (e) => e.key === 'Escape' && stateRef.current.selectedEvent != null,
+    onTrigger: () => stateRef.current.closeInspector(),
+  });
+
+  useShortcut({
+    id: 'inspector.previous',
+    keys: '[',
+    description: 'Previous event (while the inspector is open)',
+    group: 'Results & inspector',
+    // Deliberately not ArrowLeft, which the resize handle already binds
+    // locally to widen/narrow the panel - a document-level listener here
+    // would otherwise double-fire alongside it whenever the handle has focus.
+    test: (e) => e.key === '[' && stateRef.current.selectedEvent != null && stateRef.current.hasPreviousEvent,
+    onTrigger: () => stateRef.current.selectPreviousEvent(),
+  });
+
+  useShortcut({
+    id: 'inspector.next',
+    keys: ']',
+    description: 'Next event (while the inspector is open)',
+    group: 'Results & inspector',
+    test: (e) => e.key === ']' && stateRef.current.selectedEvent != null && stateRef.current.hasNextEvent,
+    onTrigger: () => stateRef.current.selectNextEvent(),
+  });
 
   if (!event) {
     return null;

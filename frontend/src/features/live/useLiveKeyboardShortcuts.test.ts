@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, renderHook } from '@testing-library/react';
 import { useLiveKeyboardShortcuts } from './useLiveKeyboardShortcuts';
+import { ShortcutRegistryProvider } from '../../shared/keyboard/ShortcutRegistry';
 import type { LiveTailHandle } from './useLiveTail';
 
 function baseLive(overrides: Partial<LiveTailHandle> = {}): LiveTailHandle {
@@ -32,10 +33,14 @@ function press(key: string, opts: Partial<KeyboardEventInit> = {}) {
   fireEvent.keyDown(document, { key, ...opts });
 }
 
-describe('useLiveKeyboardShortcuts (UI Gap Closure Pass)', () => {
+/** Every shortcut in this app now flows through the shared registry (Legacy Remediation Slice 8) - the provider must be an ancestor for useShortcut to register anything at all. */
+const wrapper = ShortcutRegistryProvider;
+
+describe('useLiveKeyboardShortcuts (UI Gap Closure Pass, migrated to the shared registry in Legacy Remediation Slice 8)', () => {
   it('P pauses when live, resumes when paused', () => {
     const live = baseLive({ connectionState: 'live' });
     const { rerender } = renderHook(({ l, active }) => useLiveKeyboardShortcuts(l, active), {
+      wrapper,
       initialProps: { l: live, active: true },
     });
     press('p');
@@ -51,7 +56,7 @@ describe('useLiveKeyboardShortcuts (UI Gap Closure Pass)', () => {
 
   it('P does nothing when idle or errored (no active session to pause/resume)', () => {
     const live = baseLive({ connectionState: 'idle' });
-    renderHook(() => useLiveKeyboardShortcuts(live, true));
+    renderHook(() => useLiveKeyboardShortcuts(live, true), { wrapper });
     press('p');
     expect(live.pause).not.toHaveBeenCalled();
     expect(live.resume).not.toHaveBeenCalled();
@@ -59,47 +64,47 @@ describe('useLiveKeyboardShortcuts (UI Gap Closure Pass)', () => {
 
   it.each(['live', 'paused', 'connecting', 'reconnecting'] as const)('S stops from the active state "%s"', (state) => {
     const live = baseLive({ connectionState: state });
-    renderHook(() => useLiveKeyboardShortcuts(live, true));
+    renderHook(() => useLiveKeyboardShortcuts(live, true), { wrapper });
     press('s');
     expect(live.stop).toHaveBeenCalledTimes(1);
   });
 
   it('S does nothing when already idle', () => {
     const live = baseLive({ connectionState: 'idle' });
-    renderHook(() => useLiveKeyboardShortcuts(live, true));
+    renderHook(() => useLiveKeyboardShortcuts(live, true), { wrapper });
     press('S');
     expect(live.stop).not.toHaveBeenCalled();
   });
 
   it('C clears only when there are visible events', () => {
     const empty = baseLive({ visibleEvents: [] });
-    renderHook(() => useLiveKeyboardShortcuts(empty, true));
+    renderHook(() => useLiveKeyboardShortcuts(empty, true), { wrapper });
     press('c');
     expect(empty.clear).not.toHaveBeenCalled();
 
     const withEvents = baseLive({
       visibleEvents: [{ message: 'x' } as never],
     });
-    renderHook(() => useLiveKeyboardShortcuts(withEvents, true));
+    renderHook(() => useLiveKeyboardShortcuts(withEvents, true), { wrapper });
     press('C');
     expect(withEvents.clear).toHaveBeenCalledTimes(1);
   });
 
   it('F toggles followNewest, using its current value', () => {
     const live = baseLive({ followNewest: true });
-    renderHook(() => useLiveKeyboardShortcuts(live, true));
+    renderHook(() => useLiveKeyboardShortcuts(live, true), { wrapper });
     press('f');
     expect(live.setFollowNewest).toHaveBeenCalledWith(false);
 
     const live2 = baseLive({ followNewest: false });
-    renderHook(() => useLiveKeyboardShortcuts(live2, true));
+    renderHook(() => useLiveKeyboardShortcuts(live2, true), { wrapper });
     press('F');
     expect(live2.setFollowNewest).toHaveBeenCalledWith(true);
   });
 
   it('does nothing at all when isActive is false - shortcuts never fire from the historical search screen', () => {
     const live = baseLive({ connectionState: 'live', visibleEvents: [{ message: 'x' } as never] });
-    renderHook(() => useLiveKeyboardShortcuts(live, false));
+    renderHook(() => useLiveKeyboardShortcuts(live, false), { wrapper });
     press('p');
     press('s');
     press('c');
@@ -112,7 +117,7 @@ describe('useLiveKeyboardShortcuts (UI Gap Closure Pass)', () => {
 
   it('never fires while a modifier key is held, so it never fights a browser/system shortcut', () => {
     const live = baseLive({ connectionState: 'live' });
-    renderHook(() => useLiveKeyboardShortcuts(live, true));
+    renderHook(() => useLiveKeyboardShortcuts(live, true), { wrapper });
     press('p', { ctrlKey: true });
     press('p', { metaKey: true });
     press('p', { altKey: true });
@@ -121,7 +126,7 @@ describe('useLiveKeyboardShortcuts (UI Gap Closure Pass)', () => {
 
   it('never fires while focus is inside a text-entry control, so typing p/s/c/f is never hijacked', () => {
     const live = baseLive({ connectionState: 'live', visibleEvents: [{ message: 'x' } as never] });
-    renderHook(() => useLiveKeyboardShortcuts(live, true));
+    renderHook(() => useLiveKeyboardShortcuts(live, true), { wrapper });
     const input = document.createElement('input');
     document.body.appendChild(input);
     input.focus();
@@ -136,18 +141,20 @@ describe('useLiveKeyboardShortcuts (UI Gap Closure Pass)', () => {
     document.body.removeChild(input);
   });
 
-  it('reads fresh live state at keypress time without re-registering the listener on every render (no duplicate/leaked global listener)', () => {
+  it('reads fresh live state at keypress time without the registry ever re-adding its one document listener on a re-render', () => {
     const addSpy = vi.spyOn(document, 'addEventListener');
-    const removeSpy = vi.spyOn(document, 'removeEventListener');
     const live = baseLive({ connectionState: 'live' });
-    const { rerender } = renderHook(({ l }) => useLiveKeyboardShortcuts(l, true), { initialProps: { l: live } });
+    const { rerender } = renderHook(({ l }) => useLiveKeyboardShortcuts(l, true), {
+      wrapper,
+      initialProps: { l: live },
+    });
 
     const keydownAddCallsAfterMount = addSpy.mock.calls.filter((c) => c[0] === 'keydown').length;
-    expect(keydownAddCallsAfterMount).toBe(1);
+    expect(keydownAddCallsAfterMount).toBe(1); // exactly one - the shared registry's own single listener
 
-    // A fresh `live` object every render (same isActive) - the effect must
-    // not depend on `live` itself, or this would tear down/re-add the
-    // listener on every single render.
+    // A fresh `live` object every render (same isActive, same shortcut
+    // ids) - the registry must not re-register (and therefore must not
+    // touch document.addEventListener again) on every single render.
     rerender({ l: baseLive({ connectionState: 'paused' }) });
     const finalLive = baseLive({ connectionState: 'paused' });
     rerender({ l: finalLive });
@@ -160,24 +167,17 @@ describe('useLiveKeyboardShortcuts (UI Gap Closure Pass)', () => {
     expect(finalLive.resume).toHaveBeenCalledTimes(1);
 
     addSpy.mockRestore();
-    removeSpy.mockRestore();
   });
 
-  it('removes the listener on unmount, and again when isActive flips to false', () => {
-    const removeSpy = vi.spyOn(document, 'removeEventListener');
+  it('unregisters on unmount - a keypress after unmount no longer does anything', () => {
     const live = baseLive({ connectionState: 'live' });
-    const { rerender, unmount } = renderHook(({ active }) => useLiveKeyboardShortcuts(live, active), {
-      initialProps: { active: true },
-    });
+    const { unmount } = renderHook(() => useLiveKeyboardShortcuts(live, true), { wrapper });
 
-    rerender({ active: false });
-    expect(removeSpy.mock.calls.filter((c) => c[0] === 'keydown').length).toBeGreaterThanOrEqual(1);
+    press('p');
+    expect(live.pause).toHaveBeenCalledTimes(1);
 
-    const before = removeSpy.mock.calls.filter((c) => c[0] === 'keydown').length;
     unmount();
-    // No listener was left registered while inactive, so unmount adds no further removal.
-    expect(removeSpy.mock.calls.filter((c) => c[0] === 'keydown').length).toBe(before);
-
-    removeSpy.mockRestore();
+    press('p'); // the provider itself unmounted too (it's the wrapper) - no listener left to fire at all
+    expect(live.pause).toHaveBeenCalledTimes(1); // unchanged - still exactly the one call from before unmount
   });
 });

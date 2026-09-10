@@ -1,15 +1,38 @@
-import { useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import { Shell } from './Shell';
 import { Toolbar } from './Toolbar';
 import { ResultsPanel } from '../features/results/ResultsPanel';
 import { EventInspector } from '../features/inspector/EventInspector';
-import { JourneyView } from '../features/journey/JourneyView';
-import { LiveTailPanel } from '../features/live/LiveTailPanel';
 import { useLiveTail } from '../features/live/useLiveTail';
 import { useLiveKeyboardShortcuts } from '../features/live/useLiveKeyboardShortcuts';
 import { useSearchState } from './useSearchState';
-import { useGlobalShortcuts } from './useGlobalShortcuts';
+import { useProductivityShortcuts } from './useProductivityShortcuts';
+import { ShortcutRegistryProvider } from '../shared/keyboard/ShortcutRegistry';
 import styles from './App.module.css';
+
+/**
+ * Legacy Remediation Slice 8 §8 code splitting - `JourneyView` and
+ * `LiveTailPanel` are genuine secondary views: unlike `DockerSettingsPanel`/
+ * `KeyboardShortcutsHelp` (always mounted in `Shell`, each managing its own
+ * popover-open state internally - lazy-loading the component itself would
+ * not defer anything, since `Suspense` starts the import the instant it is
+ * rendered), these two only ever mount after an explicit user action
+ * (opening a journey, starting Live) and never both at once (see the
+ * `AppContent` doc comment below) - splitting them keeps that code out of
+ * the initial bundle without touching the Search -> scan -> inspect path
+ * at all (`ResultsPanel`/`EventInspector` stay eager).
+ */
+const JourneyView = lazy(() => import('../features/journey/JourneyView').then((m) => ({ default: m.JourneyView })));
+const LiveTailPanel = lazy(() => import('../features/live/LiveTailPanel').then((m) => ({ default: m.LiveTailPanel })));
+
+/** Local, non-blocking loading state (§9) - matches `ResultsPanel`'s own `.loading` convention, never a full-screen spinner. */
+function SectionLoadingFallback({ label }: { label: string }) {
+  return (
+    <p className={styles.lazyFallback} role="status">
+      {label}
+    </p>
+  );
+}
 
 /**
  * The historical search investigation shell (IMPLEMENTATION_PLAN.md
@@ -26,9 +49,23 @@ import styles from './App.module.css';
  * inspector only ever operates on historical search rows).
  */
 export default function App() {
+  // The registry must be a real ancestor of every hook that calls
+  // useShortcut (AppContent's own useProductivityShortcuts, and every
+  // descendant that registers its own) - a component cannot see a
+  // Context.Provider it renders itself, only one an ancestor renders, so
+  // this thin outer component exists purely to put the Provider above
+  // AppContent (Legacy Remediation Slice 8).
+  return (
+    <ShortcutRegistryProvider>
+      <AppContent />
+    </ShortcutRegistryProvider>
+  );
+}
+
+function AppContent() {
   const state = useSearchState();
   const live = useLiveTail();
-  useGlobalShortcuts(state.runSearch);
+  useProductivityShortcuts(state);
 
   const liveModeActive = live.connectionState !== 'idle';
   useLiveKeyboardShortcuts(live, liveModeActive);
@@ -59,13 +96,17 @@ export default function App() {
       <div className={styles.mainRow}>
         <div className={styles.resultsColumn}>
           {liveModeActive ? (
-            <LiveTailPanel
-              live={live}
-              sourceDisplayName={state.selectedSource?.displayName ?? state.selectedSourceId ?? ''}
-              onStart={() => state.selectedSourceId && live.start(state.selectedSourceId, state.selectedServices)}
-            />
+            <Suspense fallback={<SectionLoadingFallback label="Loading Live…" />}>
+              <LiveTailPanel
+                live={live}
+                sourceDisplayName={state.selectedSource?.displayName ?? state.selectedSourceId ?? ''}
+                onStart={() => state.selectedSourceId && live.start(state.selectedSourceId, state.selectedServices)}
+              />
+            </Suspense>
           ) : state.journeyQuery ? (
-            <JourneyView state={state} />
+            <Suspense fallback={<SectionLoadingFallback label="Loading journey…" />}>
+              <JourneyView state={state} />
+            </Suspense>
           ) : (
             <ResultsPanel state={state} />
           )}
