@@ -98,7 +98,10 @@ public class DockerLogSource implements LogSource {
     // serviceDiscovery are declared true regardless of whether any
     // container happens to be running right now (an empty container list
     // means an empty stream, not an unsupported capability).
-    return new SourceCapabilities(true, true, false, true, false, false, true);
+    // UX-R4 §11/§19 - see FixtureLogSource for why `contextView` is now
+    // declared truthfully; verified for this source against real Docker
+    // containers (UX-R4 report, "Real Docker verification").
+    return new SourceCapabilities(true, true, false, true, false, true, true);
   }
 
   /**

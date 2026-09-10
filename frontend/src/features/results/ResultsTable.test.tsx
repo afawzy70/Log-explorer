@@ -323,7 +323,7 @@ describe('ResultsTable', () => {
         />,
       );
       await user.click(screen.getByRole('button', { name: /actions for this event/i }));
-      await user.click(screen.getByRole('menuitem', { name: /inspect event/i }));
+      await user.click(screen.getByRole('menuitem', { name: /view details/i }));
       expect(onInspect).toHaveBeenCalled();
     });
 

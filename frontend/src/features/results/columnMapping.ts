@@ -91,16 +91,76 @@ export function formatTimestampCell(iso: string | null): string {
   if (Number.isNaN(date.getTime())) {
     return EMPTY_VALUE;
   }
-  const formatter = new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    fractionalSecondDigits: 3,
-  });
-  return formatter.format(date);
+  // Built from `formatToParts`, not `format`, so this canonical string and
+  // the two-span rendering in `splitTimestampCell` are identical *by
+  // construction*. They are not otherwise guaranteed to agree: on this
+  // project's own Node/ICU build `format()` emits a plain space before the
+  // day period while `formatToParts()` emits U+202F (narrow no-break
+  // space), so deriving one from each would make the rendered table cell
+  // silently differ from the string every test and the journey view use.
+  // Caught by `splitTimestampCell`'s own round-trip test, not by eye.
+  return TIMESTAMP_CELL_FORMATTER.formatToParts(date)
+    .map((p) => p.value)
+    .join('');
+}
+
+const TIMESTAMP_CELL_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  fractionalSecondDigits: 3,
+});
+
+/**
+ * UX-R4 §13 - the same timestamp {@link formatTimestampCell} produces,
+ * split into its calendar-date prefix and its clock-time remainder so the
+ * results table can weight the two differently.
+ *
+ * <p><b>Why.</b> In a log investigation nearly every row in a result set
+ * shares the same calendar date, so repeating "Sep 10, 2026," at full
+ * weight on all 200 rows spends the widest fixed column in the table on
+ * the least discriminating part of the value, and pushes the part the
+ * investigator actually scans - the seconds and milliseconds - to the
+ * right-hand edge of the cell. CLAUDE.md §4 requires the table to show
+ * "date + time + milliseconds", and it still does: nothing is dropped or
+ * abbreviated, the date is simply rendered at secondary emphasis behind
+ * the time.
+ *
+ * <p>The split is done on {@link Intl.DateTimeFormat#formatToParts} from
+ * the *same formatter instance*, and the two pieces concatenate back to
+ * exactly what {@link formatTimestampCell} returns - asserted directly in
+ * `columnMapping.test.ts`, so no locale can silently make the rendered
+ * cell disagree with the canonical string.
+ */
+export function splitTimestampCell(iso: string | null): { date: string; time: string } | null {
+  if (!iso) {
+    return null;
+  }
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  const parts = TIMESTAMP_CELL_FORMATTER.formatToParts(parsed);
+  const firstTimeIndex = parts.findIndex((p) => p.type === 'hour');
+  if (firstTimeIndex <= 0) {
+    // No hour part, or the value leads with the time (a locale that puts
+    // time first): there is no meaningful date prefix to de-emphasise, so
+    // render the whole thing as the primary value rather than guessing.
+    return { date: '', time: parts.map((p) => p.value).join('') };
+  }
+  return {
+    date: parts
+      .slice(0, firstTimeIndex)
+      .map((p) => p.value)
+      .join(''),
+    time: parts
+      .slice(firstTimeIndex)
+      .map((p) => p.value)
+      .join(''),
+  };
 }
 
 /**

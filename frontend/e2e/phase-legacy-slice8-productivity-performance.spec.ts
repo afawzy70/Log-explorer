@@ -81,7 +81,7 @@ test.describe('Legacy Remediation Slice 8 — productivity, safe preferences & f
     await search(page);
     const rows = page.locator('tbody tr');
     await rows.nth(1).getByRole('button', { name: /actions for this event/i }).click();
-    await page.getByRole('menuitem', { name: /inspect event/i }).click();
+    await page.getByRole('menuitem', { name: /view details/i }).click();
     const dialog = page.getByRole('dialog', { name: /event details/i });
     await expect(dialog).toBeVisible();
 
@@ -104,7 +104,7 @@ test.describe('Legacy Remediation Slice 8 — productivity, safe preferences & f
     const originalRowCount = await page.locator('tbody tr').count();
 
     await page.locator('tbody tr').first().getByRole('button', { name: /actions for this event/i }).click();
-    await page.getByRole('menuitem', { name: /inspect event/i }).click();
+    await page.getByRole('menuitem', { name: /view details/i }).click();
     await expect(page.getByRole('dialog', { name: /event details/i })).toBeVisible();
 
     await page.keyboard.press('x'); // runs the ±30s context search directly, no confirm popover
@@ -269,7 +269,7 @@ test.describe('Legacy Remediation Slice 8 — productivity, safe preferences & f
     await gotoFixture(page);
     await search(page);
     await page.locator('tbody tr').first().getByRole('button', { name: /actions for this event/i }).click();
-    await page.getByRole('menuitem', { name: /inspect event/i }).click();
+    await page.getByRole('menuitem', { name: /view details/i }).click();
     const dialog = page.getByRole('dialog', { name: /event details/i });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole('heading', { name: /overview/i })).toBeVisible();
@@ -296,7 +296,7 @@ test.describe('Legacy Remediation Slice 8 — productivity, safe preferences & f
     const originalRowCount = await page.locator('tbody tr').count();
     const targetRow = page.locator('tbody tr').filter({ hasNot: page.locator('td:nth-child(2):text-is("—")') }).first();
     await targetRow.getByRole('button', { name: /actions for this event/i }).click();
-    await page.getByRole('menuitem', { name: /inspect event/i }).click();
+    await page.getByRole('menuitem', { name: /view details/i }).click();
     await page.getByRole('dialog', { name: /event details/i }).getByRole('button', { name: /show ±30 seconds/i }).click();
     await page.getByRole('button', { name: /^run$/i }).click();
     await expect(page.getByText(/back to original search/i)).toBeVisible({ timeout: 10_000 });
@@ -341,7 +341,7 @@ test.describe('Legacy Remediation Slice 8 — productivity, safe preferences & f
     await expect(dialog).not.toBeVisible();
 
     await page.locator('tbody tr').first().getByRole('button', { name: /actions for this event/i }).click();
-    await page.getByRole('menuitem', { name: /inspect event/i }).click();
+    await page.getByRole('menuitem', { name: /view details/i }).click();
     await expect(page.getByRole('dialog', { name: /event details/i })).toBeVisible();
     await assertNoHorizontalOverflow(page);
   });

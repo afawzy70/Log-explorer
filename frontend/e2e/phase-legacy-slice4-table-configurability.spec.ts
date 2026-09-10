@@ -112,7 +112,7 @@ test.describe('Legacy Remediation Slice 4 — results table configurability & po
 
     const row = page.locator('tbody tr').first();
     await row.getByRole('button', { name: /actions for this event/i }).click();
-    await page.getByRole('menuitem', { name: /inspect event/i }).click();
+    await page.getByRole('menuitem', { name: /view details/i }).click();
     await expect(page.getByRole('dialog', { name: /event details/i })).toBeVisible();
   });
 

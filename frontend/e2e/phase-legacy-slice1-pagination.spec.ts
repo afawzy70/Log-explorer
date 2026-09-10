@@ -96,7 +96,7 @@ test('opening the inspector before Load More preserves the selected event throug
   const firstRow = page.locator('tbody tr').nth(0);
   const firstRowTimeBefore = await firstRow.locator('td').first().textContent();
   await firstRow.getByRole('button', { name: /actions for this event/i }).click();
-  await page.getByRole('menuitem', { name: /inspect event/i }).click();
+  await page.getByRole('menuitem', { name: /view details/i }).click();
 
   const dialog = page.getByRole('dialog', { name: /event details/i });
   await expect(dialog).toBeVisible();

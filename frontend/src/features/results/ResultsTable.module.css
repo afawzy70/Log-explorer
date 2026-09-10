@@ -6,9 +6,26 @@
   background: var(--color-bg-raised);
 }
 
+/*
+ * UX-R4 §13/§25 - the floor under the message column.
+ *
+ * The six other default columns declare fixed widths totalling 826px
+ * (190 + 90 + 160 + 160 + 170 + 56); "What happened" declares none, so it
+ * absorbs whatever is left. At the previous `min-width: 900px` that left
+ * it just 74px of guaranteed space, which is why it - and only it - was
+ * crushed whenever the inspector opened. 1266px guarantees it 440px
+ * instead, while still letting it take every surplus pixel on a wider
+ * viewport (580px at 1440, more at 1920).
+ *
+ * Below 1266px the wrapper scrolls horizontally, which CLAUDE.md §4
+ * explicitly allows; the page itself still never overflows, and the
+ * header/body geometry invariant is unaffected (both live in the same
+ * table) - re-verified at 1920/1440/1280/1024/768/390 and at 125%/200%
+ * zoom by `phase-g-results-table.spec.ts`.
+ */
 .table {
   width: 100%;
-  min-width: 900px;
+  min-width: 1266px;
   border-collapse: collapse;
   table-layout: fixed;
   font-size: var(--font-size-sm);
@@ -54,6 +71,22 @@
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   white-space: nowrap;
+}
+
+/*
+ * UX-R4 §13 - the calendar date is repeated on nearly every row of a
+ * result set, so it sits at secondary emphasis behind the clock time,
+ * which is what actually distinguishes one row from the next. Both are
+ * still present and still complete (CLAUDE.md §4: "Time shows date + time
+ * + milliseconds") - this is weighting, not truncation, and the two spans
+ * concatenate back to exactly the canonical `formatTimestampCell` string.
+ */
+.timeDatePart {
+  color: var(--color-text-tertiary);
+}
+
+.timeClockPart {
+  color: var(--color-text);
 }
 
 .levelCell {
@@ -153,10 +186,75 @@
   overflow: visible;
 }
 
-/* "Selected row stays identifiable" (IMPLEMENTATION_PLAN.md "Phase H") - never color alone: the left border is a non-color cue too (CLAUDE.md §7). */
-.selectedRow {
+/*
+ * UX-R4 §15 - restrained severity emphasis. Only ERROR and WARN are
+ * marked at row level (see `severityRowClass` in ResultsTable.tsx for
+ * why), via a left edge rail; ERROR alone also gets a faint tint. Never
+ * the sole cue - the Level cell still says "ERROR"/"WARN" in words.
+ * Declared *before* the interaction states below so hover/focus/selected
+ * all legitimately win over it at equal specificity.
+ */
+.table tbody tr.errorRow {
+  background: color-mix(in srgb, var(--color-severity-error-bg) 60%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-severity-error);
+}
+
+.table tbody tr.warnRow {
+  box-shadow: inset 3px 0 0 var(--color-severity-warn);
+}
+
+/*
+ * UX-R4 §6/§8 - the three row states must be visually distinct, and
+ * hover must never erase selection.
+ *
+ * Before UX-R4 a row had no hover and no focus treatment at all (proved
+ * by computed style, not by eye: `getComputedStyle(row).backgroundColor`
+ * was `rgba(0, 0, 0, 0)` both before and after hovering), and rows were
+ * not focusable or clickable - the only way into the inspector was the
+ * 56px "…" trigger at the far right of the row.
+ *
+ * Ordering matters here and is deliberate: HOVER, then FOCUS, then
+ * SELECTED. Every one of these selectors carries the same specificity
+ * (`.table` + one class/attribute + one pseudo-class, plus two element
+ * names), so the later rule wins - which is exactly the required
+ * precedence: a selected row that is also hovered still reads as
+ * selected, and a focus ring is never painted over.
+ */
+.table tbody tr[data-row-index] {
+  cursor: pointer;
+}
+
+.table tbody tr[data-row-index]:hover {
+  background: var(--color-bg-hover);
+}
+
+/*
+ * Keyboard focus is a real, visible ring (never `outline: none`), inset so
+ * it is not clipped by the scroll wrapper on the first/last row.
+ */
+.table tbody tr[data-row-index]:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+/*
+ * "Selected row stays identifiable" (IMPLEMENTATION_PLAN.md "Phase H"),
+ * strengthened for UX-R4 §7: the investigator must be able to answer
+ * "which event am I currently investigating?" instantly, in a dense table,
+ * while the inspector is open. Two independent cues, neither of them
+ * colour alone: a distinct background *and* a 4px accent rail (wider than
+ * both severity rails above, so a selected ERROR row still reads as
+ * selected rather than merely red). `aria-selected` on the row itself
+ * (ResultsTable.tsx) carries the same state non-visually.
+ *
+ * The `:hover` variant repeats the same declarations rather than relying
+ * on the cascade, so selection survives the pointer resting on the row -
+ * §8's explicit "do not allow hover styling to erase selected state".
+ */
+.table tbody tr.selectedRow,
+.table tbody tr.selectedRow:hover {
   background: var(--color-bg-selected);
-  box-shadow: inset 3px 0 0 var(--color-accent);
+  box-shadow: inset 4px 0 0 var(--color-accent);
 }
 
 /*
@@ -168,11 +266,26 @@
  * two distinct even if both classes are ever applied to the same row at
  * once (re-opening the inspector on the root event itself).
  */
-.contextRootRow {
+.table tbody tr.contextRootRow {
   background: var(--color-accent-bg);
   box-shadow: inset 3px 0 0 var(--color-accent);
   outline: 1px dashed var(--color-accent);
   outline-offset: -1px;
+}
+
+/*
+ * UX-R4: the context-root marker must keep winning over both the new
+ * severity rails and `.selectedRow` when the investigator re-opens the
+ * inspector on the root event itself - the dashed outline is what
+ * distinguishes "the event you came here from" from "the event you have
+ * selected", and it is the only cue that survives being both at once.
+ * Raised to `.table tbody tr.contextRootRow` so it matches the
+ * specificity of the interaction states above and wins on source order,
+ * exactly as it did before those rules existed (when every row rule was
+ * a bare single class).
+ */
+.table tbody tr.contextRootRow:hover {
+  background: var(--color-accent-bg);
 }
 
 /*

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   EMPTY_VALUE,
   formatTimestampCell,
+  splitTimestampCell,
   listCopyableIdentifiers,
   resolveCorrelationOrTrace,
   resolveService,
@@ -169,5 +170,34 @@ describe('listCopyableIdentifiers', () => {
   it('returns an empty list for a malformed event with no parsed identifiers', () => {
     const event = baseEvent({ traceId: null, spanId: null, correlationId: null, journeyId: null, eventId: null });
     expect(listCopyableIdentifiers(event)).toEqual([]);
+  });
+});
+
+/*
+ * UX-R4 §13 - the split rendering must never change *what* the cell says,
+ * only how it is weighted. If a locale ever made these disagree, the table
+ * would be showing something other than the canonical timestamp string.
+ */
+describe('splitTimestampCell', () => {
+  it('concatenates back to exactly formatTimestampCell', () => {
+    const iso = '2026-01-01T13:45:06.500Z';
+    const split = splitTimestampCell(iso);
+    expect(split).not.toBeNull();
+    expect(`${split!.date}${split!.time}`).toBe(formatTimestampCell(iso));
+  });
+
+  it('puts the clock time (with milliseconds) in the emphasised half', () => {
+    const split = splitTimestampCell('2026-01-01T13:45:06.500Z');
+    expect(split!.time).toMatch(/\d{2}:\d{2}:\d{2}\.\d{3}/);
+  });
+
+  it('keeps the calendar date - it is de-emphasised, never dropped (CLAUDE.md §4)', () => {
+    const split = splitTimestampCell('2026-01-01T13:45:06.500Z');
+    expect(split!.date).toMatch(/2026/);
+  });
+
+  it('returns null for a missing or unparseable timestamp, so the caller falls back to the em dash', () => {
+    expect(splitTimestampCell(null)).toBeNull();
+    expect(splitTimestampCell('not-a-real-timestamp')).toBeNull();
   });
 });

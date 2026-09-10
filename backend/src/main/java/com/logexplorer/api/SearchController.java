@@ -58,12 +58,24 @@ public class SearchController {
 
   /**
    * "Timeline ... ascending order for flow" (IMPLEMENTATION_PLAN.md "Phase
-   * I", HANDOVER.md §17) — every {@code LogSource} implementation sorts
-   * its own way regardless of {@link com.logexplorer.core.model.SearchRequest#direction()}
-   * (only {@code LokiLogSource} honors it at all; fixture/Docker always
-   * return newest-first — a real, previously-latent inconsistency this
-   * endpoint does not rely on), so ascending order is enforced once, here,
-   * for every source alike. Malformed events (no parsed timestamp) sort
+   * I", HANDOVER.md §17) — ascending order is enforced once, here, for
+   * every source alike, so this endpoint's contract never depends on any
+   * adapter's own ordering.
+   *
+   * <p><b>Corrected in UX-R4.</b> This comment previously claimed that
+   * "only {@code LokiLogSource} honors {@link
+   * com.logexplorer.core.model.SearchRequest#direction()} at all;
+   * fixture/Docker always return newest-first". That is no longer true and
+   * has not been since the Legacy Remediation Slice 1 recovery: {@code
+   * FixtureLogSource} and {@code DockerLogSource} both sort/merge in
+   * direction-of-travel order, and {@code PageCursorCodec} binds the
+   * direction into the cursor's own request-binding fingerprint. Verified
+   * empirically against the running backend before UX-R4 wired the
+   * frontend's Newest/Oldest control to it — both directions, across page
+   * boundaries, with no duplicates and no gaps. The stale claim mattered
+   * because it would have talked a future reader out of trusting
+   * source-side sorting and into faking it client-side, which CLAUDE.md
+   * §4 and UX-R4 §11 both forbid. Malformed events (no parsed timestamp) sort
    * last, never dropped (CLAUDE.md §4 "malformed lines ... never silently
    * dropped").
    */

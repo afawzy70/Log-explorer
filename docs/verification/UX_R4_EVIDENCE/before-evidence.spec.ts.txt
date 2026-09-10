@@ -1,0 +1,143 @@
+import { test, expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { captureScreenshot, setViewport, setZoom } from './helpers';
+
+/*
+ * UX-R4 §4/§28 - BEFORE evidence, captured against the REAL rendered app
+ * (real backend `fixture` source, real dev server), before any UX-R4 code
+ * change. Per the `log-explorer-professional-ux-reviewer` skill (LERUX-1),
+ * no UX claim in the UX-R4 report may rest on a source read-through - each
+ * of these screenshots is the evidence behind one BEFORE finding.
+ *
+ * Some §28 rows have no BEFORE counterpart *by definition* (there is no
+ * sort control at all before UX-R4, and "Show surrounding logs" is not
+ * reachable from row Actions before UX-R4). Those are captured as the
+ * closest honest equivalent and labelled `-absent` rather than faked.
+ */
+
+const PHASE = 'UX_R4_EVIDENCE';
+
+async function runRealSearch(page: Page) {
+  await page.goto('/');
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
+  await page.getByRole('button', { name: /^search$/i }).click();
+  await expect(page.getByRole('table')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('tbody tr').first()).toBeVisible();
+}
+
+test.describe('UX-R4 BEFORE evidence - current rendered Results workstation', () => {
+  test('A: default results state', async ({ page }) => {
+    await runRealSearch(page);
+    await captureScreenshot(page, PHASE, 'BEFORE-A-results-default');
+  });
+
+  test('B: row hover (no row-level hover affordance exists before UX-R4)', async ({ page }) => {
+    await runRealSearch(page);
+    const row = page.locator('tbody tr').nth(2);
+    await row.hover();
+    await captureScreenshot(page, PHASE, 'BEFORE-B-row-hover');
+  });
+
+  test('C: keyboard focus lands on the Actions trigger, never on the row', async ({ page }) => {
+    await runRealSearch(page);
+    const trigger = page.getByRole('button', { name: 'Actions for this event' }).nth(2);
+    await trigger.focus();
+    await captureScreenshot(page, PHASE, 'BEFORE-C-keyboard-focus');
+  });
+
+  test('D: selected row with inspector open (reachable only via Actions menu)', async ({ page }) => {
+    await runRealSearch(page);
+    await page.getByRole('button', { name: 'Actions for this event' }).nth(2).click();
+    await page.getByRole('menuitem', { name: /inspect event/i }).click();
+    await expect(page.getByRole('dialog', { name: 'Event details' })).toBeVisible({ timeout: 10_000 });
+    await captureScreenshot(page, PHASE, 'BEFORE-D-selected-row-inspector-open');
+  });
+
+  test('E: error row appearance in the scan', async ({ page }) => {
+    await runRealSearch(page);
+    const errorCell = page.locator('tbody tr', { hasText: 'ERROR' }).first();
+    await errorCell.scrollIntoViewIfNeeded();
+    await captureScreenshot(page, PHASE, 'BEFORE-E-error-row');
+  });
+
+  test('F: Actions menu contents - no "Show surrounding logs" entry exists', async ({ page }) => {
+    await runRealSearch(page);
+    await page.getByRole('button', { name: 'Actions for this event' }).nth(2).click();
+    const menu = page.getByRole('menu', { name: 'Event actions' });
+    await expect(menu).toBeVisible();
+    await captureScreenshot(page, PHASE, 'BEFORE-F-actions-menu');
+    // Recorded as a fact, not an assumption: the BEFORE menu has no
+    // surrounding-logs entry (UX-R4 §17/§19 gap).
+    await expect(menu.getByRole('menuitem', { name: /surrounding/i })).toHaveCount(0);
+  });
+
+  test('G/H: sort affordance is entirely absent before UX-R4', async ({ page }) => {
+    await runRealSearch(page);
+    await captureScreenshot(page, PHASE, 'BEFORE-GH-sort-control-absent');
+    await expect(page.getByRole('combobox', { name: /sort/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /oldest first/i })).toHaveCount(0);
+  });
+
+  test('I/J: context view opened from the inspector (not from row Actions), then return', async ({ page }) => {
+    await runRealSearch(page);
+    await page.getByRole('button', { name: 'Actions for this event' }).nth(2).click();
+    await page.getByRole('menuitem', { name: /inspect event/i }).click();
+    const contextTrigger = page.getByRole('button', { name: /show ±30 seconds/i });
+    await contextTrigger.click();
+    await captureScreenshot(page, PHASE, 'BEFORE-I-context-confirm-from-inspector');
+    await page.getByRole('button', { name: /^run$/i }).click();
+    await expect(page.getByRole('button', { name: /back to original search/i })).toBeVisible({ timeout: 15_000 });
+    await captureScreenshot(page, PHASE, 'BEFORE-I2-context-view');
+    await page.getByRole('button', { name: /back to original search/i }).click();
+    await expect(page.getByRole('table')).toBeVisible();
+    await captureScreenshot(page, PHASE, 'BEFORE-J-return-from-context');
+  });
+
+  test('K/L/M: table settings - column visibility, reorder, compact density', async ({ page }) => {
+    await runRealSearch(page);
+    const settings = page.getByRole('button', { name: /table settings|columns/i }).first();
+    await settings.click();
+    await captureScreenshot(page, PHASE, 'BEFORE-K-table-settings-open');
+
+    const firstHideToggle = page.getByRole('checkbox').first();
+    if (await firstHideToggle.count()) {
+      await firstHideToggle.click();
+      await captureScreenshot(page, PHASE, 'BEFORE-K2-columns-customized');
+    }
+
+    const moveButton = page.getByRole('button', { name: /^move .* down$/i }).first();
+    if (await moveButton.count()) {
+      await moveButton.click();
+      await captureScreenshot(page, PHASE, 'BEFORE-L-columns-reordered');
+    }
+
+    const compact = page.getByRole('group', { name: 'Density' }).getByRole('button', { name: /compact/i });
+    if (await compact.count()) {
+      await compact.click();
+      await captureScreenshot(page, PHASE, 'BEFORE-M-compact-density');
+    }
+  });
+
+  test('N: inspector beside table at wide desktop (1920)', async ({ page }) => {
+    await setViewport(page, 1920, 1080);
+    await runRealSearch(page);
+    await page.getByRole('button', { name: 'Actions for this event' }).nth(2).click();
+    await page.getByRole('menuitem', { name: /inspect event/i }).click();
+    await captureScreenshot(page, PHASE, 'BEFORE-N-inspector-wide-1920');
+  });
+
+  for (const width of [1024, 768, 390]) {
+    test(`O/P/Q: table at ${width}px`, async ({ page }) => {
+      await runRealSearch(page);
+      await setViewport(page, width);
+      await captureScreenshot(page, PHASE, `BEFORE-${width}px`);
+    });
+  }
+
+  test('R: 200% zoom', async ({ page }) => {
+    await runRealSearch(page);
+    await setViewport(page, 1280);
+    await setZoom(page, 200);
+    await captureScreenshot(page, PHASE, 'BEFORE-R-zoom-200pct');
+  });
+});

@@ -53,23 +53,23 @@ function event(overrides: Partial<LogEvent> = {}): LogEvent {
 }
 
 describe('ActionsCell', () => {
-  it('the trigger is never disabled, even with no copyable identifiers - "Inspect event" (Phase H) is always available', async () => {
+  it('the trigger is never disabled, even with no copyable identifiers - "View details" (Phase H, renamed in UX-R4 §17) is always available', async () => {
     const user = userEvent.setup();
     render(<ActionsCell event={event()} onInspect={vi.fn()} />);
     const trigger = screen.getByRole('button', { name: /actions for this event/i });
     expect(trigger).toBeEnabled();
 
     await user.click(trigger);
-    expect(screen.getByRole('menuitem', { name: /inspect event/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /view details/i })).toBeInTheDocument();
   });
 
-  it('clicking "Inspect event" calls onInspect and closes the menu', async () => {
+  it('clicking "View details" calls onInspect and closes the menu', async () => {
     const user = userEvent.setup();
     const onInspect = vi.fn();
     render(<ActionsCell event={event({ traceId: 'trace-1' })} onInspect={onInspect} />);
 
     await user.click(screen.getByRole('button', { name: /actions for this event/i }));
-    await user.click(screen.getByRole('menuitem', { name: /inspect event/i }));
+    await user.click(screen.getByRole('menuitem', { name: /view details/i }));
 
     expect(onInspect).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
@@ -118,5 +118,85 @@ describe('ActionsCell', () => {
 
     rerender(<ActionsCell event={event({ traceId: 'trace-1' })} onInspect={vi.fn()} />);
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  /*
+   * UX-R4 §17/§18/§19 - every row must expose both investigation actions.
+   */
+  describe('UX-R4 - row investigation actions', () => {
+    it('offers "Show surrounding logs" alongside "View details"', async () => {
+      const user = userEvent.setup();
+      render(
+        <ActionsCell
+          event={event({ timestamp: '2026-01-01T00:00:00Z' })}
+          onInspect={vi.fn()}
+          onShowContext={vi.fn()}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /actions for this event/i }));
+
+      expect(screen.getByRole('menuitem', { name: /view details/i })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: /show surrounding logs/i })).toBeInTheDocument();
+    });
+
+    it('"Show surrounding logs" invokes the bounded context action and closes the menu', async () => {
+      const user = userEvent.setup();
+      const onShowContext = vi.fn();
+      render(
+        <ActionsCell
+          event={event({ timestamp: '2026-01-01T00:00:00Z' })}
+          onInspect={vi.fn()}
+          onShowContext={onShowContext}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /actions for this event/i }));
+      await user.click(screen.getByRole('menuitem', { name: /show surrounding logs/i }));
+
+      expect(onShowContext).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+    });
+
+    it('lists the two investigation actions before the copy utilities, in workflow order', async () => {
+      const user = userEvent.setup();
+      render(
+        <ActionsCell
+          event={event({ timestamp: '2026-01-01T00:00:00Z', traceId: 'trace-1' })}
+          onInspect={vi.fn()}
+          onShowContext={vi.fn()}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /actions for this event/i }));
+      const labels = screen.getAllByRole('menuitem').map((i) => i.textContent);
+
+      expect(labels[0]).toMatch(/view details/i);
+      expect(labels[1]).toMatch(/show surrounding logs/i);
+      expect(labels.slice(2).every((l) => /^Copy /.test(l ?? ''))).toBe(true);
+    });
+
+    it('omits "Show surrounding logs" for an event with no timestamp, rather than offering a dead action', async () => {
+      const user = userEvent.setup();
+      render(<ActionsCell event={event({ timestamp: null })} onInspect={vi.fn()} onShowContext={vi.fn()} />);
+
+      await user.click(screen.getByRole('button', { name: /actions for this event/i }));
+
+      expect(screen.getByRole('menuitem', { name: /view details/i })).toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: /show surrounding logs/i })).not.toBeInTheDocument();
+    });
+
+    it('has no detectable accessibility violations with both investigation actions present', async () => {
+      const user = userEvent.setup();
+      const { container } = render(
+        <ActionsCell
+          event={event({ timestamp: '2026-01-01T00:00:00Z', traceId: 'trace-1' })}
+          onInspect={vi.fn()}
+          onShowContext={vi.fn()}
+        />,
+      );
+      await user.click(screen.getByRole('button', { name: /actions for this event/i }));
+      expect(await axe(container)).toHaveNoViolations();
+    });
   });
 });

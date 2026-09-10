@@ -101,7 +101,7 @@ test.describe('Task 2 - What happened for a user/customer?', () => {
 
     // Inspector: open it and confirm the same.
     await page.locator('tbody tr').first().getByRole('button', { name: /actions for this event/i }).click();
-    await page.getByRole('menuitem', { name: /inspect event/i }).click();
+    await page.getByRole('menuitem', { name: /view details/i }).click();
     await expect(page.getByRole('dialog', { name: /event details/i })).toBeVisible();
     const dialogText = await page.getByRole('dialog', { name: /event details/i }).innerText();
     expect(dialogText).not.toContain('fixture.user0');
@@ -166,7 +166,7 @@ test.describe('Task 4 - Explain one event', () => {
 
     const firstRow = page.locator('tbody tr').first();
     await firstRow.getByRole('button', { name: /actions for this event/i }).click();
-    await page.getByRole('menuitem', { name: /inspect event/i }).click();
+    await page.getByRole('menuitem', { name: /view details/i }).click();
     const dialog = page.getByRole('dialog', { name: /event details/i });
     await expect(dialog).toBeVisible();
 
@@ -206,7 +206,7 @@ test.describe('Task 4 - Explain one event', () => {
     await page.keyboard.press('Enter');
     await expect(page.getByRole('menu', { name: /event actions/i })).toBeVisible();
     await page.keyboard.press('Tab');
-    await expect(page.getByRole('menuitem', { name: /inspect event/i })).toBeFocused();
+    await expect(page.getByRole('menuitem', { name: /view details/i })).toBeFocused();
     await page.keyboard.press('Enter');
     await expect(page.getByRole('dialog', { name: /event details/i })).toBeVisible();
 

@@ -6,6 +6,7 @@ import { buildCountsSummary } from './counts';
 import { ResultsTable } from './ResultsTable';
 import { QueryPlanDisclosure } from './QueryPlanDisclosure';
 import { TableSettingsControl } from './TableSettingsControl';
+import { SortControl } from './SortControl';
 import { ContextSummary } from './ContextSummary';
 import { detectGaps } from './gapDetection';
 import type { GapMarker } from './gapDetection';
@@ -157,6 +158,13 @@ export function ResultsPanel({ state }: { state: SearchState }) {
             ? ` — showing results for ${formatInterval(state.lastSearchedRange.start, state.lastSearchedRange.end)}`
             : ''}
         </p>
+        {state.breadcrumbLabel ? null : (
+          <SortControl
+            value={state.sortDirection}
+            onChange={state.setSortDirection}
+            disabled={state.searchLoading}
+          />
+        )}
         <TableSettingsControl table={table} />
         <RefreshRow state={state} />
       </div>
@@ -165,6 +173,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
         events={events}
         selectedIndex={state.selectedIndex}
         onInspect={state.openInspector}
+        onShowContext={state.showContext}
         onOpenJourney={state.openJourney}
         columnOrder={table.preferences.columnOrder}
         hiddenColumnIds={table.preferences.hiddenColumnIds}

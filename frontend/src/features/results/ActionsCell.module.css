@@ -45,3 +45,16 @@
 .menuItem:hover {
   background: var(--color-bg-hover);
 }
+
+/*
+ * UX-R4 §17 - separates the two investigation actions (View details, Show
+ * surrounding logs) from the copy utilities below them, so the primary
+ * actions read as a group rather than as the first two of seven
+ * near-identical rows. Presentational only: the real grouping is carried
+ * by `role="separator"` for assistive technology, never by the line alone.
+ */
+.separator {
+  height: 1px;
+  margin: var(--space-1) 0;
+  background: var(--color-border);
+}
