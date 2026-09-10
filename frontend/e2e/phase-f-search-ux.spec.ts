@@ -18,7 +18,10 @@ const DIALOG_SELECTOR = '[role="dialog"][aria-label="Custom time range"]';
 const SEVERITY_SELECTOR = '[role="group"][aria-label="Severity"]';
 
 async function openCustomRangePopover(page: import('@playwright/test').Page) {
-  await page.getByRole('button', { name: /last 1 day/i }).click();
+  // Exact name, not a substring match: the ActiveFilters "remove time
+  // range" chip button (UX-R1 §3) also mentions "Last 1 day" in its own
+  // accessible name, so a loose regex would now match two buttons.
+  await page.getByRole('button', { name: 'Last 1 day', exact: true }).click();
   await page.getByRole('button', { name: /custom/i }).click();
   await expect(page.locator(DIALOG_SELECTOR)).toBeVisible();
 }

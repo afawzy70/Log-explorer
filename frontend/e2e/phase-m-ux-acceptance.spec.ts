@@ -34,7 +34,7 @@ test.describe('Task 1 - What failed recently?', () => {
     // 15m/1h/4h/1d/7d); the Custom range popover supports an arbitrary
     // window, so an exact 30-minute range is set through it instead -
     // satisfies the task's literal ask precisely.
-    await page.getByRole('button', { name: /last 1 day/i }).click();
+    await page.getByRole('button', { name: 'Last 1 day', exact: true }).click(); // exact name - the ActiveFilters remove-time-range chip (UX-R1 §3) also mentions "Last 1 day"
     await page.getByRole('button', { name: /custom/i }).click();
     const now = new Date();
     const thirtyMinAgo = new Date(now.getTime() - 30 * 60 * 1000);
@@ -287,7 +287,7 @@ test.describe('Task 6 - Failure states', () => {
   }) => {
     await page.goto('/');
     await page.selectOption('select', 'fixture');
-    await page.getByRole('button', { name: /last 1 day/i }).click();
+    await page.getByRole('button', { name: 'Last 1 day', exact: true }).click(); // exact name - the ActiveFilters remove-time-range chip (UX-R1 §3) also mentions "Last 1 day"
     await page.getByRole('button', { name: /custom/i }).click();
     await page.getByLabel(/^start$/i).fill('2026-01-02T00:00');
     await page.getByLabel(/^end$/i).fill('2026-01-01T00:00');

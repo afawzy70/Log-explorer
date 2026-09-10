@@ -86,13 +86,24 @@ function AppContent() {
 
   return (
     <div>
-      <Shell state={state} />
-      <Toolbar
-        state={state}
-        onStartLive={
-          state.selectedSourceId ? () => live.start(state.selectedSourceId!, state.selectedServices) : undefined
-        }
-      />
+      {/*
+       * `data-app-chrome` (UX-R1 §2 regression fix): the header + toolbar +
+       * active-filters row, as one measurable block. `AdvancedFilters`'
+       * own drawer reads this element's rendered height so its `top`
+       * offset never physically overlaps these rows' interactive controls
+       * (Docker settings, keyboard shortcuts, health, Search/Live/More
+       * filters, active-filter chip removal) - see `AdvancedFilters.tsx`'s
+       * own comment for why a z-index-only fix does not work here.
+       */}
+      <div data-app-chrome>
+        <Shell state={state} />
+        <Toolbar
+          state={state}
+          onStartLive={
+            state.selectedSourceId ? () => live.start(state.selectedSourceId!, state.selectedServices) : undefined
+          }
+        />
+      </div>
       <div className={styles.mainRow}>
         <div className={styles.resultsColumn}>
           {liveModeActive ? (

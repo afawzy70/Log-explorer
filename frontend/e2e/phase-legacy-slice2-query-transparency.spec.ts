@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { captureScreenshot } from './helpers';
 
 /*
@@ -44,9 +44,25 @@ async function gotoFixture(page: Page) {
   await page.getByRole('button', { name: /^all$/i }).click(); // severity: All
 }
 
-async function openQuery(page: Page) {
+/**
+ * Advanced Query now lives under More filters (UX-R1 §2, owner decision:
+ * "More Filters -> Advanced Query rather than a primary peer of Search in
+ * the main toolbar") - opens the drawer first if it isn't already open
+ * (a prior `search()` call closes it again, since Search sits outside the
+ * drawer's own dismissable-layer boundary), then Query's own nested popover.
+ */
+async function openQuery(page: Page): Promise<Locator> {
+  const drawerHeading = page.getByRole('heading', { name: 'More filters' });
+  if (!(await drawerHeading.isVisible().catch(() => false))) {
+    await page.getByRole('button', { name: /^more filters/i }).click();
+  }
   await page.getByRole('button', { name: /^query/i }).click();
-  await expect(page.getByRole('dialog', { name: /^query$/i })).toBeVisible();
+  const queryDialog = page.getByRole('dialog', { name: /^query$/i });
+  await expect(queryDialog).toBeVisible();
+  // Both the More filters drawer and Query's own popover are open at once
+  // (nested, UX-R1 §2) and each has its own Apply/Cancel - callers must use
+  // this returned locator, scoped to Query's own dialog, for those.
+  return queryDialog;
 }
 
 async function search(page: Page) {
@@ -66,7 +82,7 @@ async function rowServiceLevelPairs(page: Page): Promise<Array<{ service: string
 test.describe('Legacy Remediation Slice 2 — query transparency & advanced query authoring', () => {
   test('1. guided AND query (service = X AND level = ERROR) executes and every row satisfies both conditions', async ({ page }) => {
     await gotoFixture(page);
-    await openQuery(page);
+    const queryDialog = await openQuery(page);
 
     await page.getByRole('button', { name: /\+ condition/i }).click();
     await page.getByLabel('Field').selectOption('service');
@@ -80,7 +96,7 @@ test.describe('Legacy Remediation Slice 2 — query transparency & advanced quer
 
     await expect(page.getByText('service = "payments-api" AND level = "ERROR"')).toBeVisible();
     await captureScreenshot(page, 'legacy-slice2', 'guided-query-and-before-apply');
-    await page.getByRole('button', { name: /^apply$/i }).click();
+    await queryDialog.getByRole('button', { name: /^apply$/i }).click();
     await search(page);
 
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10_000 });
@@ -95,7 +111,7 @@ test.describe('Legacy Remediation Slice 2 — query transparency & advanced quer
 
   test('2. nested guided query service = X AND (level = ERROR OR level = WARN) executes and every row satisfies it', async ({ page }) => {
     await gotoFixture(page);
-    await openQuery(page);
+    const queryDialog = await openQuery(page);
 
     await page.getByRole('button', { name: /\+ condition/i }).click();
     await page.getByLabel('Field').first().selectOption('service');
@@ -118,7 +134,7 @@ test.describe('Legacy Remediation Slice 2 — query transparency & advanced quer
     await values.nth(2).fill('WARN');
 
     await expect(page.getByText('service = "payments-api" AND (level = "ERROR" OR level = "WARN")')).toBeVisible();
-    await page.getByRole('button', { name: /^apply$/i }).click();
+    await queryDialog.getByRole('button', { name: /^apply$/i }).click();
     await search(page);
 
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10_000 });
@@ -132,11 +148,11 @@ test.describe('Legacy Remediation Slice 2 — query transparency & advanced quer
 
   test('3. a guided query composes with an existing structured filter (service multi-select)', async ({ page }) => {
     await gotoFixture(page);
-    await openQuery(page);
+    const queryDialog = await openQuery(page);
     await page.getByRole('button', { name: /\+ condition/i }).click();
     await page.getByLabel('Field').selectOption('level');
     await page.getByLabel('Value').fill('ERROR');
-    await page.getByRole('button', { name: /^apply$/i }).click();
+    await queryDialog.getByRole('button', { name: /^apply$/i }).click();
 
     // Structured filter: narrow to a single service via the existing
     // service multi-select, entirely independent of the Query popover.
@@ -172,12 +188,12 @@ test.describe('Legacy Remediation Slice 2 — query transparency & advanced quer
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10_000 });
     const baselineRowCount = await page.locator('tbody tr').count();
 
-    await openQuery(page);
+    const queryDialog = await openQuery(page);
     await page.getByRole('button', { name: /\+ condition/i }).click();
     await page.getByLabel('Field').selectOption('service');
     await page.getByLabel('Value').fill('no-such-service-xyz');
-    await page.getByRole('button', { name: /^cancel$/i }).click();
-    await expect(page.getByRole('dialog')).not.toBeVisible();
+    await queryDialog.getByRole('button', { name: /^cancel$/i }).click();
+    await expect(queryDialog).not.toBeVisible();
 
     await search(page);
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10_000 });
@@ -188,11 +204,11 @@ test.describe('Legacy Remediation Slice 2 — query transparency & advanced quer
     await gotoFixture(page);
     await expect(page.getByRole('table')).not.toBeVisible();
 
-    await openQuery(page);
+    const queryDialog = await openQuery(page);
     await page.getByRole('button', { name: /\+ condition/i }).click();
     await page.getByLabel('Field').selectOption('service');
     await page.getByLabel('Value').fill('gateway');
-    await page.getByRole('button', { name: /^apply$/i }).click();
+    await queryDialog.getByRole('button', { name: /^apply$/i }).click();
 
     // Apply alone must not have fired a request or rendered a table.
     await expect(page.getByRole('table')).not.toBeVisible();
@@ -208,10 +224,10 @@ test.describe('Legacy Remediation Slice 2 — query transparency & advanced quer
 
   test('7. an invalid query shows a useful error and never renders results', async ({ page }) => {
     await gotoFixture(page);
-    await openQuery(page);
+    const queryDialog = await openQuery(page);
     await page.getByRole('tab', { name: /^text$/i }).click();
     await page.getByLabel('Query text').fill('bogusField = "x"');
-    await page.getByRole('button', { name: /^apply$/i }).click();
+    await queryDialog.getByRole('button', { name: /^apply$/i }).click();
 
     await search(page);
     const alert = page.getByRole('alert');
@@ -225,12 +241,12 @@ test.describe('Legacy Remediation Slice 2 — query transparency & advanced quer
 
     // Exact match, deterministic fixture value (FixtureCorpusGenerator: cif
     // = "FAKE-CIF-" + pad(1000 + (i % 900), 4), i=0 -> "FAKE-CIF-1000").
-    await openQuery(page);
+    let queryDialog = await openQuery(page);
     await page.getByRole('button', { name: /\+ condition/i }).click();
     await page.getByLabel('Field').selectOption('cif');
     await expect(page.getByLabel('Operator')).not.toContainText('contains');
     await page.getByLabel('Value').fill('FAKE-CIF-1000');
-    await page.getByRole('button', { name: /^apply$/i }).click();
+    await queryDialog.getByRole('button', { name: /^apply$/i }).click();
     await search(page);
     await expect(page.getByRole('table').or(page.getByText(/no results/i))).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('alert')).not.toBeVisible();
@@ -239,10 +255,10 @@ test.describe('Legacy Remediation Slice 2 — query transparency & advanced quer
     // even select "contains" for cif - proven above), with a sentinel
     // value that must never appear anywhere on the page if rejected.
     const sentinel = 'LEAK-SENTINEL-cif-e2e-91a2';
-    await openQuery(page);
+    queryDialog = await openQuery(page);
     await page.getByRole('tab', { name: /^text$/i }).click();
     await page.getByLabel('Query text').fill(`cif contains "${sentinel}"`);
-    await page.getByRole('button', { name: /^apply$/i }).click();
+    await queryDialog.getByRole('button', { name: /^apply$/i }).click();
     await search(page);
 
     const alert = page.getByRole('alert');
@@ -310,7 +326,7 @@ test.describe('Legacy Remediation Slice 2 — query transparency & advanced quer
     await page.goto('/');
     await page.selectOption('select', 'mock-loki');
 
-    await openQuery(page);
+    const queryDialog = await openQuery(page);
     const rawTab = page.getByRole('tab', { name: /raw logql/i });
     await expect(rawTab).toBeVisible(); // appears only because capabilities.rawLogQL is true
     await expect(rawTab).toHaveAttribute('aria-selected', 'false'); // off by default
@@ -318,7 +334,7 @@ test.describe('Legacy Remediation Slice 2 — query transparency & advanced quer
     await expect(page.getByText(/advanced.*bypassing the generated query.*off by default/i)).toBeVisible();
 
     await page.getByLabel('Raw LogQL').fill('{namespace="prod",app="gateway"}');
-    await page.getByRole('button', { name: /^apply$/i }).click();
+    await queryDialog.getByRole('button', { name: /^apply$/i }).click();
     await search(page);
 
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10_000 });

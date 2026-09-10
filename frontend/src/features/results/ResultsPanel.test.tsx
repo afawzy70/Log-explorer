@@ -80,6 +80,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     queryState: emptyQueryAuthoringState(),
     applyQuery: vi.fn(),
     applyDetectedField: vi.fn(),
+    clearAllFilters: vi.fn(),
     health: null,
     healthLoading: false,
     retryHealth: vi.fn(),
@@ -138,14 +139,16 @@ describe('ResultsPanel', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
-  it('shows an empty state with a one-click "Search last 1 day" affordance', async () => {
+  it('shows an empty state with a one-click "Search last 1 day" affordance that actually re-runs the search, not just adjusts the range', async () => {
     const user = userEvent.setup();
     const setTimeRange = vi.fn();
+    const runSearch = vi.fn();
     render(
       <ResultsPanel
         state={baseState({
           searchResult: { events: [], counts: { estimatedTotal: 0, returned: 0, visible: 0, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
           setTimeRange,
+          runSearch,
         })}
       />,
     );
@@ -153,6 +156,13 @@ describe('ResultsPanel', () => {
     expect(screen.getByText(/no results for this range/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /search last 1 day/i }));
     expect(setTimeRange).toHaveBeenCalledWith(expect.objectContaining({ presetId: DEFAULT_PRESET_ID }));
+    // Bug fix (found verifying UX-R1's own E2E suite): "one-click" (CLAUDE.md
+    // §4) means the click itself re-runs the search - previously this only
+    // adjusted the committed range and silently left the stale, still-empty
+    // result set on screen. Must be the exact same range just committed,
+    // not the (now-stale) one `runSearch` would otherwise close over.
+    const committedRange = setTimeRange.mock.calls[0][0];
+    expect(runSearch).toHaveBeenCalledWith(committedRange);
   });
 
   it('shows the counts summary and the real table when results exist', () => {

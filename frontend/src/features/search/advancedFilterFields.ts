@@ -40,11 +40,15 @@ export function emptyAdvancedFilterValues(): AdvancedFilterValues {
   };
 }
 
+/** Matches `backend/.../core/search/EventFilters.java`'s own per-field semantics exactly - never labeled without checking that source first (UX-R1 §6: "do not label something EXACT if source semantics do not guarantee exactness"). */
+export type AdvancedFilterMatchType = 'exact' | 'contains';
+
 export interface AdvancedFilterFieldDef {
   key: keyof AdvancedFilterValues;
   label: string;
   /** Applied chips show "Protected" instead of the raw value (CLAUDE.md §2 rule 1/5). */
   sensitive: boolean;
+  matchType: AdvancedFilterMatchType;
 }
 
 export interface AdvancedFilterGroup {
@@ -59,41 +63,41 @@ export const ADVANCED_FILTER_GROUPS: AdvancedFilterGroup[] = [
     id: 'who',
     title: 'Who / customer',
     fields: [
-      { key: 'userName', label: 'User name', sensitive: true },
-      { key: 'customerId', label: 'Customer ID', sensitive: true },
-      { key: 'cif', label: 'CIF', sensitive: true },
-      { key: 'deviceId', label: 'Device ID', sensitive: true },
-      { key: 'deviceIp', label: 'Device IP', sensitive: true },
+      { key: 'userName', label: 'User name', sensitive: true, matchType: 'exact' },
+      { key: 'customerId', label: 'Customer ID', sensitive: true, matchType: 'exact' },
+      { key: 'cif', label: 'CIF', sensitive: true, matchType: 'exact' },
+      { key: 'deviceId', label: 'Device ID', sensitive: true, matchType: 'exact' },
+      { key: 'deviceIp', label: 'Device IP', sensitive: true, matchType: 'exact' },
     ],
   },
   {
     id: 'flow',
     title: 'Request flow',
     fields: [
-      { key: 'traceId', label: 'Trace ID', sensitive: false },
-      { key: 'spanId', label: 'Span ID', sensitive: false },
-      { key: 'correlationId', label: 'Correlation ID', sensitive: false },
-      { key: 'journeyId', label: 'Journey ID', sensitive: false },
-      { key: 'eventId', label: 'Event ID', sensitive: false },
+      { key: 'traceId', label: 'Trace ID', sensitive: false, matchType: 'exact' },
+      { key: 'spanId', label: 'Span ID', sensitive: false, matchType: 'exact' },
+      { key: 'correlationId', label: 'Correlation ID', sensitive: false, matchType: 'exact' },
+      { key: 'journeyId', label: 'Journey ID', sensitive: false, matchType: 'exact' },
+      { key: 'eventId', label: 'Event ID', sensitive: false, matchType: 'exact' },
     ],
   },
   {
     id: 'what',
     title: 'What happened',
     fields: [
-      { key: 'errorCode', label: 'Error code', sensitive: false },
-      { key: 'businessStep', label: 'Business step', sensitive: false },
-      { key: 'uiIdentifier', label: 'UI identifier', sensitive: false },
-      { key: 'loggerContains', label: 'Logger / class contains', sensitive: false },
-      { key: 'text', label: 'Message contains', sensitive: false },
+      { key: 'errorCode', label: 'Error code', sensitive: false, matchType: 'exact' },
+      { key: 'businessStep', label: 'Business step', sensitive: false, matchType: 'exact' },
+      { key: 'uiIdentifier', label: 'UI identifier', sensitive: false, matchType: 'exact' },
+      { key: 'loggerContains', label: 'Logger / class contains', sensitive: false, matchType: 'contains' },
+      { key: 'text', label: 'Message contains', sensitive: false, matchType: 'contains' },
     ],
   },
   {
     id: 'client',
     title: 'Client context',
     fields: [
-      { key: 'devicePlatform', label: 'Device platform', sensitive: false },
-      { key: 'language', label: 'Language', sensitive: false },
+      { key: 'devicePlatform', label: 'Device platform', sensitive: false, matchType: 'exact' },
+      { key: 'language', label: 'Language', sensitive: false, matchType: 'exact' },
     ],
   },
 ];

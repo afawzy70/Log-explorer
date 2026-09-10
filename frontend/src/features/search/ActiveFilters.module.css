@@ -27,3 +27,41 @@
   border-radius: var(--radius-sm);
   padding: 0 var(--space-1);
 }
+
+.chipRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chipRemove:hover,
+.chipRemove:focus-visible {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.clearAll {
+  border: none;
+  background: transparent;
+  color: var(--color-accent);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  cursor: pointer;
+  padding: var(--space-1) var(--space-2);
+}
+
+.clearAll:hover,
+.clearAll:focus-visible {
+  text-decoration: underline;
+}

@@ -113,13 +113,23 @@ export function ResultsPanel({ state }: { state: SearchState }) {
           No results for this range.{' '}
           <Button
             variant="ghost"
-            onClick={() =>
-              state.setTimeRange({
+            onClick={() => {
+              // Bug fix: `setTimeRange` alone (the previous behavior) only
+              // ever adjusted the committed range - it never actually
+              // re-ran the search, so this "one-click" affordance
+              // (CLAUDE.md §4) silently left the stale, still-empty
+              // result set on screen. Passing the same range straight
+              // into `runSearch` avoids relying on `setTimeRange`'s state
+              // update having landed yet (`runSearch`'s own doc comment
+              // explains why that ordering can't be trusted).
+              const nextRange = {
                 presetId: DEFAULT_PRESET_ID,
                 start: oneDayAgo.toISOString(),
                 end: new Date().toISOString(),
-              })
-            }
+              };
+              state.setTimeRange(nextRange);
+              state.runSearch(nextRange);
+            }}
           >
             Search last 1 day
           </Button>
@@ -191,7 +201,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
  */
 function RefreshRow({ state }: { state: SearchState }) {
   return (
-    <Button variant="ghost" onClick={state.refresh} disabled={state.searchLoading}>
+    <Button variant="ghost" onClick={() => state.refresh()} disabled={state.searchLoading}>
       ↻ Refresh
     </Button>
   );

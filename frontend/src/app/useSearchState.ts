@@ -26,7 +26,8 @@ import { DEFAULT_PRESET_ID, TIME_RANGE_PRESETS, CUSTOM_RANGE_ID } from '../share
 import type { CommittedTimeRange } from '../features/timerange/types';
 import { formatUtcTimestamp } from '../features/inspector/timestampFormat';
 
-function defaultTimeRange(): CommittedTimeRange {
+/** Exported so "remove time range chip" / "Clear all" (UX-R1 §3/§4) can reset to the exact same fresh default this hook itself starts from - one definition, never a second copy that could drift. */
+export function defaultTimeRange(): CommittedTimeRange {
   const preset = TIME_RANGE_PRESETS.find((p) => p.id === DEFAULT_PRESET_ID)!;
   const end = new Date();
   const start = new Date(end.getTime() - preset.durationMs);
@@ -251,15 +252,35 @@ export function useSearchState() {
     setQueryState(next);
   }, []);
 
+  /**
+   * "Clear all" (UX-R1 §4): clears investigation *criteria* only - search
+   * text, selected services, severity, every advanced filter, the query,
+   * and the time range (back to a fresh default) - and deliberately never
+   * touches `selectedSourceId` or anything else considered environment/
+   * source scope, not a disposable filter (CLAUDE.md-aligned "define
+   * source/project as SCOPE, not disposable filters"). Table preferences
+   * and Settings live entirely outside this hook, so there is nothing here
+   * that could touch them either way.
+   */
+  const clearAllFilters = useCallback(() => {
+    setSearchText('');
+    setSelectedServices([]);
+    setSelectedLevels(DEFAULT_SEVERITY_LEVELS);
+    setAdvancedFilters(emptyAdvancedFilterValues());
+    setQueryState(emptyQueryAuthoringState());
+    setTimeRange(defaultTimeRange());
+  }, []);
+
   const buildRequestBody = useCallback(
-    (cursor?: string): SearchRequestBody | null => {
+    (cursor?: string, timeRangeOverride?: CommittedTimeRange): SearchRequestBody | null => {
       if (!selectedSourceId) {
         return null;
       }
+      const effectiveTimeRange = timeRangeOverride ?? timeRange;
       return {
         sourceId: selectedSourceId,
-        start: timeRange.start,
-        end: timeRange.end,
+        start: effectiveTimeRange.start,
+        end: effectiveTimeRange.end,
         services: selectedServices,
         levels: selectedLevels,
         text: searchText || undefined,
@@ -295,8 +316,22 @@ export function useSearchState() {
     return controller;
   }
 
-  const runSearch = useCallback(() => {
-    const body = buildRequestBody();
+  /**
+   * `timeRangeOverride` (bug fix, found while verifying UX-R1's own E2E
+   * regression suite): "Search last 1 day" (`ResultsPanel.tsx`'s zero-
+   * results recovery affordance, CLAUDE.md §4 - "zero results offers
+   * one-click 'Search last 1 day'") used to call `setTimeRange` alone,
+   * never re-running the search - "one-click" only ever adjusted the
+   * committed range, silently leaving the stale (still-empty) result set
+   * on screen. Calling `setTimeRange` then `runSearch()` back-to-back in
+   * the same handler does not fix this on its own: React state updates
+   * are not synchronous, so `runSearch`'s own `buildRequestBody` closure
+   * would still read the *previous* `timeRange` value at call time. This
+   * override lets a caller supply the new range directly, in the same
+   * tick it commits it, so the search that fires actually reflects it.
+   */
+  const runSearch = useCallback((timeRangeOverride?: CommittedTimeRange) => {
+    const body = buildRequestBody(undefined, timeRangeOverride);
     if (!body) {
       return;
     }
@@ -317,7 +352,7 @@ export function useSearchState() {
     setJourneyQuery(null);
     setJourneyResult(null);
     setJourneyError(null);
-    const searchedRange = timeRange;
+    const searchedRange = timeRangeOverride ?? timeRange;
     runSearchApi(body, controller.signal)
       .then((result) => {
         setSearchResult(result);
@@ -609,6 +644,7 @@ export function useSearchState() {
     queryState,
     applyQuery,
     applyDetectedField,
+    clearAllFilters,
     health,
     healthLoading,
     retryHealth: () => selectedSourceId && checkHealth(selectedSourceId),
