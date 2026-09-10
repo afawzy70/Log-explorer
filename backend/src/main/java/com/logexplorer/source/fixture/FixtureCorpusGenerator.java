@@ -141,15 +141,33 @@ public class FixtureCorpusGenerator {
     records.add(event(rng, base + 9, "notification-worker", null, null, CorrelationVariant.HEADER, true,
         null, null, "Notification worker processed unrecognized event shape"));
 
-    // Slots 10..(10+BURST_SIZE-1): a burst.
+    // Slot 10: Legacy Remediation Slice 7 - free-text sensitive-data
+    // redaction fixture, guaranteed at a fixed position every cycle so a
+    // real browser E2E test can verify real server-side redaction against
+    // the real running app (StubLogSource, the injection path the backend
+    // leak tests use, is not reachable from the browser). Combines several
+    // high-confidence redactable patterns in one event (customerId, a
+    // valid-Luhn card with spaces, a labeled password, a Bearer JWT in the
+    // exception text) plus one deliberately Luhn-INVALID 16-digit
+    // "referenceNumber" that must remain visible - both are load-bearing
+    // for `phase-legacy-slice7-redaction.spec.ts`.
+    records.add(event(rng, base + 10, "accounts-api", null, null, CorrelationVariant.HEADER, false,
+        "ERROR",
+        "com.logexplorer.fixture.accountsapi.AuthException: token check failed\n"
+            + "\tat com.logexplorer.fixture.accountsapi.Auth.check(Auth.java:88)\n"
+            + "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmaXh0dXJlIn0.dGhpc2lzYWZha2VzaWduYXR1cmU",
+        "Login failed for customerId=DEMO-SENSITIVE-778899 referenceNumber=1234567890123456 "
+            + "card 4111 1111 1111 1111 declined password=FixtureSecret123!"));
+
+    // Slots 11..(11+BURST_SIZE-1): a burst.
     for (int b = 0; b < BURST_SIZE; b++) {
-      int idx = base + 10 + b;
+      int idx = base + 11 + b;
       records.add(event(rng, idx, pick(rng, SERVICES), null, null, CorrelationVariant.HEADER, false,
           null, null, "[burst] " + describeStep(rng, SERVICES.get(idx % SERVICES.size()))));
     }
 
     // Remaining slots: filler, for realistic volume.
-    int idx = base + 10 + BURST_SIZE;
+    int idx = base + 11 + BURST_SIZE;
     while (records.size() < CYCLE_LEN) {
       String service = pick(rng, SERVICES);
       records.add(event(rng, idx, service, null, null,
