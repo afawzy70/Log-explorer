@@ -16,7 +16,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-APP_PORT="${APP_PORT:-8080}"
+APP_PORT="${APP_PORT:-3434}"
 BASE_URL="http://127.0.0.1:${APP_PORT}"
 COMPOSE=(docker compose --profile demo)
 

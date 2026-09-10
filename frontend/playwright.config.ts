@@ -20,14 +20,15 @@ export default defineConfig({
   reporter: process.env.CI ? [['html', { open: 'never' }], ['list']] : [['list']],
   retries: process.env.CI ? 1 : 0,
   use: {
-    baseURL: 'http://localhost:5173',
+    // Legacy Remediation Slice 9 §K: the frontend dev server's formal port is 3435.
+    baseURL: 'http://localhost:3435',
     viewport: { width: 1280, height: 900 },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
   webServer: {
     command: 'npm run dev',
-    url: 'http://localhost:5173',
+    url: 'http://localhost:3435',
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,
   },

@@ -31,17 +31,24 @@ services:
     labels:
       logexplorer.excluded: "true"
     ports:
-      - "${APP_PORT:-8080}:8080"
+      # Legacy Remediation Slice 9 §B: the host-side publish is scoped to
+      # 127.0.0.1 - never reachable from outside the host machine, the same
+      # "loopback only" property the application's own default (see
+      # application.yml) provides for a non-containerized run. SERVER_ADDRESS
+      # below is what lets the container's *internal* bind still be 0.0.0.0
+      # (required for this host-side publish to reach it at all).
+      - "127.0.0.1:${APP_PORT:-3434}:3434"
     environment:
       # Falls back to "dev" (enables the in-process Fixture source) even
       # with no .env file at all - the default happy path genuinely needs
       # no configuration.
       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-dev}
+      - SERVER_ADDRESS=0.0.0.0
     env_file:
       - path: .env
         required: false
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:8080/actuator/health"]
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:3434/actuator/health"]
       interval: 10s
       timeout: 3s
       start_period: 20s

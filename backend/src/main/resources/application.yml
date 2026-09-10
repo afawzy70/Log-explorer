@@ -2,6 +2,29 @@ spring:
   application:
     name: log-explorer-backend
 
+server:
+  # Legacy Remediation Slice 9 §B/§K: 3434 is the project's formal default
+  # port (paired with the frontend dev server's own 3435 - see
+  # frontend/vite.config.ts). Never assumed free - the desktop launcher
+  # (desktop/) picks an actual port at runtime (preferring 3434, falling
+  # back to a free ephemeral one) and always passes it through explicitly
+  # via SERVER_PORT, so this default only matters for a bare `java -jar`/
+  # `mvnw spring-boot:run` invocation with no override.
+  port: ${SERVER_PORT:3434}
+  # Loopback-only by default (Slice 9 §B: "Production binding must be
+  # 127.0.0.1 only, NOT 0.0.0.0") - correct and safest for the desktop
+  # launcher and any other same-machine deployment, where nothing outside
+  # this process ever needs to reach it. A containerized deployment
+  # (Docker Compose, OpenShift) runs this same process inside its own
+  # network namespace, where 127.0.0.1 would make it unreachable even from
+  # its own container's published port - those deployments explicitly set
+  # SERVER_ADDRESS=0.0.0.0 themselves (see docker-compose.yml,
+  # deploy/openshift/configmap.yaml) and achieve the equivalent
+  # "never reachable beyond the intended boundary" property at their own
+  # layer instead (Compose's host-side port publish scoped to
+  # 127.0.0.1, and Kubernetes/OpenShift's Service/NetworkPolicy boundary).
+  address: ${SERVER_ADDRESS:127.0.0.1}
+
 logging:
   level:
     # Explicit floor, independent of root: Reactor Netty's HTTP wire-tracing

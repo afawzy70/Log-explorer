@@ -2,16 +2,19 @@ import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 // Phase F: the dev server proxies /api and /actuator to the real backend
-// (default port 8080) so the app never needs CORS - matching Phase K's
-// "one deployable image, same origin" shape even in dev.
+// so the app never needs CORS - matching Phase K's "one deployable image,
+// same origin" shape even in dev. Legacy Remediation Slice 9 §K formalizes
+// the project's two development ports: Spring Boot on 3434, Vite on 3435 -
+// production has no separate Vite port at all (Spring Boot serves the
+// built static assets directly - see the Dockerfile).
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5173,
+    port: 3435,
     strictPort: true,
     proxy: {
-      '/api': 'http://127.0.0.1:8080',
-      '/actuator': 'http://127.0.0.1:8080',
+      '/api': 'http://127.0.0.1:3434',
+      '/actuator': 'http://127.0.0.1:3434',
     },
   },
   test: {
