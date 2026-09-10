@@ -201,6 +201,10 @@ LogExplorer.exe
      5. open a WebView2 window navigated to http://127.0.0.1:<port>/
   -> on window close: kill the whole backend process tree, release the
      mutex - no orphaned java.exe
+     (the backend is also assigned to a Windows Job Object configured
+     with KILL_ON_JOB_CLOSE the moment it starts - the OS itself kills
+     it if the launcher ever ends any other way, e.g. an external
+     force-kill or a crash, not just on a graceful window close)
 ```
 
 WebView2 embeds the OS's own installed Edge Chromium runtime rather than
