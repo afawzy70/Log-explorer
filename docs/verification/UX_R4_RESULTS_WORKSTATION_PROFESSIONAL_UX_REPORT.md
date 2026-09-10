@@ -414,7 +414,8 @@ points (row click, View details, Show surrounding logs):
 | Typecheck (`tsc -b`) | **PASS** |
 | Production build | **PASS** |
 | Playwright — UX-R4 suite | **PASS** — 23/23 |
-| Playwright — full suite | 219 passed, 2 failed — **both pre-existing**, see below |
+| Playwright — full suite (local) | 219 passed, 2 failed — **both pre-existing**, see below |
+| **CI on this PR (#35)** | **PASS — all four green: Backend, Frontend, E2E (10m14s), Windows Desktop** |
 
 **New tests**: `ResultsTable.rowInteraction.test.tsx` (13),
 `useSearchState.sorting.test.ts` (9), `SortControl.test.tsx` (5),
@@ -444,7 +445,9 @@ canonical string are identical **by construction**.
    on the service multi-select checkbox. **Confirmed pre-existing**: the
    working tree was stashed and the test re-run against unmodified
    `f237ebd`, where it fails identically. Local-environment-specific —
-   post-merge CI on `main` is green for the same commit.
+   and now confirmed twice over: post-merge CI on `main` is green for the
+   same commit, and this PR's own CI runs the full Playwright suite and
+   passes it. Neither spec is failing because of UX-R4.
 
 **Side effect recorded**: running the full Playwright suite rewrites the
 committed evidence PNGs of *earlier* phases, because those specs capture
