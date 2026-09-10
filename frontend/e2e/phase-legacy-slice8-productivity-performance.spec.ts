@@ -182,6 +182,17 @@ test.describe('Legacy Remediation Slice 8 — productivity, safe preferences & f
     await page.reload();
     await expect(page.getByRole('combobox')).not.toHaveValue(''); // sources reload; source selection itself is not a persisted preference
 
+    // Source selection is explicitly NOT a persisted preference (confirmed
+    // above), so the post-reload default source is not guaranteed to be
+    // `fixture` in every environment (it depends on source-discovery
+    // order/availability, which this scenario is not testing) - it
+    // deterministically re-selects `fixture` itself rather than assuming
+    // whatever source the app happened to default to. Selects directly
+    // (not via `gotoFixture`, which also does its own `page.goto('/')`) so
+    // this stays a reload, not an additional navigation.
+    await page.selectOption('select', 'fixture');
+    await expect(page.getByRole('combobox')).toHaveValue('fixture');
+
     // The safe preference (density) survived the reload...
     await search(page);
     await page.getByRole('button', { name: /^columns$/i }).click();
