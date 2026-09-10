@@ -120,11 +120,19 @@ jobs:
       - name: Build the Windows installer
         shell: pwsh
         run: |
+          # Absolute paths - installer.iss's own relative-path defaults
+          # resolve relative to the .iss file's directory (desktop\
+          # packaging\), not the working directory ISCC.exe is invoked
+          # from, so a relative override here would resolve against the
+          # wrong base and silently look in the wrong place.
+          $publishDir = (Resolve-Path desktop\build\launcher-publish).Path
+          $runtimeDir = (Resolve-Path desktop\build\runtime).Path
+          $appJar = (Resolve-Path desktop\build\app\log-explorer-backend.jar).Path
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
             /DMyAppVersion=${{ steps.version.outputs.version }} `
-            /DPublishDir=desktop\build\launcher-publish `
-            /DRuntimeDir=desktop\build\runtime `
-            /DAppJar=desktop\build\app\log-explorer-backend.jar `
+            /DPublishDir=$publishDir `
+            /DRuntimeDir=$runtimeDir `
+            /DAppJar=$appJar `
             desktop\packaging\installer.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC.exe failed" }
 

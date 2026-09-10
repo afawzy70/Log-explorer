@@ -12,10 +12,11 @@ were fixed) — nothing here is aspirational.
   standalone `docker-compose` binary). Verified against Docker 29.7.2 /
   Compose v5.5.0; any reasonably current Compose v2 release should work
   the same way.
-- Linux, macOS, or Windows with WSL2 — anywhere the Docker daemon and a
-  POSIX shell are both available. `scripts/smoke.sh` needs `bash` and a
-  `date` binary that understands either GNU's `-d` or BSD's `-v` relative-
-  date flags (both are covered).
+- Linux, macOS, or Windows (Docker Desktop) — the `docker compose`
+  commands below are identical on every platform. Every script in
+  `scripts/` has a native Windows PowerShell (`.ps1`) and Linux/macOS Bash
+  (`.sh`) version (Legacy Remediation Slice 9 §W) — a Windows developer
+  never needs WSL2/Git Bash/Cygwin for anything in this guide.
 - No local Java or Node installation needed — the whole build happens
   inside the multi-stage `Dockerfile`.
 - **Remote Docker TCP exposure is never required.** Nothing in this repo
@@ -31,7 +32,7 @@ cp .env.example .env
 docker compose --profile demo up --build
 ```
 
-Then open <http://localhost:8080>. This starts two containers:
+Then open <http://localhost:3434>. This starts two containers:
 
 - **`app`** — the one deployable image (React build embedded as Spring
   Boot static resources, see `Dockerfile`). `SPRING_PROFILES_ACTIVE=dev`
@@ -180,7 +181,7 @@ it, never a prerequisite.
 
 | Variable | Default | What |
 |---|---|---|
-| `APP_PORT` | `8080` | The app's own HTTP port (host-side mapping; the container itself always listens on 8080). |
+| `APP_PORT` | `3434` | The app's own HTTP port, published on `127.0.0.1` only (host-side mapping; the container itself always listens on 3434 - see `docker-compose.yml`). |
 | `MOCK_LOKI_PORT` | `3100` | The `loki-mock` profile's stub server (host-side mapping). |
 
 `demo-log-generator` publishes no ports — it only ever emits to its own
@@ -222,6 +223,14 @@ unavailable until whichever profile that supplies them is active).
 
 ## Deterministic smoke test
 
+Windows PowerShell:
+
+```powershell
+.\scripts\smoke.ps1
+```
+
+Linux / macOS:
+
 ```bash
 ./scripts/smoke.sh
 ```
@@ -230,10 +239,36 @@ Build → start → health → source discovery → search → UI load → SPA-
 fallback-scope check → stop → cleanup, all against the `demo` profile
 (the default happy path — no `docker-socket`/`loki-mock` dependency, so
 this script alone is a fair fresh-clone rehearsal). Cleanup is always
-**limited to this stack** (`docker compose ... down`, run from a shell
-`trap` so it fires even on failure) — never a global prune, never touches
-an unrelated container or image on the host. Exits non-zero with a
-labeled `FAIL:` line naming the failing step if anything doesn't match.
+**limited to this stack** (`docker compose ... down`, run from a trap/
+`finally` block so it fires even on failure) — never a global prune,
+never touches an unrelated container or image on the host. Exits
+non-zero with a labeled `FAIL:` line naming the failing step if anything
+doesn't match.
+
+## Offline export/import (no registry access)
+
+For moving the built image to a machine with no registry access at all
+(Legacy Remediation Slice 9 §O, capability matrix `PKG-03`):
+
+Windows PowerShell:
+
+```powershell
+.\scripts\export-image.ps1            # -> log-explorer.tar.gz
+# on the target machine:
+.\scripts\import-image.ps1 log-explorer.tar.gz
+```
+
+Linux / macOS:
+
+```bash
+./scripts/export-image.sh             # -> log-explorer.tar.gz
+# on the target machine:
+./scripts/import-image.sh log-explorer.tar.gz
+```
+
+Only the image layers are included — never a `.env` file, never a
+credential. `docker compose --profile demo up` (no `--build`, since the
+image is already loaded) starts it exactly as the Quick Start above does.
 
 ## Troubleshooting
 
