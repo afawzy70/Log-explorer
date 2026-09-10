@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import type { ReactElement } from 'react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { EventInspector } from './EventInspector';
@@ -9,6 +10,19 @@ import { emptyAdvancedFilterValues } from '../search/advancedFilterFields';
 import { emptyQueryAuthoringState } from '../search/QueryBuilder';
 import { DEFAULT_SEVERITY_LEVELS } from '../search/severityLevels';
 import { DEFAULT_PRESET_ID } from '../../shared/time/presets';
+import { ShortcutRegistryProvider } from '../../shared/keyboard/ShortcutRegistry';
+
+/**
+ * EventInspector registers its Escape/"["/"]" bindings through the shared
+ * shortcut registry (Legacy Remediation Slice 8) - without an ancestor
+ * `ShortcutRegistryProvider`, `useShortcut` silently no-ops, which would
+ * make every keyboard test in this file pass vacuously regardless of
+ * whether the real guard logic is correct. Every render in this file goes
+ * through this helper so the keyboard assertions stay meaningful.
+ */
+function renderWithRegistry(ui: ReactElement) {
+  return render(<ShortcutRegistryProvider>{ui}</ShortcutRegistryProvider>);
+}
 
 function baseState(overrides: Partial<SearchState> = {}): SearchState {
   const caps = {
@@ -75,12 +89,12 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
 
 describe('EventInspector', () => {
   it('renders nothing when there is no selection', () => {
-    const { container } = render(<EventInspector state={baseState()} />);
+    const { container } = renderWithRegistry(<EventInspector state={baseState()} />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it('renders every section for a selected event', () => {
-    render(<EventInspector state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0 })} />);
+    renderWithRegistry(<EventInspector state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0 })} />);
     expect(screen.getByRole('heading', { name: /overview/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /actor & client/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /request flow/i })).toBeInTheDocument();
@@ -89,7 +103,7 @@ describe('EventInspector', () => {
   });
 
   it('focus moves into the panel (the close button) when it opens', async () => {
-    render(<EventInspector state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0 })} />);
+    renderWithRegistry(<EventInspector state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0 })} />);
     await waitFor(() => expect(screen.getByRole('button', { name: /close event inspector/i })).toHaveFocus());
   });
 
@@ -97,7 +111,7 @@ describe('EventInspector', () => {
     const user = userEvent.setup();
     const selectPreviousEvent = vi.fn();
     const selectNextEvent = vi.fn();
-    render(
+    renderWithRegistry(
       <EventInspector
         state={baseState({
           selectedEvent: fullEvent(),
@@ -119,7 +133,7 @@ describe('EventInspector', () => {
   it('"]" and "[" navigate next/previous, bounded (UI Parity Acceleration Pass keyboard productivity)', () => {
     const selectPreviousEvent = vi.fn();
     const selectNextEvent = vi.fn();
-    render(
+    renderWithRegistry(
       <EventInspector
         state={baseState({
           selectedEvent: fullEvent(),
@@ -145,7 +159,7 @@ describe('EventInspector', () => {
   it('"[" / "]" are ignored while focus is inside a text field (never hijacks typing)', async () => {
     const user = userEvent.setup();
     const selectNextEvent = vi.fn();
-    render(
+    renderWithRegistry(
       <div>
         <input aria-label="scratch input" />
         <EventInspector
@@ -163,7 +177,7 @@ describe('EventInspector', () => {
   it('Escape closes the inspector', async () => {
     const user = userEvent.setup();
     const closeInspector = vi.fn();
-    render(<EventInspector state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0, closeInspector })} />);
+    renderWithRegistry(<EventInspector state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0, closeInspector })} />);
 
     await user.keyboard('{Escape}');
     expect(closeInspector).toHaveBeenCalledTimes(1);
@@ -172,7 +186,7 @@ describe('EventInspector', () => {
   it('the close button and backdrop both call closeInspector', async () => {
     const user = userEvent.setup();
     const closeInspector = vi.fn();
-    const { container } = render(
+    const { container } = renderWithRegistry(
       <EventInspector state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0, closeInspector })} />,
     );
 
@@ -187,7 +201,7 @@ describe('EventInspector', () => {
 
   it('the resize handle widens the panel on ArrowLeft and narrows it on ArrowRight, staying within bounds', async () => {
     const user = userEvent.setup();
-    render(<EventInspector state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0 })} />);
+    renderWithRegistry(<EventInspector state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0 })} />);
 
     const handle = screen.getByRole('separator', { name: /resize event details panel/i });
     handle.focus();
@@ -199,7 +213,7 @@ describe('EventInspector', () => {
   });
 
   it('has no detectable accessibility violations', async () => {
-    const { container } = render(<EventInspector state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0 })} />);
+    const { container } = renderWithRegistry(<EventInspector state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0 })} />);
     expect(await axe(container)).toHaveNoViolations();
   });
 
@@ -215,14 +229,14 @@ describe('EventInspector', () => {
     });
 
     it('the Business/error section renders the redacted exception as plain text, never the original', () => {
-      render(<EventInspector state={baseState({ selectedEvent: redactedEvent, selectedIndex: 0 })} />);
+      renderWithRegistry(<EventInspector state={baseState({ selectedEvent: redactedEvent, selectedIndex: 0 })} />);
       const section = screen.getByRole('heading', { name: /business \/ error/i }).closest('section')!;
       expect(within(section).getByText(/Authorization: Bearer \[REDACTED\]/)).toBeInTheDocument();
       expect(section.textContent).not.toMatch(/Bearer ey[A-Za-z0-9]/); // no raw-looking token survives
     });
 
     it('the overview/title area renders the redacted message', () => {
-      render(<EventInspector state={baseState({ selectedEvent: redactedEvent, selectedIndex: 0 })} />);
+      renderWithRegistry(<EventInspector state={baseState({ selectedEvent: redactedEvent, selectedIndex: 0 })} />);
       const dialog = screen.getByRole('dialog', { name: /event details/i });
       expect(dialog.textContent).toContain('[REDACTED]');
       expect(dialog.textContent).toContain('[REDACTED_CARD]');
@@ -230,7 +244,7 @@ describe('EventInspector', () => {
 
     it('the raw JSON dump only ever shows what the event already carries - already-redacted text, never anything extra', async () => {
       const user = userEvent.setup();
-      render(<EventInspector state={baseState({ selectedEvent: redactedEvent, selectedIndex: 0 })} />);
+      renderWithRegistry(<EventInspector state={baseState({ selectedEvent: redactedEvent, selectedIndex: 0 })} />);
       await user.click(screen.getByText('Raw JSON'));
       const rawJson = screen.getByText(/"message"/).closest('pre')!;
       expect(rawJson.textContent).toContain('[REDACTED]');
@@ -239,13 +253,13 @@ describe('EventInspector', () => {
     });
 
     it('there is no reveal action anywhere for a redacted message/exception - the marker text is all there is', () => {
-      render(<EventInspector state={baseState({ selectedEvent: redactedEvent, selectedIndex: 0 })} />);
+      renderWithRegistry(<EventInspector state={baseState({ selectedEvent: redactedEvent, selectedIndex: 0 })} />);
       expect(screen.queryByRole('button', { name: /reveal/i })).not.toBeInTheDocument();
       expect(screen.queryByText(/click to reveal|show original|unmask/i)).not.toBeInTheDocument();
     });
 
     it('has no detectable accessibility violations with redacted content', async () => {
-      const { container } = render(<EventInspector state={baseState({ selectedEvent: redactedEvent, selectedIndex: 0 })} />);
+      const { container } = renderWithRegistry(<EventInspector state={baseState({ selectedEvent: redactedEvent, selectedIndex: 0 })} />);
       expect(await axe(container)).toHaveNoViolations();
     });
   });

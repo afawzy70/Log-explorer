@@ -8,7 +8,8 @@ import { LiveTailPanel } from '../features/live/LiveTailPanel';
 import { useLiveTail } from '../features/live/useLiveTail';
 import { useLiveKeyboardShortcuts } from '../features/live/useLiveKeyboardShortcuts';
 import { useSearchState } from './useSearchState';
-import { useGlobalShortcuts } from './useGlobalShortcuts';
+import { useProductivityShortcuts } from './useProductivityShortcuts';
+import { ShortcutRegistryProvider } from '../shared/keyboard/ShortcutRegistry';
 import styles from './App.module.css';
 
 /**
@@ -26,9 +27,23 @@ import styles from './App.module.css';
  * inspector only ever operates on historical search rows).
  */
 export default function App() {
+  // The registry must be a real ancestor of every hook that calls
+  // useShortcut (AppContent's own useProductivityShortcuts, and every
+  // descendant that registers its own) - a component cannot see a
+  // Context.Provider it renders itself, only one an ancestor renders, so
+  // this thin outer component exists purely to put the Provider above
+  // AppContent (Legacy Remediation Slice 8).
+  return (
+    <ShortcutRegistryProvider>
+      <AppContent />
+    </ShortcutRegistryProvider>
+  );
+}
+
+function AppContent() {
   const state = useSearchState();
   const live = useLiveTail();
-  useGlobalShortcuts(state.runSearch);
+  useProductivityShortcuts(state);
 
   const liveModeActive = live.connectionState !== 'idle';
   useLiveKeyboardShortcuts(live, liveModeActive);
