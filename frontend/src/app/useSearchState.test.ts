@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { eventIdentity, useSearchState } from './useSearchState';
 import { EMPTY_QUERY_PLAN } from '../shared/api/testFixtures';
+import { CUSTOM_RANGE_ID } from '../shared/time/presets';
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -867,12 +868,144 @@ describe('useSearchState', () => {
       expect(searchCalls[0].body).toContain('"end":"2026-03-02T00:00:00.000Z"');
     });
 
-    it('runSearch() with no override still uses the current committed timeRange, unchanged from before', async () => {
+    it('runSearch() with no override sends whatever `recomputeRelativeRange` committed (the wire body and the post-call committed timeRange always agree)', async () => {
       const result = await renderReady();
       act(() => result.current.runSearch());
       await waitFor(() => expect(searchCalls).toHaveLength(1));
       expect(searchCalls[0].body).toContain(`"start":"${result.current.timeRange.start}"`);
       expect(searchCalls[0].body).toContain(`"end":"${result.current.timeRange.end}"`);
+    });
+  });
+
+  describe('UX-R2 — search-freshness defect (owner-reported, real-Docker-reproduced)', () => {
+    it('a relative preset (the default "Last 1 day") advances its end on every explicit Search, so a log created between two clicks is included the second time', async () => {
+      const result = await renderReady();
+      expect(result.current.timeRange.presetId).not.toBe(CUSTOM_RANGE_ID);
+
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      const firstEnd = searchCalls[0].body.match(/"end":"([^"]+)"/)?.[1];
+      expect(firstEnd).toBeTruthy();
+
+      // A real gap, not a fake-timer trick - `Date.now()` always advances,
+      // so a strictly-later `end` on the second call is real evidence of
+      // recomputation, not an assumption about mocked time.
+      await new Promise((r) => setTimeout(r, 60));
+
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(2));
+      const secondEnd = searchCalls[1].body.match(/"end":"([^"]+)"/)?.[1];
+      expect(secondEnd).toBeTruthy();
+
+      expect(new Date(secondEnd!).getTime()).toBeGreaterThan(new Date(firstEnd!).getTime());
+      // Same preset identity, only the absolute window advanced - never
+      // silently reset to a different preset.
+      expect(result.current.timeRange.presetId).toBe('1d');
+    });
+
+    it('refresh() (aliased to runSearch) advances a relative preset exactly the same way as Search', async () => {
+      const result = await renderReady();
+      act(() => result.current.refresh());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      const firstEnd = searchCalls[0].body.match(/"end":"([^"]+)"/)?.[1];
+
+      await new Promise((r) => setTimeout(r, 60));
+      act(() => result.current.refresh());
+      await waitFor(() => expect(searchCalls).toHaveLength(2));
+      const secondEnd = searchCalls[1].body.match(/"end":"([^"]+)"/)?.[1];
+
+      expect(new Date(secondEnd!).getTime()).toBeGreaterThan(new Date(firstEnd!).getTime());
+    });
+
+    it('a CUSTOM absolute range never auto-advances - repeated Search sends the exact same start/end the investigator set', async () => {
+      const result = await renderReady();
+      const customRange = { presetId: CUSTOM_RANGE_ID, start: '2020-06-01T00:00:00.000Z', end: '2020-06-01T01:00:00.000Z' };
+      act(() => result.current.setTimeRange(customRange));
+
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      expect(searchCalls[0].body).toContain('"start":"2020-06-01T00:00:00.000Z"');
+      expect(searchCalls[0].body).toContain('"end":"2020-06-01T01:00:00.000Z"');
+
+      await new Promise((r) => setTimeout(r, 60));
+
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(2));
+      expect(searchCalls[1].body).toContain('"start":"2020-06-01T00:00:00.000Z"');
+      expect(searchCalls[1].body).toContain('"end":"2020-06-01T01:00:00.000Z"');
+      expect(result.current.timeRange).toEqual(customRange);
+    });
+
+    it('loadMore never recomputes the time range mid-pagination - it must carry the exact same boundary as the search it is continuing', async () => {
+      const result = await renderReady();
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      searchCalls[0].resolve(
+        jsonResponse({
+          events: [eventWithMessage('page-1')],
+          counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
+          nextCursor: 'cursor-abc', queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
+      const endAfterSearch = result.current.timeRange.end;
+
+      await new Promise((r) => setTimeout(r, 60));
+      act(() => result.current.loadMore());
+      await waitFor(() => expect(searchCalls).toHaveLength(2));
+
+      // loadMore's own request still carries the cursor, and the committed
+      // timeRange itself was never touched by it (only a fresh runSearch
+      // is allowed to advance a relative preset).
+      expect(searchCalls[1].body).toContain('cursor-abc');
+      expect(result.current.timeRange.end).toBe(endAfterSearch);
+    });
+
+    it('a fresh Search after Load more still advances the relative range and never carries the old cursor forward', async () => {
+      const result = await renderReady();
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      searchCalls[0].resolve(
+        jsonResponse({
+          events: [eventWithMessage('page-1')],
+          counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
+          nextCursor: 'cursor-abc', queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
+
+      act(() => result.current.loadMore());
+      await waitFor(() => expect(searchCalls).toHaveLength(2));
+      searchCalls[1].resolve(
+        jsonResponse({
+          events: [eventWithMessage('page-2')],
+          counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(2));
+      const endAfterLoadMore = result.current.timeRange.end;
+
+      await new Promise((r) => setTimeout(r, 60));
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(3));
+
+      expect(searchCalls[2].body).not.toContain('cursor-abc'); // a fresh search, never a continuation
+      expect(new Date(result.current.timeRange.end).getTime()).toBeGreaterThan(new Date(endAfterLoadMore).getTime());
+    });
+
+    it('an identical explicit repeated Search still issues a fresh network request (never suppressed as a no-op duplicate)', async () => {
+      const result = await renderReady();
+      const customRange = { presetId: CUSTOM_RANGE_ID, start: '2020-06-01T00:00:00.000Z', end: '2020-06-01T01:00:00.000Z' };
+      act(() => result.current.setTimeRange(customRange));
+
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(2));
+      // Two real, identical-criteria requests actually reached the network - a
+      // custom range's own repeated-Search case never gets short-circuited.
+      expect(searchCalls[1].body).toBe(searchCalls[0].body);
     });
   });
 });

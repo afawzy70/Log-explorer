@@ -8,16 +8,23 @@ Real evidence only — every row below was either driven through the real
 running app + real dev-profile backend (Fixture source), or traced in the
 current source code and cross-referenced against that real evidence.
 
-**Status: NOT CLOSED.** Per the owner's explicit instruction on the
-screenshot-correction pass, this representative sample is real evidence
-that no broken filter was found in what was tested, but it does **not**
-settle the owner's "filters appear not to work" report on its own — see
-"Not covered in this pass" below for the exact remaining gap, and
-`OLD_UX_RESTORATION_AUDIT.md`'s own "Filter functional audit — not
-closed" section. The exhaustive matrix (every field, both included/
-excluded assertions, real Docker/Fixture data, Loki marked
-environment-blocked if unavailable) remains UX-R2's own required scope,
-unchanged.
+**Status: CLOSED as of UX-R2** for the Fixture source (all 17 advanced
+filter fields + `text` + the guided Query builder, each with real
+included-and-excluded evidence) and for the specific real-Docker scenario
+UX-R2's own mission required (the search-freshness defect, using a real
+service-scoped filter against a real container). See
+`docs/verification/UX_R2_FILTER_AND_SEARCH_FUNCTIONAL_REPORT.md` for the
+11 fields this document originally left untested (userName, cif, deviceId,
+deviceIp, spanId, correlationId, journeyId, eventId, uiIdentifier,
+loggerContains, devicePlatform, language), the loggerContains
+substring-match proof, and a two-field AND-combination proof. **Not
+closed**: Docker/Loki-specific per-adapter push-down/optimization behavior
+(as opposed to the shared `EventFilters` matching logic itself, which
+generalizes across sources) was not independently re-verified field-by-
+field this pass; Loki/OpenShift remains `BLOCKED` — no reachable cluster
+in this environment. The representative sample below (this document's
+original content, unmodified) remains valid, real evidence — UX-R2 only
+*adds* to it, nothing here was found incorrect.
 
 ## Headline finding
 
@@ -100,44 +107,50 @@ change bundled into this UX mission.
 
 ## Not covered in this pass (be honest about the gap)
 
-- The remaining ~10 advanced filter fields (`userName`, `cif`, `deviceId`,
-  `deviceIp`, `spanId`, `correlationId`, `journeyId`, `eventId`,
-  `uiIdentifier`, `loggerContains`, `devicePlatform`, `language`) were
-  **not** individually empirically tested this pass — each was confirmed
-  present in `SearchRequestDto` and confirmed to have a real predicate in
-  the shared `EventFilters.matches()` (read directly, quoted in the
-  method body above), giving reasonable confidence given the demonstrated
-  correctness of the general mechanism, but this is source-code
-  confirmation, not the same empirical bar as the fields tested live.
+**Update (UX-R2): the item below about the ~10 remaining advanced filter
+fields is now closed** — see
+`docs/verification/UX_R2_FILTER_AND_SEARCH_FUNCTIONAL_REPORT.md` for the
+full empirical evidence (real inclusion/exclusion counts, sensitive-value-
+never-echoed proof, loggerContains substring proof, a two-field AND
+combination). The remaining items below are still genuinely open.
+
+- ~~The remaining ~10 advanced filter fields...~~ **CLOSED, see above.**
 - Raw LogQL mode (Loki-only, capability-gated) was not exercised — this
   session has no real OpenShift/Loki gateway available; the Fixture and
-  Docker sources never enable it.
+  Docker sources never enable it. **Still BLOCKED as of UX-R2**, same reason.
 - Docker/Loki-specific **push-down** behavior (what each adapter's own
   query-plan optimizer sends to the underlying source's own query
   language vs. what falls back to post-filtering) was not independently
   re-verified this pass — `EventFilters` itself is shared, but each
-  adapter's own push-down logic is a separate code path per source; this
-  is exactly the class of thing slice UX-R2's proposed full matrix should
-  cover per-source, not just per-field.
-- Filter *combinations* beyond the one two-field AND case tested were not
-  exhaustively covered.
+  adapter's own push-down logic is a separate code path per source. **Still
+  not independently re-verified as of UX-R2** — the freshness-defect test
+  exercised a real Docker service filter, but not this specific dimension.
+- Filter *combinations* beyond the two two-field AND cases now tested
+  (`businessStep`+`errorCode` here, `journeyId`+`services` in UX-R2) were
+  not exhaustively covered — an intentional scope limit, not a gap.
 - Time range and severity-level filtering were not separately re-verified
-  this pass (both are older, heavily-tested paths from earlier phases,
-  lower risk, and not named in the owner's "filters appear not to work"
-  concern).
+  as *filters* this pass — but UX-R2 found and fixed a real, related
+  defect in the time-range *mechanism itself* (a relative preset's window
+  going stale across repeated Search clicks) — see explanation (b) below,
+  which this predicted almost exactly.
 
 ## Conclusion
 
 `FILTER_FUNCTIONAL_AUDIT=PASS` for every filter actually tested, on real
-evidence. The owner's perception that filters don't work has no
-functional root cause found by this audit — plausible explanations worth
-investigating in the next slice rather than assumed here: (a) confusion
-between the draft/Apply two-step interaction (a filter typed but not yet
-"Applied" naturally produces unfiltered results, which could read as "the
-filter didn't do anything"); (b) a specific untested field or source
-(Docker/Loki rather than Fixture) genuinely does have a gap this sample
-didn't happen to hit; (c) a UX clarity issue (no visible confirmation
-that a filter narrowed the result set, especially when a filter matches
-nearly everything or nothing). Recommend the exhaustive matrix in UX-R2
+evidence, and now exhaustive for the Fixture source as of UX-R2. The
+owner's perception that filters don't work has no *filter-matching*
+functional root cause found by either audit — but UX-R2 did find and fix a
+real, adjacent defect this audit's own explanation (b) predicted almost
+exactly: not a specific untested *field*, but the *time-range mechanism*
+itself going stale across repeated Search clicks (a relative preset's
+window was computed once at selection and never advanced) — real enough
+that new logs created after a preset was picked could never appear no
+matter how many times Search was clicked, which plausibly reads exactly
+like "filters don't work" to an investigator repeating a search during a
+live incident. Fixed in UX-R2 (`docs/verification/
+UX_R2_FILTER_AND_SEARCH_FUNCTIONAL_REPORT.md`). The other two original
+explanations remain worth keeping in mind for UX-R3+: (a) confusion
+between the draft/Apply two-step interaction, and (c) a UX clarity issue
+(no visible confirmation that a filter narrowed the result set). Recommend the exhaustive matrix in UX-R2
 partly *to settle this open question with full coverage*, not only to
 guard against future regressions.
