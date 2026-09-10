@@ -10,6 +10,7 @@ import com.logexplorer.core.guard.GuardrailViolationException;
 import com.logexplorer.core.guard.LiveTailGuard;
 import com.logexplorer.core.guard.TooManyConcurrentLiveTailsException;
 import com.logexplorer.core.mask.MaskingService;
+import com.logexplorer.core.mask.TextRedactor;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.RawSensitiveFields;
 import com.logexplorer.core.model.SourceCapabilities;
@@ -57,7 +58,7 @@ class LiveTailServiceTest {
 
   private LiveTailService newService(StubLogSource stub, LiveTailProperties properties) {
     LiveTailGuard guard = new LiveTailGuard(properties);
-    EventMapper eventMapper = new EventMapper(new MaskingService());
+    EventMapper eventMapper = new EventMapper(new MaskingService(), new TextRedactor());
     LogSourceRegistry registry = new LogSourceRegistry(List.of(stub), new SourcesProperties());
     return new LiveTailService(registry, guard, properties, eventMapper);
   }
@@ -109,6 +110,38 @@ class LiveTailServiceTest {
           EventDto dto = (EventDto) sse.data();
           assertThat(dto.protectedFields().cif()).isNotEqualTo("RAW-CIF-VALUE");
           assertThat(dto.protectedFields().cif()).doesNotContain("RAW-CIF-VALUE");
+        })
+        .thenCancel()
+        .verify(Duration.ofSeconds(2));
+  }
+
+  /**
+   * Legacy Remediation Slice 7 — free-text redaction must happen BEFORE
+   * an event enters the browser-visible Live SSE stream (mission §15),
+   * through the exact same {@link EventMapper} boundary the five
+   * structured fields already go through above - never a second,
+   * separate masking pass for the streaming path.
+   */
+  @Test
+  void everyEmittedLogEventHasItsFreeTextRedactedBeforeItEverReachesTheStream() {
+    StubLogSource stub = new StubLogSource("live-source", "Live Source", LIVE_CAPABLE);
+    String sentinel = "RAW-LIVE-SENTINEL-8e42";
+    CanonicalLogEvent raw = CanonicalLogEvent.builder()
+        .timestamp(NOW)
+        .service("gateway")
+        .message("Login failed for customerId=" + sentinel)
+        .exception("java.lang.RuntimeException: Authorization: Bearer " + sentinel + "AlsoLongEnough")
+        .build();
+    stub.withFollowFlux(Flux.just(raw));
+    LiveTailService service = newService(stub, defaultProperties());
+
+    StepVerifier.create(service.follow("live-source", List.of()))
+        .assertNext(sse -> {
+          EventDto dto = (EventDto) sse.data();
+          assertThat(dto.message()).doesNotContain(sentinel);
+          assertThat(dto.message()).contains("customerId=[REDACTED]");
+          assertThat(dto.exception()).doesNotContain(sentinel);
+          assertThat(dto.exception()).contains("Authorization: Bearer [REDACTED]");
         })
         .thenCancel()
         .verify(Duration.ofSeconds(2));

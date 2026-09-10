@@ -469,4 +469,34 @@ describe('ResultsTable', () => {
       expect(await axe(container)).toHaveNoViolations();
     });
   });
+
+  describe('free-text redaction display (Legacy Remediation Slice 7)', () => {
+    it('renders an already-redacted message as plain text in the What happened column', () => {
+      const redacted = event({ message: 'Login failed for customerId=[REDACTED] card [REDACTED_CARD] declined' });
+      render(<ResultsTable events={[redacted]} />);
+      const row = screen.getAllByRole('row')[1];
+      const whatHappened = within(row).getAllByRole('cell')[3];
+      expect(whatHappened.textContent).toContain('customerId=[REDACTED]');
+      expect(whatHappened.textContent).toContain('[REDACTED_CARD]');
+    });
+
+    it('renders an already-redacted malformed rawLine as plain text too', () => {
+      const redacted = event({ malformed: true, message: null, rawLine: 'NOT-JSON password=[REDACTED]' });
+      render(<ResultsTable events={[redacted]} />);
+      expect(screen.getByText(/password=\[REDACTED\]/)).toBeInTheDocument();
+    });
+
+    it('the Actions menu never offers a way to copy message/exception content - only non-sensitive IDs are ever copyable', async () => {
+      const user = userEvent.setup();
+      const redacted = event({
+        message: 'Login failed for customerId=[REDACTED]',
+        traceId: 'trace-abc',
+      });
+      render(<ResultsTable events={[redacted]} />);
+      await user.click(screen.getByRole('button', { name: /actions for this event/i }));
+      const menuItems = screen.getAllByRole('menuitem').map((el) => el.textContent);
+      expect(menuItems.some((t) => /message|exception/i.test(t ?? ''))).toBe(false);
+      expect(menuItems.some((t) => /copy trace id/i.test(t ?? ''))).toBe(true);
+    });
+  });
 });
