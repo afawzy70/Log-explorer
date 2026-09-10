@@ -2,6 +2,8 @@
 
 Every item in handover §34 maps to at least one owning phase. Claude Code updates **Status** and **Evidence** in every phase; Phase M cannot pass while any row is `Not assessed` or has an unexplained gap.
 
+**Scope note (added UX-R2):** this document covers only the original §34 scaffolding requirements. Everything decided since — UX restoration, the Docker Compose project selector, known defects, cross-platform distribution, desktop branding, and any requirement here later superseded by a newer owner decision — is tracked in `docs/governance/OWNER_REQUIREMENTS_REGISTER.md`, the current authoritative register. Check both: this file for original-scope coverage, the register for everything since.
+
 **Status values:** `Not assessed` · `Present` · `Partial` · `Missing` · `Broken` · `Done` · `Deferred (reason)`
 **Evidence:** file path + line, test name, or report path. Never "assumed" or "looks fine".
 

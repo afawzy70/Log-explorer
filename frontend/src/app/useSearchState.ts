@@ -35,6 +35,40 @@ export function defaultTimeRange(): CommittedTimeRange {
 }
 
 /**
+ * UX-R2 — search-freshness defect (owner-reported, real-Docker-reproduced:
+ * selecting a relative preset like "Last 1 hour" commits an *absolute*
+ * start/end at that instant; every later Search/Refresh click reused that
+ * same, increasingly stale `end`, so a log line created after the preset
+ * was picked could never appear no matter how many times Search was
+ * clicked - not a backend/adapter bug, proven by replaying the identical
+ * window directly against `/api/v1/logs/search`: the stale window
+ * legitimately excludes the new event, and a freshly recomputed one
+ * legitimately includes it).
+ *
+ * A RELATIVE preset's effective window must be recomputed - same
+ * `presetId`, same `durationMs`, `end` advanced to "now" - on every
+ * explicit fresh Search/Refresh (`runSearch`, below). A CUSTOM absolute
+ * range must never auto-advance (CLAUDE.md's own "Cancel/Escape/outside
+ * click closes without mutating the committed range" spirit extends here:
+ * a range the investigator explicitly typed stays exactly what they
+ * typed) - returns the *same* object reference in that case, so callers
+ * that conditionally `setTimeRange` only on a real change get a natural,
+ * free no-op rather than needing their own equality check.
+ */
+function recomputeRelativeRange(range: CommittedTimeRange): CommittedTimeRange {
+  if (range.presetId === CUSTOM_RANGE_ID) {
+    return range;
+  }
+  const preset = TIME_RANGE_PRESETS.find((p) => p.id === range.presetId);
+  if (!preset) {
+    return range; // defensive: an unrecognized presetId is left untouched, never guessed at
+  }
+  const end = new Date();
+  const start = new Date(end.getTime() - preset.durationMs);
+  return { presetId: range.presetId, start: start.toISOString(), end: end.toISOString() };
+}
+
+/**
  * A practical, non-sensitive content identity for one event (Legacy
  * Remediation Slice 1) - used only for client-side defensive dedup of
  * appended "Load more" pages, mirroring the backend's own
@@ -329,11 +363,24 @@ export function useSearchState() {
    * would still read the *previous* `timeRange` value at call time. This
    * override lets a caller supply the new range directly, in the same
    * tick it commits it, so the search that fires actually reflects it.
+   *
+   * Absent an override, a plain Search/Refresh click (UX-R2 - the search-
+   * freshness defect, `recomputeRelativeRange`'s own doc comment above)
+   * recomputes a fresh window for a relative preset before searching, and
+   * commits that recomputed window back as the new `timeRange` - "what the
+   * UI says is active = what the request actually submitted" (the same
+   * invariant UX-R1's own chip-state work established) - so a repeated
+   * Search after a custom range is a true no-op (`recomputeRelativeRange`
+   * returns the same reference), never triggering an extra render.
    */
   const runSearch = useCallback((timeRangeOverride?: CommittedTimeRange) => {
-    const body = buildRequestBody(undefined, timeRangeOverride);
+    const effectiveTimeRange = timeRangeOverride ?? recomputeRelativeRange(timeRange);
+    const body = buildRequestBody(undefined, effectiveTimeRange);
     if (!body) {
-      return;
+      return; // no source selected yet - nothing committed, nothing searched, same as before
+    }
+    if (!timeRangeOverride) {
+      setTimeRange(effectiveTimeRange);
     }
     const controller = supersedeActiveRequest();
     setSearchLoading(true);
@@ -352,7 +399,7 @@ export function useSearchState() {
     setJourneyQuery(null);
     setJourneyResult(null);
     setJourneyError(null);
-    const searchedRange = timeRangeOverride ?? timeRange;
+    const searchedRange = effectiveTimeRange;
     runSearchApi(body, controller.signal)
       .then((result) => {
         setSearchResult(result);
