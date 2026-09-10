@@ -170,6 +170,43 @@ selected project becomes a new request-scoped parameter alongside
 that request/session-scoped value), not a rewrite of the boundary
 enforcement itself, which is already centralized and correct.
 
+### Critical, load-bearing security finding for this specific slice
+
+`DockerSettingsController.java` carries an explicit, deliberate prior
+owner decision (Legacy Remediation Slice 3), documented directly in its
+own class-level Javadoc: *"This application has no authenticated admin
+boundary (no Spring Security, no `@PreAuthorize`, nothing gating any
+endpoint by identity — confirmed by inspection before this controller was
+written). Per the mission's own explicit instruction ('If this
+application currently has NO authenticated admin boundary, do NOT create
+an unauthenticated global configuration mutation endpoint that any user
+can use to redirect the backend to arbitrary Docker hosts'), this
+controller therefore exposes exactly two capabilities and nothing more"*
+— a read-only effective-config summary, and an ephemeral, never-persisted
+Test Connection. **There is deliberately no endpoint that mutates
+`DockerProperties`.**
+
+A naive implementation of "select a Compose project in Settings, it
+becomes the server-enforced boundary" would recreate exactly the
+unauthenticated-global-mutation anti-pattern that decision rejected — any
+client could change what *every other concurrent client* sees, since this
+app has no per-user/per-session identity concept to scope the change to.
+This is a genuine, unresolved tension between the new mission requirement
+and an existing, correct, already-documented security decision — it must
+be resolved by an explicit owner decision before UX-R3 writes any mutation
+endpoint, not silently implemented unsafely (a global mutation) and not
+silently dropped (ignoring the mission's mandate). Candidate directions,
+none decided here: (a) a per-request parameter alongside `sourceId`
+rather than a global server-side setting — the frontend would resend the
+selected project on every call, and the backend would never persist it
+anywhere shared; (b) introducing a minimal session concept scoped only to
+this one setting; (c) accepting that true multi-user-safe global
+configuration genuinely needs the authentication boundary this project has
+so far treated as out of scope (`CLAUDE.md` §8). Option (a) is the
+smallest change consistent with the existing no-mutation-endpoint
+decision and is the most promising starting point, but is not adopted
+here — this is a diagnosis pass, not an implementation one.
+
 ## Screen-by-screen evidence not yet captured
 
 Per this pass's own scope (diagnosis + plan, not full restoration), a
@@ -238,5 +275,12 @@ clearly scoped, no open decision blocking it.
 4. **Compose project selection UX shape** — a new toolbar-level selector
    (alongside source), or a Settings-only control? Does selecting a
    project persist as a safe preference, or reset each session?
-5. Confirm **UX-R3 as the recommended first slice** (or redirect priority
+5. **Compose project selector mutation scope** (see the dedicated finding
+   above) — this application has no authenticated admin boundary, and a
+   prior, documented Slice 3 decision deliberately avoided an
+   unauthenticated global-mutation endpoint for exactly this class of
+   setting. A per-request parameter (option (a) above) is the smallest
+   change consistent with that decision, but needs explicit owner sign-off
+   before UX-R3 writes any mutation endpoint at all.
+6. Confirm **UX-R3 as the recommended first slice** (or redirect priority
    elsewhere).
