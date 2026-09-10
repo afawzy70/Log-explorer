@@ -7,6 +7,18 @@
 # would silently rot the moment a new dependency needs a module this
 # script's author didn't think of.
 #
+# `jdeps` is run against the *extracted* jar (BOOT-INF/classes as the
+# target, BOOT-INF/lib/*.jar on its classpath), not the repackaged fat
+# jar directly - found the hard way, via two real failed packaged-Windows-
+# smoke-test runs in this exact CI job: `jdeps --print-module-deps`
+# against a Spring Boot repackaged jar only sees the outer jar's own
+# direct bytecode references, never traversing into the nested
+# BOOT-INF/lib/*.jar dependency jars it doesn't unpack automatically - so
+# it silently under-reported the module set (missing `java.desktop`, then
+# separately `java.logging`, each only discovered by an actual
+# NoClassDefFoundError at real startup). Extracting first gives jdeps a
+# normal flat classpath it can actually analyze in full.
+#
 # Usage (PowerShell, Windows - this script only ever runs there, since
 # jlink's own output is platform-specific and the installer only targets
 # Windows):
@@ -28,39 +40,45 @@ if (Test-Path $OutputDir) {
     Remove-Item -Recurse -Force $OutputDir
 }
 
-Write-Host "Detecting required modules from $ResolvedJar via jdeps..."
-$depsOutput = & jdeps --multi-release 21 --ignore-missing-deps --print-module-deps $ResolvedJar 2>&1
+$ExtractDir = Join-Path ([System.IO.Path]::GetTempPath()) ("logexplorer-jar-extract-" + [System.Guid]::NewGuid())
+New-Item -ItemType Directory -Force -Path $ExtractDir | Out-Null
+Write-Host "Extracting $ResolvedJar for full-visibility jdeps analysis..."
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[System.IO.Compression.ZipFile]::ExtractToDirectory($ResolvedJar, $ExtractDir)
+
+$classesDir = Join-Path $ExtractDir 'BOOT-INF\classes'
+$libDir = Join-Path $ExtractDir 'BOOT-INF\lib'
+if (-not (Test-Path $classesDir)) {
+    throw "Expected $classesDir after extraction - is this a normal Spring Boot repackaged jar?"
+}
+if (-not (Test-Path $libDir)) {
+    throw "Expected $libDir after extraction - is this a normal Spring Boot repackaged jar?"
+}
+
+Write-Host "Detecting required modules via jdeps (classes + full nested-lib classpath)..."
+$depsOutput = & jdeps --multi-release 21 --ignore-missing-deps --print-module-deps `
+    --class-path "$libDir\*" `
+    $classesDir 2>&1
 if ($LASTEXITCODE -ne 0) {
     throw "jdeps failed:`n$depsOutput"
 }
 # jdeps prints a single comma-separated line of module names as its last
-# non-empty line - any earlier lines are diagnostic noise (e.g. a JAR
-# with no module-info still gets scanned fine, but jdeps may print an
-# informational warning first).
+# non-empty line - any earlier lines are diagnostic noise.
 $moduleLine = ($depsOutput | Where-Object { $_ -match '^[a-zA-Z0-9_.]+(,[a-zA-Z0-9_.]+)*$' } | Select-Object -Last 1)
 if (-not $moduleLine) {
     throw "Could not parse a module list from jdeps output:`n$depsOutput"
 }
 
-# Two modules added explicitly, on top of whatever jdeps detected -
-# both are real, evidence-based additions (the first real packaged
-# Windows smoke test failed without java.desktop, with the exact
-# NoClassDefFoundError this comment names), not a guess:
-#
-#  - jdk.crypto.ec: the TLS cipher suites modern servers (including a
-#    real OpenShift/Loki gateway) commonly negotiate, loaded reflectively
-#    by the JSSE provider machinery rather than referenced directly -
-#    jlink's own documentation names this exact module for exactly this
-#    reason.
-#  - java.desktop: Spring Boot's own property-binding conversion service
-#    (`BindConverter`/`PropertyEditorSupport`) needs `java.beans.*`, which
-#    jdeps' static bytecode analysis of a *repackaged* Spring Boot fat jar
-#    (BOOT-INF/classes + BOOT-INF/lib/*.jar, not a normal flat classpath)
-#    does not reliably trace through - confirmed by a real
-#    `NoClassDefFoundError: java/beans/PropertyEditorSupport` startup
-#    crash in this exact CI job before this module was added.
-$modules = "$moduleLine,jdk.crypto.ec,java.desktop"
+# jdk.crypto.ec is the one addition kept on top of full jdeps detection -
+# it is genuinely never a static bytecode reference (loaded reflectively
+# by the JSSE provider machinery for TLS cipher-suite negotiation with a
+# real OpenShift/Loki gateway), so no amount of classpath visibility
+# makes jdeps see it - jlink's own documentation names this exact module
+# for exactly this reason.
+$modules = "$moduleLine,jdk.crypto.ec"
 Write-Host "Detected modules: $modules"
+
+Remove-Item -Recurse -Force $ExtractDir
 
 Write-Host "Running jlink..."
 & jlink `
