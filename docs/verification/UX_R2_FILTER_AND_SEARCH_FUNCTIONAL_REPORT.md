@@ -113,6 +113,10 @@ All six pass; see `FRONTEND_TESTS` below for the full-suite run.
 - **Identical explicit search is never suppressed**: new test (#6 above) proves two back-to-back identical-criteria Search calls both genuinely reach the network — there is no request-deduplication layer anywhere in this codebase to accidentally short-circuit an explicit user action.
 - **Fresh Search vs. pagination**: `runSearch()` never carries a cursor forward (pre-existing behavior, re-confirmed); `loadMore()` is a structurally separate function that only ever adds a cursor, never touches the committed time range (new test #4/#5 above prove this holds under the new recompute logic too).
 
+### Refresh semantics — explicitly documented
+
+`state.refresh` **is** `state.runSearch` (`useSearchState.ts`: `refresh: runSearch`, unchanged this session — the same exported reference, not a lookalike function). So: **Refresh = a fresh search using the currently-committed criteria**, page 1, no inherited cursor, and — after this fix — a relative preset's window recomputed to "now" exactly like clicking Search itself. It is not a distinct "re-render the same data" or "poll" operation. `ResultsPanel.tsx`'s own "↻ Refresh" label is accurate under this definition and required no wording change.
+
 ---
 
 ## Exhaustive filter matrix (Fixture source)
