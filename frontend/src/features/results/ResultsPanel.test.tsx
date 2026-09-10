@@ -81,6 +81,8 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     setSearchText: vi.fn(),
     timeRange: { presetId: DEFAULT_PRESET_ID, start: '2026-01-01T00:00:00Z', end: '2026-01-02T00:00:00Z' },
     setTimeRange: vi.fn(),
+    sortDirection: 'BACKWARD' as const,
+    setSortDirection: vi.fn(),
     advancedFilters: emptyAdvancedFilterValues(),
     applyAdvancedFilters: vi.fn(),
     queryState: emptyQueryAuthoringState(),
@@ -375,7 +377,7 @@ describe('ResultsPanel', () => {
         />,
       );
       await user.click(screen.getByRole('button', { name: /actions for this event/i }));
-      await user.click(screen.getByRole('menuitem', { name: /inspect event/i }));
+      await user.click(screen.getByRole('menuitem', { name: /view details/i }));
       expect(openInspector).toHaveBeenCalled();
     });
 

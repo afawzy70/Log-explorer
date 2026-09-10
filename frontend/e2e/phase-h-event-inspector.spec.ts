@@ -21,7 +21,7 @@ async function runRealSearch(page: import('@playwright/test').Page) {
 async function openInspectorOnRow(page: import('@playwright/test').Page, rowIndex: number) {
   const row = page.locator('tbody tr').nth(rowIndex);
   await row.getByRole('button', { name: /actions for this event/i }).click();
-  await page.getByRole('menuitem', { name: /inspect event/i }).click();
+  await page.getByRole('menuitem', { name: /view details/i }).click();
   await expect(page.getByRole('dialog', { name: /event details/i })).toBeVisible();
 }
 
@@ -57,7 +57,7 @@ test('the selected row stays visually identifiable while the inspector is open',
   await runRealSearch(page);
   const row = page.locator('tbody tr').nth(1);
   await row.getByRole('button', { name: /actions for this event/i }).click();
-  await page.getByRole('menuitem', { name: /inspect event/i }).click();
+  await page.getByRole('menuitem', { name: /view details/i }).click();
 
   const [selectedBg, otherBg] = await Promise.all([
     row.evaluate((el) => getComputedStyle(el).backgroundColor),
@@ -114,12 +114,12 @@ test('"Show ±30 seconds" previews the bounded window before running, then repla
 // flat results table - a strict upgrade, not a regression. See
 // `phase-i-journey-investigation.spec.ts` for its real-browser coverage.
 
-test('Inspect event is always available in the row actions menu, never disabled', async ({ page }) => {
+test('View details is always available in the row actions menu, never disabled', async ({ page }) => {
   await runRealSearch(page);
   const trigger = page.locator('tbody tr').nth(0).getByRole('button', { name: /actions for this event/i });
   await expect(trigger).toBeEnabled();
   await trigger.click();
-  await expect(page.getByRole('menuitem', { name: /inspect event/i })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: /view details/i })).toBeVisible();
 });
 
 const WIDE_WIDTHS = [1920, 1440, 1280];

@@ -36,6 +36,72 @@ class FixtureLogSourceTest {
     assertThat(caps.rawLogQL()).isFalse();
   }
 
+  /**
+   * UX-R4 §11/§19 - capability truthfulness. "Show surrounding logs" is
+   * offered on every row, and the Source health popover lists "Context"
+   * as a declared capability, so this flag must match what the source can
+   * actually do rather than being left at a stale default. It was
+   * previously {@code false} while the ±30s context endpoint demonstrably
+   * worked for this source.
+   */
+  @Test
+  void declaresContextViewTruthfully() {
+    assertThat(source.capabilities().contextView()).isTrue();
+  }
+
+  /**
+   * UX-R4 §9/§31 - exact, deterministic ordering in both directions.
+   *
+   * <p>This is the property the frontend's Newest/Oldest control depends
+   * on entirely: it never re-orders rows itself, it only asks the source
+   * for an ordering, so if the source did not genuinely honor {@code
+   * direction} the control would be a lie. Asserted as *exact* ordering
+   * over the real fixture corpus rather than a spot check, and asserted
+   * on {@code sourceTimestamp} - the adapter's own native clock, which is
+   * what ordering and pagination are actually defined on, and which is
+   * present even for a malformed line whose parsed {@code timestamp()} is
+   * null (those must still be ordered, never dropped - CLAUDE.md §4).
+   */
+  @Test
+  void backwardDirectionReturnsStrictlyNewestFirst() {
+    List<CanonicalLogEvent> events =
+        source.search(wideOpenRequest().direction(SearchRequest.Direction.BACKWARD).build()).collectList().block();
+
+    assertThat(events).isNotNull().hasSizeGreaterThan(1);
+    List<Instant> actual = events.stream().map(CanonicalLogEvent::sourceTimestamp).toList();
+    assertThat(actual).isSortedAccordingTo(java.util.Comparator.reverseOrder());
+  }
+
+  @Test
+  void forwardDirectionReturnsStrictlyOldestFirst() {
+    List<CanonicalLogEvent> events =
+        source.search(wideOpenRequest().direction(SearchRequest.Direction.FORWARD).build()).collectList().block();
+
+    assertThat(events).isNotNull().hasSizeGreaterThan(1);
+    List<Instant> actual = events.stream().map(CanonicalLogEvent::sourceTimestamp).toList();
+    assertThat(actual).isSortedAccordingTo(java.util.Comparator.naturalOrder());
+  }
+
+  /**
+   * The two directions must be exact mirrors of each other over the same
+   * corpus - same events, no event gained, lost or duplicated by asking
+   * for the opposite order. A source that (for example) dropped the
+   * malformed line in one direction only would pass both ordering tests
+   * above and still be wrong.
+   */
+  @Test
+  void bothDirectionsReturnTheSameEventsInExactlyOppositeOrder() {
+    List<Instant> newestFirst =
+        source.search(wideOpenRequest().direction(SearchRequest.Direction.BACKWARD).build())
+            .collectList().block().stream().map(CanonicalLogEvent::sourceTimestamp).toList();
+    List<Instant> oldestFirst =
+        source.search(wideOpenRequest().direction(SearchRequest.Direction.FORWARD).build())
+            .collectList().block().stream().map(CanonicalLogEvent::sourceTimestamp).toList();
+
+    assertThat(oldestFirst).hasSameSizeAs(newestFirst);
+    assertThat(oldestFirst).containsExactlyElementsOf(newestFirst.reversed());
+  }
+
   @Test
   void healthIsAlwaysUp() {
     StepVerifier.create(source.health())

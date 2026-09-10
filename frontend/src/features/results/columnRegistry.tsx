@@ -4,6 +4,7 @@ import { SEVERITY_LEVELS } from '../search/severityLevels';
 import {
   EMPTY_VALUE,
   formatTimestampCell,
+  splitTimestampCell,
   resolveContainer,
   resolveCorrelationOrTrace,
   resolveService,
@@ -101,7 +102,21 @@ export const COLUMN_REGISTRY: ColumnDefinition[] = [
     defaultVisible: true,
     width: '190px',
     cellClassName: styles.timeCell,
-    render: (event) => formatTimestampCell(event.timestamp),
+    render: (event) => {
+      // UX-R4 §13 - same text as `formatTimestampCell`, weighted so the
+      // clock time (what actually varies row to row) reads first and the
+      // repeated calendar date sits behind it. See `splitTimestampCell`.
+      const split = splitTimestampCell(event.timestamp);
+      if (!split) {
+        return formatTimestampCell(event.timestamp);
+      }
+      return (
+        <>
+          {split.date ? <span className={styles.timeDatePart}>{split.date}</span> : null}
+          <span className={styles.timeClockPart}>{split.time}</span>
+        </>
+      );
+    },
   },
   {
     id: 'level',
@@ -130,6 +145,25 @@ export const COLUMN_REGISTRY: ColumnDefinition[] = [
     id: 'whatHappened',
     label: 'What happened',
     defaultVisible: true,
+    /*
+     * UX-R4 §13/§14 - the message is the primary scanning field, and it is
+     * deliberately the one column with NO fixed width: it absorbs whatever
+     * horizontal space is left over, so a wide desktop spends its extra
+     * pixels on the thing investigators actually read.
+     *
+     * What UX-R4 changes is the *floor* underneath it, which lives on the
+     * table's own `min-width` (see `ResultsTable.module.css`). Before
+     * UX-R4 that floor was 900px - less than the six other default columns
+     * plus a readable message - so being the only flexible column made
+     * this the only one that shrank: opening the inspector, precisely when
+     * an investigator most needs to read messages, collapsed it to roughly
+     * 140px ("Payment authorizatio…") while Time, User/Customer and
+     * Correlation/Trace held their fixed widths. Measured in a real
+     * browser, not inferred - see `docs/verification/UX_R4_EVIDENCE/`.
+     * Raising the floor keeps both properties at once: this column still
+     * takes all the surplus when there is any, and can no longer be
+     * squeezed below a readable width when there is not.
+     */
     render: (event) => <MessageCell event={event} />,
   },
   {

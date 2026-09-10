@@ -55,7 +55,17 @@ public class FixtureLogSource implements LogSource {
    */
   private static final int CORPUS_SIZE = 250;
   private static final SourceCapabilities CAPABILITIES =
-      new SourceCapabilities(true, true, false, true, false, false, false);
+      // UX-R4 §11/§19 - `contextView` is `true` because the "Show
+      // surrounding logs" (±30s) endpoint demonstrably works for this
+      // source: `/api/v1/logs/context` routes through the very same
+      // `SearchService` pipeline as an ordinary bounded search. It was
+      // previously declared `false` here while the action was offered
+      // (and worked) in the UI, so the Source health popover listed
+      // "Context" as unavailable next to a working feature - a real
+      // capability-truthfulness defect found while surfacing the action
+      // on every row, and verified against the running backend rather
+      // than assumed (7 events returned for a real ±30s window).
+      new SourceCapabilities(true, true, false, true, false, true, false);
 
   /** Every 6th tick emits a burst instead of one event - the "manual check... including a burst" (IMPLEMENTATION_PLAN.md "Phase J") needs a real, reproducible burst, not left to chance. */
   private static final Duration TICK_INTERVAL = Duration.ofMillis(700);

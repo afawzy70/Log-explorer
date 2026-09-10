@@ -1,0 +1,38 @@
+/*
+ * UX-R4 §12 - a compact peer of the "Columns" trigger in the results
+ * summary row, using the same border/radius/height tokens so the two read
+ * as one toolbar rather than two unrelated widgets.
+ */
+.wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+.label {
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-text-secondary);
+}
+
+.select {
+  border: var(--border-width) solid var(--color-border);
+  background: var(--color-bg-raised);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.select:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.select:disabled {
+  cursor: not-allowed;
+  color: var(--color-text-tertiary);
+}

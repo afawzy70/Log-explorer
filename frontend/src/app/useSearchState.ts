@@ -11,6 +11,7 @@ import {
 import type {
   JourneyField,
   LogEvent,
+  SearchDirection,
   SearchRequestBody,
   SearchResponse,
   ServiceInfo,
@@ -114,6 +115,8 @@ function sortByTimestampAscending(events: LogEvent[]): LogEvent[] {
  */
 interface SearchSnapshot {
   selectedServices: string[];
+  sortDirection: SearchDirection;
+  selectedIndex: number | null;
   selectedLevels: string[];
   searchText: string;
   advancedFilters: AdvancedFilterValues;
@@ -183,6 +186,27 @@ export function useSearchState() {
 
   /** The event inspector's selection (IMPLEMENTATION_PLAN.md "Phase H") - an index into `searchResult.events`, since events have no stable id (see `ResultsTable`'s own comment on why it keys by index). */
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+
+  /**
+   * UX-R4 §9 - the committed sort direction, sent to the backend as
+   * `direction` on every search and every "Load more" alike. `BACKWARD`
+   * (newest first) is both this UI's default and the backend's own
+   * default (`SearchRequest`'s compact constructor), so the pre-UX-R4
+   * request shape is unchanged when the investigator never touches the
+   * control.
+   *
+   * <p><b>This is a real, source-side sort, never a client-side
+   * reordering</b> (UX-R4 §9/§11 - the explicit "do not fake global
+   * sorting in React" constraint). Every adapter honors it natively:
+   * `LokiLogSource` passes `direction=forward|backward` to Loki's own
+   * query-range API, `FixtureLogSource` and `DockerLogSource` sort/merge
+   * in direction-of-travel order, and `PageCursorCodec` binds the
+   * direction into the cursor's own request-binding fingerprint, so a
+   * cursor issued for one direction can never be replayed against the
+   * other. Verified end-to-end against the real backend before this
+   * control was built - see the UX-R4 report's "Sorting architecture".
+   */
+  const [sortDirection, setSortDirectionState] = useState<SearchDirection>('BACKWARD');
   const focusRestoreRef = useRef<HTMLElement | null>(null);
 
   /** "Show ±30 seconds" breadcrumb (HANDOVER.md §16.7 "breadcrumb back to the original search"). */
@@ -385,13 +409,18 @@ export function useSearchState() {
   }, []);
 
   const buildRequestBody = useCallback(
-    (cursor?: string, timeRangeOverride?: CommittedTimeRange): SearchRequestBody | null => {
+    (
+      cursor?: string,
+      timeRangeOverride?: CommittedTimeRange,
+      directionOverride?: SearchDirection,
+    ): SearchRequestBody | null => {
       if (!selectedSourceId) {
         return null;
       }
       const effectiveTimeRange = timeRangeOverride ?? timeRange;
       return {
         sourceId: selectedSourceId,
+        direction: directionOverride ?? sortDirection,
         start: effectiveTimeRange.start,
         end: effectiveTimeRange.end,
         services: selectedServices,
@@ -419,7 +448,7 @@ export function useSearchState() {
         composeProject: selectedComposeProject ?? undefined,
       };
     },
-    [selectedSourceId, timeRange, selectedServices, selectedLevels, searchText, advancedFilters, queryState, selectedComposeProject],
+    [selectedSourceId, timeRange, sortDirection, selectedServices, selectedLevels, searchText, advancedFilters, queryState, selectedComposeProject],
   );
 
   /** Aborts whatever request is currently in flight, so its result can never race a newer one. */
@@ -453,9 +482,9 @@ export function useSearchState() {
    * Search after a custom range is a true no-op (`recomputeRelativeRange`
    * returns the same reference), never triggering an extra render.
    */
-  const runSearch = useCallback((timeRangeOverride?: CommittedTimeRange) => {
+  const runSearch = useCallback((timeRangeOverride?: CommittedTimeRange, directionOverride?: SearchDirection) => {
     const effectiveTimeRange = timeRangeOverride ?? recomputeRelativeRange(timeRange);
-    const body = buildRequestBody(undefined, effectiveTimeRange);
+    const body = buildRequestBody(undefined, effectiveTimeRange, directionOverride);
     if (!body) {
       return; // no source selected yet - nothing committed, nothing searched, same as before
     }
@@ -497,6 +526,33 @@ export function useSearchState() {
         }
       });
   }, [buildRequestBody, timeRange]);
+
+  /**
+   * UX-R4 §10 - committing a new sort direction always starts a **fresh
+   * result set**, never appends to or re-orders the one on screen: the
+   * direction is passed to `runSearch` as an override (same
+   * already-established reason `timeRangeOverride` exists - React state
+   * updates are not synchronous, so `buildRequestBody`'s closure would
+   * otherwise still read the previous direction in this same tick), and
+   * `runSearch` itself drops the cursor, resets to page 1 and clears the
+   * inspector selection. That is what makes "switch Newest -> Oldest"
+   * safe: the previous direction's cursor is never carried across, so
+   * the two directions' pages can never be interleaved into one
+   * contradictory list.
+   *
+   * <p>Selecting the direction already committed is a deliberate no-op -
+   * it never re-issues a request or discards the current results.
+   */
+  const setSortDirection = useCallback(
+    (next: SearchDirection) => {
+      if (next === sortDirection) {
+        return;
+      }
+      setSortDirectionState(next);
+      runSearch(undefined, next);
+    },
+    [sortDirection, runSearch],
+  );
 
   /**
    * "One pagination model (bounded cursor)" (scope item 9) - appends the
@@ -594,6 +650,8 @@ export function useSearchState() {
   const snapshotCurrent = useCallback(
     (): SearchSnapshot => ({
       selectedServices,
+      sortDirection,
+      selectedIndex,
       selectedLevels,
       searchText,
       advancedFilters,
@@ -602,7 +660,7 @@ export function useSearchState() {
       searchResult,
       lastSearchedRange,
     }),
-    [selectedServices, selectedLevels, searchText, advancedFilters, queryState, timeRange, searchResult, lastSearchedRange],
+    [selectedServices, sortDirection, selectedIndex, selectedLevels, searchText, advancedFilters, queryState, timeRange, searchResult, lastSearchedRange],
   );
 
   /** "Preserves and restores the original search state" (HANDOVER.md §17.5, applied here to both Phase H detour actions) - only the true original is ever kept, never a chain of detours. */
@@ -623,9 +681,25 @@ export function useSearchState() {
     setTimeRange(snapshot.timeRange);
     setSearchResult(snapshot.searchResult);
     setLastSearchedRange(snapshot.lastSearchedRange);
+    // UX-R4 §20 - returning from a detour restores the *whole* workstation
+    // state the investigator left, not just the result rows: the committed
+    // sort direction comes back with them (a context view is always
+    // ascending regardless of it, so without this the investigator would
+    // silently land back on newest-first after returning from a detour
+    // they entered while reading oldest-first), and so does the row they
+    // were inspecting. `snapshot.searchResult` is the very same array
+    // instance that was on screen, so the saved index still addresses the
+    // same event - but it is re-validated against that array's length
+    // rather than trusted blindly.
+    setSortDirectionState(snapshot.sortDirection);
+    const restoredEvents = snapshot.searchResult?.events ?? [];
+    const restorableIndex =
+      snapshot.selectedIndex != null && snapshot.selectedIndex < restoredEvents.length
+        ? snapshot.selectedIndex
+        : null;
     setOriginalSnapshot(null);
     setBreadcrumbLabel(null);
-    setSelectedIndex(null);
+    setSelectedIndex(restorableIndex);
     setContextRootIdentity(null);
   }, [originalSnapshot]);
 
@@ -779,6 +853,9 @@ export function useSearchState() {
     setSearchText,
     timeRange,
     setTimeRange,
+    /** UX-R4 §9/§12 - the committed, source-side sort direction and its single commit path. */
+    sortDirection,
+    setSortDirection,
     advancedFilters,
     applyAdvancedFilters,
     queryState,

@@ -4,8 +4,9 @@ import userEvent from '@testing-library/user-event';
 import { useSearchState } from './useSearchState';
 
 /**
- * A minimal harness standing in for `ActionsCell`'s "Inspect event"
- * trigger and `InspectorHeader`'s close button, to prove `openInspector`/
+ * A minimal harness standing in for the row/`ActionsCell` "View details"
+ * trigger (named "Inspect event" before UX-R4 §17) and
+ * `InspectorHeader`'s close button, to prove `openInspector`/
  * `closeInspector`'s real DOM focus-restoration contract without pulling
  * in the whole inspector tree or mocking a real search. Renders the close
  * button off `selectedIndex` rather than `selectedEvent` - no search ever

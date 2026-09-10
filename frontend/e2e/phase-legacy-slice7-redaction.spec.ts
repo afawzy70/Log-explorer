@@ -78,7 +78,7 @@ test.describe('Legacy Remediation Slice 7 — Conservative free-text sensitive-d
     const row = await findSensitiveRow(page);
 
     await row.getByRole('button', { name: /actions for this event/i }).click();
-    await page.getByRole('menuitem', { name: /inspect event/i }).click();
+    await page.getByRole('menuitem', { name: /view details/i }).click();
     const dialog = page.getByRole('dialog', { name: /event details/i });
     await expect(dialog).toBeVisible();
 
@@ -125,7 +125,7 @@ test.describe('Legacy Remediation Slice 7 — Conservative free-text sensitive-d
     const row = await findSensitiveRow(page);
 
     await row.getByRole('button', { name: /actions for this event/i }).click();
-    await page.getByRole('menuitem', { name: /inspect event/i }).click();
+    await page.getByRole('menuitem', { name: /view details/i }).click();
     await page.getByRole('dialog', { name: /event details/i }).getByRole('button', { name: /show ±30 seconds/i }).click();
     await page.getByRole('button', { name: /^run$/i }).click();
     await expect(page.getByText(/back to original search/i)).toBeVisible({ timeout: 10_000 });
@@ -195,7 +195,7 @@ test.describe('Legacy Remediation Slice 7 — Conservative free-text sensitive-d
 
     const targetRow = page.locator('tbody tr').filter({ hasNot: page.locator('td:nth-child(2):text-is("—")') }).first();
     await targetRow.getByRole('button', { name: /actions for this event/i }).click();
-    await page.getByRole('menuitem', { name: /inspect event/i }).click();
+    await page.getByRole('menuitem', { name: /view details/i }).click();
     await page.getByRole('dialog', { name: /event details/i }).getByRole('button', { name: /show ±30 seconds/i }).click();
     await page.getByRole('button', { name: /^run$/i }).click();
     await expect(page.getByText(/back to original search/i)).toBeVisible({ timeout: 10_000 });
@@ -217,7 +217,7 @@ test.describe('Legacy Remediation Slice 7 — Conservative free-text sensitive-d
     const row = await findSensitiveRow(page);
     await expect(row).toContainText(SENTINEL_LABEL);
     await row.getByRole('button', { name: /actions for this event/i }).click();
-    await page.getByRole('menuitem', { name: /inspect event/i }).click();
+    await page.getByRole('menuitem', { name: /view details/i }).click();
     await expect(page.getByRole('dialog', { name: /event details/i })).toContainText(SENTINEL_LABEL);
     await assertNoHorizontalOverflow(page);
     await captureScreenshot(page, 'legacy-slice7', 'narrow-390px-redacted');

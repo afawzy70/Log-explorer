@@ -14,12 +14,32 @@
   font-size: var(--font-size-sm);
 }
 
+/*
+ * UX-R4 §36 - this row carries one more control than it used to (Sort,
+ * alongside the counts summary, Columns and Refresh), and at 390px that
+ * was enough to push Refresh 34px past the viewport and overflow the
+ * *page* - which CLAUDE.md §4 forbids outright, unlike the results
+ * table's own wrapper scroll. Found by measuring the real rendered page
+ * at 390px, not by eye. Wrapping is the fix rather than hiding a control:
+ * every control here stays reachable at every width, it simply takes a
+ * second line when there is not room for one.
+ */
 .summaryRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--space-3);
   margin-bottom: var(--space-3);
+}
+
+/*
+ * The counts sentence is the only elastic member of the row - it may
+ * shrink and wrap so the controls beside it never have to.
+ */
+.summaryRow > .summary {
+  flex: 1 1 12rem;
+  min-width: 0;
 }
 
 .summary {

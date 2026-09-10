@@ -222,7 +222,7 @@ describe('persistence: nothing ever written to localStorage/sessionStorage/the U
     expect(screen.getByText(/customerId=\[REDACTED\]/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /actions for this event/i }));
-    await user.click(screen.getByRole('menuitem', { name: /inspect event/i }));
+    await user.click(screen.getByRole('menuitem', { name: /view details/i }));
     await waitFor(() => expect(screen.getByRole('dialog', { name: /event details/i })).toBeInTheDocument());
     expect(screen.getAllByText(/customerId=\[REDACTED\]/).length).toBeGreaterThan(0);
 

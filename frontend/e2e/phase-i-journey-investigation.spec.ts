@@ -86,7 +86,7 @@ test('"Find this Journey ID" from the inspector opens a real, multi-trace, cross
     await page.waitForTimeout(50);
   }
   await row.getByRole('button', { name: /actions for this event/i }).click();
-  await page.getByRole('menuitem', { name: /inspect event/i }).click();
+  await page.getByRole('menuitem', { name: /view details/i }).click();
   await expect(page.getByRole('dialog', { name: /event details/i })).toBeVisible();
 
   const journeyButton = page.getByRole('button', { name: /find this journey id/i });

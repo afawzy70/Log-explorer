@@ -47,7 +47,7 @@ test.describe('UI Parity Acceleration Pass', () => {
 
     const row = page.locator('tbody tr').first();
     await row.getByRole('button', { name: /actions for this event/i }).click();
-    await page.getByRole('menuitem', { name: /inspect event/i }).click();
+    await page.getByRole('menuitem', { name: /view details/i }).click();
 
     const dialog = page.getByRole('dialog', { name: /event details/i });
     await expect(dialog).toBeVisible();
@@ -115,7 +115,7 @@ test.describe('UI Parity Acceleration Pass', () => {
     const originalRowCount = await page.locator('tbody tr').count();
 
     await page.locator('tbody tr').first().getByRole('button', { name: /actions for this event/i }).click();
-    await page.getByRole('menuitem', { name: /inspect event/i }).click();
+    await page.getByRole('menuitem', { name: /view details/i }).click();
     await page.getByRole('dialog', { name: /event details/i }).getByRole('button', { name: /show ±30 seconds/i }).click();
     await page.getByRole('button', { name: /^run$/i }).click();
 

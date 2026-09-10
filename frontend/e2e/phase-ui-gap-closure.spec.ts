@@ -86,7 +86,7 @@ test.describe('UI Gap Closure Pass', () => {
     // real Level (a reliable proxy for "has a timestamp").
     const targetRow = page.locator('tbody tr').filter({ hasNot: page.locator('td:nth-child(2):text-is("—")') }).first();
     await targetRow.getByRole('button', { name: /actions for this event/i }).click();
-    await page.getByRole('menuitem', { name: /inspect event/i }).click(); // 8. open inspector
+    await page.getByRole('menuitem', { name: /view details/i }).click(); // 8. open inspector
 
     const contextResponsePromise = page.waitForResponse((r) => r.url().includes('/api/v1/logs/context') && r.status() === 200);
     await page.getByRole('dialog', { name: /event details/i }).getByRole('button', { name: /show ±30 seconds/i }).click();
