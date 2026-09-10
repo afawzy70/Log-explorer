@@ -33,3 +33,17 @@
 .mono {
   font-family: var(--font-mono);
 }
+
+/*
+ * UX-R5 §9 - the secondary representation of the same fact (e.g. the UTC
+ * form of a timestamp whose primary form is local). Tertiary text weight
+ * and its own line: present and readable, but never competing with the
+ * value above it for the eye.
+ */
+.secondary {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+}

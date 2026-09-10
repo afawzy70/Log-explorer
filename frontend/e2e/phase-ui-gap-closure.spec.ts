@@ -89,7 +89,7 @@ test.describe('UI Gap Closure Pass', () => {
     await page.getByRole('menuitem', { name: /view details/i }).click(); // 8. open inspector
 
     const contextResponsePromise = page.waitForResponse((r) => r.url().includes('/api/v1/logs/context') && r.status() === 200);
-    await page.getByRole('dialog', { name: /event details/i }).getByRole('button', { name: /show ±30 seconds/i }).click();
+    await page.getByRole('dialog', { name: /event details/i }).getByRole('button', { name: /show surrounding logs/i }).click();
     await page.getByRole('button', { name: /^run$/i }).click(); // 9. Show ±30 seconds
 
     const contextResponse = await contextResponsePromise;

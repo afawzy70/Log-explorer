@@ -156,7 +156,7 @@ test.describe('Task 3 - Follow a request', () => {
 });
 
 test.describe('Task 4 - Explain one event', () => {
-  test('select by mouse, answer what/when/where/who/request-flow, Show ±30 seconds, return to original results', async ({
+  test('select by mouse, answer what/when/where/who/request-flow, Show surrounding logs, return to original results', async ({
     page,
   }) => {
     await page.goto('/');
@@ -178,7 +178,7 @@ test.describe('Task 4 - Explain one event', () => {
 
     await captureScreenshot(page, 'm', 'task4-explain-one-event-inspector');
 
-    const contextButton = dialog.getByRole('button', { name: /show ±30 seconds|show context/i });
+    const contextButton = dialog.getByRole('button', { name: /show surrounding logs|show context/i });
     await contextButton.click();
     await page.getByRole('button', { name: /^run$/i }).click();
     await expect(page.getByText(/back to (original|search)/i)).toBeVisible({ timeout: 10_000 });

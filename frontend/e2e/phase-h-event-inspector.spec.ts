@@ -96,7 +96,7 @@ test('"Show ±30 seconds" previews the bounded window before running, then repla
   await openInspectorOnRow(page, 0);
   const dialog = page.getByRole('dialog', { name: /event details/i });
 
-  await dialog.getByRole('button', { name: /show ±30 seconds/i }).click();
+  await dialog.getByRole('button', { name: /show surrounding logs/i }).click();
   await expect(page.getByRole('dialog', { name: /confirm surrounding-context search/i })).toBeVisible();
   await page.getByRole('button', { name: /^run$/i }).click();
 

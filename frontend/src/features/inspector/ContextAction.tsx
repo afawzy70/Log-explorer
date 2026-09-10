@@ -14,6 +14,14 @@ const WINDOW_MS = 30_000;
  * action: the exact same ±30s window the backend will enforce is
  * computed here first and shown, then the caller only runs it once the
  * investigator explicitly confirms.
+ *
+ * <p><b>UX-R5 §15 - labelled "Show surrounding logs", not "Show ±30
+ * seconds".</b> UX-R4 put that exact wording on the row Actions menu, and
+ * one product must not name the same single action two different ways
+ * depending on where you invoke it. The ±30s window has not been hidden -
+ * it is stated exactly, with both bounds, in the confirm popover below,
+ * which is where a bounded query belongs. The label says what the action
+ * is *for*; the popover says what it will *do*.
  */
 export function ContextAction({ event, onConfirm }: { event: LogEvent; onConfirm: () => void }) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -37,7 +45,7 @@ export function ContextAction({ event, onConfirm }: { event: LogEvent; onConfirm
         aria-expanded={popover.isOpen}
         onClick={() => (popover.isOpen ? popover.close() : popover.open())}
       >
-        Show ±30 seconds
+        Show surrounding logs
       </Button>
       {popover.isOpen ? (
         <div className={styles.preview} role="dialog" aria-label="Confirm surrounding-context search">
@@ -46,7 +54,8 @@ export function ContextAction({ event, onConfirm }: { event: LogEvent; onConfirm
             {formatUtcTimestamp(previewStart)} – {formatUtcTimestamp(previewEnd)}
           </p>
           <p className={styles.previewHint}>
-            Replaces the current results with this bounded window. You can return to the original search afterward.
+            Nearby chronological evidence around this event - not a cause. Replaces the current results with this
+            bounded window; you can return to the original search afterward.
           </p>
           <div className={styles.actions}>
             <Button

@@ -16,7 +16,7 @@ describe('ContextAction', () => {
     const onConfirm = vi.fn();
     render(<ContextAction event={fullEvent({ timestamp: '2026-01-01T12:00:00.000Z' })} onConfirm={onConfirm} />);
 
-    await user.click(screen.getByRole('button', { name: /show ±30 seconds/i }));
+    await user.click(screen.getByRole('button', { name: /show surrounding logs/i }));
 
     // 30s before and after the event timestamp, both visible before confirming.
     expect(screen.getByText(/11:59:30/)).toBeInTheDocument();
@@ -27,7 +27,7 @@ describe('ContextAction', () => {
   it('scopes the preview to the event service when present', async () => {
     const user = userEvent.setup();
     render(<ContextAction event={fullEvent({ service: 'payments-api' })} onConfirm={vi.fn()} />);
-    await user.click(screen.getByRole('button', { name: /show ±30 seconds/i }));
+    await user.click(screen.getByRole('button', { name: /show surrounding logs/i }));
     expect(screen.getByText(/payments-api/)).toBeInTheDocument();
   });
 
@@ -36,12 +36,12 @@ describe('ContextAction', () => {
     const onConfirm = vi.fn();
     render(<ContextAction event={fullEvent()} onConfirm={onConfirm} />);
 
-    await user.click(screen.getByRole('button', { name: /show ±30 seconds/i }));
+    await user.click(screen.getByRole('button', { name: /show surrounding logs/i }));
     await user.click(screen.getByRole('button', { name: /^cancel$/i }));
     expect(onConfirm).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /show ±30 seconds/i }));
+    await user.click(screen.getByRole('button', { name: /show surrounding logs/i }));
     await user.click(screen.getByRole('button', { name: /^run$/i }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -50,7 +50,7 @@ describe('ContextAction', () => {
   it('has no detectable accessibility violations', async () => {
     const user = userEvent.setup();
     const { container } = render(<ContextAction event={fullEvent()} onConfirm={vi.fn()} />);
-    await user.click(screen.getByRole('button', { name: /show ±30 seconds/i }));
+    await user.click(screen.getByRole('button', { name: /show surrounding logs/i }));
     expect(await axe(container)).toHaveNoViolations();
   });
 });
