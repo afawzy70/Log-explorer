@@ -38,6 +38,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     queryState: emptyQueryAuthoringState(),
     applyQuery: vi.fn(),
     applyDetectedField: vi.fn(),
+    clearAllFilters: vi.fn(),
     health: null,
     healthLoading: false,
     retryHealth: vi.fn(),
@@ -78,7 +79,10 @@ describe('Toolbar', () => {
 
     const source = screen.getByRole('combobox');
     const service = screen.getByRole('button', { name: /all services/i });
-    const timeRange = screen.getByRole('button', { name: /last 1 day/i });
+    // Exact name, not a substring match: the new ActiveFilters "remove time
+    // range" chip button (UX-R1 §3) also mentions "Last 1 day" in its own
+    // accessible name, so a loose regex would now match two buttons.
+    const timeRange = screen.getByRole('button', { name: 'Last 1 day' });
     const severityGroup = screen.getByRole('group', { name: /severity/i });
     const search = screen.getByRole('textbox', { name: /search messages/i });
     const searchButton = screen.getByRole('button', { name: /^search$/i });

@@ -53,6 +53,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     queryState: emptyQueryAuthoringState(),
     applyQuery: vi.fn(),
     applyDetectedField: vi.fn(),
+    clearAllFilters: vi.fn(),
     health: null,
     healthLoading: false,
     retryHealth: vi.fn(),

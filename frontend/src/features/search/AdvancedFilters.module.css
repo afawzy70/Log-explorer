@@ -126,6 +126,21 @@
   color: var(--color-text-secondary);
 }
 
+.fieldLabelRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+/* UX-R1 §6 - a restrained per-field hint (EXACT MATCH/SUBSTRING in OLD), not a competing control. */
+.matchHint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary, var(--color-text-secondary));
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
 .field input {
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-sm);

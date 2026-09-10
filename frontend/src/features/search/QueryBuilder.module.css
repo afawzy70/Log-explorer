@@ -24,11 +24,23 @@
   font-size: var(--font-size-xs);
 }
 
+/*
+ * UX-R1 §2/§8: this popover's only trigger now lives inside
+ * `AdvancedFilters`' own 420px-wide, `overflow: hidden` drawer - an
+ * `absolute`/anchored-to-the-trigger panel (this component's original
+ * shape, back when its trigger sat directly in the wide toolbar) would be
+ * clipped by that drawer's own overflow, exactly the class of bug
+ * `AdvancedFilters` itself was rebuilt around avoiding (see this file's
+ * neighbor, `AdvancedFilters.module.css`'s own `.panel` comment). Fixed to
+ * the viewport and centered - never anchored to the trigger - sidesteps
+ * that regardless of how narrow/scrollable the trigger's own container is.
+ */
 .panel {
-  position: absolute;
-  top: calc(100% + var(--space-2));
-  right: 0;
-  z-index: 20;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 40;
   background: var(--color-bg-raised);
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-lg);

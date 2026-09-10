@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 import { EMPTY_QUERY_PLAN } from '../shared/api/testFixtures';
@@ -88,8 +88,10 @@ describe('persistence: nothing ever written to localStorage/sessionStorage/the U
 
     await waitFor(() => expect(screen.getByRole('combobox')).toHaveValue('fixture'));
 
-    // Time range: open, pick a preset (immediate commit).
-    await user.click(screen.getByRole('button', { name: /last 1 day/i }));
+    // Time range: open, pick a preset (immediate commit). Exact name, not a
+    // substring match - the new "remove time range" chip button (UX-R1 §3)
+    // also mentions "Last 1 day" in its own accessible name.
+    await user.click(screen.getByRole('button', { name: 'Last 1 day' }));
     await user.click(screen.getByRole('menuitemradio', { name: /last 1 hour/i }));
 
     // Severity: toggle a level.
@@ -133,11 +135,16 @@ describe('persistence: nothing ever written to localStorage/sessionStorage/the U
 
     await waitFor(() => expect(screen.getByRole('combobox')).toHaveValue('fixture'));
 
+    // Advanced Query now lives under More filters (UX-R1 §2) - both the
+    // drawer and Query's own nested popover are open at once and each has
+    // its own "Apply" button, so scope to Query's own dialog.
+    await user.click(screen.getByRole('button', { name: /^more filters/i }));
     await user.click(screen.getByRole('button', { name: /^query/i }));
-    await user.click(screen.getByRole('button', { name: /\+ condition/i }));
-    await user.selectOptions(screen.getByLabelText('Field'), 'message');
-    await user.type(screen.getByLabelText('Value'), SENTINEL_QUERY_VALUE);
-    await user.click(screen.getByRole('button', { name: /^apply$/i }));
+    const queryDialog = screen.getByRole('heading', { name: 'Query' }).closest('[role="dialog"]') as HTMLElement;
+    await user.click(within(queryDialog).getByRole('button', { name: /\+ condition/i }));
+    await user.selectOptions(within(queryDialog).getByLabelText('Field'), 'message');
+    await user.type(within(queryDialog).getByLabelText('Value'), SENTINEL_QUERY_VALUE);
+    await user.click(within(queryDialog).getByRole('button', { name: /^apply$/i }));
 
     await user.click(screen.getByRole('button', { name: /^search$/i }));
     await waitFor(() => expect(screen.getByText(/run a search to see results|no results/i)).toBeInTheDocument());

@@ -6,8 +6,10 @@ import { getTimeRangeDisplayLabel } from '../features/timerange/label';
 import { SeverityFilter } from '../features/search/SeverityFilter';
 import { UniversalSearch } from '../features/search/UniversalSearch';
 import { AdvancedFilters } from '../features/search/AdvancedFilters';
-import { QueryBuilder } from '../features/search/QueryBuilder';
 import { ActiveFilters } from '../features/search/ActiveFilters';
+import { DEFAULT_SEVERITY_LEVELS } from '../features/search/severityLevels';
+import type { AdvancedFilterValues } from '../features/search/advancedFilterFields';
+import { defaultTimeRange } from './useSearchState';
 import type { SearchState } from './useSearchState';
 import styles from './Toolbar.module.css';
 
@@ -21,11 +23,22 @@ export interface ToolbarProps {
  * Default toolbar order (IMPLEMENTATION_PLAN.md "Phase F" scope item 2):
  * source -> service multi-select -> time range -> severity -> universal
  * search -> Search -> Live (only when capability true) -> More filters +
- * active count.
+ * active count. Advanced Query no longer has its own top-level trigger
+ * here (UX-R1 §2, owner decision) - it now renders from inside
+ * `AdvancedFilters`' own drawer, under More filters, so Search stays the
+ * single strongest primary action in this row.
  */
 export function Toolbar({ state, onStartLive }: ToolbarProps) {
   const liveTailSupported = state.selectedSource?.capabilities.liveTail ?? false;
   const rawLogQlSupported = state.selectedSource?.capabilities.rawLogQL ?? false;
+
+  function removeAdvancedField(key: keyof AdvancedFilterValues) {
+    state.applyAdvancedFilters({ ...state.advancedFilters, text: state.searchText, [key]: '' });
+  }
+
+  function removeService(service: string) {
+    state.setSelectedServices(state.selectedServices.filter((s) => s !== service));
+  }
 
   return (
     <div>
@@ -44,10 +57,9 @@ export function Toolbar({ state, onStartLive }: ToolbarProps) {
           onSubmit={state.runSearch}
           onApplyDetectedField={state.applyDetectedField}
         />
-        <Button variant="primary" onClick={state.runSearch} disabled={state.searchLoading}>
+        <Button variant="primary" onClick={() => state.runSearch()} disabled={state.searchLoading}>
           {state.searchLoading ? 'Searching…' : 'Search'}
         </Button>
-        <QueryBuilder value={state.queryState} onApply={state.applyQuery} rawLogQlSupported={rawLogQlSupported} />
         {liveTailSupported ? (
           // Only ever rendered when the active source's own capabilities
           // say it supports live tail (never assumed, never shown for a
@@ -59,12 +71,22 @@ export function Toolbar({ state, onStartLive }: ToolbarProps) {
         <AdvancedFilters
           values={{ ...state.advancedFilters, text: state.searchText }}
           onApply={state.applyAdvancedFilters}
+          queryState={state.queryState}
+          onApplyQuery={state.applyQuery}
+          rawLogQlSupported={rawLogQlSupported}
         />
       </div>
       <div className={styles.activeFiltersRow}>
         <ActiveFilters
           timeRangeLabel={getTimeRangeDisplayLabel(state.timeRange)}
+          onRemoveTimeRange={() => state.setTimeRange(defaultTimeRange())}
+          selectedLevels={state.selectedLevels}
+          onRemoveSeverity={() => state.setSelectedLevels(DEFAULT_SEVERITY_LEVELS)}
+          selectedServices={state.selectedServices}
+          onRemoveService={removeService}
           advancedValues={{ ...state.advancedFilters, text: state.searchText }}
+          onRemoveAdvancedField={removeAdvancedField}
+          onClearAll={state.clearAllFilters}
         />
       </div>
     </div>

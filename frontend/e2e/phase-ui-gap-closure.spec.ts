@@ -61,7 +61,11 @@ test.describe('UI Gap Closure Pass', () => {
 
     await page.getByRole('button', { name: /more filters.*1.*active/i }).click();
     await page.getByRole('button', { name: /^reset$/i }).click(); // 7. Reset works
-    await expect(page.getByLabel('Error code')).toHaveValue('');
+    // A non-exact getByLabel also matches the ActiveFilters "Remove Error
+    // code filter ERR_TIMEOUT" chip button (UX-R1 §3, still visible behind
+    // the drawer) since its own accessible name contains "Error code" too -
+    // getByRole('textbox', ...) targets only the real input.
+    await expect(page.getByRole('textbox', { name: 'Error code' })).toHaveValue('');
     await expect(page.getByRole('dialog')).toBeVisible(); // Reset never closes the panel
     await page.getByRole('button', { name: /^cancel$/i }).click();
     // Reset was never applied - the committed chip from before is untouched.

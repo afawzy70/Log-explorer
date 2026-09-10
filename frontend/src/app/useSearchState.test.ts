@@ -799,4 +799,80 @@ describe('useSearchState', () => {
       expect(result.current.queryState.rawLogQl).toBe('{namespace="prod"}');
     });
   });
+
+  describe('clearAllFilters (UX-R1 §4 - "Clear all")', () => {
+    it('clears search text, services, severity, advanced filters and the query, but leaves the selected source untouched', async () => {
+      const result = await renderReady();
+      const originalSourceId = result.current.selectedSourceId;
+
+      act(() => result.current.setSearchText('timeout'));
+      act(() => result.current.setSelectedServices(['payments']));
+      act(() => result.current.setSelectedLevels(['ERROR']));
+      act(() => result.current.applyAdvancedFilters({ text: 'timeout', traceId: 'trace-1', userName: '', customerId: '', cif: '', deviceId: '', deviceIp: '', spanId: '', correlationId: '', journeyId: '', eventId: '', errorCode: '', businessStep: '', uiIdentifier: '', loggerContains: '', devicePlatform: '', language: '' }));
+      act(() =>
+        result.current.applyQuery({
+          mode: 'text',
+          text: 'service = "gateway"',
+          tree: { kind: 'group', id: 'root', combinator: 'AND', children: [] },
+          rawLogQl: '',
+        }),
+      );
+
+      act(() => result.current.clearAllFilters());
+
+      expect(result.current.searchText).toBe('');
+      expect(result.current.selectedServices).toEqual([]);
+      expect(result.current.selectedLevels).toEqual(['INFO', 'WARN', 'ERROR']);
+      expect(result.current.advancedFilters.traceId).toBe('');
+      expect(result.current.queryState.mode).toBe('guided');
+      expect(result.current.queryState.text).toBe('');
+      // Source/environment scope, per the mission's explicit distinction,
+      // is never touched by Clear all - only investigation criteria is.
+      expect(result.current.selectedSourceId).toBe(originalSourceId);
+    });
+
+    it('resets the time range to a fresh default rather than leaving a stale committed range', async () => {
+      const result = await renderReady();
+      const staleRange = { presetId: 'custom', start: '2020-01-01T00:00:00Z', end: '2020-01-01T01:00:00Z' };
+      act(() => result.current.setTimeRange(staleRange));
+      expect(result.current.timeRange).toEqual(staleRange);
+
+      act(() => result.current.clearAllFilters());
+      expect(result.current.timeRange).not.toEqual(staleRange);
+    });
+  });
+
+  describe('runSearch(timeRangeOverride) - "Search last 1 day" bug fix', () => {
+    it('a search fired with an override range uses that range on the wire immediately, not the still-stale committed one', async () => {
+      const result = await renderReady();
+      const overrideRange = {
+        presetId: 'last-1-day',
+        start: '2026-03-01T00:00:00.000Z',
+        end: '2026-03-02T00:00:00.000Z',
+      };
+
+      // `setTimeRange` and `runSearch(overrideRange)` fire back-to-back, in
+      // the same tick, exactly like `ResultsPanel`'s "Search last 1 day"
+      // button - the committed-state update from `setTimeRange` has not
+      // necessarily been applied yet when `runSearch` builds its request,
+      // so the request must come from the explicit override, never from
+      // whatever `timeRange` closure `runSearch` still has.
+      act(() => {
+        result.current.setTimeRange(overrideRange);
+        result.current.runSearch(overrideRange);
+      });
+
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      expect(searchCalls[0].body).toContain('"start":"2026-03-01T00:00:00.000Z"');
+      expect(searchCalls[0].body).toContain('"end":"2026-03-02T00:00:00.000Z"');
+    });
+
+    it('runSearch() with no override still uses the current committed timeRange, unchanged from before', async () => {
+      const result = await renderReady();
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      expect(searchCalls[0].body).toContain(`"start":"${result.current.timeRange.start}"`);
+      expect(searchCalls[0].body).toContain(`"end":"${result.current.timeRange.end}"`);
+    });
+  });
 });
