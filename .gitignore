@@ -17,6 +17,12 @@ target/
 # OS
 .DS_Store
 
+# .NET (desktop/launcher) - Legacy Remediation Slice 9
+desktop/launcher/bin/
+desktop/launcher/obj/
+# Generated packaging outputs (custom JRE, published launcher, installer) - never committed, always rebuilt.
+desktop/build/
+
 # Phase K: a real deployer's own local Compose env - never the tracked
 # .env.example (CLAUDE.md §2 rule 6, "credentials ... never committed").
 .env

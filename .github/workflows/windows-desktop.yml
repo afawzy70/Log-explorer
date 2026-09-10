@@ -1,0 +1,175 @@
+name: Windows Desktop
+
+# Legacy Remediation Slice 9 §AC/§AG: real evidence for the Windows
+# standalone desktop deliverable, on a real Windows runner - not "jpackage/
+# ISCC produced a file" taken on faith. Builds the actual production
+# frontend, the actual backend jar, a real jlink-bundled JRE, publishes
+# the real WinForms/WebView2 launcher, produces the real installer, and
+# runs it through an install -> launch -> health -> UI -> API ->
+# shutdown -> uninstall smoke test against the genuinely installed
+# product. Scoped to path changes that could actually affect it (never
+# duplicates the full Linux E2E matrix here - mission §AC's own
+# instruction).
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/windows-desktop.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/windows-desktop.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: windows-desktop-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  windows-desktop:
+    name: Build, package, and smoke-test the Windows desktop app
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Determine version (git tag if this commit has one, else a dev version)
+        id: version
+        shell: pwsh
+        run: |
+          $tag = git describe --tags --exact-match 2>$null
+          if ($LASTEXITCODE -eq 0 -and $tag) {
+            $version = $tag.TrimStart('v')
+          } else {
+            $sha = (git rev-parse --short HEAD)
+            $version = "0.0.0-dev.$sha"
+          }
+          Write-Host "Resolved version: $version"
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Install frontend dependencies (npm ci)
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend production assets
+        working-directory: frontend
+        run: npm run build
+
+      - name: Embed frontend build into backend static resources
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path backend/src/main/resources/static | Out-Null
+          Copy-Item -Recurse -Force frontend/dist/* backend/src/main/resources/static/
+
+      - name: Build backend jar (already verified by the Linux Backend CI job - this build skips tests)
+        working-directory: backend
+        run: .\mvnw.cmd --batch-mode -DskipTests package
+
+      - name: Build custom Java runtime (jlink)
+        shell: pwsh
+        run: |
+          $jar = Get-ChildItem backend/target -Filter 'log-explorer-backend-*.jar' |
+            Where-Object { $_.Name -notlike '*.original' } | Select-Object -First 1
+          if (-not $jar) { throw "backend jar not found in backend/target" }
+          .\desktop\packaging\build-runtime.ps1 -JarPath $jar.FullName -OutputDir desktop\build\runtime
+
+      - name: Publish the launcher (self-contained, single-file, win-x64)
+        working-directory: desktop/launcher
+        run: |
+          dotnet publish -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:Version=${{ steps.version.outputs.version }} `
+            -o ..\build\launcher-publish
+
+      - name: Copy the backend jar into the packaging layout
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path desktop/build/app | Out-Null
+          $jar = Get-ChildItem backend/target -Filter 'log-explorer-backend-*.jar' |
+            Where-Object { $_.Name -notlike '*.original' } | Select-Object -First 1
+          Copy-Item $jar.FullName desktop/build/app/log-explorer-backend.jar
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build the Windows installer
+        shell: pwsh
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            /DMyAppVersion=${{ steps.version.outputs.version }} `
+            /DPublishDir=desktop\build\launcher-publish `
+            /DRuntimeDir=desktop\build\runtime `
+            /DAppJar=desktop\build\app\log-explorer-backend.jar `
+            desktop\packaging\installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC.exe failed" }
+
+      - name: Record packaging sizes (Slice 9 §M - real evidence, never invented)
+        shell: pwsh
+        run: |
+          function DirSizeMb($p) { [math]::Round((Get-ChildItem -Recurse $p | Measure-Object -Property Length -Sum).Sum / 1MB, 1) }
+          $jarSizeMb = [math]::Round((Get-Item desktop/build/app/log-explorer-backend.jar).Length / 1MB, 1)
+          $runtimeSizeMb = DirSizeMb desktop/build/runtime
+          $installer = Get-ChildItem desktop/build/installer -Filter '*.exe' | Select-Object -First 1
+          $installerSizeMb = [math]::Round($installer.Length / 1MB, 1)
+          @(
+            "Backend jar (with embedded frontend): $jarSizeMb MB"
+            "Bundled custom JRE (jlink): $runtimeSizeMb MB"
+            "Windows installer ($($installer.Name)): $installerSizeMb MB"
+          ) | Tee-Object -FilePath packaging-sizes.txt
+          Get-Content packaging-sizes.txt
+
+      - name: Packaged Windows smoke test (install -> launch -> health -> UI -> API -> shutdown -> uninstall)
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem desktop/build/installer -Filter '*.exe' | Select-Object -First 1
+          .\desktop\packaging\packaged-smoke-test.ps1 -InstallerPath $installer.FullName
+
+      - name: Upload installer artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LogExplorer-windows-installer
+          path: desktop/build/installer/*.exe
+          retention-days: 14
+
+      - name: Upload packaging size report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaging-sizes
+          path: packaging-sizes.txt
+          retention-days: 14
+
+      - name: Upload backend log on failure (packaged smoke test diagnostics)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-log-on-failure
+          path: '%LOCALAPPDATA%\LogExplorer\logs\backend.log'
+          retention-days: 14
+          if-no-files-found: ignore

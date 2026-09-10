@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Legacy Remediation Slice 9 §A: the Windows standalone desktop shell.
+    A small WinForms host (not WPF - fewer moving parts, no XAML build
+    step) around Microsoft's own WebView2 control, embedding the Edge
+    Chromium runtime that ships with Windows 10/11 rather than bundling a
+    whole separate browser engine (the mission's own "do NOT use Electron
+    unless strong technical evidence proves WebView2 is not viable" -
+    WebView2 is viable and is Microsoft's own recommended lightweight
+    embedding path, so that bar is met by using it).
+
+    net8.0-windows: the lowest LTS .NET that ships current WebView2/WinForms
+    support. win-x64 self-contained + single-file publish (see the
+    packaging workflow) means end users need no separately-installed .NET
+    runtime, matching the mission's "no Java/Node/npm requirement" bar
+    extended to the launcher itself.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>LogExplorerLauncher</AssemblyName>
+    <RootNamespace>LogExplorer.Launcher</RootNamespace>
+    <ApplicationIcon>Resources\app.ico</ApplicationIcon>
+    <!-- Per-monitor DPI awareness - a blurry-upscaled WebView2 surface on
+         a high-DPI display would be a real, visible regression versus the
+         browser tab experience this replaces. -->
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Version metadata (Slice 9 §I "installer metadata") - overridden
+         from CI via -p:Version=... using the real release tag; this is
+         only the local/dev fallback. -->
+    <Version>0.1.0</Version>
+    <Product>Log Explorer</Product>
+    <Company>Log Explorer</Company>
+    <AssemblyTitle>Log Explorer</AssemblyTitle>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- A floating minor-version wildcard, not a hand-pinned exact patch
+         number: this project is authored/committed from a Linux sandbox
+         with no NuGet connectivity to verify an exact currently-published
+         WebView2 SDK patch version against, so pinning one risked a
+         silently-stale or simply nonexistent version breaking `dotnet
+         restore` on the Windows CI runner that actually builds this
+         project. "1.0.*" always resolves to the latest published 1.0.x
+         release at build time. -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Resources\app.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>
