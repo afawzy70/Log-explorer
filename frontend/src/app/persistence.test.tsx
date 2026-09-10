@@ -151,4 +151,79 @@ describe('persistence: nothing ever written to localStorage/sessionStorage/the U
     expect(window.location.search).toBe('');
     expect(window.location.hash).toBe('');
   });
+
+  /**
+   * Legacy Remediation Slice 7 - the frontend never redacts anything
+   * itself; it only ever displays whatever the (already-redacted) backend
+   * response contains. Proves opening the inspector on such an event -
+   * the one place message/exception text is shown at length - still
+   * never writes anything to storage/the URL, and that the already-
+   * redacted marker is what actually reaches the DOM (never a raw value
+   * the frontend somehow reconstructed).
+   */
+  it('viewing an already-redacted event in the inspector still never writes to localStorage/sessionStorage/the URL', async () => {
+    const REDACTED_MESSAGE = 'Login failed for customerId=[REDACTED] card [REDACTED_CARD] declined';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.endsWith('/api/v1/sources')) {
+          return jsonResponse([
+            {
+              id: 'fixture',
+              displayName: 'Fixture',
+              capabilities: {
+                historicalSearch: true, liveTail: false, rawLogQL: false,
+                serviceDiscovery: true, queryStatistics: false, contextView: false,
+              },
+            },
+          ]);
+        }
+        if (url.includes('/health')) {
+          return jsonResponse({ status: 'UP', message: 'ok', checkedAt: '2026-01-01T00:00:00Z', warnings: [] });
+        }
+        if (url.includes('/services')) {
+          return jsonResponse([{ name: 'gateway', runningCount: 1, totalCount: 1 }]);
+        }
+        if (url.endsWith('/api/v1/logs/search') && init?.method === 'POST') {
+          return jsonResponse({
+            events: [{
+              timestamp: '2026-01-01T00:00:00Z', timestampRaw: null, schemaVersion: null, service: 'gateway',
+              serviceSourceHint: null, severity: 'ERROR', severityNumber: null, message: REDACTED_MESSAGE,
+              logger: null, thread: null, exception: null, traceId: 'trace-1', spanId: null, journeyId: null,
+              eventId: null, businessStep: null, uiIdentifier: null, errorCode: null, correlationId: null,
+              protectedFields: { cif: null, userName: null, customerId: null, deviceId: null, deviceIp: null },
+              devicePlatformType: null, language: null, serverIp: null, serverHost: null, unknownTopLevelFields: {},
+              unknownMdcFields: {}, malformed: false, rawLine: null, sourceId: null, composeProject: null,
+              composeService: null, containerId: null, containerName: null, stream: null, namespace: null, pod: null,
+            }],
+            counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false },
+            nextCursor: null,
+            queryPlan: EMPTY_QUERY_PLAN,
+          });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole('combobox')).toHaveValue('fixture'));
+
+    await user.click(screen.getByRole('button', { name: /^search$/i }));
+    await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument());
+    expect(screen.getByText(/customerId=\[REDACTED\]/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /actions for this event/i }));
+    await user.click(screen.getByRole('menuitem', { name: /inspect event/i }));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: /event details/i })).toBeInTheDocument());
+    expect(screen.getAllByText(/customerId=\[REDACTED\]/).length).toBeGreaterThan(0);
+
+    expect(localStorageSetItem).not.toHaveBeenCalled();
+    expect(sessionStorageSetItem).not.toHaveBeenCalled();
+    expect(pushState).not.toHaveBeenCalled();
+    expect(replaceState).not.toHaveBeenCalled();
+    expect(window.location.search).toBe('');
+    expect(window.location.hash).toBe('');
+  });
 });

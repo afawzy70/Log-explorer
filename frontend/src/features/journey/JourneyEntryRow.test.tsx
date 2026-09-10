@@ -52,4 +52,25 @@ describe('JourneyEntryRow', () => {
       expect(text).not.toContain(sensitive);
     }
   });
+
+  describe('free-text redaction display (Legacy Remediation Slice 7 - shared by Journey view and Live tail)', () => {
+    it('renders an already-redacted message as plain text, never re-exposing anything', () => {
+      render(
+        <ol>
+          <JourneyEntryRow event={fullEvent({ message: 'Login failed for customerId=[REDACTED] card [REDACTED_CARD] declined' })} />
+        </ol>,
+      );
+      expect(screen.getByText(/customerId=\[REDACTED\]/)).toBeInTheDocument();
+      expect(screen.getByText(/\[REDACTED_CARD\]/)).toBeInTheDocument();
+    });
+
+    it('an already-redacted malformed rawLine renders as the message too', () => {
+      render(
+        <ol>
+          <JourneyEntryRow event={sparseEvent({ malformed: true, rawLine: 'NOT-JSON Authorization: Bearer [REDACTED]' })} />
+        </ol>,
+      );
+      expect(screen.getByText(/Authorization: Bearer \[REDACTED\]/)).toBeInTheDocument();
+    });
+  });
 });

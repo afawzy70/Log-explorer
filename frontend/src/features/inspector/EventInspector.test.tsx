@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { EventInspector } from './EventInspector';
@@ -201,5 +201,52 @@ describe('EventInspector', () => {
   it('has no detectable accessibility violations', async () => {
     const { container } = render(<EventInspector state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0 })} />);
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  describe('free-text redaction display (Legacy Remediation Slice 7)', () => {
+    // The frontend never redacts anything itself - these fixtures use
+    // already-redacted text, exactly what the real backend would send
+    // (TextRedactor's own marker vocabulary), and verify the existing
+    // display-only components render it safely, with no reveal action
+    // and no re-exposure via the raw-JSON dump.
+    const redactedEvent = fullEvent({
+      message: 'Login failed for customerId=[REDACTED] card [REDACTED_CARD] declined',
+      exception: 'java.lang.RuntimeException: Authorization: Bearer [REDACTED]\n\tat com.example.Foo.bar(Foo.java:1)',
+    });
+
+    it('the Business/error section renders the redacted exception as plain text, never the original', () => {
+      render(<EventInspector state={baseState({ selectedEvent: redactedEvent, selectedIndex: 0 })} />);
+      const section = screen.getByRole('heading', { name: /business \/ error/i }).closest('section')!;
+      expect(within(section).getByText(/Authorization: Bearer \[REDACTED\]/)).toBeInTheDocument();
+      expect(section.textContent).not.toMatch(/Bearer ey[A-Za-z0-9]/); // no raw-looking token survives
+    });
+
+    it('the overview/title area renders the redacted message', () => {
+      render(<EventInspector state={baseState({ selectedEvent: redactedEvent, selectedIndex: 0 })} />);
+      const dialog = screen.getByRole('dialog', { name: /event details/i });
+      expect(dialog.textContent).toContain('[REDACTED]');
+      expect(dialog.textContent).toContain('[REDACTED_CARD]');
+    });
+
+    it('the raw JSON dump only ever shows what the event already carries - already-redacted text, never anything extra', async () => {
+      const user = userEvent.setup();
+      render(<EventInspector state={baseState({ selectedEvent: redactedEvent, selectedIndex: 0 })} />);
+      await user.click(screen.getByText('Raw JSON'));
+      const rawJson = screen.getByText(/"message"/).closest('pre')!;
+      expect(rawJson.textContent).toContain('[REDACTED]');
+      expect(rawJson.textContent).toContain('[REDACTED_CARD]');
+      expect(rawJson.textContent).not.toMatch(/customerId=\d/); // the original digits are gone, never reconstructed client-side
+    });
+
+    it('there is no reveal action anywhere for a redacted message/exception - the marker text is all there is', () => {
+      render(<EventInspector state={baseState({ selectedEvent: redactedEvent, selectedIndex: 0 })} />);
+      expect(screen.queryByRole('button', { name: /reveal/i })).not.toBeInTheDocument();
+      expect(screen.queryByText(/click to reveal|show original|unmask/i)).not.toBeInTheDocument();
+    });
+
+    it('has no detectable accessibility violations with redacted content', async () => {
+      const { container } = render(<EventInspector state={baseState({ selectedEvent: redactedEvent, selectedIndex: 0 })} />);
+      expect(await axe(container)).toHaveNoViolations();
+    });
   });
 });
