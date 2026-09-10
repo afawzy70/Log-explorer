@@ -109,6 +109,56 @@ class ContextApiIntegrationTest {
         .expectStatus().isBadRequest();
   }
 
+  /**
+   * Legacy Remediation Slice 6 - "context/journey incomplete metadata
+   * where backend-owned": {@code /context} routes through the exact same
+   * {@code SearchService#toResult} truncation computation every other
+   * endpoint does (verified here at the real HTTP layer, not assumed from
+   * {@code /search}'s own coverage) - a context window that genuinely has
+   * more matching events than the guardrail limit must honestly report
+   * {@code truncated: true}, never silently present a partial window as
+   * complete.
+   */
+  @Test
+  void aContextWindowExceedingTheGuardrailLimitHonestlyReportsTruncated() {
+    java.util.List<CanonicalLogEvent> many = new java.util.ArrayList<>();
+    for (int i = 0; i < 201; i++) {
+      many.add(CanonicalLogEvent.builder()
+          .timestamp(EVENT_TIME.plusSeconds(i))
+          .service("gateway")
+          .severity("INFO")
+          .message("event " + i)
+          .build());
+    }
+    // The stub source is a shared singleton bean across this test class -
+    // restore its original single-anchor-event flux afterward so this
+    // test's own mutation cannot leak into any other test's expectations,
+    // regardless of JUnit's (unspecified) method execution order.
+    try {
+      contextTestSource.withSearchFlux(Flux.fromIterable(many));
+
+      String body = """
+          {"sourceId":"context-test-source","timestamp":"2026-01-01T12:00:00Z","service":"gateway"}
+          """;
+      webTestClient.post().uri("/api/v1/logs/context")
+          .contentType(MediaType.APPLICATION_JSON)
+          .bodyValue(body)
+          .exchange()
+          .expectStatus().isOk()
+          .expectBody()
+          .jsonPath("$.counts.truncated").isEqualTo(true)
+          .jsonPath("$.counts.limit").isEqualTo(200);
+    } finally {
+      contextTestSource.withSearchFlux(Flux.just(
+          CanonicalLogEvent.builder()
+              .timestamp(EVENT_TIME)
+              .service("gateway")
+              .severity("INFO")
+              .message("the anchor event")
+              .build()));
+    }
+  }
+
   @Test
   void unknownSourceIsRejectedWith404() {
     String body = """

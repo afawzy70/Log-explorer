@@ -175,3 +175,21 @@
   outline-offset: -1px;
 }
 
+/*
+ * Legacy Remediation Slice 6 - an investigation-gap marker, not an event.
+ * Deliberately keeps one real `<td>` per visible column (no `colSpan`) so
+ * the table's own per-column geometry invariant (CLAUDE.md §4,
+ * `assertTableGeometry`) holds for this row exactly like any other - see
+ * `ResultsTable.tsx`'s own doc comment on the `gaps` prop. Muted/dashed
+ * styling (never color alone - the cell's own text already says "Gap
+ * detected") keeps it visually distinct from both a real row and from
+ * `.selectedRow`/`.contextRootRow`.
+ */
+.gapRow {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  font-style: italic;
+  border-top: 1px dashed var(--color-border);
+  border-bottom: 1px dashed var(--color-border);
+}
+

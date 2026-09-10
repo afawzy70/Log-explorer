@@ -388,4 +388,85 @@ describe('ResultsTable', () => {
       expect(row).toHaveAttribute('aria-current', 'location');
     });
   });
+
+  describe('gaps prop - investigation-gap markers (Legacy Remediation Slice 6)', () => {
+    const gap = {
+      afterIndex: 0,
+      fromTimestamp: '2026-01-01T00:00:00.000Z',
+      toTimestamp: '2026-01-01T00:00:20.000Z',
+      durationMs: 20_000,
+      reason: 'large_interval' as const,
+      confidence: 'observed' as const,
+    };
+
+    it('renders no extra rows when gaps is empty/unset - never inserts a fake event', () => {
+      const { container } = render(<ResultsTable events={[event(), event({ message: 'second' })]} />);
+      expect(container.querySelectorAll('tbody tr')).toHaveLength(2);
+      expect(screen.queryByTestId('gap-row')).toBeNull();
+    });
+
+    it('inserts a gap marker row immediately after the event at afterIndex, with the same cell count as every other row', () => {
+      const { container } = render(
+        <ResultsTable events={[event({ message: 'first' }), event({ message: 'second' })]} gaps={[gap]} />,
+      );
+      const rows = container.querySelectorAll('tbody tr');
+      expect(rows).toHaveLength(3); // 2 events + 1 gap row
+      expect(rows[0].textContent).toContain('first');
+      expect(rows[1]).toHaveAttribute('data-testid', 'gap-row');
+      expect(rows[2].textContent).toContain('second');
+
+      // Same td count as a real event row (the results-table geometry
+      // invariant, CLAUDE.md §4 - never a merged/colSpan cell).
+      const eventRowCellCount = rows[0].querySelectorAll('td').length;
+      expect(rows[1].querySelectorAll('td')).toHaveLength(eventRowCellCount);
+    });
+
+    it('the gap row describes duration and the from/to window as text - "gap detected", never implying something broke', () => {
+      render(<ResultsTable events={[event(), event({ message: 'second' })]} gaps={[gap]} />);
+      const gapRow = screen.getByTestId('gap-row');
+      expect(gapRow.textContent).toMatch(/gap detected/i);
+      expect(gapRow.textContent).toMatch(/20s/);
+      expect(gapRow.textContent).not.toMatch(/missing|broken|failed|error/i);
+    });
+
+    it('a gap row has no Actions button - there is no event to inspect', () => {
+      render(<ResultsTable events={[event(), event({ message: 'second' })]} gaps={[gap]} />);
+      const gapRow = screen.getByTestId('gap-row');
+      expect(within(gapRow).queryByRole('button')).toBeNull();
+    });
+
+    it('multiple gaps in one result set each render their own marker row, in the right positions', () => {
+      const events = [event({ message: 'a' }), event({ message: 'b' }), event({ message: 'c' })];
+      const gaps = [
+        { ...gap, afterIndex: 0 },
+        { ...gap, afterIndex: 1, fromTimestamp: '2026-01-01T00:00:20Z', toTimestamp: '2026-01-01T00:00:50Z', durationMs: 30_000 },
+      ];
+      const { container } = render(<ResultsTable events={events} gaps={gaps} />);
+      const rows = container.querySelectorAll('tbody tr');
+      expect(rows).toHaveLength(5); // a, gap, b, gap, c
+      expect(rows[0].textContent).toContain('a');
+      expect(rows[1]).toHaveAttribute('data-testid', 'gap-row');
+      expect(rows[2].textContent).toContain('b');
+      expect(rows[3]).toHaveAttribute('data-testid', 'gap-row');
+      expect(rows[4].textContent).toContain('c');
+    });
+
+    it('ArrowDown/ArrowUp skip past a gap row to reach the next real event row', async () => {
+      const user = userEvent.setup();
+      render(<ResultsTable events={[event({ message: 'first' }), event({ message: 'second' })]} gaps={[gap]} />);
+      const buttons = screen.getAllByRole('button', { name: /actions for this event/i });
+      buttons[0].focus();
+
+      await user.keyboard('{ArrowDown}');
+      expect(buttons[1]).toHaveFocus(); // not stuck on the gap row in between
+
+      await user.keyboard('{ArrowUp}');
+      expect(buttons[0]).toHaveFocus();
+    });
+
+    it('has no detectable accessibility violations with a gap row present', async () => {
+      const { container } = render(<ResultsTable events={[event(), event({ message: 'second' })]} gaps={[gap]} />);
+      expect(await axe(container)).toHaveNoViolations();
+    });
+  });
 });

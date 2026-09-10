@@ -9,6 +9,7 @@ import type {
   SearchResponse,
   ServiceInfo,
   SourceHealth,
+  SourceHealthDetail,
   SourceInfo,
 } from './types';
 
@@ -41,9 +42,9 @@ export async function fetchSources(signal?: AbortSignal): Promise<SourceInfo[]> 
   return parseJsonOrThrow<SourceInfo[]>(response);
 }
 
-export async function fetchSourceHealth(sourceId: string, signal?: AbortSignal): Promise<SourceHealth> {
+export async function fetchSourceHealth(sourceId: string, signal?: AbortSignal): Promise<SourceHealthDetail> {
   const response = await fetch(`/api/v1/sources/${encodeURIComponent(sourceId)}/health`, { signal });
-  return parseJsonOrThrow<SourceHealth>(response);
+  return parseJsonOrThrow<SourceHealthDetail>(response);
 }
 
 export async function fetchSourceServices(sourceId: string, signal?: AbortSignal): Promise<ServiceInfo[]> {

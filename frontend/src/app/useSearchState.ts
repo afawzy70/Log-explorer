@@ -13,7 +13,7 @@ import type {
   SearchRequestBody,
   SearchResponse,
   ServiceInfo,
-  SourceHealth,
+  SourceHealthDetail,
   SourceInfo,
 } from '../shared/api/types';
 import { DEFAULT_SEVERITY_LEVELS } from '../features/search/severityLevels';
@@ -114,7 +114,7 @@ export function useSearchState() {
    */
   const [queryState, setQueryState] = useState<QueryAuthoringState>(emptyQueryAuthoringState);
 
-  const [health, setHealth] = useState<SourceHealth | null>(null);
+  const [health, setHealth] = useState<SourceHealthDetail | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
 
   const [searchResult, setSearchResult] = useState<SearchResponse | null>(null);
@@ -198,7 +198,14 @@ export function useSearchState() {
     fetchSourceHealth(sourceId)
       .then(setHealth)
       .catch(() =>
-        setHealth({ status: 'DOWN', message: 'Unable to reach the health endpoint', checkedAt: new Date().toISOString() }),
+        setHealth({
+          status: 'DOWN',
+          message: 'Unable to reach the health endpoint',
+          checkedAt: new Date().toISOString(),
+          warnings: [],
+          latencyMs: null,
+          capabilities: null,
+        }),
       )
       .finally(() => setHealthLoading(false));
   }, []);

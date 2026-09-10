@@ -109,7 +109,7 @@ describe('DockerSettingsPanel', () => {
   });
 
   it('Test Connection success shows a reachable status with the sanitized message', async () => {
-    const health: SourceHealth = { status: 'UP', message: 'Docker daemon reachable', checkedAt: '2026-01-01T00:00:00Z' };
+    const health: SourceHealth = { status: 'UP', message: 'Docker daemon reachable', checkedAt: '2026-01-01T00:00:00Z', warnings: [] };
     mockTestConnection.mockResolvedValue(health);
     const user = userEvent.setup();
     render(<DockerSettingsPanel />);
@@ -126,6 +126,7 @@ describe('DockerSettingsPanel', () => {
       status: 'DOWN',
       message: 'Docker daemon unreachable - connection refused. Confirm the daemon is running and reachable at the configured host/port.',
       checkedAt: '2026-01-01T00:00:00Z',
+      warnings: [],
     };
     mockTestConnection.mockResolvedValue(health);
     const user = userEvent.setup();
@@ -142,7 +143,7 @@ describe('DockerSettingsPanel', () => {
   });
 
   it('Test Connection sends only the fields relevant to the selected mode', async () => {
-    mockTestConnection.mockResolvedValue({ status: 'UP', message: 'ok', checkedAt: '2026-01-01T00:00:00Z' });
+    mockTestConnection.mockResolvedValue({ status: 'UP', message: 'ok', checkedAt: '2026-01-01T00:00:00Z', warnings: [] });
     const user = userEvent.setup();
     render(<DockerSettingsPanel />);
     await open(user);
@@ -162,7 +163,7 @@ describe('DockerSettingsPanel', () => {
   it('never writes anything to localStorage or sessionStorage across open/fill/test/close', async () => {
     const localSet = vi.spyOn(Storage.prototype, 'setItem');
     const sessionSet = vi.spyOn(window.sessionStorage, 'setItem');
-    mockTestConnection.mockResolvedValue({ status: 'UP', message: 'ok', checkedAt: '2026-01-01T00:00:00Z' });
+    mockTestConnection.mockResolvedValue({ status: 'UP', message: 'ok', checkedAt: '2026-01-01T00:00:00Z', warnings: [] });
 
     const user = userEvent.setup();
     render(<DockerSettingsPanel />);

@@ -42,6 +42,26 @@ class JourneyApiIntegrationTest {
     }
 
     @Bean
+    StubLogSource journeyTruncationTestSource() {
+      // A dedicated source for the truncation test below - kept separate
+      // from journeyTestSource so this doesn't need to mutate (and then
+      // restore) that shared singleton's flux.
+      StubLogSource stub = new StubLogSource("journey-truncation-test-source", "Journey Truncation Test Source",
+          new SourceCapabilities(true, false, false, false, false, false));
+      java.util.List<CanonicalLogEvent> many = new java.util.ArrayList<>();
+      for (int i = 0; i < 201; i++) {
+        many.add(CanonicalLogEvent.builder()
+            .timestamp(T1.plusSeconds(i))
+            .service("gateway")
+            .message("event " + i)
+            .journeyId("j-many")
+            .build());
+      }
+      stub.withSearchFlux(Flux.fromIterable(many));
+      return stub;
+    }
+
+    @Bean
     StubLogSource journeyTestSource() {
       StubLogSource stub = new StubLogSource("journey-test-source", "Journey Test Source",
           new SourceCapabilities(true, false, false, false, false, false));
@@ -134,6 +154,28 @@ class JourneyApiIntegrationTest {
         .bodyValue(body)
         .exchange()
         .expectStatus().isNotFound();
+  }
+
+  /**
+   * Legacy Remediation Slice 6 - "context/journey incomplete metadata
+   * where backend-owned": a journey whose real matching events exceed the
+   * guardrail limit must honestly report {@code truncated: true} through
+   * the real HTTP endpoint, the same truncation computation {@code
+   * /search}/{@code /context} already share.
+   */
+  @Test
+  void aJourneyExceedingTheGuardrailLimitHonestlyReportsTruncated() {
+    String body = """
+        {"sourceId":"journey-truncation-test-source","start":"2026-01-01T00:00:00Z","end":"2026-01-02T00:00:00Z","field":"journeyId","value":"j-many"}
+        """;
+    webTestClient.post().uri("/api/v1/logs/journey")
+        .contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(body)
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody()
+        .jsonPath("$.counts.truncated").isEqualTo(true)
+        .jsonPath("$.counts.limit").isEqualTo(200);
   }
 
   @Test

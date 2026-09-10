@@ -104,7 +104,11 @@ test.describe('UI Gap Closure Pass', () => {
         return ta - tb;
       })
       .map((e) => e.message ?? '(empty message)');
-    const rows = page.locator('tbody tr');
+    // Excludes gap-marker rows (Legacy Remediation Slice 6, `data-testid="gap-row"`)
+    // - those are not events, and real backend data for this window may
+    // genuinely contain an observed gap; only real event rows are
+    // compared against the sorted server response here.
+    const rows = page.locator('tbody tr:not([data-testid="gap-row"])');
     const rowCount = await rows.count();
     const actualMessages: string[] = [];
     for (let i = 0; i < rowCount; i++) {

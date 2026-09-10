@@ -101,11 +101,39 @@ public class DockerLogSource implements LogSource {
     return new SourceCapabilities(true, true, false, true, false, false);
   }
 
+  /**
+   * Legacy Remediation Slice 6 — beyond binary reachability, this now also
+   * checks the one other thing a health check can cheaply, honestly know
+   * without reading any container's actual logs: whether the daemon is
+   * reachable but the configured Compose project filter matched zero real
+   * containers. That is a genuine, observable reason to distrust
+   * completeness (any search against this source will silently return
+   * nothing), so it is reported as {@code DEGRADED}, not {@code UP}.
+   *
+   * <p>Deliberately does NOT attempt to detect "some containers
+   * unreadable" here — that would mean actually reading logs from every
+   * relevant container on every health check (an expensive, per-container
+   * operation this class already knows can fail per-container, see {@link
+   * #readContainerLogs}), which would make health checks as costly as a
+   * real search. That class of degradation is already handled the way it
+   * always has been (a container is simply skipped for that one search/
+   * live-tail attempt, logged, never silently presented as complete) —
+   * see {@code docs/verification/LEGACY_REMEDIATION_SLICE_6_REPORT.md}
+   * for why this line was drawn where it was.
+   */
   @Override
   public Mono<SourceHealth> health() {
     return Mono.fromCallable(() -> {
           checkRemoteHostIfNeeded();
           client.ping();
+          List<Container> relevant = relevantContainers(client.listContainers(true), List.of());
+          if (relevant.isEmpty()) {
+            return new SourceHealth(
+                SourceHealth.Status.DEGRADED,
+                "Docker daemon reachable, but no containers matched the configured Compose project filter",
+                Instant.now(),
+                List.of("No containers matched the configured Compose project filter"));
+          }
           return new SourceHealth(SourceHealth.Status.UP, "Docker daemon reachable", Instant.now());
         })
         .subscribeOn(Schedulers.boundedElastic())
