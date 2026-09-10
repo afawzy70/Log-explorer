@@ -263,8 +263,8 @@ PR_31_MERGE_STATUS: MERGED
 PR_31_MERGE_SHA: 78cf648ac594c9c1403d61406d02251686b552ce
 POST_PR31_MAIN_CI: PASS (Backend/Frontend/E2E all success; Windows Desktop correctly did not trigger, docs-only merge)
 BASE_SHA: 78cf648ac594c9c1403d61406d02251686b552ce
-HEAD_SHA: (recorded at push time, see PR)
-PR: (opened after this report, see final message)
+HEAD_SHA: aac391ad77020cbf6d0b13881a56fa8c91a38e16
+PR: https://github.com/afawzy70/Log-explorer/pull/32
 UX_SKILL_LOADED: NO (tool reports "Unknown skill" - recurring environment limitation)
 UX_SKILL_PROTOCOL: LERUX-1 (followed manually via committed SKILL.md)
 OLD_REFERENCE_USED: YES (old-01, old-05/06, old-07-09)
