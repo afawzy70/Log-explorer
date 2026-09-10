@@ -26,7 +26,7 @@ import { assertNoHorizontalOverflow, captureScreenshot, setViewport } from './he
 
 async function selectFixtureSource(page: Page) {
   await page.goto('/');
-  await page.selectOption('select', 'fixture');
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
 }
 
 function panelOf(page: Page) {

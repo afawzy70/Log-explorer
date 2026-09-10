@@ -45,7 +45,7 @@ const STORAGE_KEY = 'logexplorer.tablePreferences.v1';
 
 async function gotoFixtureAllLevels(page: Page) {
   await page.goto('/');
-  await page.selectOption('select', 'fixture');
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
   await page.getByRole('button', { name: /^all$/i }).click(); // severity: All - the 250-event corpus, exceeds the 200 default page limit
 }
 
@@ -160,7 +160,7 @@ test.describe('Legacy Remediation Slice 4 — results table configurability & po
     // must be re-run from scratch, but the table's own presentation
     // preferences are read from localStorage independently of that.
     await expect(page.getByText(/run a search to see results/i)).toBeVisible();
-    await page.selectOption('select', 'fixture');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
     await page.getByRole('button', { name: /^all$/i }).click();
     await search(page);
 

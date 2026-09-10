@@ -456,6 +456,12 @@ PR #34's first GitHub Actions run showed `Backend=PASS`, `Frontend=PASS`,
 section documents that real failure and its fix — it is not rewritten
 away; the original run remains visible in the PR's own Checks history.
 
+**A second CI run (after the first fix below was pushed) also failed
+E2E** - a genuinely different failure this time, in a *pre-existing*
+spec, `phase-legacy-slice8-productivity-performance.spec.ts` (tests 10
+and 11). Documented as its own recovery round below, not merged into the
+first round's own findings, so the real sequence of events stays visible.
+
 ```
 CI_FAILURE_ROOT_CAUSE=frontend/e2e/ux-r3-after-evidence.spec.ts's own "D/E:
   Compose project discovery" test assumed a real Docker Compose project
@@ -531,3 +537,76 @@ Skill status, restated (already fully diagnosed above, not re-investigated):
 `UX_SKILL_REGISTERED=YES`, `UX_SKILL_DISCOVERABLE=YES in a fresh session,
 NO in this one`, `UX_SKILL_LOADED=NO this session`, `PROTOCOL=LERUX-1`,
 `BLOCKER=session-lifetime skill-indexing cache`, `MANUAL_FALLBACK_USED=YES`.
+
+### CI_RECOVERY — round 2 (second push, second E2E failure)
+
+```
+CI_FAILURE_ROOT_CAUSE=phase-legacy-slice8-productivity-performance.spec.ts's
+  own tests 10 and 11 each call page.reload() mid-test, then immediately
+  assert with a bare, unnamed page.getByRole('combobox') - a locator that
+  was safe before UX-R3 (exactly one <select role="combobox"> ever existed
+  on the page) but is no longer safe now that a second real <select
+  role="combobox"> (the Compose project control) can also be present. The
+  real CI error confirms this precisely: "strict mode violation:
+  getByRole('combobox') resolved to 2 elements: 1) <select id="_r_2_">
+  aka getByLabel('Source') 2) <select disabled id="_r_6_"> aka
+  getByLabel('Compose project')" - i.e. after reload, the source that
+  ended up selected by default was local-docker (composeProjectScoping
+  true), and its Compose-project discovery correctly came back empty/
+  disabled in CI's own no-real-Docker environment (the truthful empty
+  state, not a bug). Both attempts (original + retry) failed identically,
+  so this was deterministic given CI's environment, not a one-off flake.
+CLASSIFICATION=B (TEST ENVIRONMENT ASSUMPTION) + C (TEST SETUP DEFECT) -
+  B because the underlying disabled-selector state is the correct,
+  truthful product behavior for an environment with no real Compose
+  projects (same as round 1's finding); C because the test's own locator
+  was written before a second real combobox could ever exist on the page,
+  and was never revisited when UX-R3 added one - this is squarely a test
+  authoring gap this mission is responsible for, not a pre-existing defect
+  discovered incidentally.
+PRODUCT_BUG=NO - the disabled Compose-project selector after a reload
+  that happens to default to local-docker is exactly the same correct,
+  truthful "no projects discovered" state proven and tested throughout
+  this report; nothing about the product's own behavior needed to change.
+RECOVERY=every ambiguous source-selection locator in the ENTIRE E2E suite
+  (not only UX-R3's own new specs) was made to target the Source control
+  specifically by its accessible name, `{ name: 'Source', exact: true }` -
+  both the bare page.selectOption('select', <value>) pattern (17
+  pre-existing spec files, ~40 call sites, mechanically replaced) and the
+  4 bare getByRole('combobox') assertions in legacy-slice8 itself. This
+  is a locator fix only - no test's own assertions, waits, or scenario
+  logic were changed, and no product code was touched.
+FILES_FIXED=phase-g-results-table.spec.ts, phase-h-event-inspector.spec.ts,
+  phase-legacy-slice1-pagination.spec.ts, phase-i-journey-investigation.spec.ts,
+  phase-legacy-slice2-query-transparency.spec.ts,
+  phase-legacy-slice5-live-resilience.spec.ts,
+  phase-legacy-slice3-docker-settings.spec.ts, phase-m-ux-acceptance.spec.ts,
+  phase-legacy-slice6-investigation-depth.spec.ts,
+  phase-legacy-slice7-redaction.spec.ts, phase-j-live-tail.spec.ts,
+  phase-ui-parity-acceleration.spec.ts, phase-ui-gap-closure.spec.ts,
+  phase-legacy-slice4-table-configurability.spec.ts, ux-r1-evidence.spec.ts,
+  phase-uxr2-search-freshness.spec.ts, ux-r3-before-evidence.spec.ts,
+  phase-legacy-slice8-productivity-performance.spec.ts (the last one also
+  got its own 4 bare-combobox assertions named)
+VERIFICATION=grep confirms zero remaining bare
+  page.selectOption('select', ...) or unnamed getByRole('combobox')
+  locators anywhere in frontend/e2e/. phase-legacy-slice8-productivity-
+  performance.spec.ts re-run locally with --repeat-each=2 (36/36 passing,
+  including tests 10/11 twice each). Full local E2E suite re-run:
+  197 passed, 1 pre-existing conditional skip (unrelated to this
+  recovery - "Load more" self-skips when the Fixture corpus fits on one
+  page), 0 failed, 0 flaky.
+```
+
+Full validation re-run after this second fix (again, no product code was
+touched):
+
+```
+TYPECHECK=PASS (clean)
+E2E_LOCAL=PASS (197 passed, 1 unrelated conditional skip, 0 failed, 0 flaky)
+```
+
+Backend/Frontend unit tests and the production build were not re-run for
+this specific round (no backend, frontend-unit, or build-relevant file
+changed since the prior round's own green results for those three) -
+their prior results in this same CI_RECOVERY section still hold.

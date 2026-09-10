@@ -6,7 +6,7 @@ const PHASE = 'UX_R3_EVIDENCE';
 
 async function gotoFixture(page: Page) {
   await page.goto('/');
-  await page.selectOption('select', 'fixture');
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
 }
 
 async function alwaysFailLiveConnections(page: Page) {
