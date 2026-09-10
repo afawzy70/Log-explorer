@@ -17,6 +17,14 @@ internal sealed class BackendProcessManager : IDisposable
     private static readonly TimeSpan ShutdownGrace = TimeSpan.FromSeconds(10);
 
     private Process? _process;
+    // Assigned right after the backend process starts - a Windows Job
+    // Object configured to kill every assigned process the moment this
+    // handle closes, so the backend can never outlive this launcher
+    // process even if it is terminated abruptly (killed by Task Manager,
+    // crashes, etc.) rather than closed normally through FormClosed. See
+    // JobObject.cs's own doc comment for why this exists alongside (not
+    // instead of) the graceful Shutdown() below.
+    private JobObject? _jobObject;
 
     public int Port { get; }
 
@@ -85,6 +93,9 @@ internal sealed class BackendProcessManager : IDisposable
         _process.BeginOutputReadLine();
         _process.BeginErrorReadLine();
 
+        _jobObject = JobObject.CreateKillOnCloseJob();
+        _jobObject.Assign(_process.Handle);
+
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
         var healthUrl = $"http://127.0.0.1:{Port}/actuator/health";
         var deadline = DateTimeOffset.UtcNow + StartupTimeout;
@@ -147,6 +158,7 @@ internal sealed class BackendProcessManager : IDisposable
     {
         Shutdown();
         _process?.Dispose();
+        _jobObject?.Dispose();
     }
 }
 
