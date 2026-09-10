@@ -42,13 +42,24 @@ if (-not $moduleLine) {
     throw "Could not parse a module list from jdeps output:`n$depsOutput"
 }
 
-# jdk.crypto.ec is required for the TLS cipher suites modern servers
-# (including a real OpenShift/Loki gateway) commonly negotiate but that
-# jdeps' static analysis of the jar's own bytecode cannot see (loaded
-# reflectively by the JSSE provider machinery, not referenced directly) -
-# added explicitly, same reasoning `jlink` documentation itself gives for
-# this exact module.
-$modules = "$moduleLine,jdk.crypto.ec"
+# Two modules added explicitly, on top of whatever jdeps detected -
+# both are real, evidence-based additions (the first real packaged
+# Windows smoke test failed without java.desktop, with the exact
+# NoClassDefFoundError this comment names), not a guess:
+#
+#  - jdk.crypto.ec: the TLS cipher suites modern servers (including a
+#    real OpenShift/Loki gateway) commonly negotiate, loaded reflectively
+#    by the JSSE provider machinery rather than referenced directly -
+#    jlink's own documentation names this exact module for exactly this
+#    reason.
+#  - java.desktop: Spring Boot's own property-binding conversion service
+#    (`BindConverter`/`PropertyEditorSupport`) needs `java.beans.*`, which
+#    jdeps' static bytecode analysis of a *repackaged* Spring Boot fat jar
+#    (BOOT-INF/classes + BOOT-INF/lib/*.jar, not a normal flat classpath)
+#    does not reliably trace through - confirmed by a real
+#    `NoClassDefFoundError: java/beans/PropertyEditorSupport` startup
+#    crash in this exact CI job before this module was added.
+$modules = "$moduleLine,jdk.crypto.ec,java.desktop"
 Write-Host "Detected modules: $modules"
 
 Write-Host "Running jlink..."
