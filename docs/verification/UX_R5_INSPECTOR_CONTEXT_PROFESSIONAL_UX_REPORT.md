@@ -317,6 +317,18 @@ entry point:
    reaching the nested "Raw JSON" disclosure — one extra click, no
    capability lost, which is exactly the property §13 requires.
 
+**A pre-existing flaky test, fixed properly rather than retried.**
+`App.liveComposeProjectSwitch.test.tsx` (UX-R3) failed intermittently in
+full-suite runs during UX-R4 and then failed the Frontend job on this
+PR's first CI run. It was a real race, not infrastructure: the test waited
+only for the Compose-project `<select>` to *exist*, which it does
+immediately - disabled, carrying just its "All projects" placeholder -
+while the projects are still being fetched, so `selectOptions('project-a')`
+raced the fetch ("Value \"project-a\" not found in options"). It now waits
+for the option itself and for the control to be enabled. Verified by two
+consecutive full-suite runs (721/721 each). Test-only change; no product
+behaviour involved.
+
 **Known failure, not introduced by UX-R5**: `phase-m-ux-acceptance.spec.ts`
 Task 1 fails locally on the service multi-select. Proven pre-existing
 during UX-R4 by stashing the working tree and re-running against
