@@ -8,6 +8,17 @@ Real evidence only — every row below was either driven through the real
 running app + real dev-profile backend (Fixture source), or traced in the
 current source code and cross-referenced against that real evidence.
 
+**Status: NOT CLOSED.** Per the owner's explicit instruction on the
+screenshot-correction pass, this representative sample is real evidence
+that no broken filter was found in what was tested, but it does **not**
+settle the owner's "filters appear not to work" report on its own — see
+"Not covered in this pass" below for the exact remaining gap, and
+`OLD_UX_RESTORATION_AUDIT.md`'s own "Filter functional audit — not
+closed" section. The exhaustive matrix (every field, both included/
+excluded assertions, real Docker/Fixture data, Loki marked
+environment-blocked if unavailable) remains UX-R2's own required scope,
+unchanged.
+
 ## Headline finding
 
 **No broken filter was found.** The owner's report that filters "appear
