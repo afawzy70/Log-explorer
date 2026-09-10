@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.logexplorer.api.dto.EventDto;
 import com.logexplorer.core.mask.MaskingService;
+import com.logexplorer.core.mask.TextRedactor;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.RawSensitiveFields;
 import java.time.Instant;
@@ -31,7 +32,7 @@ class SerializationLeakTest {
   @Autowired
   private ObjectMapper objectMapper;
 
-  private final EventMapper eventMapper = new EventMapper(new MaskingService());
+  private final EventMapper eventMapper = new EventMapper(new MaskingService(), new TextRedactor());
 
   @Test
   void serializedEventDtoNeverContainsAnyRawSensitiveValue() throws Exception {
@@ -63,6 +64,93 @@ class SerializationLeakTest {
 
     assertThat(json).doesNotContain(RAW_CIF, RAW_USERNAME, RAW_CUSTOMER_ID, RAW_DEVICE_ID, RAW_DEVICE_IP);
     assertThat(json).contains("harmlessExtra", "harmlessMdcExtra");
+  }
+
+  // -----------------------------------------------------------------
+  // Legacy Remediation Slice 7 - free-text redaction, extended at the
+  // exact same single boundary (EventMapper.toDto -> TextRedactor).
+  // -----------------------------------------------------------------
+
+  private static final String SENSITIVE_CIF_SENTINEL = "RAW-FREETEXT-CIF-SENTINEL-7b21";
+  private static final String SENSITIVE_TOKEN_SENTINEL = "RAW-FREETEXT-TOKEN-SENTINEL-7b21";
+  private static final String SENSITIVE_CARD_SENTINEL = "4111111111111111"; // a real value, not a label - Luhn-valid
+
+  @Test
+  void aContextualIdentifierEmbeddedInTheFreeTextMessageIsRedactedBeforeSerialization() throws Exception {
+    CanonicalLogEvent event = CanonicalLogEvent.builder()
+        .message("Login failed for customerId=" + SENSITIVE_CIF_SENTINEL)
+        .build();
+
+    String json = objectMapper.writeValueAsString(eventMapper.toDto(event));
+
+    assertThat(json).doesNotContain(SENSITIVE_CIF_SENTINEL);
+    assertThat(json).contains("customerId=[REDACTED]");
+  }
+
+  @Test
+  void aBearerTokenEmbeddedInTheFreeTextExceptionIsRedactedBeforeSerialization() throws Exception {
+    CanonicalLogEvent event = CanonicalLogEvent.builder()
+        .message("m")
+        .exception("java.lang.RuntimeException: auth failed, Authorization: Bearer " + SENSITIVE_TOKEN_SENTINEL + "0000000")
+        .build();
+
+    String json = objectMapper.writeValueAsString(eventMapper.toDto(event));
+
+    assertThat(json).doesNotContain(SENSITIVE_TOKEN_SENTINEL);
+    assertThat(json).contains("Authorization: Bearer [REDACTED]");
+  }
+
+  @Test
+  void aValidLuhnCardNumberEmbeddedInTheFreeTextMessageIsRedactedBeforeSerialization() throws Exception {
+    CanonicalLogEvent event = CanonicalLogEvent.builder()
+        .message("card " + SENSITIVE_CARD_SENTINEL + " declined")
+        .build();
+
+    String json = objectMapper.writeValueAsString(eventMapper.toDto(event));
+
+    assertThat(json).doesNotContain(SENSITIVE_CARD_SENTINEL);
+    assertThat(json).contains("[REDACTED_CARD]");
+  }
+
+  @Test
+  void aSecretEmbeddedInAMalformedRawLineIsRedactedBeforeSerialization() throws Exception {
+    CanonicalLogEvent event = CanonicalLogEvent.builder()
+        .malformed(true)
+        .rawLine("NOT-JSON password=" + SENSITIVE_TOKEN_SENTINEL)
+        .build();
+
+    String json = objectMapper.writeValueAsString(eventMapper.toDto(event));
+
+    assertThat(json).doesNotContain(SENSITIVE_TOKEN_SENTINEL);
+    assertThat(json).contains("password=[REDACTED]");
+  }
+
+  @Test
+  void aSecretEmbeddedInAnUnknownFieldStringValueIsRedactedBeforeSerialization() throws Exception {
+    CanonicalLogEvent event = CanonicalLogEvent.builder()
+        .message("m")
+        .unknownTopLevelFields(Map.of("weirdField", "api_key=" + SENSITIVE_TOKEN_SENTINEL))
+        .unknownMdcFields(Map.of("weirdMdc", "customerId=" + SENSITIVE_CIF_SENTINEL))
+        .build();
+
+    String json = objectMapper.writeValueAsString(eventMapper.toDto(event));
+
+    assertThat(json).doesNotContain(SENSITIVE_TOKEN_SENTINEL, SENSITIVE_CIF_SENTINEL);
+    assertThat(json).contains("api_key=[REDACTED]").contains("customerId=[REDACTED]");
+  }
+
+  @Test
+  void anUnknownFieldNonStringValueIsNeverTouchedByRedactionAndNeverThrows() throws Exception {
+    CanonicalLogEvent event = CanonicalLogEvent.builder()
+        .message("m")
+        .unknownTopLevelFields(Map.of("aNumber", 42, "aNestedMap", Map.of("customerId", "778899")))
+        .build();
+
+    String json = objectMapper.writeValueAsString(eventMapper.toDto(event));
+
+    assertThat(json).contains("42");
+    // The nested map's own "customerId" is never scanned (depth-0 only, section 9).
+    assertThat(json).contains("778899");
   }
 
   private CanonicalLogEvent fullyPopulatedEvent() {
