@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useDismissableLayer } from './useDismissableLayer';
+import { useDismissableLayer, wasConsumedByDismissableLayer } from './useDismissableLayer';
 
 function Layer({
   label,
@@ -128,5 +128,46 @@ describe('useDismissableLayer', () => {
 
     expect(outerOnDismiss).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('outer')).not.toBeInTheDocument();
+  });
+});
+
+/*
+ * UX-R6 §13 - "Escape closes the top-most transient layer only", across
+ * the boundary between this hook's own layer stack and Escape handlers
+ * that live outside it (the Event Inspector's shortcut).
+ */
+describe('UX-R6 - Escape consumption is recorded on the event itself', () => {
+  it('marks the keydown a layer acted on, so an outer handler can skip it', async () => {
+    const user = userEvent.setup();
+    const onDismiss = vi.fn();
+    let sawConsumed: boolean | null = null;
+
+    // An outer Escape handler that mirrors what EventInspector does: it
+    // listens in the BUBBLE phase, after the layer's capture-phase
+    // listener has already run and React has flushed its close.
+    const outer = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        sawConsumed = wasConsumedByDismissableLayer(e);
+      }
+    };
+    document.addEventListener('keydown', outer);
+
+    function Harness() {
+      const ref = useRef<HTMLDivElement | null>(null);
+      useDismissableLayer(ref, true, onDismiss);
+      return <div ref={ref}>layer</div>;
+    }
+    render(<Harness />);
+
+    await user.keyboard('{Escape}');
+
+    document.removeEventListener('keydown', outer);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(sawConsumed).toBe(true);
+  });
+
+  it('does not mark an Escape no layer handled', () => {
+    const event = new KeyboardEvent('keydown', { key: 'Escape' });
+    expect(wasConsumedByDismissableLayer(event)).toBe(false);
   });
 });

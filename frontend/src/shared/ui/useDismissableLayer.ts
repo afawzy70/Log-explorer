@@ -10,6 +10,36 @@ import type { RefObject } from 'react';
 const openLayers: symbol[] = [];
 
 /**
+ * Keydown events that a dismissable layer has already consumed.
+ *
+ * <p>UX-R6 §13 ("Escape closes the top-most transient layer only").
+ * Layers registered through this hook already cooperate with each other -
+ * only the topmost reacts to Escape - but surfaces that handle Escape
+ * *outside* this hook had no way to know a layer had just used it, so one
+ * Escape closed a popover **and** the panel underneath it. Measured in
+ * the real app: with the Event Inspector open, opening a results row's
+ * Actions menu and pressing Escape dismissed both, dropping the
+ * investigator back to the results list when they meant to close a menu.
+ *
+ * <p>This deliberately marks **the event**, not "is a layer open". The
+ * two listeners run in different phases - layers listen in the capture
+ * phase, `ShortcutRegistry` in the bubble phase - and React flushes the
+ * layer's close (and so its cleanup, and so its removal from
+ * `openLayers`) in between. A stack-emptiness check therefore reported
+ * "no layers open" by the time the outer handler ran, which is exactly
+ * the bug it was meant to prevent. Event identity is immune to that
+ * ordering: it is the same `KeyboardEvent` object in both phases.
+ *
+ * <p>A `WeakSet` so nothing is retained after the event is discarded.
+ */
+const consumedEscapes = new WeakSet<KeyboardEvent>();
+
+/** True when a dismissable layer has already acted on this exact keydown. */
+export function wasConsumedByDismissableLayer(event: KeyboardEvent): boolean {
+  return consumedEscapes.has(event);
+}
+
+/**
  * Shared close-on-outside-click / close-on-Escape behavior for every
  * popover-shaped control (custom time range, service multi-select,
  * advanced filters) - CLAUDE.md §4: "Cancel / Escape / outside click
@@ -57,6 +87,10 @@ export function useDismissableLayer(
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape' && openLayers[openLayers.length - 1] === layerId) {
+        // Mark before dismissing: `onDismiss` can trigger a synchronous
+        // React flush, and any outer Escape handler for this same event
+        // must see the mark regardless of when it runs.
+        consumedEscapes.add(event);
         onDismissRef.current();
       }
     }

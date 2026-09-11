@@ -8,6 +8,7 @@ import { RequestFlowSection } from './RequestFlowSection';
 import { BusinessErrorSection } from './BusinessErrorSection';
 import { AllFieldsSection } from './AllFieldsSection';
 import { MAX_PANEL_WIDTH, MIN_PANEL_WIDTH, useResizablePanel } from './useResizablePanel';
+import { wasConsumedByDismissableLayer } from '../../shared/ui/useDismissableLayer';
 import styles from './EventInspector.module.css';
 
 /**
@@ -59,7 +60,18 @@ export function EventInspector({ state }: { state: SearchState }) {
     // pre-Slice-8 behavior, which never guarded Escape with isTypingTarget
     // (only "["/"]" were guarded).
     allowWhileTyping: true,
-    test: (e) => e.key === 'Escape' && stateRef.current.selectedEvent != null,
+    /*
+     * UX-R6 §13 - but it must NOT fire while a more transient layer is
+     * open on top of the inspector. Popovers (a row's Actions menu, the
+     * surrounding-logs confirm step, a filter popover) register with
+     * `useDismissableLayer`, whose own stack already ensures only the
+     * topmost of *them* reacts to Escape. This shortcut lives outside
+     * that stack, so before UX-R6 one Escape closed the menu **and** the
+     * inspector beneath it - measured in the real app, and the reason
+     * this guard exists.
+     */
+    test: (e) =>
+      e.key === 'Escape' && stateRef.current.selectedEvent != null && !wasConsumedByDismissableLayer(e),
     onTrigger: () => stateRef.current.closeInspector(),
   });
 
