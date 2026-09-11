@@ -31,7 +31,7 @@ class OpenShiftSessionScopeCascadeTest {
         "payments", generation);
     session.selectWorkload(WORKLOAD, generation);
     session.updatePods(List.of(new PodSummary("payment-api-abc", "Running", "1/1", 0, List.of("application"),
-        WORKLOAD)), "payments", WORKLOAD, generation);
+        WORKLOAD)), true, "payments", WORKLOAD, generation);
     session.selectPod("payment-api-abc", generation);
     session.updateContainers(List.of("application"), "payment-api-abc", generation);
     session.selectContainer("application", generation);

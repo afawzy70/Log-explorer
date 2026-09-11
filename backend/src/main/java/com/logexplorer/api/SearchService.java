@@ -110,7 +110,7 @@ public class SearchService {
       // Query-plan transparency (Legacy Remediation Slice 2) - computed
       // from the same source/request the actual fetch below uses, so the
       // disclosure can never drift from what was really queried.
-      QueryPlan queryPlan = QueryPlanBuilder.build(request, source.describePushDown(scoped));
+      QueryPlan queryPlan = QueryPlanBuilder.build(request, source.describePushDown(scoped), source.describeScopeWarnings(scoped));
 
       Flux<CanonicalLogEvent> guarded = concurrencyGuard.guard(source.search(scoped));
 

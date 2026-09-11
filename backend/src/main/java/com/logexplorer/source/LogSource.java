@@ -97,4 +97,25 @@ public interface LogSource {
   default List<String> describePushDown(SearchRequest request) {
     return List.of();
   }
+
+  /**
+   * OS-1C — a human-readable, already-safe (pod/container/namespace
+   * identity only, never a raw response body or credential) account of any
+   * reason THIS search's result might be less than the complete truth:
+   * scope resolved by an earlier slice was itself partial, an internal
+   * fan-out/byte/line cap was reached, or one specific target could not be
+   * read. Surfaced through the existing query-plan {@code notes} channel
+   * ({@code core.query.QueryPlanBuilder}) rather than a new DTO field —
+   * the same "reuse existing transparency, don't invent a new concept"
+   * judgement {@link #describePushDown} already makes for a different
+   * kind of search transparency. The default — nothing to warn about — is
+   * correct for every source that doesn't override this (fixture, Docker,
+   * Loki): {@link com.logexplorer.core.model.ResultCounts#truncated()}
+   * already covers "more matching events existed than the requested
+   * limit" for them; this exists for the OS-1C-specific case where scope
+   * itself may be incomplete independently of how many events came back.
+   */
+  default List<String> describeScopeWarnings(SearchRequest request) {
+    return List.of();
+  }
 }

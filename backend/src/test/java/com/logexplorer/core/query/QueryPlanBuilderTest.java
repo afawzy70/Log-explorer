@@ -96,4 +96,22 @@ class QueryPlanBuilderTest {
     assertThat(plan.resolvedQuery()).doesNotContain(sentinel);
     assertThat(plan.postFilterConditions()).contains("level in [ERROR]");
   }
+
+  /** OS-1C — {@code source.describeScopeWarnings} feeds this overload, appended verbatim after the generic notes. */
+  @Test
+  void sourceWarningsAreAppendedToNotesVerbatimAfterTheGenericOnes() {
+    List<String> warnings = List.of("Only 3 of 5 resolved pod/container targets were queried (TARGET_CAP_REACHED) - some pods were skipped.");
+    QueryPlan plan = QueryPlanBuilder.build(baseRequest().build(), List.of(), warnings);
+    assertThat(plan.notes()).containsSubsequence(
+        "This source reports no source-side push-down for this search — every condition below is evaluated after retrieval.",
+        "No structured filters or query conditions are active — every event in the time range is returned.",
+        warnings.get(0));
+  }
+
+  /** The two-arg overload (every other source) still defaults to no extra warnings. */
+  @Test
+  void theTwoArgOverloadAddsNoSourceWarnings() {
+    QueryPlan plan = QueryPlanBuilder.build(baseRequest().build(), List.of());
+    assertThat(plan.notes()).noneMatch(n -> n.contains("TARGET_CAP_REACHED"));
+  }
 }

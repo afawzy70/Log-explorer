@@ -398,7 +398,8 @@ public class OpenShiftSession {
    * @return whether the update was applied
    */
   public boolean updatePods(
-      List<PodSummary> pods, String expectedProject, WorkloadRef expectedWorkload, long generation) {
+      List<PodSummary> pods, boolean complete, String expectedProject, WorkloadRef expectedWorkload,
+      long generation) {
     Snapshot updated = current.updateAndGet(previous -> {
       if (previous.generation() != generation
           || previous.state() != OpenShiftConnectionState.CONNECTED
@@ -406,7 +407,7 @@ public class OpenShiftSession {
           || !java.util.Objects.equals(previous.scope().selectedWorkload(), expectedWorkload)) {
         return previous;
       }
-      return withScope(previous, previous.scope().withPods(pods));
+      return withScope(previous, previous.scope().withPods(pods, complete));
     });
     return updated.generation() == generation
         && java.util.Objects.equals(updated.selectedProject(), expectedProject)

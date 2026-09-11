@@ -14,6 +14,7 @@ import java.security.KeyStore;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -303,6 +304,66 @@ public class OpenShiftApiClient {
     }
     names.sort(String::compareTo);
     return List.copyOf(names);
+  }
+
+  /**
+   * OS-1C — the Kubernetes/OpenShift pod-log endpoint itself (never {@code
+   * oc logs}, never a shell, never a runtime {@code oc} dependency). The
+   * response body is plain text, one raw log line per {@code \n}-delimited
+   * line — never JSON at the transport level, unlike every other call this
+   * client makes — so this uses its own raw-text read path rather than
+   * {@link #get}, which always expects a JSON body.
+   *
+   * <p>{@code follow} is always {@code false} here — OS-1C is a single
+   * bounded read, never a live stream (that is OS-1E's job, explicitly out
+   * of scope for this slice). {@code timestamps=true} is always requested
+   * so each line arrives prefixed with Kubernetes' own RFC3339Nano receive
+   * timestamp, which becomes this event's {@code sourceTimestamp} — the
+   * same "adapter's own native clock, always known even for a malformed
+   * line" role Docker's frame-receive time and Loki's stream-entry
+   * timestamp already play (see {@link
+   * com.logexplorer.core.model.CanonicalLogEvent#sourceTimestamp()}).
+   *
+   * @param sinceTime pushed down as {@code sinceTime} to reduce upstream
+   *     volume — an optimization only (OS-1C §6); the exact {@code
+   *     request.start()}/{@code end()} bound is still re-applied after
+   *     parsing by {@code core.search.EventFilters}, exactly like Docker's
+   *     own {@code since}/{@code until} push-down already works
+   * @param tailLines an additional hard bound on lines read, independent
+   *     of {@code sinceTime} (OS-1C §5/§7)
+   * @param maxBytes a hard client-side cap on how much of the response
+   *     body is ever read, regardless of how much the upstream would send
+   *     (OS-1C §7 "max bytes per pod/container") — enforced by truncating
+   *     the accumulated body once this many bytes have arrived, never by
+   *     trusting a well-behaved upstream to stop on its own
+   */
+  public Mono<String> fetchPodLog(
+      URI server, RawToken token, String caPath, String namespace, String podName, String containerName,
+      Instant sinceTime, int tailLines, long maxBytes, Duration timeout) {
+    WebClient client;
+    try {
+      client = build(server, caPath);
+    } catch (OpenShiftApiException e) {
+      return Mono.error(e);
+    }
+    UriComponentsBuilder uri = UriComponentsBuilder
+        .fromPath("/api/v1/namespaces/" + namespace + "/pods/" + podName + "/log")
+        .queryParam("container", containerName)
+        .queryParam("timestamps", "true")
+        .queryParam("follow", "false")
+        .queryParam("tailLines", tailLines);
+    if (sinceTime != null) {
+      uri.queryParam("sinceTime", sinceTime.toString());
+    }
+    return client
+        .get()
+        .uri(uri.build().toUriString())
+        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value())
+        .retrieve()
+        .bodyToMono(String.class)
+        .timeout(timeout)
+        .map(body -> body.length() > maxBytes ? body.substring(0, (int) maxBytes) : body)
+        .onErrorMap(OpenShiftApiClient::classify);
   }
 
   private Mono<JsonNode> get(URI server, RawToken token, String caPath, String path) {

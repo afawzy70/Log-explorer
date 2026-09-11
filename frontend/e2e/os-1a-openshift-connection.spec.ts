@@ -144,7 +144,20 @@ test.describe('OS-1A §9 - the token never reaches browser storage or the URL', 
 });
 
 test.describe('OS-1A §21 - capability truthfulness in the rendered app', () => {
-  test('OpenShift appears as a source but advertises no search capability yet', async ({ page }) => {
+  /*
+   * CORRECTED (OS-1C): this test originally asserted
+   * `historicalSearch === false`, true for OS-1A/1B when nothing but
+   * connect and project/workload/pod discovery existed. OS-1C adds a
+   * real, bounded direct search (DirectPodLogProvider), so
+   * `historicalSearch === true` is now the truthful value - see
+   * `OpenShiftLogSource#capabilities()`'s own javadoc for why that flag's
+   * real meaning ("bounded direct search over resolved pods," never
+   * "indexed history") still satisfies this test's original intent: never
+   * advertise a capability this source cannot actually deliver. Every
+   * other capability is unchanged and still correctly `false` - OS-1D/1E
+   * territory.
+   */
+  test('OpenShift appears as a source and advertises exactly the search capability it can deliver', async ({ page }) => {
     await page.goto('/');
 
     const sources = await page.evaluate(async () => {
@@ -155,10 +168,13 @@ test.describe('OS-1A §21 - capability truthfulness in the rendered app', () => 
     const openshift = sources.find((s) => s.id === 'openshift');
     expect(openshift, 'the openshift source must be registered').toBeTruthy();
     expect(openshift!.displayName).toBe('OpenShift');
-    // OS-1A can connect and list projects - nothing more.
-    expect(openshift!.capabilities.historicalSearch).toBe(false);
+    // OS-1C: bounded direct search now exists.
+    expect(openshift!.capabilities.historicalSearch).toBe(true);
+    // Still out of scope: live tail, context view, raw LogQL, Compose-style scoping.
     expect(openshift!.capabilities.liveTail).toBe(false);
     expect(openshift!.capabilities.contextView).toBe(false);
+    expect(openshift!.capabilities.rawLogQL).toBe(false);
+    expect(openshift!.capabilities.composeProjectScoping).toBe(false);
 
     // And the pre-existing Loki source is untouched (OS-1A §22).
     const loki = sources.find((s) => s.id === 'openshift-loki');

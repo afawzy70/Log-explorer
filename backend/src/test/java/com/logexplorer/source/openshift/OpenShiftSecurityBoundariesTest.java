@@ -3,10 +3,14 @@ package com.logexplorer.source.openshift;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.logexplorer.config.DirectPodLogProperties;
 import com.logexplorer.core.model.RawToken;
 import com.logexplorer.core.model.SourceHealth;
+import com.logexplorer.core.parse.LogLineParser;
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -163,16 +167,32 @@ class OpenShiftSecurityBoundariesTest {
 
   // --------------------------------------------- §21 capability honesty
 
+  private static OpenShiftLogSource logSource(OpenShiftSession session) {
+    OpenShiftApiClient client = new OpenShiftApiClient(Map.of());
+    DirectPodLogProperties properties = new DirectPodLogProperties();
+    DirectPodLogProvider provider =
+        new DirectPodLogProvider(client, session, new LogLineParser(new ObjectMapper()), properties);
+    return new OpenShiftLogSource(session, provider);
+  }
+
+  /**
+   * <b>CORRECTED (OS-1C)</b> — this test originally asserted {@code
+   * historicalSearch=false}, true for OS-1A/1B (nothing but connect and
+   * project discovery existed yet). OS-1C adds a real, bounded direct
+   * search ({@link DirectPodLogProvider}), so {@code historicalSearch=true}
+   * is now the truthful value — see {@link OpenShiftLogSource#capabilities()}'s
+   * own javadoc for why that flag's real-world meaning ("bounded direct
+   * search over resolved pods," never "indexed history") still satisfies
+   * this test's original intent: never advertise a capability this source
+   * cannot actually deliver. Every other capability is unchanged and still
+   * correctly {@code false} — OS-1D/1E territory.
+   */
   @Test
-  void openShiftAdvertisesNoCapabilityItCannotYetDeliver() {
-    OpenShiftLogSource source = new OpenShiftLogSource(new OpenShiftSession());
+  void openShiftAdvertisesExactlyTheCapabilitiesItCanDeliver() {
+    OpenShiftLogSource source = logSource(new OpenShiftSession());
     var capabilities = source.capabilities();
 
-    // OS-1A can connect and discover projects - nothing more. Advertising
-    // search merely because a connection exists would produce a control
-    // that silently returns nothing (the failure mode UX-R4 had to fix in
-    // the opposite direction).
-    assertThat(capabilities.historicalSearch()).isFalse();
+    assertThat(capabilities.historicalSearch()).isTrue();
     assertThat(capabilities.liveTail()).isFalse();
     assertThat(capabilities.contextView()).isFalse();
     assertThat(capabilities.rawLogQL()).isFalse();
@@ -180,19 +200,36 @@ class OpenShiftSecurityBoundariesTest {
     assertThat(capabilities.composeProjectScoping()).isFalse();
   }
 
+  /**
+   * <b>CORRECTED (OS-1C)</b> — this test originally asserted that {@code
+   * search()} always threw {@link UnsupportedOperationException}, true
+   * only until OS-1C implemented real direct search. The still-valid
+   * intent — "refuse loudly rather than silently return an empty result
+   * that looks like a real, completed search" — is now proved against the
+   * real precondition {@link DirectPodLogProvider} actually enforces: a
+   * search attempted with no project/namespace selected fails fast with
+   * {@link IllegalStateException} rather than returning zero events, which
+   * would be indistinguishable from "genuinely no logs in this window."
+   * Full search behavior (bounded fan-out, merge, truncation, RBAC) is
+   * covered by {@code DirectPodLogProviderTest}, not this security-boundary
+   * file.
+   */
   @Test
   void searchRefusesLoudlyRatherThanReturningAnEmptyResult() {
-    OpenShiftLogSource source = new OpenShiftLogSource(new OpenShiftSession());
+    OpenShiftSession session = new OpenShiftSession();
+    session.connect(COMMAND, "Prod", "developer", List.of("payments"), ProjectDiscovery.Api.PROJECTS, null);
+    // Connected, but no project selected yet - search must not silently
+    // report "zero logs", which would misrepresent an unset scope as a
+    // genuinely empty cluster.
+    OpenShiftLogSource source = logSource(session);
 
-    // An empty Flux would render as "no results for this range", which is a
-    // factual claim about the cluster's logs this slice cannot make.
     assertThatThrownBy(() -> source.search(null).blockFirst())
-        .isInstanceOf(UnsupportedOperationException.class);
+        .isInstanceOf(IllegalStateException.class);
   }
 
   @Test
   void theSourceIdIsStableAndTheLokiSourceIsUntouched() {
-    OpenShiftLogSource source = new OpenShiftLogSource(new OpenShiftSession());
+    OpenShiftLogSource source = logSource(new OpenShiftSession());
     assertThat(source.id()).isEqualTo("openshift");
     assertThat(source.displayName()).isEqualTo("OpenShift");
   }
@@ -200,12 +237,18 @@ class OpenShiftSecurityBoundariesTest {
   @Test
   void healthReflectsConnectionStateWithoutAlarmingAboutTheNormalStartingState() {
     OpenShiftSession session = new OpenShiftSession();
-    OpenShiftLogSource source = new OpenShiftLogSource(session);
+    OpenShiftLogSource source = logSource(session);
 
     // Not connected yet is not a failure - it is Monday morning.
     assertThat(source.health().block().status()).isEqualTo(SourceHealth.Status.DEGRADED);
 
-    session.connect(COMMAND, "Prod", "developer", List.of("payments"), ProjectDiscovery.Api.PROJECTS, null);
+    long generation = session.connect(
+        COMMAND, "Prod", "developer", List.of("payments"), ProjectDiscovery.Api.PROJECTS, null);
+    // Connected but no project selected is a distinct, still-not-fully-ready
+    // state (OS-1C §26) - genuinely UP requires a selected project too.
+    assertThat(source.health().block().status()).isEqualTo(SourceHealth.Status.DEGRADED);
+
+    session.selectProject("payments", generation);
     assertThat(source.health().block().status()).isEqualTo(SourceHealth.Status.UP);
 
     session.markExpired();
@@ -215,7 +258,7 @@ class OpenShiftSecurityBoundariesTest {
   @Test
   void healthMessagesNeverContainTheToken() {
     OpenShiftSession session = new OpenShiftSession();
-    OpenShiftLogSource source = new OpenShiftLogSource(session);
+    OpenShiftLogSource source = logSource(session);
     session.connect(COMMAND, "Prod", "developer", List.of("payments"), ProjectDiscovery.Api.PROJECTS, null);
 
     assertThat(source.health().block().message()).doesNotContain("sha256~secret-token-value-123456");
