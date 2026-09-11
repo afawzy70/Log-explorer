@@ -263,3 +263,62 @@ export interface ProblemDetail {
   reason?: string;
   position?: number;
 }
+
+/**
+ * OS-1A - the OpenShift connection summary.
+ *
+ * Note what this type cannot carry, deliberately and permanently: the
+ * bearer token, any prefix or hash of it, or the pasted `oc login`
+ * command. The backend has no endpoint that returns them, and the token
+ * never enters the browser's memory beyond the single submit that
+ * establishes the connection - it is never stored in React state after
+ * that, never in `localStorage`, never in the URL (CLAUDE.md §2 rule 4).
+ */
+export interface OpenShiftConnectionSummary {
+  state: 'DISCONNECTED' | 'CONNECTED' | 'EXPIRED' | 'FAILED';
+  connectionName: string | null;
+  /** host:port only - never a URL carrying credentials. */
+  server: string | null;
+  username: string | null;
+  projectCount: number;
+  projects: string[];
+  selectedProject: string | null;
+  tlsVerified: boolean;
+  usingPrivateCa: boolean;
+  /** Sanitized "host:port" of the proxy in use, or null for a direct connection. */
+  proxy: string | null;
+  /** Which API answered discovery, so the UI can stay truthful about what it lists. */
+  projectApi: 'PROJECTS' | 'NAMESPACES' | null;
+}
+
+/**
+ * A failure category from the backend's `reason` property. The UI must
+ * distinguish these rather than showing one generic "connection failed" -
+ * OS-1A §15/§18, and in particular `FORBIDDEN` (you may not list
+ * projects) is a different truth from an empty project list.
+ */
+export type OpenShiftFailureReason =
+  | 'NOT_AN_OC_LOGIN_COMMAND'
+  | 'SHELL_SYNTAX_PRESENT'
+  | 'UNKNOWN_FLAG'
+  | 'DUPLICATE_FLAG'
+  | 'MISSING_SERVER'
+  | 'MISSING_TOKEN'
+  | 'MALFORMED_SERVER_URL'
+  | 'SERVER_NOT_HTTPS'
+  | 'INSECURE_TLS_REFUSED'
+  | 'MALFORMED_TOKEN'
+  | 'UNAUTHORIZED'
+  | 'FORBIDDEN'
+  | 'NOT_FOUND'
+  | 'TLS'
+  | 'NETWORK'
+  | 'PROXY'
+  | 'MALFORMED_RESPONSE'
+  | 'NON_LOOPBACK_BINDING'
+  | 'STALE_CONNECTION';
+
+export interface OpenShiftFailure {
+  message: string;
+  reason: OpenShiftFailureReason | null;
+}

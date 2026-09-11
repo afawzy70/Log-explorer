@@ -5,6 +5,10 @@ import com.logexplorer.core.guard.TooManyConcurrentLiveTailsException;
 import com.logexplorer.core.guard.TooManyConcurrentSearchesException;
 import com.logexplorer.core.query.QuerySyntaxException;
 import com.logexplorer.source.DisabledSourceException;
+import com.logexplorer.source.openshift.LoopbackBindingGuard;
+import com.logexplorer.source.openshift.OcLoginParseException;
+import com.logexplorer.source.openshift.OpenShiftApiException;
+import com.logexplorer.source.openshift.OpenShiftConnectionService;
 import com.logexplorer.source.UnknownSourceException;
 import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
@@ -37,6 +41,59 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(DisabledSourceException.class)
   public ProblemDetail handleDisabledSource(DisabledSourceException e) {
     return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Source is disabled");
+  }
+
+  /*
+   * OS-1A - OpenShift connection failures.
+   *
+   * Each kind maps to its own status and carries a machine-readable
+   * `reason`, because OS-1A §15/§18 require the UI to tell these apart:
+   * "the token expired", "you may not list projects" and "you have no
+   * projects" are three different truths and must never collapse into one
+   * "connection failed". None of these messages can contain the token or
+   * the pasted command - see `OcLoginParseException` and
+   * `OpenShiftApiException` for where that is enforced.
+   */
+  @ExceptionHandler(OcLoginParseException.class)
+  public ProblemDetail handleOcLoginParse(OcLoginParseException e) {
+    ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
+    problem.setProperty("reason", e.reason().name());
+    return problem;
+  }
+
+  @ExceptionHandler(OpenShiftApiException.class)
+  public ProblemDetail handleOpenShiftApi(OpenShiftApiException e) {
+    HttpStatus status = switch (e.kind()) {
+      case UNAUTHORIZED -> HttpStatus.UNAUTHORIZED;
+      case FORBIDDEN -> HttpStatus.FORBIDDEN;
+      // TLS / network / proxy are failures reaching an upstream, not
+      // client mistakes - 502 is the honest shape.
+      case TLS, NETWORK, PROXY -> HttpStatus.BAD_GATEWAY;
+      // NOT_FOUND (the Projects API itself is genuinely absent) and
+      // MALFORMED_RESPONSE (anything else unexpected, incl. 429/5xx
+      // upstream failures) both describe a real cluster-side condition,
+      // not a mistake by our caller - 502 is honest here too. This only
+      // reaches the client if the namespaces fallback also failed (see
+      // OpenShiftConnectionService.fallbackToNamespacesIfAppropriate).
+      case NOT_FOUND, MALFORMED_RESPONSE -> HttpStatus.BAD_GATEWAY;
+    };
+    ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, e.getMessage());
+    problem.setProperty("reason", e.kind().name());
+    return problem;
+  }
+
+  @ExceptionHandler(LoopbackBindingGuard.NonLoopbackBindingException.class)
+  public ProblemDetail handleNonLoopbackBinding(LoopbackBindingGuard.NonLoopbackBindingException e) {
+    ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, e.getMessage());
+    problem.setProperty("reason", "NON_LOOPBACK_BINDING");
+    return problem;
+  }
+
+  @ExceptionHandler(OpenShiftConnectionService.StaleConnectionException.class)
+  public ProblemDetail handleStaleOpenShiftConnection(OpenShiftConnectionService.StaleConnectionException e) {
+    ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+    problem.setProperty("reason", "STALE_CONNECTION");
+    return problem;
   }
 
   @ExceptionHandler(GuardrailViolationException.class)

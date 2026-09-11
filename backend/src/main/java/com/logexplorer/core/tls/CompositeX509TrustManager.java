@@ -1,4 +1,4 @@
-package com.logexplorer.source.loki;
+package com.logexplorer.core.tls;
 
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
@@ -13,11 +13,11 @@ import javax.net.ssl.X509TrustManager;
  * against a real, known set of CAs; it is not trust-all (which would
  * accept every certificate unconditionally, regardless of any CA).
  */
-final class CompositeX509TrustManager implements X509TrustManager {
+public final class CompositeX509TrustManager implements X509TrustManager {
 
   private final List<X509TrustManager> delegates;
 
-  CompositeX509TrustManager(List<X509TrustManager> delegates) {
+  public CompositeX509TrustManager(List<X509TrustManager> delegates) {
     this.delegates = List.copyOf(delegates);
   }
 

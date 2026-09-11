@@ -25,7 +25,7 @@ import reactor.test.StepVerifier;
 
 /**
  * Real TLS-handshake tests against a self-signed HTTPS server, proving
- * {@link LokiWebClientFactory}/{@link CompositeX509TrustManager} actually
+ * {@link LokiWebClientFactory}/{@code CompositeX509TrustManager} actually
  * verify certificates rather than trusting blindly (CLAUDE.md §2 rule 7:
  * "TLS verification stays on ... never add trust-all").
  *
