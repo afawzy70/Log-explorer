@@ -69,3 +69,17 @@ describe('filterFieldEntries', () => {
     expect(filterFieldEntries(entries, 'nope')).toEqual([]);
   });
 });
+
+/*
+ * UX-R5 §8/§9 - the fields Overview stopped showing must still be
+ * reachable. "Do NOT remove any useful field/capability. Every existing
+ * useful field must remain reachable." This is the proof for the two
+ * Overview demoted (thread, schema version).
+ */
+describe('UX-R5 - fields demoted out of Overview remain reachable in All fields', () => {
+  it('still lists thread and schema version', () => {
+    const labels = buildCanonicalFieldEntries(fullEvent(), []).map((f) => f.label);
+    expect(labels).toContain('thread');
+    expect(labels).toContain('schemaVersion');
+  });
+});

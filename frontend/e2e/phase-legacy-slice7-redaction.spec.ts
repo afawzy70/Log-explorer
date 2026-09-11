@@ -99,6 +99,11 @@ test.describe('Legacy Remediation Slice 7 — Conservative free-text sensitive-d
     expect(dialogText).toMatch(/fixture-event-\d+/);
 
     // No raw secret anywhere, including the inspector's own raw-JSON dump.
+    // UX-R5 §13: "All fields" is the canonical escape hatch and now starts
+    // collapsed, so its nested "Raw JSON" disclosure has to be revealed
+    // first. Still exactly as reachable - one extra click, no capability
+    // lost - which is the property this expansion asserts.
+    await dialog.getByRole('heading', { name: /all fields/i }).click();
     await dialog.getByText('Raw JSON').click();
     const dialogTextWithJson = await dialog.innerText();
     expect(dialogTextWithJson).not.toContain('DEMO-SENSITIVE-778899');
@@ -126,7 +131,7 @@ test.describe('Legacy Remediation Slice 7 — Conservative free-text sensitive-d
 
     await row.getByRole('button', { name: /actions for this event/i }).click();
     await page.getByRole('menuitem', { name: /view details/i }).click();
-    await page.getByRole('dialog', { name: /event details/i }).getByRole('button', { name: /show ±30 seconds/i }).click();
+    await page.getByRole('dialog', { name: /event details/i }).getByRole('button', { name: /show surrounding logs/i }).click();
     await page.getByRole('button', { name: /^run$/i }).click();
     await expect(page.getByText(/back to original search/i)).toBeVisible({ timeout: 10_000 });
 
@@ -196,7 +201,7 @@ test.describe('Legacy Remediation Slice 7 — Conservative free-text sensitive-d
     const targetRow = page.locator('tbody tr').filter({ hasNot: page.locator('td:nth-child(2):text-is("—")') }).first();
     await targetRow.getByRole('button', { name: /actions for this event/i }).click();
     await page.getByRole('menuitem', { name: /view details/i }).click();
-    await page.getByRole('dialog', { name: /event details/i }).getByRole('button', { name: /show ±30 seconds/i }).click();
+    await page.getByRole('dialog', { name: /event details/i }).getByRole('button', { name: /show surrounding logs/i }).click();
     await page.getByRole('button', { name: /^run$/i }).click();
     await expect(page.getByText(/back to original search/i)).toBeVisible({ timeout: 10_000 });
 

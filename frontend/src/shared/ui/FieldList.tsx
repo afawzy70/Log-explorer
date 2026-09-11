@@ -4,6 +4,16 @@ export interface FieldItem {
   label: string;
   value: string;
   monospace?: boolean;
+  /**
+   * UX-R5 §9 - a secondary line rendered under `value` at reduced
+   * emphasis. It exists so one *fact* can occupy one row even when it has
+   * more than one representation: the inspector previously spent three of
+   * Overview's ten rows on "Local time", "Zone" and "UTC", which is one
+   * fact stated three ways. Nothing is dropped - the same text is still
+   * present and still selectable - it is weighted instead of repeated as
+   * peer rows.
+   */
+  secondary?: string;
 }
 
 /**
@@ -24,6 +34,7 @@ export function FieldList({ items }: { items: FieldItem[] }) {
           <dt className={styles.label}>{item.label}</dt>
           <dd className={[styles.value, item.monospace ? styles.mono : ''].filter(Boolean).join(' ')}>
             {item.value}
+            {item.secondary ? <span className={styles.secondary}>{item.secondary}</span> : null}
           </dd>
         </div>
       ))}

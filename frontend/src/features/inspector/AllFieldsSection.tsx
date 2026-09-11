@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { LogEvent, SourceInfo } from '../../shared/api/types';
 import { FieldList } from '../../shared/ui/FieldList';
 import { buildCanonicalFieldEntries, buildUnknownFieldEntries, filterFieldEntries } from './allFields';
-import { EmptySectionNote, InspectorSection } from './InspectorSection';
+import { CollapsibleInspectorSection, EmptySectionNote } from './InspectorSection';
 import styles from './AllFieldsSection.module.css';
 
 /**
@@ -13,14 +13,26 @@ import styles from './AllFieldsSection.module.css';
  * 3). Masked values stay masked because `event` itself only ever carries
  * already-masked sensitive fields (see `LogEvent`'s own type comment) -
  * `JSON.stringify(event)` cannot leak anything raw the event doesn't have.
+ *
+ * <p><b>UX-R5 §13 - starts collapsed.</b> This is the canonical escape
+ * hatch, not a primary investigation surface: it was 47% of the
+ * inspector's entire scroll height, sitting between the investigator and
+ * nothing (it is last), but pushing the panel to ~4,000px. Collapsed, it
+ * stays exactly as reachable - one click or Enter on its own heading -
+ * while the four structured sections above it become the panel.
  */
 export function AllFieldsSection({ event, sources }: { event: LogEvent; sources: SourceInfo[] }) {
   const [query, setQuery] = useState('');
   const canonical = filterFieldEntries(buildCanonicalFieldEntries(event, sources), query);
   const unknown = filterFieldEntries(buildUnknownFieldEntries(event), query);
 
+  const totalFields = buildCanonicalFieldEntries(event, sources).length + buildUnknownFieldEntries(event).length;
+
   return (
-    <InspectorSection title="All fields">
+    <CollapsibleInspectorSection
+      title="All fields"
+      hint={`${totalFields} field${totalFields === 1 ? '' : 's'}, including any unrecognised JSON/MDC keys`}
+    >
       <label className={styles.searchLabel} htmlFor="inspector-all-fields-search">
         Search fields
       </label>
@@ -49,6 +61,6 @@ export function AllFieldsSection({ event, sources }: { event: LogEvent; sources:
         <summary>Raw JSON</summary>
         <pre className={styles.rawJsonBody}>{JSON.stringify(event, null, 2)}</pre>
       </details>
-    </InspectorSection>
+    </CollapsibleInspectorSection>
   );
 }

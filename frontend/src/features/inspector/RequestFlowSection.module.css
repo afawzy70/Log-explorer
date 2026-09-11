@@ -34,8 +34,5 @@
   display: flex;
   gap: var(--space-1);
   flex: 0 0 auto;
-}
-
-.contextRow {
-  margin-top: var(--space-3);
+  margin-left: auto;
 }

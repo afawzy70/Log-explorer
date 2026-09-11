@@ -13,11 +13,14 @@ describe('buildOverviewFields', () => {
   it('a full event renders every overview field, including source/container enrichment', () => {
     const fields = buildOverviewFields(fullEvent(), NO_SOURCES);
     const labels = fields.map((f) => f.label);
+    // UX-R5 §9 - Overview is what/where, weighted. "Local time"/"Zone"/
+    // "UTC" collapsed into one "Time" row (all three values still
+    // rendered - see the dedicated test below); "Thread"/"Schema version"
+    // moved out to "All fields", which is the canonical home for
+    // diagnostic minutiae (proved still reachable below).
     expect(labels).toEqual([
       'Message',
-      'Local time',
-      'Zone',
-      'UTC',
+      'Time',
       'Source',
       'Service',
       'Compose project',
@@ -25,9 +28,21 @@ describe('buildOverviewFields', () => {
       'Stream',
       'Level',
       'Logger',
-      'Thread',
-      'Schema version',
     ]);
+  });
+
+  it('UX-R5 §9 - the single Time row still carries local time, zone AND UTC, nothing dropped', () => {
+    const time = buildOverviewFields(fullEvent(), NO_SOURCES).find((f) => f.label === 'Time');
+    expect(time).toBeDefined();
+    expect(time!.value).not.toBe('—');
+    // Zone and UTC are present, at secondary emphasis rather than as peer rows.
+    expect(time!.secondary).toMatch(/UTC/);
+    expect(time!.secondary!.length).toBeGreaterThan(0);
+  });
+
+  it('UX-R5 §9 - an event with no timestamp gets no invented secondary line', () => {
+    const time = buildOverviewFields(sparseEvent(), NO_SOURCES).find((f) => f.label === 'Time');
+    expect(time!.secondary).toBeUndefined();
   });
 
   it('a sparse event still renders every structurally-expected field, with the empty placeholder - never an omitted cell', () => {

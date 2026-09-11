@@ -1,0 +1,185 @@
+import { test, expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { captureScreenshot, setViewport, setZoom } from './helpers';
+
+/*
+ * UX-R5 §4/§34 - BEFORE evidence for the Event Inspector and Context
+ * views, captured against the REAL rendered app (real backend `fixture`
+ * source, real dev server) before any UX-R5 code change, per LERUX-1.
+ *
+ * Like UX-R4's own BEFORE spec, this file is a one-time capture: several
+ * of its assertions record the *absence* of things UX-R5 adds. It is
+ * moved to `docs/verification/UX_R5_EVIDENCE/before-evidence.spec.ts.txt`
+ * once the captures exist, rather than left executable against the
+ * post-change app where it would either fail or, worse, keep passing
+ * while claiming to show a "BEFORE".
+ */
+
+const PHASE = 'UX_R5_EVIDENCE';
+
+async function runRealSearch(page: Page) {
+  await page.goto('/');
+  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
+  await page.getByRole('button', { name: /^search$/i }).click();
+  await expect(page.getByRole('table')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('tbody tr').first()).toBeVisible();
+}
+
+function rows(page: Page) {
+  return page.locator('tbody tr[data-row-index]');
+}
+
+async function openInspectorAt(page: Page, index: number) {
+  await rows(page).nth(index).click();
+  await expect(page.getByRole('dialog', { name: 'Event details' })).toBeVisible({ timeout: 10_000 });
+}
+
+test.describe('UX-R5 BEFORE - Event Inspector', () => {
+  test('A/B: Overview, and the header carries NO position indicator', async ({ page }) => {
+    await runRealSearch(page);
+    await openInspectorAt(page, 3);
+    await captureScreenshot(page, PHASE, 'BEFORE-A-inspector-overview');
+
+    const header = page.getByRole('dialog', { name: 'Event details' }).locator('h1').first();
+    await expect(header).toBeVisible();
+
+    // Recorded as a fact: nothing in the inspector says where this event
+    // sits within the loaded result set (UX-R5 §5 gap).
+    const dialogText = await page.getByRole('dialog', { name: 'Event details' }).innerText();
+    expect(dialogText).not.toMatch(/\b(\d+)\s*(of|\/)\s*(\d+)\b/);
+    await captureScreenshot(page, PHASE, 'BEFORE-B-no-position-indicator');
+  });
+
+  test('C: Previous is disabled on the first event', async ({ page }) => {
+    await runRealSearch(page);
+    await openInspectorAt(page, 0);
+    await expect(page.getByRole('button', { name: 'Previous event' })).toBeDisabled();
+    await captureScreenshot(page, PHASE, 'BEFORE-C-previous-disabled-first');
+  });
+
+  test('D: Next is disabled on the last loaded event', async ({ page }) => {
+    await runRealSearch(page);
+    const last = (await rows(page).count()) - 1;
+    await openInspectorAt(page, last);
+    await expect(page.getByRole('button', { name: 'Next event' })).toBeDisabled();
+    await captureScreenshot(page, PHASE, 'BEFORE-D-next-disabled-last');
+  });
+
+  test('E/F/G/H: the five stacked sections', async ({ page }) => {
+    await runRealSearch(page);
+    await openInspectorAt(page, 3);
+    const dialog = page.getByRole('dialog', { name: 'Event details' });
+
+    for (const [label, name] of [
+      ['Actor & client', 'BEFORE-E-actor-client'],
+      ['Request flow', 'BEFORE-F-request-flow'],
+      ['Business / error', 'BEFORE-G-business-error'],
+      ['All fields', 'BEFORE-H-all-fields'],
+    ] as const) {
+      const section = dialog.locator(`section[aria-label="${label}"]`);
+      await section.scrollIntoViewIfNeeded();
+      await expect(section).toBeVisible();
+      await captureScreenshot(page, PHASE, name);
+    }
+  });
+
+  test('I: a section with no data (malformed event, no actor/client metadata)', async ({ page }) => {
+    await runRealSearch(page);
+    // The fixture corpus deliberately contains a malformed, non-JSON line.
+    const malformed = rows(page).filter({ hasText: 'NOT-JSON' }).first();
+    await malformed.click();
+    await expect(page.getByRole('dialog', { name: 'Event details' })).toBeVisible();
+    await captureScreenshot(page, PHASE, 'BEFORE-I-missing-data-section');
+  });
+
+  test('J: how far the context action sits from the top of the inspector', async ({ page }) => {
+    await runRealSearch(page);
+    await openInspectorAt(page, 3);
+
+    const contextButton = page.getByRole('button', { name: /show ±30 seconds/i });
+    // Measured, not asserted by eye: the action lives inside the "Request
+    // flow" section, so its distance below the inspector's own visible
+    // top is the friction UX-R5 §14 is about.
+    const offset = await contextButton.evaluate((el) => {
+      const panel = el.closest('[role="dialog"]')!;
+      return Math.round(el.getBoundingClientRect().top - panel.getBoundingClientRect().top);
+    });
+    const visibleInitially = await contextButton.isVisible();
+    // eslint-disable-next-line no-console
+    console.log(`CONTEXT ACTION offset below inspector top: ${offset}px; visible without scrolling: ${visibleInitially}`);
+    await captureScreenshot(page, PHASE, 'BEFORE-J-context-action-position');
+  });
+});
+
+test.describe('UX-R5 BEFORE - Context view', () => {
+  test('K/L/M/N: context from the inspector, root marker, summary, gaps', async ({ page }) => {
+    await runRealSearch(page);
+    await openInspectorAt(page, 3);
+    await page.getByRole('button', { name: /show ±30 seconds/i }).click();
+    await page.getByRole('button', { name: /^run$/i }).click();
+    await expect(page.getByRole('button', { name: /back to original search/i })).toBeVisible({ timeout: 15_000 });
+    await captureScreenshot(page, PHASE, 'BEFORE-K-context-view-from-inspector');
+
+    const root = page.locator('tbody tr[aria-current="location"]');
+    await expect(root).toHaveCount(1);
+    await root.scrollIntoViewIfNeeded();
+    await captureScreenshot(page, PHASE, 'BEFORE-L-context-root-highlighted');
+
+    await captureScreenshot(page, PHASE, 'BEFORE-M-context-summary');
+
+    const gap = page.locator('[data-testid="gap-row"]').first();
+    if (await gap.count()) {
+      await gap.scrollIntoViewIfNeeded();
+      await captureScreenshot(page, PHASE, 'BEFORE-N-gap-marker');
+    }
+  });
+
+  test('O/P: return to original search - and what inspector state comes back', async ({ page }) => {
+    await runRealSearch(page);
+    await openInspectorAt(page, 3);
+    await page.getByRole('button', { name: /show ±30 seconds/i }).click();
+    await page.getByRole('button', { name: /^run$/i }).click();
+    await expect(page.getByRole('button', { name: /back to original search/i })).toBeVisible({ timeout: 15_000 });
+    await captureScreenshot(page, PHASE, 'BEFORE-O-return-action');
+
+    await page.getByRole('button', { name: /back to original search/i }).click();
+    await expect(page.getByRole('table')).toBeVisible();
+
+    const inspectorOpen = await page.getByRole('dialog', { name: 'Event details' }).count();
+    const selected = await rows(page).filter({ has: page.locator('[aria-selected="true"]') }).count();
+    // eslint-disable-next-line no-console
+    console.log(`AFTER RETURN: inspector open = ${inspectorOpen}; selected rows = ${await page.locator('tbody tr[aria-selected="true"]').count()}`);
+    void selected;
+    await captureScreenshot(page, PHASE, 'BEFORE-P-returned-state');
+  });
+});
+
+test.describe('UX-R5 BEFORE - responsive and zoom', () => {
+  test('Q: 1440 side panel', async ({ page }) => {
+    await setViewport(page, 1440, 900);
+    await runRealSearch(page);
+    await openInspectorAt(page, 3);
+    await captureScreenshot(page, PHASE, 'BEFORE-Q-1440-side-panel');
+  });
+
+  for (const [width, name] of [
+    [1024, 'BEFORE-R-1024'],
+    [768, 'BEFORE-S-768'],
+    [390, 'BEFORE-T-390'],
+  ] as const) {
+    test(`${name}: inspector at ${width}px`, async ({ page }) => {
+      await runRealSearch(page);
+      await setViewport(page, width, 900);
+      await openInspectorAt(page, 3);
+      await captureScreenshot(page, PHASE, name);
+    });
+  }
+
+  test('U: 200% zoom', async ({ page }) => {
+    await runRealSearch(page);
+    await setViewport(page, 1280, 900);
+    await openInspectorAt(page, 3);
+    await setZoom(page, 200);
+    await captureScreenshot(page, PHASE, 'BEFORE-U-zoom-200pct');
+  });
+});

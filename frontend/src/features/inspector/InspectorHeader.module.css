@@ -1,4 +1,26 @@
+/*
+ * UX-R5 §14 - the inspector header is sticky, which is what actually
+ * makes "one inspector-level context action, reachable from anywhere in
+ * the panel" true rather than merely intended.
+ *
+ * Measured, not assumed: the panel is NOT an independently-scrolling
+ * column. `.body`'s `overflow-y: auto` never engages because the panel
+ * has no bounded height - it grows to fit its content (9,224px for a
+ * fully-populated event) and the *page* scrolls instead. Scrolling down
+ * to "Business / error" therefore carried the whole header off the top of
+ * the viewport (measured: `panelTop` -1205px, the action's own
+ * `bottom` -1099px, i.e. entirely off screen). Putting the action in the
+ * header without this rule would have moved the problem rather than
+ * fixed it.
+ *
+ * `background` is required, not decorative: a transparent sticky header
+ * would let the scrolling section content show through underneath it.
+ */
 .header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--color-bg-raised);
   padding: var(--space-4);
   border-bottom: var(--border-width) solid var(--color-border);
 }
@@ -39,8 +61,37 @@
   overflow-wrap: break-word;
 }
 
+/*
+ * UX-R5 §7 - the position indicator sits on the identity row, pushed to
+ * the trailing edge so it never competes with severity/service for the
+ * first read. Tertiary weight: it answers "where am I in the set", which
+ * matters while navigating, not while reading the event.
+ */
+.position {
+  margin-left: auto;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+/*
+ * UX-R5 §6/§14 - navigation and the inspector-level context action group
+ * together on the leading edge; Close is separated to the trailing edge.
+ * Before UX-R5 all three of Previous/Next/Close were equal-weight
+ * siblings in one row, so "leave this panel" read as a peer of "move
+ * through the investigation". Wrapping is preserved for narrow panels.
+ */
 .nav {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+
+.navGroup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-1);
 }

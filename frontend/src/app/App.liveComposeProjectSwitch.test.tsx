@@ -65,7 +65,22 @@ describe('App - switching the Compose project while Live is active (UX-R3 §19)'
     render(<App />);
 
     await waitFor(() => expect(screen.getByRole('combobox', { name: /source/i })).toHaveValue('local-docker'));
-    await waitFor(() => expect(screen.getByLabelText(/compose project/i)).toBeInTheDocument());
+    /*
+     * Wait for the project *options* to arrive, not merely for the
+     * `<select>` to exist. The select is rendered immediately - disabled,
+     * with only its "All projects" placeholder - while the Compose
+     * projects are still being fetched, so `toBeInTheDocument()` resolved
+     * instantly and the `selectOptions` below then raced the fetch. That
+     * made this test flaky under parallel load: it passed in isolation and
+     * on a warm machine, and failed intermittently in a full run and in
+     * CI ("Value \"project-a\" not found in options", the select still
+     * disabled with one option). Waiting for the option itself removes the
+     * race rather than papering over it with a retry.
+     */
+    await waitFor(() =>
+      expect(screen.getByRole('option', { name: /project-a/i })).toBeInTheDocument(),
+    );
+    await waitFor(() => expect(screen.getByLabelText(/compose project/i)).toBeEnabled());
 
     await user.selectOptions(screen.getByLabelText(/compose project/i), 'project-a');
 

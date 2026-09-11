@@ -33,9 +33,20 @@ export function buildOverviewFields(event: LogEvent, sources: SourceInfo[]): Fie
   const sourceName = sources.find((s) => s.id === event.sourceId)?.displayName ?? event.sourceId;
   return [
     always('Message', event.message ?? (event.malformed ? event.rawLine : null)),
-    always('Local time', formatLocalTimestamp(event.timestamp)),
-    always('Zone', localZoneLabel(event.timestamp)),
-    always('UTC', formatUtcTimestamp(event.timestamp), true),
+    // UX-R5 §9 - one fact, one row. This was previously three peer rows
+    // ("Local time", "Zone", "UTC") carrying equal visual weight, which
+    // spent 30% of Overview restating the same instant. All three values
+    // are still here and still complete: the local time leads (it is what
+    // an investigator reasons in), with the zone and the UTC form on a
+    // secondary line beneath it.
+    {
+      label: 'Time',
+      value: formatLocalTimestamp(event.timestamp),
+      secondary:
+        event.timestamp != null
+          ? `${localZoneLabel(event.timestamp)} · ${formatUtcTimestamp(event.timestamp)}`
+          : undefined,
+    },
     always('Source', sourceName),
     always('Service', resolveService(event)),
     ...present([
@@ -47,8 +58,12 @@ export function buildOverviewFields(event: LogEvent, sources: SourceInfo[]): Fie
     ]),
     always('Level', event.severity),
     always('Logger', event.logger, true),
-    always('Thread', event.thread, true),
-    always('Schema version', event.schemaVersion),
+    // UX-R5 §9 ("do not overwhelm Overview with raw-field noise"): thread
+    // and schema version are diagnostic minutiae, not part of what/where.
+    // They are NOT removed from the product - `buildCanonicalFieldEntries`
+    // still lists both in "All fields", which is the canonical escape
+    // hatch for exactly this class of field, and `allFields.test.ts`
+    // covers them there.
   ];
 }
 

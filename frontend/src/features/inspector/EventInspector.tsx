@@ -23,6 +23,14 @@ export function EventInspector({ state }: { state: SearchState }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const event = state.selectedEvent;
+  /*
+   * UX-R5 §5 - the size of the result set actually on screen, which is
+   * what the position indicator counts against. `searchResult.events` is
+   * the same array the results table renders and the same one
+   * Previous/Next walks, so the indicator can never disagree with either;
+   * it grows when "Load more" appends, exactly as the denominator should.
+   */
+  const loadedCount = state.searchResult?.events.length ?? 0;
 
   useEffect(() => {
     if (event) {
@@ -117,15 +125,17 @@ export function EventInspector({ state }: { state: SearchState }) {
           onNext={state.selectNextEvent}
           onClose={state.closeInspector}
           closeButtonRef={closeButtonRef}
+          position={
+            state.selectedIndex != null && loadedCount > 0
+              ? { index: state.selectedIndex + 1, total: loadedCount }
+              : null
+          }
+          onShowContext={() => state.showContext(event)}
         />
         <div className={styles.body}>
           <OverviewSection event={event} sources={state.sources} />
           <ActorClientSection event={event} />
-          <RequestFlowSection
-            event={event}
-            onOpenJourney={state.openJourney}
-            onShowContext={() => state.showContext(event)}
-          />
+          <RequestFlowSection event={event} onOpenJourney={state.openJourney} />
           <BusinessErrorSection event={event} />
           <AllFieldsSection event={event} sources={state.sources} />
         </div>
