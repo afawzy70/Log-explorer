@@ -246,6 +246,67 @@ the UI labels the list "Namespaces", never "Projects".
 > itself never maps 429/500/502/503 to `NOT_FOUND`, so the mapping that
 > feeds the fallback decision is correct at its source, not just assumed.
 
+**Discovery mode is part of the session's current truth (review recovery
+#2).** `OpenShiftSession` now stores a `ProjectDiscovery.Api discoveryApi`
+field alongside the project list — set on `connect`, kept current by
+`updateProjects` (used by refresh), and cleared on `disconnect`/
+`markExpired`. It is never re-derived from the list's contents, because a
+`PROJECTS` result and a `NAMESPACES` result are not structurally
+distinguishable from their names alone. `OpenShiftConnectionController`'s
+`summarize` falls back to this stored field for every endpoint that has no
+fresh discovery of its own (`GET /connection`, `DELETE /connect`,
+`PUT /project`) — previously it always passed `discovery=null` and had no
+fallback source, so the mode chosen at connect time was true for exactly
+one HTTP response and forgotten immediately afterward.
+
+> **Review recovery #2, defect A.** A post-merge review found that a
+> connection which succeeded via the namespaces fallback would report
+> `projectApi: null` on every subsequent `GET /connection` — the session
+> knew only the resulting names, never which API produced them. Fixed by
+> storing the mode explicitly on the session (above) rather than trying to
+> infer it later.
+>
+> **Review recovery #2, defect B.** `refreshProjects()` called
+> `client.fetchProjects(...)` directly, bypassing the 404-only fallback
+> entirely — a connection that had legitimately reached `CONNECTED`
+> through the namespaces fallback would fail outright the first time the
+> user clicked Refresh, purely because refresh never attempted the
+> fallback connect already had. Fixed by extracting one shared
+> `OpenShiftConnectionService#discoverProjectsOrNamespaces(server, token,
+> caPath)`, called by both `connect` and `refreshProjects`, so the 404-only
+> invariant from recovery #1 cannot drift between the two call sites
+> again. A refresh that observes a genuinely different mode than the one
+> recorded at connect time reports the **fresh** truth — `NAMESPACES` →
+> `PROJECTS` if the Projects API becomes available again, or the reverse —
+> never a stale pinned label.
+>
+> Proven by 18 new tests in `OpenShiftDiscoveryModeAndRefreshTest`:
+> `INITIAL_CONNECT_PROJECTS_200`/`_404_NAMESPACES_200`; the summary/
+> `GET /connection` readback still reporting `NAMESPACES` after a
+> fallback connect; `REFRESH_PROJECTS_200`/`_404_NAMESPACES_200` and the
+> reverse (namespaces → available again → `PROJECTS`, the fresh mode
+> wins); `REFRESH_PROJECTS_{403,401,429,500,MALFORMED_BODY}` all
+> confirmed **not** to fall back (401 additionally confirmed to still mark
+> the session `EXPIRED` and clear the token, per §5's existing semantics);
+> a namespace-fallback refresh that invalidates the current selection
+> clears it truthfully rather than keeping a name the fresh list no longer
+> contains; a stale refresh from a replaced connection cannot overwrite
+> either the current project list or its discovery mode; and disconnect/
+> expiry both clear the discovery mode. A further 5 tests in the new
+> `OpenShiftConnectionControllerIntegrationTest` exercise the same fix at
+> the real HTTP boundary (`GET /connection`, `PUT /project`,
+> `DELETE /connect`), proving the controller's own `summarize` logic, not
+> just the session it reads from — `OcLoginCommandParser`'s https-only
+> requirement means `POST /connect` itself still cannot be driven against
+> the plain-http fake OpenShift API, so the session bean is seeded directly
+> to the post-fallback-connect state instead, exactly as the existing
+> `OpenShiftConnectionServiceFallbackTest` already does for the service
+> layer. The frontend's "Project" vs "Namespace" selection-control label,
+> its placeholder option text, and its empty-scope message were found to
+> still be hard-coded to "Project"/"Projects" even when `projectApi` was
+> `NAMESPACES` (the summary row itself was already correct) — corrected in
+> the same pass and covered by 3 additional `OpenShiftSettingsPanel` tests.
+
 ---
 
 ## 9. Stale-connection protection (§27)
@@ -259,7 +320,10 @@ the stakes are higher.
 Covered: a project selection from a replaced connection is rejected; a
 project refresh from a replaced connection is discarded; a new connection
 never inherits the previous selection; a selection that disappears from a
-refreshed list is cleared truthfully.
+refreshed list is cleared truthfully. Since review recovery #2,
+`updateProjects` applies the project list **and** the discovery mode
+together under the same generation guard, so a stale refresh can overwrite
+neither in isolation — it is rejected wholesale or applied wholesale.
 
 ---
 
@@ -321,11 +385,13 @@ browser.
 
 | Layer | Result |
 |---|---|
-| L1 unit/contract | Parser 46 · Proxy 24 · Security boundaries 25 · Fallback decision (`OpenShiftConnectionServiceFallbackTest`) 15 |
+| L1 unit/contract | Parser 46 · Proxy 24 · Security boundaries 25 · Fallback decision (`OpenShiftConnectionServiceFallbackTest`) 15 · Discovery-mode & refresh (`OpenShiftDiscoveryModeAndRefreshTest`) 18 |
 | L2 fake OpenShift API | `OpenShiftApiClientTest` 19 (401/403/empty/404-fallback/429/500/502/503/malformed/unreachable/bad-CA/identity) |
-| Backend total | **739 pass, 0 failures** (review recovery: +19 — 4 `classify()` HTTP-status tests, 15 fallback-decision tests) |
-| Frontend | **742 pass** (+16 OpenShift panel, incl. the `NOT_FOUND` reason) |
-| E2E OS-1A | **17/17** (re-run against the fixed backend) |
+| Controller integration | `OpenShiftConnectionControllerIntegrationTest` 5 (real HTTP `GET /connection`/`PUT /project`/`DELETE /connect` against a seeded session) |
+| Backend total | **767 pass, 0 failures, 5 skipped** (review recovery #2: +18 discovery-mode/refresh tests, +5 controller-integration tests) |
+| Frontend | **744 pass** (review recovery #2: +3 — truthful "Namespace" selection-control label/placeholder/empty-scope copy) |
+| E2E OS-1A | **17/17** (re-run against a freshly-restarted backend carrying review recovery #2's changes) |
+| Full Playwright suite | **286/287 pass** (`npx playwright test`, dev-profile backend). One failure, `phase-legacy-slice5-live-resilience.spec.ts` test 14 ("Stop during reconnect cancels the pending retry"), is a pre-existing timing-sensitive Live-tail reconnect/backoff test with no relationship to OpenShift or this recovery's changes; it passed 8/8 when the same spec file was re-run in isolation immediately afterward (29.3s, no other change), consistent with contention between Playwright's 2 parallel workers under the full 287-test suite rather than a real regression. Not retried as a whole-suite re-run to manufacture a clean number — reported as observed |
 | Typecheck / production build | PASS |
 | L3 real sandbox | `OpenShiftRealSandboxIT` — **skips cleanly** without credentials (verified: 5 skipped, build success) |
 

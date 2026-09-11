@@ -281,6 +281,23 @@ mandatory beyond the project:
 single most important bound in the whole design: without it, "search" is
 a cluster-wide fan-out.
 
+**[EVIDENCE, established by OS-1A, not this assessment]** The "Project"
+naming decision above assumed the OpenShift Projects API is always
+reachable. OS-1A's implementation found a real exception: a vanilla
+Kubernetes API server (no OpenShift `project.openshift.io` API group)
+answers the Projects endpoint with a genuine HTTP 404, in which case
+OS-1A falls back to the Kubernetes `namespaces` API and the UI must say
+"Namespace"/"Namespaces", never "Project" — presenting a namespaces
+result as a native Projects response would misrepresent what the cluster
+actually supports (see `OS_1A_OPENSHIFT_CONNECTION_PROJECT_DISCOVERY_REPORT.md`
+and `OWNER_REQUIREMENTS_REGISTER.md` OS-1A-12/OS-1A-18/OS-1A-19). This
+matters for any OS-1B+ design built on top of this section: **which API
+answered discovery is part of the connection's current truth**, stored
+explicitly (`OpenShiftSession#discoveryApi()`), never re-derived from
+project/namespace names later — the two lists are not structurally
+distinguishable from their contents alone. OS-1B's scope model should
+read this field rather than re-deciding "Project vs Namespace" itself.
+
 ### Workload → pod resolution
 
 **[PROPOSED]** First implementation supports **Deployment,

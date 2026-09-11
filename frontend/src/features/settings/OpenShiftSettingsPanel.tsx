@@ -109,6 +109,13 @@ export function OpenShiftSettingsPanel() {
   }
 
   const connected = summary?.state === 'CONNECTED';
+  // OS-1A review recovery #2 - the scope word itself must stay truthful to
+  // which API answered discovery. Namespaces are never presented as native
+  // Projects (§5 of the recovery mission), and this is the one place that
+  // decision is made so every label below agrees with the summary `<dt>`.
+  const isNamespaceMode = summary?.projectApi === 'NAMESPACES';
+  const scopeLabelPlural = isNamespaceMode ? 'Namespaces' : 'Projects';
+  const scopeLabelSingular = isNamespaceMode ? 'Namespace' : 'Project';
 
   return (
     <div ref={wrapperRef} className={styles.wrapper}>
@@ -169,19 +176,20 @@ export function OpenShiftSettingsPanel() {
                   </div>
                 ) : null}
                 <div className={styles.summaryRow}>
-                  <dt>{summary?.projectApi === 'NAMESPACES' ? 'Namespaces' : 'Projects'}</dt>
+                  <dt>{scopeLabelPlural}</dt>
                   <dd>{summary?.projectCount ?? 0}</dd>
                 </div>
               </dl>
 
               {summary && summary.projectCount === 0 ? (
                 <p className={styles.empty}>
-                  This account can sign in, but has no projects. Ask a cluster administrator for access to one.
+                  This account can sign in, but has no {scopeLabelPlural.toLowerCase()}. Ask a cluster administrator
+                  for access to one.
                 </p>
               ) : (
                 <div className={styles.field}>
                   <label className={styles.label} htmlFor={projectId}>
-                    Project
+                    {scopeLabelSingular}
                   </label>
                   <select
                     id={projectId}
@@ -190,7 +198,7 @@ export function OpenShiftSettingsPanel() {
                     disabled={busy}
                     onChange={(e) => void run(() => selectOpenShiftProject(e.target.value || null))}
                   >
-                    <option value="">All projects (none selected)</option>
+                    <option value="">All {scopeLabelPlural.toLowerCase()} (none selected)</option>
                     {summary?.projects.map((project) => (
                       <option key={project} value={project}>
                         {project}

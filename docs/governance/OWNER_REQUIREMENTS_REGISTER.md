@@ -349,12 +349,14 @@ are **not** implemented and the source's capabilities say so.
 | OS-1A-9 | **Enterprise proxy — assumption resolved** | `VERIFIED` | Reactor Netty 1.2.18's `ProxyProvider` reads **only JVM system properties** (`http.proxyHost`, `https.proxyHost`, `http.nonProxyHosts`, SOCKS) — verified by inspecting the shipped class constants. No `HTTP_PROXY`/`NO_PROXY` env support exists, so `ProxyRoute` implements it explicitly, **scoped to this client, never JVM-global**. 24 tests incl. `NO_PROXY` label-boundary cases |
 | OS-1A-10 | Project discovery via the RBAC-filtered OpenShift Projects API | `VERIFIED` | `OpenShiftApiClient#fetchProjects`; asserted to call `/apis/project.openshift.io/v1/projects`; no cluster-admin assumed |
 | OS-1A-11 | **401 / 403 / empty-list are three distinct truths** (reviewer correction B) | `VERIFIED` | Modelled as distinct *types*: failures are `OpenShiftApiException` kinds, "no projects" is a successful `ProjectDiscovery` with an empty list. `OpenShiftApiClientTest` asserts all three separately; `describeFailure` asserts the 403 copy never says "no projects" |
-| OS-1A-12 | Namespaces fallback only when the Projects API is genuinely absent | `VERIFIED` | `OpenShiftConnectionService#fallbackToNamespacesIfAppropriate` — a 403 is **never** retried as namespaces; the UI labels the list "Namespaces" when that API answered |
+| OS-1A-12 | Namespaces fallback **only** on a genuine HTTP 404 (`Kind.NOT_FOUND`) on the Projects API — never on 401/403/429/5xx/malformed/network/TLS/proxy | `VERIFIED` | `OpenShiftConnectionService#discoverProjectsOrNamespaces` / `#fallbackToNamespaces` (renamed and re-scoped from the original `fallbackToNamespacesIfAppropriate(OcLoginCommand, OpenShiftApiException)` by review recovery #2 — see the correction note below §12b's table); a 403 is **never** retried as namespaces; the UI labels the list "Namespaces" when that API answered. **Historical correction (review recovery #1):** the original guard checked `kind != MALFORMED_RESPONSE`, which every non-401/403 HTTP status fell into — including 429/500/502/503 real cluster failures that have nothing to do with whether the Projects API exists. `Kind.NOT_FOUND` was added so the guard could check the one genuine signal exactly; the earlier `VERIFIED` mark for this row was evidence of *a* fallback existing, not proof it was scoped correctly, and is corrected rather than erased here. `OpenShiftConnectionServiceFallbackTest` (15 tests, one YES / eleven NO / two 401-and-empty-list / one real-404-end-to-end) |
 | OS-1A-13 | Stale-connection protection for connect/refresh/project-selection | `VERIFIED` | Session generation counter; tests cover replaced-connection selection, replaced-connection refresh, and a selection cleared when it disappears from a refreshed list |
 | OS-1A-14 | Capabilities claim nothing OS-1A cannot do | `VERIFIED` | All seven capability booleans false; `search()` refuses loudly rather than returning an empty result that would read as "no logs" |
-| OS-1A-15 | Existing `openshift-loki` unchanged | `VERIFIED` | No Loki behaviour touched; 720 backend tests green incl. the full Loki suite; both sources present in the live `/api/v1/sources` |
-| OS-1A-16 | Connection UX: secret-like field, precise failures, accessible, responsive | `VERIFIED` | `OpenShiftSettingsPanel` + 15 component tests + 17 real-browser E2E tests at 1440/1024/768/390 with no page overflow; `jest-axe` clean |
+| OS-1A-15 | Existing `openshift-loki` unchanged | `VERIFIED` | No Loki behaviour touched; 767 backend tests green incl. the full Loki suite; both sources present in the live `/api/v1/sources` |
+| OS-1A-16 | Connection UX: secret-like field, precise failures, accessible, responsive | `VERIFIED` | `OpenShiftSettingsPanel` + component tests + 17 real-browser E2E tests at 1440/1024/768/390 with no page overflow; `jest-axe` clean. Review recovery #2 also made the "Project" vs "Namespace" selection-control label, its placeholder option and the empty-scope message follow `projectApi` truthfully, not just the summary row — they were previously hard-coded to "Project"/"Projects" even when the namespaces fallback had answered |
 | OS-1A-17 | Real Developer Sandbox verification | `BLOCKED_CREDENTIALS` | `OpenShiftRealSandboxIT` exists and **skips cleanly** without `OPENSHIFT_API_SERVER`/`OPENSHIFT_TOKEN` (verified: 5 skipped, build success). Owner must supply credentials locally; they are never committed or printed |
+| OS-1A-18 | **Discovery mode (`PROJECTS`/`NAMESPACES`) is part of the session's current truth**, not just the resulting project list — set on connect, kept current by refresh, cleared on disconnect/expiry, never inferred from list contents | `VERIFIED` | `OpenShiftSession#discoveryApi()` (new `ProjectDiscovery.Api` field on the session's `Snapshot`); `OpenShiftConnectionController#summarize` falls back to it for every caller that has no fresh discovery of its own (`GET /connection`, `disconnect`, `selectProject`) instead of always reporting `null`. `OpenShiftDiscoveryModeAndRefreshTest`, `OpenShiftConnectionControllerIntegrationTest` |
+| OS-1A-19 | **Refresh uses the exact same discovery-and-fallback policy as connect** — a connection that reached `CONNECTED` via the namespaces fallback must not fail Refresh merely because refresh skips the fallback; a refresh that observes a genuinely different mode than the one recorded at connect time reports the fresh truth, never a stale pinned label | `VERIFIED` | One shared `OpenShiftConnectionService#discoverProjectsOrNamespaces`, called by both `connect` and `refreshProjects` — the fallback decision is no longer duplicated between the two call sites. `OpenShiftDiscoveryModeAndRefreshTest` covers `REFRESH_PROJECTS_200`, `REFRESH_PROJECTS_404_NAMESPACES_200`, the reverse (namespaces → available again → `PROJECTS`), `REFRESH_PROJECTS_{401,403,429,500,MALFORMED}` (no fallback in any case), a vanished selection after a namespace-fallback refresh cleared truthfully, and stale-refresh protection for both the project list and the discovery mode together |
 
 
 ---
@@ -400,6 +402,52 @@ scoped proxy handling was implemented (OS-1A-9). One item is honestly
 `BLOCKED_CREDENTIALS`: real Developer Sandbox verification, whose test
 exists and skips cleanly until the owner supplies credentials (OS-1A-17).
 
+**OS-1A review recovery #1 (project-API-fallback truthfulness).** A
+post-merge review found that the namespaces fallback (OS-1A-12) guarded on
+`kind != Kind.MALFORMED_RESPONSE`, and every HTTP status other than
+401/403 fell into that one bucket — including 429 (rate limited) and
+500/502/503 (real upstream failures). A busy or failing cluster could
+therefore be silently reinterpreted as "this cluster has no OpenShift
+Projects API" and retried against namespaces instead of surfacing the
+real failure. The fix added `Kind.NOT_FOUND` (HTTP 404 only) as its own
+exception kind and re-scoped the fallback guard to check for it
+exclusively. This is recorded here, rather than silently folded into
+OS-1A-12's evidence, because the requirement's *shape* did not change —
+"fallback only when the Projects API is genuinely absent" was always the
+intent — but its *enforcement* had a real gap that shipped as `VERIFIED`.
+Do not read the original OS-1A-12 evidence text (superseded above) as
+ever having meant "fall back on any non-401/403 status" being correct;
+it was the defect this recovery closed.
+
+**OS-1A review recovery #2 (discovery-mode preservation & refresh
+consistency).** A second post-merge review found two related defects,
+both stemming from the same root cause: the project list and *which API
+produced it* were treated as separable facts when they are not. **Defect
+A** — `OpenShiftSession` stored only the resulting project list, never
+the `ProjectDiscovery.Api` that answered it, and
+`OpenShiftConnectionController` always summarised with `discovery=null`,
+so a connection that succeeded via the namespaces fallback would report
+`projectApi: null` on every later `GET /connection` — the mode chosen at
+connect time was true for exactly one HTTP response and forgotten
+immediately after. **Defect B** — `refreshProjects()` called
+`client.fetchProjects(...)` directly, bypassing the 404-only fallback
+entirely, so a connection that had legitimately reached `CONNECTED`
+through the namespaces fallback would fail outright the first time the
+user clicked Refresh. The fix (OS-1A-18, OS-1A-19) makes the discovery
+mode an explicit, stored field on the session's snapshot — never inferred
+from list contents, since a `NAMESPACES` result and a `PROJECTS` result
+are not structurally distinguishable from their names alone — and unifies
+connect and refresh onto one shared `discoverProjectsOrNamespaces` policy
+method, so the 404-only invariant OS-1A-12 established cannot drift
+between the two call sites the way it previously did. The frontend's
+"Project" vs "Namespace" labelling (OS-1A-16) had the same class of gap in
+its selection control specifically (the summary row was already correct)
+and was corrected in the same pass. The 404-only fallback invariant
+itself (review recovery #1) is unchanged by this recovery; only the call
+sites that reach it were unified. `REAL_OPENSHIFT_1A` remains
+`BLOCKED_CREDENTIALS` — this recovery did not touch, and could not
+convert, that status.
+
 **UX-R6 pass.** Four further previously-untracked findings surfaced, all
 by measuring the rendered application, and all are tracked above: the
 stale-response race in source-scoped discovery (UX-32) — which turned out
@@ -444,6 +492,19 @@ a product requirement: two E2E specs (`phase-m-ux-acceptance`,
 `phase-legacy-slice2-query-transparency`) fail locally on the service
 multi-select, and were confirmed to fail identically on unmodified `main`
 (commit `f237ebd`), so they are neither introduced nor masked by UX-R4.
+
+**OS-1A review recovery #2 pass.** No new owner requirement surfaced.
+Both defects found (discovery mode not persisted past the initial connect
+response; refresh not sharing connect's namespaces-fallback policy) are
+corrections to the enforcement of requirements already tracked above
+(OS-1A-12/OS-1A-16), and are recorded as two new, separately-tested rows
+(OS-1A-18, OS-1A-19) plus a correction note on OS-1A-12 rather than a
+silent code fix — consistent with how review recovery #1 was handled.
+`REAL_OPENSHIFT_1A` remains `BLOCKED_CREDENTIALS`; this recovery neither
+touched nor could convert that status. OS-1B, REL-1 and Phase M remain
+`NOT_STARTED`/`TRACKED_NOT_STARTED` — this recovery is scoped entirely to
+already-implemented OS-1A code, and PR #39 remains unmerged pending this
+recovery's own review.
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0

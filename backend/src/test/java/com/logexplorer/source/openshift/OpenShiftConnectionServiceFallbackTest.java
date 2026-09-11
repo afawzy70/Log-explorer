@@ -41,10 +41,26 @@ import org.junit.jupiter.api.Test;
  * a plain JDK {@code HttpServer} over {@code http} (the same convention as
  * this repository's existing {@code MockLokiServer}), so the fallback
  * decision is exercised directly via the package-private {@code
- * fallbackToNamespacesIfAppropriate}, which is exactly where the original
- * defect lived. {@link OpenShiftApiClientTest} separately proves that real
- * HTTP statuses (404, 401, 403, 429, 500, 502, 503, a malformed body) map
- * to the correct {@code Kind} in the first place.
+ * fallbackToNamespaces}, which is exactly where the original defect lived.
+ * {@link OpenShiftApiClientTest} separately proves that real HTTP statuses
+ * (404, 401, 403, 429, 500, 502, 503, a malformed body) map to the correct
+ * {@code Kind} in the first place.
+ *
+ * <h2>Signature note (OS-1A review recovery #2)</h2>
+ *
+ * <p>This method was originally called {@code
+ * fallbackToNamespacesIfAppropriate(OcLoginCommand, OpenShiftApiException)}.
+ * It was renamed to {@code fallbackToNamespaces(URI, RawToken, String,
+ * OpenShiftApiException)} and now takes the server/token/CA path directly
+ * rather than a full {@code OcLoginCommand}, so it can be shared between
+ * {@code connect} (which has an {@code OcLoginCommand}) and {@code
+ * refreshProjects} (which only has loose fields already resolved from the
+ * session) via one authoritative {@code discoverProjectsOrNamespaces}
+ * policy - see {@link OpenShiftDiscoveryModeAndRefreshTest} for the tests
+ * proving that policy is genuinely shared and that the discovery mode
+ * itself (PROJECTS vs NAMESPACES) survives connect, summary readback,
+ * refresh and stale-response protection. The 404-only fallback invariant
+ * this class proves is completely unchanged by that refactor.
  */
 class OpenShiftConnectionServiceFallbackTest {
 
@@ -71,11 +87,6 @@ class OpenShiftConnectionServiceFallbackTest {
     }
   }
 
-  /** The command actually used by the fallback call - points at the mock server, not the parsed https URL. */
-  private OcLoginCommand commandForServer() {
-    return new OcLoginCommand(base, TOKEN, null);
-  }
-
   // ---------------------------------------------------------------- YES
 
   @Test
@@ -84,7 +95,7 @@ class OpenShiftConnectionServiceFallbackTest {
         new OpenShiftApiException(Kind.NOT_FOUND, "The cluster returned HTTP 404 for that API.");
 
     ProjectDiscovery discovery =
-        service.fallbackToNamespacesIfAppropriate(commandForServer(), notFound).block();
+        service.fallbackToNamespaces(base, TOKEN, null, notFound).block();
 
     assertThat(discovery).as("PROJECTS_404 must fall back to namespaces").isNotNull();
     assertThat(discovery.api()).isEqualTo(ProjectDiscovery.Api.NAMESPACES);
@@ -155,7 +166,7 @@ class OpenShiftConnectionServiceFallbackTest {
    */
   private void assertNoFallback(OpenShiftApiException failure) {
     OpenShiftApiException propagated = catchThrowableOfType(
-        () -> service.fallbackToNamespacesIfAppropriate(commandForServer(), failure).block(),
+        () -> service.fallbackToNamespaces(base, TOKEN, null, failure).block(),
         OpenShiftApiException.class);
 
     assertThat(propagated).as("the original failure must propagate, not be swallowed").isSameAs(failure);
@@ -174,7 +185,7 @@ class OpenShiftConnectionServiceFallbackTest {
       }
       OpenShiftApiException failure = new OpenShiftApiException(kind, "synthetic failure for " + kind);
       OpenShiftApiException propagated = catchThrowableOfType(
-          () -> service.fallbackToNamespacesIfAppropriate(commandForServer(), failure).block(),
+          () -> service.fallbackToNamespaces(base, TOKEN, null, failure).block(),
           OpenShiftApiException.class);
       assertThat(propagated.getMessage()).doesNotContain(TOKEN.value());
     }
@@ -188,13 +199,13 @@ class OpenShiftConnectionServiceFallbackTest {
     OpenShiftApiClient client = new OpenShiftApiClient(Map.of());
     OpenShiftConnectionService realService =
         new OpenShiftConnectionService(client, session, new LoopbackBindingGuard("127.0.0.1"));
-    session.connect(COMMAND, "prior", "developer", java.util.List.of("payments"), null);
+    session.connect(COMMAND, "prior", "developer", java.util.List.of("payments"), ProjectDiscovery.Api.PROJECTS, null);
     server.setScenario(Scenario.UNAUTHORIZED_401);
 
     OpenShiftApiException e = catchThrowableOfType(
         () -> client.fetchProjects(base, TOKEN, null)
             .onErrorResume(OpenShiftApiException.class,
-                failure -> realService.fallbackToNamespacesIfAppropriate(new OcLoginCommand(base, TOKEN, null), failure))
+                failure -> realService.fallbackToNamespaces(base, TOKEN, null, failure))
             .block(),
         OpenShiftApiException.class);
 
@@ -211,7 +222,7 @@ class OpenShiftConnectionServiceFallbackTest {
     ProjectDiscovery discovery = client
         .fetchProjects(base, TOKEN, null)
         .onErrorResume(OpenShiftApiException.class,
-            failure -> service.fallbackToNamespacesIfAppropriate(commandForServer(), failure))
+            failure -> service.fallbackToNamespaces(base, TOKEN, null, failure))
         .block();
 
     assertThat(discovery).isNotNull();
@@ -232,7 +243,7 @@ class OpenShiftConnectionServiceFallbackTest {
     ProjectDiscovery discovery = client
         .fetchProjects(base, TOKEN, null)
         .onErrorResume(OpenShiftApiException.class,
-            failure -> service.fallbackToNamespacesIfAppropriate(commandForServer(), failure))
+            failure -> service.fallbackToNamespaces(base, TOKEN, null, failure))
         .block();
 
     assertThat(discovery).isNotNull();

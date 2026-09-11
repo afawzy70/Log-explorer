@@ -58,7 +58,7 @@ class OpenShiftSecurityBoundariesTest {
   @Test
   void theSessionNeverPrintsTheToken() {
     OpenShiftSession session = new OpenShiftSession();
-    session.connect(COMMAND, "Prod", "developer", List.of("payments"), null);
+    session.connect(COMMAND, "Prod", "developer", List.of("payments"), ProjectDiscovery.Api.PROJECTS, null);
 
     assertThat(session.toString())
         .doesNotContain("sha256~secret-token-value-123456")
@@ -68,7 +68,7 @@ class OpenShiftSecurityBoundariesTest {
   @Test
   void disconnectClearsTheToken() {
     OpenShiftSession session = new OpenShiftSession();
-    session.connect(COMMAND, "Prod", "developer", List.of("payments"), null);
+    session.connect(COMMAND, "Prod", "developer", List.of("payments"), ProjectDiscovery.Api.PROJECTS, null);
     assertThat(session.token().isPresent()).isTrue();
 
     session.disconnect();
@@ -82,7 +82,7 @@ class OpenShiftSecurityBoundariesTest {
   @Test
   void aRejectedTokenIsDroppedImmediately() {
     OpenShiftSession session = new OpenShiftSession();
-    session.connect(COMMAND, "Prod", "developer", List.of("payments"), null);
+    session.connect(COMMAND, "Prod", "developer", List.of("payments"), ProjectDiscovery.Api.PROJECTS, null);
 
     session.markExpired();
 
@@ -95,11 +95,11 @@ class OpenShiftSecurityBoundariesTest {
   @Test
   void connectingAgainReplacesThePreviousToken() {
     OpenShiftSession session = new OpenShiftSession();
-    session.connect(COMMAND, "Prod", "developer", List.of("payments"), null);
+    session.connect(COMMAND, "Prod", "developer", List.of("payments"), ProjectDiscovery.Api.PROJECTS, null);
 
     OcLoginCommand second = new OcLoginCommand(
         URI.create("https://api.other.example.com:6443"), RawToken.of("sha256~second-token-value-98765"), null);
-    session.connect(second, "Other", "someone", List.of("other"), null);
+    session.connect(second, "Other", "someone", List.of("other"), ProjectDiscovery.Api.PROJECTS, null);
 
     assertThat(session.token().value()).isEqualTo("sha256~second-token-value-98765");
     assertThat(session.serverDisplay()).isEqualTo("api.other.example.com:6443");
@@ -110,10 +110,10 @@ class OpenShiftSecurityBoundariesTest {
   @Test
   void aProjectSelectionFromAReplacedConnectionIsRejected() {
     OpenShiftSession session = new OpenShiftSession();
-    long first = session.connect(COMMAND, "Prod", "developer", List.of("payments", "accounts"), null);
+    long first = session.connect(COMMAND, "Prod", "developer", List.of("payments", "accounts"), ProjectDiscovery.Api.PROJECTS, null);
 
     // The connection is replaced while a selection is "in flight".
-    session.connect(COMMAND, "Prod", "developer", List.of("other"), null);
+    session.connect(COMMAND, "Prod", "developer", List.of("other"), ProjectDiscovery.Api.PROJECTS, null);
 
     assertThat(session.selectProject("payments", first)).isFalse();
     assertThat(session.selectedProject()).isNull();
@@ -122,17 +122,17 @@ class OpenShiftSecurityBoundariesTest {
   @Test
   void aProjectRefreshFromAReplacedConnectionIsDiscarded() {
     OpenShiftSession session = new OpenShiftSession();
-    long first = session.connect(COMMAND, "Prod", "developer", List.of("payments"), null);
-    session.connect(COMMAND, "Prod", "developer", List.of("current"), null);
+    long first = session.connect(COMMAND, "Prod", "developer", List.of("payments"), ProjectDiscovery.Api.PROJECTS, null);
+    session.connect(COMMAND, "Prod", "developer", List.of("current"), ProjectDiscovery.Api.PROJECTS, null);
 
-    assertThat(session.updateProjects(List.of("stale-a", "stale-b"), first)).isFalse();
+    assertThat(session.updateProjects(List.of("stale-a", "stale-b"), ProjectDiscovery.Api.PROJECTS, first)).isFalse();
     assertThat(session.projects()).containsExactly("current");
   }
 
   @Test
   void aProjectThisConnectionCannotSeeIsNeverSelectable() {
     OpenShiftSession session = new OpenShiftSession();
-    long generation = session.connect(COMMAND, "Prod", "developer", List.of("payments"), null);
+    long generation = session.connect(COMMAND, "Prod", "developer", List.of("payments"), ProjectDiscovery.Api.PROJECTS, null);
 
     assertThat(session.selectProject("a-project-the-user-cannot-see", generation)).isFalse();
     assertThat(session.selectedProject()).isNull();
@@ -141,11 +141,11 @@ class OpenShiftSecurityBoundariesTest {
   @Test
   void aSelectionThatDisappearsFromARefreshedListIsClearedTruthfully() {
     OpenShiftSession session = new OpenShiftSession();
-    long generation = session.connect(COMMAND, "Prod", "developer", List.of("payments", "accounts"), null);
+    long generation = session.connect(COMMAND, "Prod", "developer", List.of("payments", "accounts"), ProjectDiscovery.Api.PROJECTS, null);
     assertThat(session.selectProject("payments", generation)).isTrue();
 
     // The project is deleted, or access to it is revoked.
-    session.updateProjects(List.of("accounts"), generation);
+    session.updateProjects(List.of("accounts"), ProjectDiscovery.Api.PROJECTS, generation);
 
     assertThat(session.selectedProject()).isNull();
   }
@@ -153,10 +153,10 @@ class OpenShiftSecurityBoundariesTest {
   @Test
   void aNewConnectionNeverInheritsThePreviousProjectSelection() {
     OpenShiftSession session = new OpenShiftSession();
-    long generation = session.connect(COMMAND, "Prod", "developer", List.of("payments"), null);
+    long generation = session.connect(COMMAND, "Prod", "developer", List.of("payments"), ProjectDiscovery.Api.PROJECTS, null);
     session.selectProject("payments", generation);
 
-    session.connect(COMMAND, "Prod", "developer", List.of("payments"), null);
+    session.connect(COMMAND, "Prod", "developer", List.of("payments"), ProjectDiscovery.Api.PROJECTS, null);
 
     assertThat(session.selectedProject()).isNull();
   }
@@ -205,7 +205,7 @@ class OpenShiftSecurityBoundariesTest {
     // Not connected yet is not a failure - it is Monday morning.
     assertThat(source.health().block().status()).isEqualTo(SourceHealth.Status.DEGRADED);
 
-    session.connect(COMMAND, "Prod", "developer", List.of("payments"), null);
+    session.connect(COMMAND, "Prod", "developer", List.of("payments"), ProjectDiscovery.Api.PROJECTS, null);
     assertThat(source.health().block().status()).isEqualTo(SourceHealth.Status.UP);
 
     session.markExpired();
@@ -216,7 +216,7 @@ class OpenShiftSecurityBoundariesTest {
   void healthMessagesNeverContainTheToken() {
     OpenShiftSession session = new OpenShiftSession();
     OpenShiftLogSource source = new OpenShiftLogSource(session);
-    session.connect(COMMAND, "Prod", "developer", List.of("payments"), null);
+    session.connect(COMMAND, "Prod", "developer", List.of("payments"), ProjectDiscovery.Api.PROJECTS, null);
 
     assertThat(source.health().block().message()).doesNotContain("sha256~secret-token-value-123456");
   }

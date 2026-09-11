@@ -106,9 +106,21 @@ public class OpenShiftConnectionController {
     return ResponseEntity.ok(summarize(null));
   }
 
+  /**
+   * Builds the safe summary. {@code discovery} is supplied only by the
+   * callers that just performed a fresh discovery call (connect,
+   * refresh); every other caller passes {@code null} and this method
+   * falls back to {@link OpenShiftSession#discoveryApi()} - the mode
+   * persisted at connect/refresh time - rather than always reporting
+   * {@code null} (OS-1A review recovery #2, Defect A). Without that
+   * fallback, {@code GET /connection} - the readback every reconnect of
+   * the UI relies on - could never truthfully report {@code NAMESPACES}
+   * even though the session itself already knew it.
+   */
   private OpenShiftConnectionSummaryDto summarize(ProjectDiscovery discovery) {
     List<String> projects = discovery != null ? discovery.projects() : session.projects();
-    String api = discovery != null ? discovery.api().name() : null;
+    ProjectDiscovery.Api discoveryApi = discovery != null ? discovery.api() : session.discoveryApi();
+    String api = discoveryApi != null ? discoveryApi.name() : null;
     return new OpenShiftConnectionSummaryDto(
         session.state().name(),
         session.connectionName(),

@@ -200,6 +200,29 @@ describe('OpenShiftSettingsPanel', () => {
 
     // Must not silently call namespaces "Projects" (OS-1A §16).
     expect(await screen.findByText('Namespaces')).toBeInTheDocument();
+    // OS-1A review recovery #2 §5 - the selection control itself must
+    // agree with the summary, not just the summary row.
+    expect(screen.getByLabelText(/^namespace$/i)).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /all namespaces \(none selected\)/i })).toBeInTheDocument();
+  });
+
+  it('labels the selection control as "Project" when discovery used the native Projects API', async () => {
+    stubFetch((url) => (url.includes('intake-allowed') ? jsonResponse(true) : jsonResponse(CONNECTED)));
+    await openPanel();
+
+    expect(screen.getByLabelText(/^project$/i)).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /all projects \(none selected\)/i })).toBeInTheDocument();
+  });
+
+  it('says "no namespaces" rather than "no projects" when the account has zero namespaces via the fallback', async () => {
+    stubFetch((url) =>
+      url.includes('intake-allowed')
+        ? jsonResponse(true)
+        : jsonResponse({ ...CONNECTED, projectApi: 'NAMESPACES', projectCount: 0, projects: [] }),
+    );
+    await openPanel();
+
+    expect(await screen.findByText(/has no namespaces/i)).toBeInTheDocument();
   });
 
   it('has no detectable accessibility violations', async () => {
