@@ -33,6 +33,16 @@ final class MockOpenShiftServer implements AutoCloseable {
     FORBIDDEN_403,
     /** No OpenShift Projects API at all - what a vanilla Kubernetes API server does. */
     NO_PROJECTS_API_404,
+    /**
+     * OS-1A review recovery - a real cluster-side failure that has nothing
+     * to do with whether the Projects API exists. These must NEVER be
+     * mistaken for {@link #NO_PROJECTS_API_404} and must never trigger the
+     * namespaces fallback.
+     */
+    RATE_LIMITED_429,
+    INTERNAL_SERVER_ERROR_500,
+    BAD_GATEWAY_502,
+    SERVICE_UNAVAILABLE_503,
     MALFORMED_BODY,
     SLOW
   }
@@ -41,6 +51,8 @@ final class MockOpenShiftServer implements AutoCloseable {
   private volatile Scenario scenario = Scenario.OK;
   private final AtomicReference<String> lastAuthorization = new AtomicReference<>();
   private final AtomicReference<String> lastPath = new AtomicReference<>();
+  private final java.util.concurrent.atomic.AtomicInteger namespacesRequestCount =
+      new java.util.concurrent.atomic.AtomicInteger();
 
   MockOpenShiftServer() throws IOException {
     server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -65,6 +77,15 @@ final class MockOpenShiftServer implements AutoCloseable {
     return lastPath.get();
   }
 
+  /**
+   * How many times the namespaces fallback endpoint was actually called -
+   * the ground truth for "did fallback happen", independent of whether the
+   * overall connect attempt ultimately succeeded or failed.
+   */
+  int namespacesRequestCount() {
+    return namespacesRequestCount.get();
+  }
+
   private void handle(HttpExchange exchange) throws IOException {
     lastAuthorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
     String path = exchange.getRequestURI().getPath();
@@ -81,10 +102,19 @@ final class MockOpenShiftServer implements AutoCloseable {
     boolean isProjects = path.contains("/projects");
     boolean isNamespaces = path.contains("/namespaces");
     boolean isUser = path.contains("/users/");
+    if (isNamespaces) {
+      namespacesRequestCount.incrementAndGet();
+    }
 
     switch (scenario) {
       case UNAUTHORIZED_401 -> respond(exchange, 401, "{\"message\":\"Unauthorized\"}");
       case FORBIDDEN_403 -> respond(exchange, 403, "{\"message\":\"Forbidden\"}");
+      // Real cluster/rate-limit failures - distinct from NO_PROJECTS_API_404
+      // and must never be treated as "the Projects API does not exist".
+      case RATE_LIMITED_429 -> respond(exchange, 429, "{\"message\":\"Too Many Requests\"}");
+      case INTERNAL_SERVER_ERROR_500 -> respond(exchange, 500, "{\"message\":\"Internal Server Error\"}");
+      case BAD_GATEWAY_502 -> respond(exchange, 502, "{\"message\":\"Bad Gateway\"}");
+      case SERVICE_UNAVAILABLE_503 -> respond(exchange, 503, "{\"message\":\"Service Unavailable\"}");
       case MALFORMED_BODY -> respond(exchange, 200, "not json at all");
       case NO_PROJECTS_API_404 -> {
         if (isProjects) {

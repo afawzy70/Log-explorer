@@ -193,6 +193,16 @@ public class OpenShiftApiClient {
         return new OpenShiftApiException(
             Kind.FORBIDDEN, "This account is not permitted to perform that request on the cluster.", error);
       }
+      if (status == HttpStatus.NOT_FOUND) {
+        // A genuine 404 on the Projects endpoint itself is the ONLY signal
+        // that means "this cluster has no OpenShift Projects API" - see
+        // Kind.NOT_FOUND's own javadoc. Every other status (429 rate
+        // limited, 500/502/503 upstream failures, etc.) falls through to
+        // the generic MALFORMED_RESPONSE branch below, which the
+        // namespaces fallback deliberately does NOT act on.
+        return new OpenShiftApiException(
+            Kind.NOT_FOUND, "The cluster returned HTTP 404 for that API.", error);
+      }
       return new OpenShiftApiException(
           Kind.MALFORMED_RESPONSE,
           "The cluster returned an unexpected response (HTTP " + response.getStatusCode().value() + ").",

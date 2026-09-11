@@ -29,13 +29,36 @@ public class OpenShiftApiException extends RuntimeException {
     UNAUTHORIZED,
     /** 403 - authenticated but not permitted. */
     FORBIDDEN,
+    /**
+     * 404 on the OpenShift Projects API itself - the cluster genuinely has
+     * no {@code project.openshift.io} API group (a vanilla Kubernetes API
+     * server, not OpenShift). This is deliberately its own kind, separate
+     * from {@link #MALFORMED_RESPONSE}: it is the <b>only</b> kind {@code
+     * OpenShiftConnectionService}'s namespaces fallback may act on.
+     *
+     * <p>Review finding (OS-1A recovery): before this kind existed, every
+     * non-401/403 HTTP status - including 429/500/502/503, i.e. real
+     * cluster/rate-limit failures with nothing to do with whether the
+     * Projects API exists - fell into {@code MALFORMED_RESPONSE} and could
+     * incorrectly trigger the namespaces fallback. A busy or failing
+     * cluster must never be reinterpreted as "this cluster has no
+     * Projects API."
+     */
+    NOT_FOUND,
     /** TLS handshake/trust failure - usually an enterprise CA that has not been supplied. */
     TLS,
     /** DNS/connect/timeout - typically VPN or reachability. */
     NETWORK,
     /** The configured proxy could not be used. */
     PROXY,
-    /** The endpoint answered, but not with anything this client understands. */
+    /**
+     * Every other unexpected outcome: a decode failure on a 2xx response,
+     * or any HTTP status this client does not give its own kind to (429
+     * rate-limited, 500/502/503 upstream failures, etc.). Deliberately
+     * <b>not</b> eligible for the namespaces fallback - only a genuine 404
+     * ({@link #NOT_FOUND}) means "no Projects API"; everything else here
+     * means "the Projects API exists but this call to it failed."
+     */
     MALFORMED_RESPONSE,
   }
 

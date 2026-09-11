@@ -82,17 +82,35 @@ public class OpenShiftConnectionService {
    * OS-1A §16 - the namespaces fallback, used only when the cluster
    * genuinely has no OpenShift Projects API (a vanilla Kubernetes API
    * server answers 404 for that API group, which arrives here as
-   * {@link Kind#MALFORMED_RESPONSE}).
+   * {@link Kind#NOT_FOUND} - and ONLY that kind).
    *
    * <p>A {@code 403} is <b>never</b> retried this way. "You may not list
    * projects" is a real, specific answer about a real API; silently asking
    * a different API instead would convert a permission truth into an
    * availability guess, and could then report "no accessible projects"
    * from a namespaces call that is also forbidden.
+   *
+   * <p><b>Review correction (OS-1A recovery).</b> This previously guarded
+   * on {@code Kind.MALFORMED_RESPONSE}, which every non-401/403 HTTP
+   * status fell into - so a busy or failing cluster (429 rate-limited,
+   * 500/502/503 upstream errors) could be misread as "no Projects API"
+   * and silently retried against namespaces instead of surfacing the real
+   * failure. {@link Kind#NOT_FOUND} exists specifically so this guard can
+   * be exact: a cluster/server failure must never be reinterpreted as
+   * "the Projects API does not exist."
    */
-  private Mono<ProjectDiscovery> fallbackToNamespacesIfAppropriate(
+  // Package-private rather than private: OS-1A review recovery tests this
+  // decision directly, against constructed OpenShiftApiException Kinds,
+  // because the only public front door (connect(String, String)) requires
+  // an https:// server per the parser, while the deterministic fake
+  // OpenShift API used in tests is a plain JDK HttpServer over http (the
+  // same convention as this repo's existing MockLokiServer). Testing the
+  // decision in isolation - "does THIS kind trigger fallback" - is more
+  // precise than only exercising it end-to-end, and is exactly the level
+  // at which the original defect lived.
+  Mono<ProjectDiscovery> fallbackToNamespacesIfAppropriate(
       OcLoginCommand command, OpenShiftApiException failure) {
-    if (failure.kind() != Kind.MALFORMED_RESPONSE) {
+    if (failure.kind() != Kind.NOT_FOUND) {
       return Mono.error(failure);
     }
     return client

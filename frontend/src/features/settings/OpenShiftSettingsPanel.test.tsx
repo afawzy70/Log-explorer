@@ -243,6 +243,17 @@ describe('describeFailure', () => {
     expect(describeFailure(apiError(502, 'PROXY')).message).toMatch(/proxy/i);
   });
 
+  it('reports a genuine "API not found" distinctly, never as forbidden or a busy cluster', () => {
+    // OS-1A review recovery: NOT_FOUND is its own backend reason, reached
+    // only when both the Projects API AND the namespaces fallback failed.
+    // It must read as its own truth, not as "forbidden" and not as a
+    // generic upstream failure.
+    const described = describeFailure(apiError(502, 'NOT_FOUND'));
+    expect(described.reason).toBe('NOT_FOUND');
+    expect(described.message).toMatch(/project or namespace/i);
+    expect(described.message).not.toMatch(/not permitted|forbidden/i);
+  });
+
   it('explains each parser refusal specifically', () => {
     expect(describeFailure(apiError(400, 'SHELL_SYNTAX_PRESENT')).message).toMatch(/shell syntax/i);
     expect(describeFailure(apiError(400, 'UNKNOWN_FLAG')).message).toMatch(/does not support/i);

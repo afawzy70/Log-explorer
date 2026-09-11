@@ -310,6 +310,7 @@ export type OpenShiftFailureReason =
   | 'MALFORMED_TOKEN'
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'
+  | 'NOT_FOUND'
   | 'TLS'
   | 'NETWORK'
   | 'PROXY'

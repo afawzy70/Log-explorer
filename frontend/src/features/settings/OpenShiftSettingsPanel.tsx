@@ -323,6 +323,14 @@ export function describeFailure(error: unknown): { message: string; reason: Open
         reason,
         message: 'Signed in, but this account is not permitted to list projects. Ask a cluster administrator.',
       };
+    case 'NOT_FOUND':
+      // Reaches the UI only if the namespaces fallback ALSO failed - the
+      // Projects API is genuinely absent and this cluster's namespaces API
+      // could not be used either.
+      return {
+        reason,
+        message: 'This cluster does not expose a project or namespace listing that Log Explorer can use.',
+      };
     case 'TLS':
       return {
         reason,

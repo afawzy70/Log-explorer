@@ -219,10 +219,32 @@ as different *types* so they cannot be accidentally collapsed:**
 A dedicated test asserts the 403 copy never contains "no projects".
 
 **Namespaces fallback** runs only when the Projects API is genuinely
-absent (a vanilla Kubernetes API server answers 404 → `MALFORMED_RESPONSE`).
-A **403 is never retried** as namespaces — that would convert a permission
-truth into an availability guess. When the fallback answers, the UI labels
-the list "Namespaces", never "Projects".
+absent (a vanilla Kubernetes API server answers HTTP 404 on the Projects
+endpoint → `Kind.NOT_FOUND`, a dedicated kind checked exclusively by the
+fallback). A **403 is never retried** as namespaces — that would convert a
+permission truth into an availability guess. When the fallback answers,
+the UI labels the list "Namespaces", never "Projects".
+
+> **Review recovery (post-#39).** The first implementation guarded the
+> fallback on `Kind.MALFORMED_RESPONSE`, which every non-401/403 HTTP
+> status fell into — so a real cluster/rate-limit failure (429, 500, 502,
+> 503) could be misclassified as "this cluster has no Projects API" and
+> silently retried against namespaces instead of surfacing the actual
+> failure. `Kind.NOT_FOUND` was introduced specifically so a genuine "API
+> does not exist" (404) can be told apart from "the API exists but this
+> call to it failed" (everything else). The fallback now checks for
+> `NOT_FOUND` and only `NOT_FOUND`.
+>
+> Proven by 19 new tests: `OpenShiftConnectionServiceFallbackTest` (15)
+> exercises the fallback decision directly against every `Kind` —
+> `NOT_FOUND` falls back (the namespaces endpoint is actually called,
+> asserted via a request counter on the fake server), and `UNAUTHORIZED`,
+> `FORBIDDEN`, `MALFORMED_RESPONSE` (covering 429/500/502/503 and a
+> decode failure), `NETWORK`, `TLS` and `PROXY` all propagate the
+> **original** exception unchanged with the namespaces endpoint never
+> touched. `OpenShiftApiClientTest` gained 4 tests proving `classify()`
+> itself never maps 429/500/502/503 to `NOT_FOUND`, so the mapping that
+> feeds the fallback decision is correct at its source, not just assumed.
 
 ---
 
@@ -299,11 +321,11 @@ browser.
 
 | Layer | Result |
 |---|---|
-| L1 unit/contract | Parser 46 · Proxy 24 · Security boundaries 25 |
-| L2 fake OpenShift API | `OpenShiftApiClientTest` 15 (401/403/empty/404-fallback/malformed/unreachable/bad-CA/identity) |
-| Backend total | **720 pass, 0 failures** |
-| Frontend | **741 pass** (+15 OpenShift panel) |
-| E2E OS-1A | **17/17** |
+| L1 unit/contract | Parser 46 · Proxy 24 · Security boundaries 25 · Fallback decision (`OpenShiftConnectionServiceFallbackTest`) 15 |
+| L2 fake OpenShift API | `OpenShiftApiClientTest` 19 (401/403/empty/404-fallback/429/500/502/503/malformed/unreachable/bad-CA/identity) |
+| Backend total | **739 pass, 0 failures** (review recovery: +19 — 4 `classify()` HTTP-status tests, 15 fallback-decision tests) |
+| Frontend | **742 pass** (+16 OpenShift panel, incl. the `NOT_FOUND` reason) |
+| E2E OS-1A | **17/17** (re-run against the fixed backend) |
 | Typecheck / production build | PASS |
 | L3 real sandbox | `OpenShiftRealSandboxIT` — **skips cleanly** without credentials (verified: 5 skipped, build success) |
 

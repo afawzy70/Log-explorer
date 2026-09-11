@@ -126,7 +126,61 @@ class OpenShiftApiClientTest {
         () -> client.fetchProjects(base, TOKEN, null).block(), OpenShiftApiException.class);
 
     assertThat(e).isNotNull();
+    // OS-1A review correction: a genuine 404 gets its own kind, distinct
+    // from the generic MALFORMED_RESPONSE bucket - it is the ONLY kind
+    // OpenShiftConnectionService's namespaces fallback may act on.
+    assertThat(e.kind()).isEqualTo(Kind.NOT_FOUND);
+  }
+
+  // OS-1A review recovery - proving classify() itself, not just the
+  // fallback decision that consumes it. These HTTP statuses must map to
+  // something other than NOT_FOUND, so OpenShiftConnectionService's
+  // fallback (which checks for NOT_FOUND specifically) never fires for
+  // them - see OpenShiftConnectionServiceFallbackTest for the decision
+  // level.
+  @Test
+  void aRateLimited429IsNeverClassifiedAsApiNotFound() {
+    server.setScenario(Scenario.RATE_LIMITED_429);
+
+    OpenShiftApiException e = catchThrowableOfType(
+        () -> client.fetchProjects(base, TOKEN, null).block(), OpenShiftApiException.class);
+
+    assertThat(e).isNotNull();
+    assertThat(e.kind()).isNotEqualTo(Kind.NOT_FOUND);
     assertThat(e.kind()).isEqualTo(Kind.MALFORMED_RESPONSE);
+  }
+
+  @Test
+  void a500IsNeverClassifiedAsApiNotFound() {
+    server.setScenario(Scenario.INTERNAL_SERVER_ERROR_500);
+
+    OpenShiftApiException e = catchThrowableOfType(
+        () -> client.fetchProjects(base, TOKEN, null).block(), OpenShiftApiException.class);
+
+    assertThat(e).isNotNull();
+    assertThat(e.kind()).isNotEqualTo(Kind.NOT_FOUND);
+  }
+
+  @Test
+  void a502IsNeverClassifiedAsApiNotFound() {
+    server.setScenario(Scenario.BAD_GATEWAY_502);
+
+    OpenShiftApiException e = catchThrowableOfType(
+        () -> client.fetchProjects(base, TOKEN, null).block(), OpenShiftApiException.class);
+
+    assertThat(e).isNotNull();
+    assertThat(e.kind()).isNotEqualTo(Kind.NOT_FOUND);
+  }
+
+  @Test
+  void a503IsNeverClassifiedAsApiNotFound() {
+    server.setScenario(Scenario.SERVICE_UNAVAILABLE_503);
+
+    OpenShiftApiException e = catchThrowableOfType(
+        () -> client.fetchProjects(base, TOKEN, null).block(), OpenShiftApiException.class);
+
+    assertThat(e).isNotNull();
+    assertThat(e.kind()).isNotEqualTo(Kind.NOT_FOUND);
   }
 
   @Test
