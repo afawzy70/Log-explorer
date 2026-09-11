@@ -250,6 +250,28 @@ UX-27/UX-28) and were added above.
 | WebView2 pixel-level rendering | Manual-verification-only | same report — "no UI-automation harness... A human running the installed app and visually confirming the UI renders correctly... remains the one manual step this automation doesn't replace." |
 | Port-collision-with-occupied-port scenario | `DEFERRED` | same report — "Not exercised in the hosted CI job." |
 
+### 7b. REL-1 addendum — Local Reproducible Desktop Packaging (approved after OS-1A review recovery #2, registered during OS-1B)
+
+Approved by the owner **after** the OS-1A review recovery #2 prompt was
+sent, and explicitly required by the OS-1B mission to be *registered
+now, not implemented now*. Do not implement any of the scripts/behaviour
+below during OS-1B or any slice before REL-1 itself.
+
+| Field | Value |
+|---|---|
+| ID | REL-1 (addendum) |
+| NAME | Local Reproducible Desktop Packaging |
+| STATUS | `APPROVED_PENDING` — tracked, **not started**, not implemented |
+| CATEGORY | Distribution / developer experience |
+| OWNER_INTENT | A developer who downloads/clones the source repository must be able to produce the native desktop package for the host operating system **without requiring GitHub Actions**. |
+| REQUIRED_FUTURE_BEHAVIOR | **Windows host:** clone repo → one documented repository-owned PowerShell entry point → Windows installer. **macOS host:** clone repo → one documented repository-owned shell entry point → native macOS package. CI/release workflows must call the **same** repository-owned packaging entry points rather than duplicating packaging logic inside GitHub workflow YAML — the workflow becomes a thin caller, not a second implementation. |
+| EXPECTED_FUTURE_DESIGN_DIRECTION | `scripts/build-desktop.ps1` (Windows) and `scripts/build-desktop.sh` (macOS), or a cleaner equivalent if repository evidence at REL-1 implementation time supports one. Output convention: `dist/`, with deterministic, versioned artifact names. |
+| FUTURE_REL_1_SCOPE (not exhaustive, all `APPROVED_PENDING`, none started) | Windows local one-command packaging; macOS local one-command packaging; host-native packaging only (Windows→Windows artifact, macOS→macOS artifact — unsupported cross-OS production packaging is explicitly not required); clear dependency/preflight checks with actionable missing-tool errors; React production build; Spring Boot production build; bundled runtime creation; desktop launcher/app bundle creation; installer/package generation; smoke validation; SHA-256 checksums; deterministic artifact naming; version injection; branding; unsigned/development local package support where appropriate; a release-grade mode; future signing/notarization handling; GitHub Actions calling the same scripts; GitHub Releases publication (already tracked above in §7's main REL-1 row); documentation at `docs/development/BUILD_DESKTOP.md` covering prerequisites, Windows build, macOS build, expected artifacts, version selection, unsigned/local builds, release builds, checksums, clean rebuild, troubleshooting, and host architecture requirements |
+| TARGET_SLICE_OR_PHASE | REL-1 |
+| ACCEPTANCE_CRITERIA | Deferred to REL-1's own implementation mission — this row exists to guarantee the requirement is never silently lost between now and then |
+| EVIDENCE | None — genuinely not implemented. `desktop/` currently builds only through the existing Slice 9 CI-driven path (`jlink`/`jpackage`/Inno Setup inside `.github/workflows/windows-desktop.yml`), which is exactly the "packaging logic duplicated inside workflow YAML" pattern this new requirement says must eventually be replaced by repository-owned scripts the CI merely calls |
+| NOTES / CONFLICTS | This addendum does not change or weaken §7's existing REL-1 row (GitHub Releases as the end-user distribution surface, versioned installers, SHA-256 checksums, etc.) — it adds the *local, credential-free, CI-independent* reproducibility requirement on top of it, and requires the eventual CI implementation to route through the same local scripts rather than reimplementing packaging twice. `LOCAL_WINDOWS_PACKAGING_STATUS=APPROVED_PENDING_REL_1`, `LOCAL_MACOS_PACKAGING_STATUS=APPROVED_PENDING_REL_1`, `CI_REUSE_LOCAL_PACKAGING_SCRIPTS_REQUIREMENT=TRACKED`, `BUILD_DESKTOP_DOCUMENTATION_REQUIREMENT=TRACKED`. |
+
 ---
 
 ## 8. Desktop Branding
@@ -358,6 +380,38 @@ are **not** implemented and the source's capabilities say so.
 | OS-1A-18 | **Discovery mode (`PROJECTS`/`NAMESPACES`) is part of the session's current truth**, not just the resulting project list — set on connect, kept current by refresh, cleared on disconnect/expiry, never inferred from list contents | `VERIFIED` | `OpenShiftSession#discoveryApi()` (new `ProjectDiscovery.Api` field on the session's `Snapshot`); `OpenShiftConnectionController#summarize` falls back to it for every caller that has no fresh discovery of its own (`GET /connection`, `disconnect`, `selectProject`) instead of always reporting `null`. `OpenShiftDiscoveryModeAndRefreshTest`, `OpenShiftConnectionControllerIntegrationTest` |
 | OS-1A-19 | **Refresh uses the exact same discovery-and-fallback policy as connect** — a connection that reached `CONNECTED` via the namespaces fallback must not fail Refresh merely because refresh skips the fallback; a refresh that observes a genuinely different mode than the one recorded at connect time reports the fresh truth, never a stale pinned label | `VERIFIED` | One shared `OpenShiftConnectionService#discoverProjectsOrNamespaces`, called by both `connect` and `refreshProjects` — the fallback decision is no longer duplicated between the two call sites. `OpenShiftDiscoveryModeAndRefreshTest` covers `REFRESH_PROJECTS_200`, `REFRESH_PROJECTS_404_NAMESPACES_200`, the reverse (namespaces → available again → `PROJECTS`), `REFRESH_PROJECTS_{401,403,429,500,MALFORMED}` (no fallback in any case), a vanished selection after a namespace-fallback refresh cleared truthfully, and stale-refresh protection for both the project list and the discovery mode together |
 
+### 12c. OS-1B — workload / pod / container discovery (implemented and verified)
+
+OS-1B implemented namespace-scoped workload, pod and container discovery
+and selection only. Search, context, correlation and Live remain **not**
+implemented; the source's capabilities are unchanged from OS-1A (all
+seven `false`).
+
+| ID | NAME | STATUS | EVIDENCE |
+|---|---|---|---|
+| OS-1B-1 | Workload identity is a strongly-typed value (kind + name + namespace), never a bare display string | `VERIFIED` | `WorkloadRef` (validated compact constructor); `WorkloadRefTest` (5 tests) proves two different kinds sharing a name are non-equal references |
+| OS-1B-2 | **Deployment** support | `VERIFIED` | `WorkloadKind.DEPLOYMENT`; `OpenShiftScopeServiceTest` |
+| OS-1B-3 | **StatefulSet** support | `VERIFIED` | `WorkloadKind.STATEFUL_SET`; `OpenShiftScopeServiceTest` |
+| OS-1B-4 | **DaemonSet** support, including its different desired/ready status field names (`desiredNumberScheduled`/`numberReady`, no `spec.replicas`) | `VERIFIED` | `OpenShiftApiClient#workloadSummaries`; `OpenShiftScopeServiceTest` |
+| OS-1B-5 | **DeploymentConfig** support, truthfully absent-vs-forbidden-vs-available, flat (not nested) selector shape | `VERIFIED` | `WorkloadKind.DEPLOYMENT_CONFIG`; `aDeploymentConfigThatIsAvailableMakesTheOverallStatusSuccess`, `deploymentConfigSelectorIsReadAsAFlatMapNotNestedUnderMatchLabels` |
+| OS-1B-6 | **Jobs/CronJobs deferred**, explicitly, not silently omitted | `DEFERRED` | `WorkloadKind`'s own javadoc; `OS_1B_OPENSHIFT_SCOPE_DISCOVERY_REPORT.md` §2 |
+| OS-1B-7 | Namespace-scoped-only workload discovery, one GET per kind, concurrent, never cluster-wide | `VERIFIED` | `OpenShiftScopeService#discoverWorkloads`; `OS_1B_OPENSHIFT_SCOPE_DISCOVERY_REPORT.md` §11 (exact request-count accounting) |
+| OS-1B-8 | One workload kind's absence/forbiddenness never fails discovery of the others - explicit `AVAILABLE`/`UNAVAILABLE_RESOURCE_TYPE`/`FORBIDDEN`/`ERROR` per kind, `SUCCESS`/`PARTIAL`/`FORBIDDEN` overall | `VERIFIED` | `WorkloadDiscovery`; `OpenShiftScopeServiceTest` (partial-RBAC, all-forbidden, one-kind-erroring, one-kind-404 cases) |
+| OS-1B-9 | A 401 during workload/pod discovery aborts the whole operation and expires the session, exactly like OS-1A's own 401 semantics | `VERIFIED` | `a401OnAnyKindAbortsTheWholeDiscoveryAndExpiresTheSession` |
+| OS-1B-10 | Workload→pod resolution is selector-based (never per-pod, never a name guess), read fresh at resolution time | `VERIFIED` | `OpenShiftApiClient#fetchWorkloadSelector`/`fetchPods`; `resolvesPodsForASelectedWorkloadViaItsSelectorOnly` |
+| OS-1B-11 | Robust to rolling deployments - old and new ReplicaSet pods both resolve via the Deployment's own selector | `VERIFIED` | `rollingDeploymentOldAndNewReplicaSetPodsBothMatchTheSameSelector` |
+| OS-1B-12 | **Real defect found and fixed this slice**: double URL-encoding of the `labelSelector` query value silently broke every selector filter | `VERIFIED` (fixed) | `OpenShiftApiClient#podsPath`; caught by `resolvesPodsForASelectedWorkloadViaItsSelectorOnly` before the fix, passing after; see `OS_1B_OPENSHIFT_SCOPE_DISCOVERY_REPORT.md` §4 |
+| OS-1B-13 | Pod discovery: all pods in the namespace when no workload is selected ("All workloads"), safe metadata only | `VERIFIED` | `discoversAllPodsInTheNamespaceWhenNoWorkloadIsSelected`; `PodSummary` |
+| OS-1B-14 | Container discovery is per-selected-pod, `initContainers` explicitly deferred/excluded, served from cache with no extra network call | `VERIFIED` | `OpenShiftScopeService#discoverContainers`; `containerDiscoveryReturnsTheSelectedPodsCachedContainersWithNoExtraNetworkCall` |
+| OS-1B-15 | Every workload/pod/container selection is server-validated against the last discovery result, never trusted from the frontend | `VERIFIED` | `OpenShiftSession#selectWorkload/selectPod/selectContainer`; `selectingAWorkloadDiscoveryNeverReturnedIsRejected`, `selectingAPodDiscoveryNeverReturnedIsRejected`, `selectingAContainerThePodDoesNotHaveIsRejected` |
+| OS-1B-16 | Cascading resets: selecting a workload clears pod/container; selecting a pod clears container; a disappeared workload/pod clears its selection and everything below it; project change/reconnect/disconnect/expiry clear the whole scope | `VERIFIED` | `OpenShiftScope` (`with*` methods); `OpenShiftScopeTest` (7), `OpenShiftSessionScopeCascadeTest` (7) |
+| OS-1B-17 | Stale-response protection one level deeper than OS-1A: a workload-discovery response for an abandoned project, or a pod-discovery response for an abandoned workload, is discarded, never applied | `VERIFIED` | `OpenShiftSession#updateWorkloads/updatePods` (generation + expected-project/workload guard); `aWorkloadDiscoveryResponseForAProjectTheUserHasSinceLeftIsDiscarded`, `aPodDiscoveryResponseForAWorkloadTheUserHasSinceLeftIsDiscarded`, `aStaleWorkloadDiscoveryFromAReplacedConnectionThrowsRatherThanOverwriting`; `OpenShiftScopeService.StaleScopeException` → HTTP 409 `STALE_SCOPE` |
+| OS-1B-18 | Deterministic sorting: workloads by kind then name, pods by name, containers in manifest order | `VERIFIED` | `OpenShiftApiClient#workloadSummaries/podSummaries`; fixtures deliberately supplied out of order in tests to prove the client's own sort |
+| OS-1B-19 | Source-specific, bounded discovery endpoints (`/workloads`, `/pods`, `/containers`) rather than one endpoint returning the whole cluster tree | `VERIFIED` | `OpenShiftScopeController`; `OpenShiftScopeControllerIntegrationTest` (5 tests, real HTTP) |
+| OS-1B-20 | Capabilities remain truthful and unchanged - no new boolean flipped merely because workloads/pods are now discoverable | `VERIFIED` | `OpenShiftLogSource#capabilities()` unmodified; confirmed by re-reading the source this session |
+| OS-1B-21 | Existing `openshift-loki`/Docker/Fixture sources unaffected | `VERIFIED` | No file under those packages touched; full 809-test backend suite green (`./mvnw test`; see `OS_1B_OPENSHIFT_SCOPE_DISCOVERY_REPORT.md` §15 for the sandbox-IT accounting note) |
+| OS-1B-22 | Frontend workload/pod/container hierarchy, with distinct loading/empty/forbidden states, never spamming the UI about an absent (but not forbidden/erroring) resource kind | `VERIFIED` | `OpenShiftScopeControls`; 5 new `OpenShiftSettingsPanel.test.tsx` tests |
+| OS-1B-23 | Real Developer Sandbox verification for workload/pod/container discovery | `BLOCKED_CREDENTIALS` | No `OPENSHIFT_API_SERVER`/`OPENSHIFT_TOKEN` supplied this mission; no OS-1B-specific Layer-3 test was written (explicitly conditional on credentials per the mission's own §28) |
 
 ---
 
@@ -505,6 +559,28 @@ touched nor could convert that status. OS-1B, REL-1 and Phase M remain
 `NOT_STARTED`/`TRACKED_NOT_STARTED` — this recovery is scoped entirely to
 already-implemented OS-1A code, and PR #39 remains unmerged pending this
 recovery's own review.
+
+**OS-1B pass.** PR #39 was merged at its approved SHA
+(`892b06b7960542c27b0666cd2ed1166ec7a26181`) before this slice began; post-
+main CI and Windows Desktop were both confirmed green first (§0 of
+`OS_1B_OPENSHIFT_SCOPE_DISCOVERY_REPORT.md`). Twenty-three new,
+separately-tested requirements were added (§12c, OS-1B-1 through OS-1B-23)
+covering workload/pod/container discovery, selection validation, cascading
+resets and one level deeper of stale-response protection than OS-1A had.
+One genuinely new owner requirement was **registered but explicitly not
+implemented**, per the mission's own instruction: **Local Reproducible
+Desktop Packaging** (§7b, a REL-1 addendum approved after the OS-1A
+review-recovery-#2 prompt was sent) — `APPROVED_PENDING`, tracked, no
+code written. One real defect was found and fixed *during* this slice
+(a double URL-encoding bug that silently broke every pod label-selector
+filter, OS-1B-12) — recorded as a `VERIFIED (fixed)` requirement rather
+than a silent patch, consistent with how OS-1A's own two review
+recoveries were handled. `REAL_OPENSHIFT_1A` and the new
+`REAL_OPENSHIFT_1B` both remain `BLOCKED_CREDENTIALS` — no credentials
+were supplied, and neither status is fabricated as `PASS`. OS-1C, OS-1D,
+OS-1E, OS-1F, OS-1G, REL-1 and Phase M all remain
+`NOT_STARTED`/`TRACKED_NOT_STARTED` — this slice implemented discovery
+only, per its own explicit no-scope-creep list (§35 of the mission).
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0

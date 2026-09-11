@@ -744,6 +744,21 @@ without them.
 **[PROPOSED]** Order: **OS-1A → 1B → 1C → 1D → 1E → 1F**, with **1G
 gated on real-Loki access**.
 
+**[EVIDENCE, established by OS-1B, not this assessment]** The OS-1B row
+above is now implemented for its stated scope (workload/pod/container
+discovery, RBAC/partial-permission semantics via Layer 1+2 evidence) —
+see `docs/verification/OS_1B_OPENSHIFT_SCOPE_DISCOVERY_REPORT.md` and
+`OWNER_REQUIREMENTS_REGISTER.md` §12c for the full requirement-by-
+requirement evidence. "Real workloads/pods discovered" (this table's own
+exit criterion) remains real-sandbox evidence, not yet gathered —
+`REAL_OPENSHIFT_1B = BLOCKED_CREDENTIALS`, exactly the same honest gap
+`REAL_OPENSHIFT_1A` has carried since OS-1A. One implementation detail
+worth recording here since it affects §9's "Workload → pod resolution":
+pod resolution turned out to need the workload's *current* label
+selector re-read at resolution time (not cached from discovery), and
+only equality-based `matchLabels`/`DeploymentConfig`'s flat `spec.selector`
+are supported — `matchExpressions` is out of scope for this slice.
+
 **[PROPOSED]** Highest-risk areas, stated plainly: (1) credential intake
 and its unauthenticated-local-endpoint assumption; (2) multi-pod merge
 ordering and pagination truthfulness; (3) Live stream lifecycle across

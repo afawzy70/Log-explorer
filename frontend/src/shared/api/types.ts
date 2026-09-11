@@ -316,9 +316,67 @@ export type OpenShiftFailureReason =
   | 'PROXY'
   | 'MALFORMED_RESPONSE'
   | 'NON_LOOPBACK_BINDING'
-  | 'STALE_CONNECTION';
+  | 'STALE_CONNECTION'
+  | 'STALE_SCOPE';
 
 export interface OpenShiftFailure {
   message: string;
   reason: OpenShiftFailureReason | null;
+}
+
+/**
+ * OS-1B - the workload kinds this slice discovers, in the deterministic
+ * order the backend always reports them. Jobs/CronJobs are deferred, not
+ * present here yet.
+ */
+export type OpenShiftWorkloadKind = 'DEPLOYMENT' | 'DEPLOYMENT_CONFIG' | 'STATEFUL_SET' | 'DAEMON_SET';
+
+export interface OpenShiftWorkload {
+  kind: OpenShiftWorkloadKind;
+  name: string;
+  desiredReplicas: number;
+  readyReplicas: number;
+}
+
+/**
+ * One workload kind's own discovery outcome (OS-1B §17) - never collapsed
+ * into a single pass/fail for the whole discovery. `UNAVAILABLE_RESOURCE_TYPE`
+ * means the cluster genuinely does not expose this kind's API (a 404);
+ * `FORBIDDEN` means this user may not list it (a 403); `ERROR` is any
+ * other real failure.
+ */
+export interface OpenShiftWorkloadKindOutcome {
+  kind: OpenShiftWorkloadKind;
+  status: 'AVAILABLE' | 'UNAVAILABLE_RESOURCE_TYPE' | 'FORBIDDEN' | 'ERROR';
+}
+
+export interface OpenShiftWorkloadDiscovery {
+  status: 'SUCCESS' | 'PARTIAL' | 'FORBIDDEN';
+  workloads: OpenShiftWorkload[];
+  kindOutcomes: OpenShiftWorkloadKindOutcome[];
+}
+
+/**
+ * One discovered pod (OS-1B §10) - safe scope metadata only. `workloadKind`/
+ * `workloadName` are null when this pod came from an unscoped "All
+ * workloads" namespace-wide listing.
+ */
+export interface OpenShiftPod {
+  name: string;
+  phase: string;
+  readySummary: string;
+  restartCount: number;
+  containerNames: string[];
+  workloadKind: OpenShiftWorkloadKind | null;
+  workloadName: string | null;
+}
+
+/** The current workload/pod/container selection (OS-1B §12) - a null field genuinely means "All" at that level. */
+export interface OpenShiftScopeSummary {
+  selectedProject: string | null;
+  discoveryApi: 'PROJECTS' | 'NAMESPACES' | null;
+  selectedWorkloadKind: OpenShiftWorkloadKind | null;
+  selectedWorkloadName: string | null;
+  selectedPod: string | null;
+  selectedContainer: string | null;
 }

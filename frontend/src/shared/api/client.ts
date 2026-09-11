@@ -13,6 +13,10 @@ import type {
   SourceInfo,
   OpenShiftConnectionSummary,
   OpenShiftFailureReason,
+  OpenShiftPod,
+  OpenShiftScopeSummary,
+  OpenShiftWorkloadDiscovery,
+  OpenShiftWorkloadKind,
 } from './types';
 
 export class ApiError extends Error {
@@ -217,6 +221,69 @@ export async function selectOpenShiftProject(
     signal,
   });
   return parseJsonOrThrow<OpenShiftConnectionSummary>(response);
+}
+
+/* ------------------------------------------------------------------ */
+/* OS-1B - OpenShift workload / pod / container scope discovery        */
+/* ------------------------------------------------------------------ */
+
+export async function fetchOpenShiftWorkloads(signal?: AbortSignal): Promise<OpenShiftWorkloadDiscovery> {
+  const response = await fetch('/api/v1/sources/openshift/workloads', { signal });
+  return parseJsonOrThrow<OpenShiftWorkloadDiscovery>(response);
+}
+
+/** Commits (or clears, with both fields `null`) a workload selection (OS-1B §13). */
+export async function selectOpenShiftWorkload(
+  workload: { kind: OpenShiftWorkloadKind; name: string } | null,
+  signal?: AbortSignal,
+): Promise<OpenShiftScopeSummary> {
+  const response = await fetch('/api/v1/sources/openshift/workload', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind: workload?.kind ?? null, name: workload?.name ?? null }),
+    signal,
+  });
+  return parseJsonOrThrow<OpenShiftScopeSummary>(response);
+}
+
+/**
+ * Pods for the currently-selected workload, or every pod in the current
+ * project when no workload is selected ("All workloads", OS-1B §22).
+ */
+export async function fetchOpenShiftPods(signal?: AbortSignal): Promise<OpenShiftPod[]> {
+  const response = await fetch('/api/v1/sources/openshift/pods', { signal });
+  return parseJsonOrThrow<OpenShiftPod[]>(response);
+}
+
+/** Commits (or clears, with `null`) a pod selection (OS-1B §13). */
+export async function selectOpenShiftPod(pod: string | null, signal?: AbortSignal): Promise<OpenShiftScopeSummary> {
+  const response = await fetch('/api/v1/sources/openshift/pod', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pod }),
+    signal,
+  });
+  return parseJsonOrThrow<OpenShiftScopeSummary>(response);
+}
+
+/** Container names for the currently-selected pod - empty when no pod is selected (OS-1B §11). */
+export async function fetchOpenShiftContainers(signal?: AbortSignal): Promise<string[]> {
+  const response = await fetch('/api/v1/sources/openshift/containers', { signal });
+  return parseJsonOrThrow<string[]>(response);
+}
+
+/** Commits (or clears, with `null`) a container selection (OS-1B §13). */
+export async function selectOpenShiftContainer(
+  container: string | null,
+  signal?: AbortSignal,
+): Promise<OpenShiftScopeSummary> {
+  const response = await fetch('/api/v1/sources/openshift/container', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ container }),
+    signal,
+  });
+  return parseJsonOrThrow<OpenShiftScopeSummary>(response);
 }
 
 /**

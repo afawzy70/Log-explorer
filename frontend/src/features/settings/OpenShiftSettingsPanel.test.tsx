@@ -238,6 +238,169 @@ describe('OpenShiftSettingsPanel', () => {
 });
 
 /**
+ * OS-1B §4/§21/§24 - the workload/pod/container hierarchy beneath a
+ * selected project, and its distinct loading/empty/forbidden states.
+ */
+describe('OpenShiftSettingsPanel - OS-1B scope controls', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  const CONNECTED_WITH_PROJECT = { ...CONNECTED, selectedProject: 'payments' };
+
+  const WORKLOAD_DISCOVERY = {
+    status: 'SUCCESS',
+    workloads: [{ kind: 'DEPLOYMENT', name: 'payment-api', desiredReplicas: 2, readyReplicas: 2 }],
+    kindOutcomes: [
+      { kind: 'DEPLOYMENT', status: 'AVAILABLE' },
+      { kind: 'DEPLOYMENT_CONFIG', status: 'UNAVAILABLE_RESOURCE_TYPE' },
+      { kind: 'STATEFUL_SET', status: 'AVAILABLE' },
+      { kind: 'DAEMON_SET', status: 'AVAILABLE' },
+    ],
+  };
+
+  const PODS = [
+    {
+      name: 'payment-api-abc',
+      phase: 'Running',
+      readySummary: '1/1',
+      restartCount: 0,
+      containerNames: ['application'],
+      workloadKind: null,
+      workloadName: null,
+    },
+  ];
+
+  async function openPanelConnectedToAProject() {
+    const user = userEvent.setup();
+    render(<OpenShiftSettingsPanel />);
+    await user.click(screen.getByRole('button', { name: 'OpenShift' }));
+    await screen.findByRole('dialog', { name: /openshift connection/i });
+    return user;
+  }
+
+  it('discovers and lists workloads for the selected project, and does not spam the UI about an absent DeploymentConfig API', async () => {
+    stubFetch((url) => {
+      if (url.includes('intake-allowed')) return jsonResponse(true);
+      if (url.endsWith('/workloads')) return jsonResponse(WORKLOAD_DISCOVERY);
+      if (url.endsWith('/pods')) return jsonResponse(PODS);
+      return jsonResponse(CONNECTED_WITH_PROJECT);
+    });
+
+    await openPanelConnectedToAProject();
+
+    expect(await screen.findByRole('option', { name: 'payment-api (Deployment)' })).toBeInTheDocument();
+    // The absent DeploymentConfig API is UNAVAILABLE_RESOURCE_TYPE, not
+    // FORBIDDEN/ERROR - the common, expected case must not be surfaced as
+    // technical noise (OS-1B §8).
+    expect(screen.queryByText(/DeploymentConfig/i)).not.toBeInTheDocument();
+    expect(await screen.findByRole('option', { name: /payment-api-abc/i })).toBeInTheDocument();
+  });
+
+  it('says "No workloads in this project" rather than a blank control when discovery is genuinely empty', async () => {
+    stubFetch((url) => {
+      if (url.includes('intake-allowed')) return jsonResponse(true);
+      if (url.endsWith('/workloads')) return jsonResponse({ status: 'SUCCESS', workloads: [], kindOutcomes: [] });
+      if (url.endsWith('/pods')) return jsonResponse([]);
+      return jsonResponse(CONNECTED_WITH_PROJECT);
+    });
+
+    await openPanelConnectedToAProject();
+
+    expect(await screen.findByText(/no workloads in this project/i)).toBeInTheDocument();
+  });
+
+  it('reports a forbidden workload listing distinctly, never as "no workloads"', async () => {
+    stubFetch((url) => {
+      if (url.includes('intake-allowed')) return jsonResponse(true);
+      if (url.endsWith('/workloads')) return jsonResponse({ status: 'FORBIDDEN', workloads: [], kindOutcomes: [] });
+      // Pod listing is a separate RBAC permission from workload listing -
+      // discovery still attempts it independently (OS-1B §17).
+      if (url.endsWith('/pods')) return jsonResponse([]);
+      return jsonResponse(CONNECTED_WITH_PROJECT);
+    });
+
+    await openPanelConnectedToAProject();
+
+    expect(await screen.findByText(/not permitted to list workloads/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no workloads in this project/i)).not.toBeInTheDocument();
+  });
+
+  it('selecting a workload re-resolves pods scoped to it', async () => {
+    const scopedPods = [
+      {
+        name: 'payment-api-def',
+        phase: 'Running',
+        readySummary: '1/1',
+        restartCount: 0,
+        containerNames: ['application'],
+        workloadKind: 'DEPLOYMENT',
+        workloadName: 'payment-api',
+      },
+    ];
+    let podsCall = 0;
+    stubFetch((url, init) => {
+      if (url.includes('intake-allowed')) return jsonResponse(true);
+      if (url.endsWith('/workloads')) return jsonResponse(WORKLOAD_DISCOVERY);
+      if (url.endsWith('/workload') && init?.method === 'PUT') {
+        return jsonResponse({
+          selectedProject: 'payments',
+          discoveryApi: 'PROJECTS',
+          selectedWorkloadKind: 'DEPLOYMENT',
+          selectedWorkloadName: 'payment-api',
+          selectedPod: null,
+          selectedContainer: null,
+        });
+      }
+      if (url.endsWith('/pods')) {
+        podsCall += 1;
+        return jsonResponse(podsCall === 1 ? PODS : scopedPods);
+      }
+      return jsonResponse(CONNECTED_WITH_PROJECT);
+    });
+
+    const user = await openPanelConnectedToAProject();
+    await screen.findByRole('option', { name: 'payment-api (Deployment)' });
+    await screen.findByRole('option', { name: /payment-api-abc/i });
+
+    await user.selectOptions(screen.getByLabelText(/^workload$/i), 'DEPLOYMENT::payment-api');
+
+    expect(await screen.findByRole('option', { name: /payment-api-def/i })).toBeInTheDocument();
+  });
+
+  it('selecting a pod discovers its containers', async () => {
+    stubFetch((url, init) => {
+      if (url.includes('intake-allowed')) return jsonResponse(true);
+      if (url.endsWith('/workloads')) return jsonResponse(WORKLOAD_DISCOVERY);
+      if (url.endsWith('/pods')) return jsonResponse(PODS);
+      if (url.endsWith('/pod') && init?.method === 'PUT') {
+        return jsonResponse({
+          selectedProject: 'payments',
+          discoveryApi: 'PROJECTS',
+          selectedWorkloadKind: null,
+          selectedWorkloadName: null,
+          selectedPod: 'payment-api-abc',
+          selectedContainer: null,
+        });
+      }
+      if (url.endsWith('/containers')) return jsonResponse(['application']);
+      return jsonResponse(CONNECTED_WITH_PROJECT);
+    });
+
+    const user = await openPanelConnectedToAProject();
+    await screen.findByRole('option', { name: /payment-api-abc/i });
+    expect(screen.getByText(/select a specific pod/i)).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText(/^pod$/i), 'payment-api-abc');
+
+    expect(await screen.findByRole('option', { name: 'application' })).toBeInTheDocument();
+  });
+});
+
+/**
  * OS-1A §15/§18 - the failure taxonomy. These three must never collapse
  * into one another, and none may be shown as a generic "connection
  * failed".
