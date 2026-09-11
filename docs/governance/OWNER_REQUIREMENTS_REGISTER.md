@@ -300,7 +300,35 @@ No formal numeric performance budget (no "must stay under X kB/ms") is defined a
 | Requirement | STATUS | Evidence |
 |---|---|---|
 | Loki adapter implementation | `VERIFIED` | `REQUIREMENTS_TRACEABILITY.md` row 2; `LokiLogSourceTest` etc. |
-| Live-cluster verification | `DEFERRED` — external blocker (no reachable cluster), not resolvable from inside this project alone | `REQUIREMENTS_TRACEABILITY.md`; `IMPLEMENTATION_PLAN.md` §2; reconfirmed this session (UX-R2's own filter matrix could not reach a real OpenShift/Loki environment either) |
+| Live-cluster verification | `DEFERRED` — external blocker (no reachable cluster), not resolvable from inside this project alone | `REQUIREMENTS_TRACEABILITY.md`; `IMPLEMENTATION_PLAN.md` §2; reconfirmed in UX-R2, UX-R4, UX-R5 and UX-R6, all of which recorded `REAL_LOKI=BLOCKED` |
+
+### 12a. OS-A — first-class OpenShift direct logging (assessment complete, implementation not started)
+
+All rows below are **owner-approved direction recorded by the OS-A
+assessment mission**. OS-A was an architecture/feasibility mission only:
+**no OpenShift code was written**, and no production behaviour changed.
+Full reasoning, with fact/assumption separation, is in
+`docs/architecture/OPENSHIFT_DIRECT_LOGGING_ARCHITECTURE_ASSESSMENT.md`.
+
+| ID | NAME | STATUS | TARGET | NOTES |
+|---|---|---|---|---|
+| OS-1 | OpenShift becomes a **first-class product source** (`openshift`), backed by the Kubernetes/OpenShift API directly | `APPROVED_PENDING` | OS-1A…1F | The current `openshift-loki` source is architecturally a *deployed-in-cluster* component (service-account token mount, one fixed namespace, zero discovery) while the product is a *developer desktop application* — the mismatch, not the UX, is why it never felt first-class |
+| OS-2 | **Local desktop architecture**: no Log Explorer deployment inside OpenShift is required | `APPROVED_PENDING` | OS-1A | Direct mode uses the same API server, network route and credential as `oc login`. Published rule: "if `oc login` works from this machine, Log Explorer should work through the same route" |
+| OS-3 | **Safe `oc login` import** — parse only, never execute | `APPROVED_PENDING` | OS-1A | Strict whitelist parser extracting only server URL, token and CA; **rejects** (never sanitizes) any input containing shell metacharacters. `OC_BINARY_RUNTIME_DEPENDENCY=NO` |
+| OS-4 | **Direct pod-log provider** as the primary provider | `APPROVED_PENDING` | OS-1C | Kubernetes pod-log API: current + `previous` logs, `sinceTime`, `timestamps`, `tailLines`, `limitBytes`, `container`, `follow` |
+| OS-5 | Scope hierarchy **Cluster → Project → Workload → Pod → Container**, each level optional after Project | `APPROVED_PENDING` | OS-1B | UI says "Project", backend says `namespace`; both shown in the Inspector so the language stays truthful |
+| OS-6 | **Bounded fan-out is mandatory** — Project required; caps on pods, containers, concurrency, lines, bytes, time range; visible truncation | `APPROVED_PENDING` | OS-1C | Builds on existing `SearchGuardrailsProperties` (incl. its existing `perSourceMaxTimeRange`). Proposed numeric defaults are **starting points to calibrate against a real cluster**, explicitly not evidence-backed finals |
+| OS-7 | **Token security**: session/in-memory only, wrapped in the existing `RawToken`, never logged/persisted/echoed/in-URL; connect endpoint refuses on a non-loopback bind | `APPROVED_PENDING` | OS-1A | This is the product's **first runtime credential intake** — `DockerSettingsController` is read-only + ephemeral test, and there is no authenticated admin boundary, so the loopback guard is what makes an unauthenticated local token endpoint acceptable |
+| OS-8 | **TLS verification always on**; enterprise/private CA supported; `--insecure-skip-tls-verify` **refused**, not honoured | `APPROVED_PENDING` | OS-1A | Reuses the proven `LokiWebClientFactory` + `CompositeX509TrustManager` pattern (extra CA on top of JVM defaults, never trust-all) |
+| OS-9 | **RBAC inheritance** — namespace-scoped discovery only; no cluster-admin assumed; partial permissions produce visibly partial results | `APPROVED_PENDING` | OS-1B | 401 → re-auth; 403 on a namespace → omit, never fabricate as empty; one inaccessible pod among several → partial result with the gap reported |
+| OS-10 | **Truthful source-specific ordering/pagination** — deterministic k-way merge over a fully materialised window; window-narrowing instead of cursors; never simulate pagination in React | `APPROVED_PENDING` | OS-1C | The pod-log API has no cursor and no backwards search. If the existing cursor contract cannot express this honestly, report `pagination` as unsupported rather than fake one |
+| OS-11 | **Capability model extended additively** (`projectDiscovery`, `workloadDiscovery`, `podDiscovery`, `pagination`, `globalSort`, `correlationSearch`), computed from the active provider and connection state | `APPROVED_PENDING` | OS-1C | UX-R4 already had to correct a capability that lied (`contextView`), so vague capabilities have a demonstrated cost here |
+| OS-12 | **Loki becomes an aggregated/historical provider behind OpenShift**, not a peer user-facing source | `OPEN_UNDECIDED` — direction proposed, final fold-in gated | OS-1G | Migration strategy **A (additive first)**: keep `openshift-loki` visible during OS-1A…1F. Folding in is gated on real-Loki verification existing, or an explicit owner decision to restructure an adapter that has never run against its real backend |
+| OS-13 | **Real OpenShift verification** on Red Hat Developer Sandbox | `APPROVED_PENDING` | OS-1A onward | Verified externally: free, 30-day renewable, "shared, multi-tenant", "Pods are automatically deleted after running for 12 consecutive hours". Direct mode needs only namespace-scoped rights → `FEASIBLE`. The 12h pod deletion is an **asset**: free, repeatable pod churn for the hardest test cases |
+| OS-14 | **Three-layer test pyramid**; normal CI stays deterministic and credential-free | `APPROVED_PENDING` | OS-1A onward | Layer 1 unit/contract · Layer 2 fake Kubernetes API · Layer 3 opt-in real sandbox that **skips cleanly without credentials** |
+| OS-15 | **Enterprise proxy support** (`HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`) | `OPEN_UNDECIDED` — **unverified assumption**, must be checked before OS-1A is estimated | OS-1A | Reactor Netty is *assumed* not to honour these automatically. If that holds, proxy handling is real work that belongs in the connection slice rather than being discovered late |
+| OS-16 | **Release order**: UX-R6 → OS-A → OS-1A…1F → REL-1 → Final Parity + Hardening → Phase M | `APPROVED_PENDING` | — | Confirmed as owner-stated. Flagged for the owner: REL-1 and OS-1x are independent, so REL-1-first is defensible if an earlier desktop release is wanted — a genuine owner choice, not a settled fact |
+| OS-17 | **Multi-cluster / multiple simultaneous OpenShift connections** | `OUT_OF_CURRENT_SCOPE` — unchanged | — | Already excluded by `CLAUDE.md` §8. This is what makes a **single** `OpenShiftLogSource` bean correct: `LogSourceRegistry` is immutable after construction, `PageCursorCodec` binds `sourceId` into the cursor HMAC, and UX-17 persists the selected source id. "Add Source → OpenShift" is therefore read as *configure and connect the OpenShift source* |
 
 ---
 
@@ -317,6 +345,20 @@ Stable, unchanged since project inception (`CLAUDE.md` §8 / `IMPLEMENTATION_PLA
 This register was built by: (a) a full read of `REQUIREMENTS_TRACEABILITY.md`, `IMPLEMENTATION_PLAN.md`, `HANDOVER.md` (2075 lines), `PHASE_PROMPTS.md`, `CLAUDE.md`; (b) a full read of `docs/LEGACY_TO_NEW_REMEDIATION_PLAN.md`, `docs/LEGACY_BACKEND_PARITY_REPORT.md`, `docs/LEGACY_UX_PARITY_REPORT.md`, `docs/LEGACY_PARITY_OWNER_SUMMARY.md`, `docs/LEGACY_TO_NEW_VERIFIED_CAPABILITY_MATRIX.md`, `docs/UX_ACCEPTANCE_REPORT.md`, `docs/AUDIT.md`, `docs/SECURITY_NOTES.md`, `docs/RUN_GUIDE.md`; (c) a full read of every `docs/verification/*.md` report from every merged Legacy Remediation Slice and UX-R1; (d) direct source verification (not assumed) for every claim above marked `VERIFIED` this session, by grep/read against the actual current `backend/`/`frontend/` source; (e) `git log --oneline` across the full merged-PR history for anything a document might have missed.
 
 Two genuinely new, previously-untracked findings surfaced by the UX-R2 pass and were captured above: the 30-minute time-range preset gap (UX-20) and Live's own state-visibility gap independent of the confirm dialog (UX-14). Both were `OPEN_UNDECIDED`, not silently implemented and not silently dropped; both are now `VERIFIED` via UX-R3.
+
+**OS-A pass (assessment only).** The OS-A mission added seventeen
+OpenShift rows (§12a) recording owner direction that had never been
+tracked anywhere: first-class OpenShift source, desktop-local
+architecture, safe `oc login` import, the direct pod-log provider, the
+project/workload/pod/container hierarchy, bounded fan-out, the token and
+TLS security models, RBAC inheritance, source-specific ordering, the
+capability extension, Loki's future role, real-environment verification,
+the test pyramid, proxy support, release order, and the standing
+multi-cluster exclusion. Two are deliberately `OPEN_UNDECIDED` rather
+than assumed settled: **OS-12** (folding Loki behind OpenShift, gated on
+real-Loki verification that has never existed) and **OS-15** (enterprise
+proxy behaviour, an unverified assumption about Reactor Netty that must be
+checked before OS-1A is estimated). No OpenShift code was written.
 
 **UX-R6 pass.** Four further previously-untracked findings surfaced, all
 by measuring the rendered application, and all are tracked above: the
