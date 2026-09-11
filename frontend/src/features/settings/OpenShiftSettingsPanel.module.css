@@ -1,0 +1,202 @@
+/*
+ * OS-1A §18/§29 - the OpenShift connection panel. Deliberately shares
+ * `DockerSettingsPanel`'s popover geometry and token usage so the two read
+ * as one Settings family, even though their interaction models differ
+ * (Docker is read-only; this one commits a credential).
+ */
+.wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.panel {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: 20;
+  background: var(--color-bg-raised);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-4);
+  width: 420px;
+  /* Never wider than the viewport minus a gutter - this is what keeps the
+     panel usable at 390px without a horizontal page scroll (CLAUDE.md §4). */
+  max-width: calc(100vw - var(--space-6));
+  max-height: min(600px, 80vh);
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.heading {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  margin: 0;
+}
+
+/*
+ * Connection state. The word is the signal; the dot is decoration only, so
+ * the state is never conveyed by colour alone (CLAUDE.md §7).
+ */
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.stateDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.stateConnected {
+  color: var(--color-severity-info);
+}
+
+.stateProblem {
+  color: var(--color-danger);
+}
+
+.stateIdle {
+  color: var(--color-text-tertiary);
+}
+
+.field {
+  margin-bottom: var(--space-3);
+}
+
+.label {
+  display: block;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-1);
+}
+
+.optional {
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+}
+
+.input,
+.select {
+  width: 100%;
+  box-sizing: border-box;
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  padding: var(--space-2);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+}
+
+/*
+ * The pasted command is monospace because it is a command line the user
+ * will compare character by character - one of the few cases the design
+ * language reserves monospace for.
+ */
+.command {
+  width: 100%;
+  box-sizing: border-box;
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  padding: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  resize: vertical;
+}
+
+.input:focus-visible,
+.select:focus-visible,
+.command:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.hint {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+}
+
+.summaryList {
+  margin: 0 0 var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.summaryRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.summaryRow dt {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.summaryRow dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+/*
+ * Error and blocked states: stated in words, sized to their content, and
+ * never a bare coloured strip (the UX-R6 lesson about states that leave the
+ * operator with nowhere to go).
+ */
+.error {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+}
+
+.blocked {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-severity-warn-bg);
+  color: var(--color-severity-warn);
+  font-size: var(--font-size-sm);
+}
+
+.empty {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-sm);
+}

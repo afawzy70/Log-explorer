@@ -330,6 +330,33 @@ Full reasoning, with fact/assumption separation, is in
 | OS-16 | **Release order**: UX-R6 → OS-A → OS-1A…1F → REL-1 → Final Parity + Hardening → Phase M | `APPROVED_PENDING` | — | Confirmed as owner-stated. Flagged for the owner: REL-1 and OS-1x are independent, so REL-1-first is defensible if an earlier desktop release is wanted — a genuine owner choice, not a settled fact |
 | OS-17 | **Multi-cluster / multiple simultaneous OpenShift connections** | `OUT_OF_CURRENT_SCOPE` — unchanged | — | Already excluded by `CLAUDE.md` §8. This is what makes a **single** `OpenShiftLogSource` bean correct: `LogSourceRegistry` is immutable after construction, `PageCursorCodec` binds `sourceId` into the cursor HMAC, and UX-17 persists the selected source id. "Add Source → OpenShift" is therefore read as *configure and connect the OpenShift source* |
 
+### 12b. OS-1A — implemented and verified
+
+OS-1A implemented connection, credential intake and project discovery
+only. Search, workloads, pods, containers, context, correlation and Live
+are **not** implemented and the source's capabilities say so.
+
+| ID | NAME | STATUS | EVIDENCE |
+|---|---|---|---|
+| OS-1A-1 | First-class `openshift` source registered as a single Spring bean | `VERIFIED` | `OpenShiftLogSource`; `os-1a-openshift-connection.spec.ts` asserts it in `GET /api/v1/sources` in the real app, alongside an untouched `openshift-loki` |
+| OS-1A-2 | Safe `oc login` parser — parse only, never execute | `VERIFIED` | `OcLoginCommandParser`; `OcLoginCommandParserTest` (46 tests). No `ProcessBuilder`/`Runtime.exec` anywhere; `oc` is not a runtime dependency |
+| OS-1A-3 | **Unknown flags are REJECTED, not ignored** (reviewer correction A) | `VERIFIED` | `OcLoginCommandParserTest#rejectsUnknownFlagsRatherThanIgnoringThem` (6 cases incl. `--namespace`, `--kubeconfig`, space-separated values, bare positionals); real-app E2E asserts the same refusal |
+| OS-1A-4 | Shell metacharacters refused anywhere in the input | `VERIFIED` | 11 parameterised hostile inputs + quoting cases; refusal messages asserted never to echo the input |
+| OS-1A-5 | `--insecure-skip-tls-verify` refused with its own distinct reason | `VERIFIED` | `refusesInsecureTlsExplicitlyRatherThanAsAnUnknownFlag`; real-app E2E |
+| OS-1A-6 | Token is session/in-memory only, never persisted, never readable back | `VERIFIED` | `OpenShiftSession` (`RawToken`, redacted `toString`); `OpenShiftConnectionSummaryDto` has no field capable of carrying it; E2E asserts the pasted value is absent from `localStorage`, `sessionStorage`, the URL and the DOM after submit |
+| OS-1A-7 | **Loopback-only credential intake, enforced not documented** | `VERIFIED` | `LoopbackBindingGuard`; allowed for `127.0.0.1`/`127.0.0.53`/`localhost`/`::1`, refused for `0.0.0.0`/`::`/`*`/routable IPs **and for a blank bind address** (Spring binds all interfaces when unset) |
+| OS-1A-8 | TLS verification always on; private CA supported; no trust-all | `VERIFIED` | `OpenShiftApiClient#buildSslContext` reuses `CompositeX509TrustManager` (moved to `core.tls`, behaviour unchanged, Loki's own tests still green) |
+| OS-1A-9 | **Enterprise proxy — assumption resolved** | `VERIFIED` | Reactor Netty 1.2.18's `ProxyProvider` reads **only JVM system properties** (`http.proxyHost`, `https.proxyHost`, `http.nonProxyHosts`, SOCKS) — verified by inspecting the shipped class constants. No `HTTP_PROXY`/`NO_PROXY` env support exists, so `ProxyRoute` implements it explicitly, **scoped to this client, never JVM-global**. 24 tests incl. `NO_PROXY` label-boundary cases |
+| OS-1A-10 | Project discovery via the RBAC-filtered OpenShift Projects API | `VERIFIED` | `OpenShiftApiClient#fetchProjects`; asserted to call `/apis/project.openshift.io/v1/projects`; no cluster-admin assumed |
+| OS-1A-11 | **401 / 403 / empty-list are three distinct truths** (reviewer correction B) | `VERIFIED` | Modelled as distinct *types*: failures are `OpenShiftApiException` kinds, "no projects" is a successful `ProjectDiscovery` with an empty list. `OpenShiftApiClientTest` asserts all three separately; `describeFailure` asserts the 403 copy never says "no projects" |
+| OS-1A-12 | Namespaces fallback only when the Projects API is genuinely absent | `VERIFIED` | `OpenShiftConnectionService#fallbackToNamespacesIfAppropriate` — a 403 is **never** retried as namespaces; the UI labels the list "Namespaces" when that API answered |
+| OS-1A-13 | Stale-connection protection for connect/refresh/project-selection | `VERIFIED` | Session generation counter; tests cover replaced-connection selection, replaced-connection refresh, and a selection cleared when it disappears from a refreshed list |
+| OS-1A-14 | Capabilities claim nothing OS-1A cannot do | `VERIFIED` | All seven capability booleans false; `search()` refuses loudly rather than returning an empty result that would read as "no logs" |
+| OS-1A-15 | Existing `openshift-loki` unchanged | `VERIFIED` | No Loki behaviour touched; 720 backend tests green incl. the full Loki suite; both sources present in the live `/api/v1/sources` |
+| OS-1A-16 | Connection UX: secret-like field, precise failures, accessible, responsive | `VERIFIED` | `OpenShiftSettingsPanel` + 15 component tests + 17 real-browser E2E tests at 1440/1024/768/390 with no page overflow; `jest-axe` clean |
+| OS-1A-17 | Real Developer Sandbox verification | `BLOCKED_CREDENTIALS` | `OpenShiftRealSandboxIT` exists and **skips cleanly** without `OPENSHIFT_API_SERVER`/`OPENSHIFT_TOKEN` (verified: 5 skipped, build success). Owner must supply credentials locally; they are never committed or printed |
+
+
 ---
 
 ## 13. Out of Current Scope
@@ -359,6 +386,19 @@ than assumed settled: **OS-12** (folding Loki behind OpenShift, gated on
 real-Loki verification that has never existed) and **OS-15** (enterprise
 proxy behaviour, an unverified assumption about Reactor Netty that must be
 checked before OS-1A is estimated). No OpenShift code was written.
+
+**OS-1A pass.** Implementation of the first OpenShift slice, tracked in
+§12b. Two owner/reviewer corrections were persisted as explicit,
+separately-tested requirements rather than folded into prose: **unknown
+`oc login` flags are rejected, not ignored** (OS-1A-3), and **a 403 on
+project discovery is a different truth from an empty project list**
+(OS-1A-11) — the latter is enforced by modelling them as different
+*types*, so they cannot be accidentally collapsed by a future change. One
+OS-A assumption was **resolved into fact**: Reactor Netty reads only JVM
+system properties and has no `HTTP_PROXY`/`NO_PROXY` support, so explicit
+scoped proxy handling was implemented (OS-1A-9). One item is honestly
+`BLOCKED_CREDENTIALS`: real Developer Sandbox verification, whose test
+exists and skips cleanly until the owner supplies credentials (OS-1A-17).
 
 **UX-R6 pass.** Four further previously-untracked findings surfaced, all
 by measuring the rendered application, and all are tracked above: the

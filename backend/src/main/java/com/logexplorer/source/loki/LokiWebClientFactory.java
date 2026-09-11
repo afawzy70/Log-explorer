@@ -1,6 +1,7 @@
 package com.logexplorer.source.loki;
 
 import com.logexplorer.config.LokiProperties;
+import com.logexplorer.core.tls.CompositeX509TrustManager;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import java.io.InputStream;

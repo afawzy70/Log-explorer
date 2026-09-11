@@ -11,6 +11,8 @@ import type {
   SourceHealth,
   SourceHealthDetail,
   SourceInfo,
+  OpenShiftConnectionSummary,
+  OpenShiftFailureReason,
 } from './types';
 
 export class ApiError extends Error {
@@ -147,4 +149,87 @@ export async function testDockerConnection(candidate: DockerConnectionCandidate,
     signal,
   });
   return parseJsonOrThrow<SourceHealth>(response);
+}
+
+/* ------------------------------------------------------------------ */
+/* OS-1A - OpenShift connection                                        */
+/* ------------------------------------------------------------------ */
+
+export async function fetchOpenShiftConnection(signal?: AbortSignal): Promise<OpenShiftConnectionSummary> {
+  const response = await fetch('/api/v1/sources/openshift/connection', { signal });
+  return parseJsonOrThrow<OpenShiftConnectionSummary>(response);
+}
+
+/**
+ * Whether this instance may accept credentials at all.
+ *
+ * The backend refuses credential intake unless it is bound to a loopback
+ * address (OS-1A §10). Asking first lets the UI explain *why* the form is
+ * unavailable instead of letting the user type a token and then fail.
+ */
+export async function fetchOpenShiftIntakeAllowed(signal?: AbortSignal): Promise<boolean> {
+  const response = await fetch('/api/v1/sources/openshift/connection/intake-allowed', { signal });
+  return parseJsonOrThrow<boolean>(response);
+}
+
+/**
+ * Establishes the connection.
+ *
+ * `loginCommand` is the pasted `oc login` text. It is sent exactly once,
+ * as a POST body over the loopback interface, and is **never** retained by
+ * this client: the caller clears its own form state immediately, and the
+ * value is never written to `localStorage`, `sessionStorage` or the URL
+ * (CLAUDE.md §2 rule 4). The backend parses it - it is never executed.
+ */
+export async function connectOpenShift(
+  loginCommand: string,
+  connectionName: string | undefined,
+  signal?: AbortSignal,
+): Promise<OpenShiftConnectionSummary> {
+  const response = await fetch('/api/v1/sources/openshift/connect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ loginCommand, connectionName: connectionName || null }),
+    signal,
+  });
+  return parseJsonOrThrow<OpenShiftConnectionSummary>(response);
+}
+
+export async function disconnectOpenShift(signal?: AbortSignal): Promise<OpenShiftConnectionSummary> {
+  const response = await fetch('/api/v1/sources/openshift/connect', { method: 'DELETE', signal });
+  return parseJsonOrThrow<OpenShiftConnectionSummary>(response);
+}
+
+export async function refreshOpenShiftProjects(signal?: AbortSignal): Promise<OpenShiftConnectionSummary> {
+  const response = await fetch('/api/v1/sources/openshift/projects/refresh', { method: 'POST', signal });
+  return parseJsonOrThrow<OpenShiftConnectionSummary>(response);
+}
+
+/** Commits the selected project - safe, non-sensitive data (OS-1A §20). */
+export async function selectOpenShiftProject(
+  project: string | null,
+  signal?: AbortSignal,
+): Promise<OpenShiftConnectionSummary> {
+  const response = await fetch('/api/v1/sources/openshift/project', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project }),
+    signal,
+  });
+  return parseJsonOrThrow<OpenShiftConnectionSummary>(response);
+}
+
+/**
+ * The backend's machine-readable failure category, when present.
+ *
+ * Used to choose precise copy ("that is not an https:// server URL")
+ * instead of a generic "connection failed" - OS-1A §18 explicitly forbids
+ * the generic message where a safe precise one exists.
+ */
+export function openShiftFailureReason(error: unknown): OpenShiftFailureReason | null {
+  if (error instanceof ApiError) {
+    const reason = (error.problem as { reason?: string } | undefined)?.reason;
+    return (reason as OpenShiftFailureReason | undefined) ?? null;
+  }
+  return null;
 }

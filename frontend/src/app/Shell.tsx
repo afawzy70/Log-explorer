@@ -1,5 +1,6 @@
 import { SourceHealthBadge } from './SourceHealthBadge';
 import { DockerSettingsPanel } from '../features/settings/DockerSettingsPanel';
+import { OpenShiftSettingsPanel } from '../features/settings/OpenShiftSettingsPanel';
 import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
 import { EnvironmentBadge } from './EnvironmentBadge';
 import type { SearchState } from './useSearchState';
@@ -53,6 +54,10 @@ export function Shell({ state }: ShellProps) {
       <ScopeTrail state={state} />
       <div className={styles.spacer} />
       <DockerSettingsPanel />
+      {/* OS-1A - the OpenShift connection lives beside Docker settings: both
+          are source-connection concerns, and keeping them together is what
+          makes "where do I set up a source?" answerable in one place. */}
+      <OpenShiftSettingsPanel />
       <KeyboardShortcutsHelp />
       <SourceHealthBadge health={state.health} loading={state.healthLoading} onRetry={state.retryHealth} />
     </header>
