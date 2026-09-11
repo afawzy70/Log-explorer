@@ -2,8 +2,51 @@
   display: none;
 }
 
+/*
+ * UX-R6 §3 - the desktop Inspector is a **bounded, viewport-height,
+ * sticky column with its own scroll**. This is the evidence-backed
+ * outcome of the scroll-model investigation; it is deliberately neither
+ * "leave it alone" nor a full bounded-layout rewrite.
+ *
+ * <p>What was measured on the page-scrolling model it replaces:
+ *
+ * <ul>
+ *   <li>The panel was a stretched flex child, so it took the height of the
+ *   *results column* - 9,224px at 1440x900 - **regardless of its own
+ *   content**. Inspecting the fixture's sparse malformed line left
+ *   **8,150px of empty white panel** below the content: scrolling the
+ *   results list meant dragging a blank half-screen along with it.</li>
+ *   <li>Because the panel flowed with the page, scrolling the results
+ *   scrolled the Inspector's content up out of view too. Only UX-R5's
+ *   sticky header survived, so the Inspector degraded to a header-only
+ *   strip exactly when an investigator wants to read an event *and* keep
+ *   scanning.</li>
+ * </ul>
+ *
+ * <p>Three things were measured and found **already correct**, and this
+ * rule is careful not to break them: the clicked row does not move when
+ * the panel opens (0px displacement at every scroll depth tested), focus
+ * returns to the originating row on Escape, and there is no page-level
+ * horizontal overflow at any width. Those findings are why the layout was
+ * not restructured wholesale.
+ *
+ * <p>`align-self: flex-start` is what stops the stretch (and so the void);
+ * `position: sticky` + `height: 100vh` keeps the panel in view while the
+ * results scroll underneath in the ordinary page scroll an investigator
+ * already expects; `min-height: 0` lets `.body` actually become the
+ * scroll container, which - despite already declaring `overflow-y: auto` -
+ * it never was before, since an unbounded parent meant it never had
+ * anything to overflow.
+ *
+ * <p>The `@media (max-width: 1024px)` block below still wins for narrow
+ * viewports, where the panel is a fixed full-height sheet. That mode was
+ * already bounded and already correct, and is unchanged.
+ */
 .panel {
-  position: relative;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
@@ -26,9 +69,16 @@
   outline: 2px solid var(--color-focus-ring);
 }
 
+/*
+ * `overscroll-behavior: contain` (UX-R6 §3's explicit "scrolling the
+ * Inspector must not silently scroll Results"): reaching the end of the
+ * Inspector's own scroll stops there instead of chaining into the page
+ * and moving the results list out from under the investigator.
+ */
 .body {
   flex: 1 1 auto;
   overflow-y: auto;
+  overscroll-behavior: contain;
   min-height: 0;
 }
 

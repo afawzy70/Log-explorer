@@ -78,3 +78,19 @@
   color: var(--color-danger);
   font-size: var(--font-size-sm);
 }
+
+/*
+ * UX-R6 §11 - the failed-search state. Sized to its content (no giant
+ * empty region below it) and laid out as title / detail / action so the
+ * investigator can read what happened and act on it without leaving the
+ * workspace.
+ */
+.errorTitle {
+  margin: 0 0 var(--space-1) 0;
+  font-weight: 600;
+}
+
+.errorDetail {
+  margin: 0 0 var(--space-3) 0;
+  color: var(--color-text);
+}

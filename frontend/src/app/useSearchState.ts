@@ -223,6 +223,33 @@ export function useSearchState() {
   const [contextRootIdentity, setContextRootIdentity] = useState<string | null>(null);
 
   /**
+   * UX-R6 §21 - supersession for **source-scoped discovery** (services,
+   * Compose projects, health), the same protection `activeRequestRef`
+   * already gives searches.
+   *
+   * <p>Without it these three `fetch(...).then(setState)` chains had no
+   * ordering guarantee at all, so a slow response for the *previously*
+   * selected source could land after a fast one for the newly-selected
+   * source and overwrite it. That is not hypothetical: it is the root
+   * cause of the long-unexplained "environment-specific" Phase-M Task 1
+   * failure. Captured live from the real app - the default `local-docker`
+   * services request is issued on load, the user selects `fixture`, the
+   * fixture response arrives first with its four services, and then
+   * Docker's response arrives last and replaces them, leaving the service
+   * filter listing `caddy`/`db`/`web` while the selected source is
+   * Fixture. It only reproduced on machines with a responsive Docker
+   * daemon that actually has containers, which is why CI never saw it.
+   *
+   * <p>A monotonic generation counter rather than an `AbortController`:
+   * these are plain idempotent GETs whose responses are cheap, and the
+   * only thing that must be guaranteed is that a stale one never *wins*.
+   * Every effect that starts source-scoped discovery bumps the counter and
+   * captures the value; every `setState` it performs is gated on the
+   * counter still matching.
+   */
+  const discoveryGenerationRef = useRef(0);
+
+  /**
    * "Find this trace/correlation/journey/event" (IMPLEMENTATION_PLAN.md
    * "Phase I") - unlike "Show ±30 seconds", journey mode never mutates
    * `searchResult`/the toolbar's own filters at all; it is a pure overlay
@@ -269,20 +296,35 @@ export function useSearchState() {
   }, []);
 
   const checkHealth = useCallback((sourceId: string) => {
+    // Carries the caller's generation so a health response (which includes
+    // the source's own declared capabilities) can never be painted under a
+    // different source's name - see `discoveryGenerationRef`.
+    const generation = discoveryGenerationRef.current;
+    const isCurrent = () => discoveryGenerationRef.current === generation;
     setHealthLoading(true);
     fetchSourceHealth(sourceId)
-      .then(setHealth)
-      .catch(() =>
-        setHealth({
-          status: 'DOWN',
-          message: 'Unable to reach the health endpoint',
-          checkedAt: new Date().toISOString(),
-          warnings: [],
-          latencyMs: null,
-          capabilities: null,
-        }),
-      )
-      .finally(() => setHealthLoading(false));
+      .then((result) => {
+        if (isCurrent()) {
+          setHealth(result);
+        }
+      })
+      .catch(() => {
+        if (isCurrent()) {
+          setHealth({
+            status: 'DOWN',
+            message: 'Unable to reach the health endpoint',
+            checkedAt: new Date().toISOString(),
+            warnings: [],
+            latencyMs: null,
+            capabilities: null,
+          });
+        }
+      })
+      .finally(() => {
+        if (isCurrent()) {
+          setHealthLoading(false);
+        }
+      });
   }, []);
 
   useEffect(() => {
@@ -312,21 +354,44 @@ export function useSearchState() {
     if (source && !source.capabilities.rawLogQL) {
       setQueryState((prev) => (prev.mode === 'rawLogQl' ? { ...prev, mode: 'guided' } : prev));
     }
+    // UX-R6 §21 - everything below is source-scoped discovery, so it all
+    // belongs to one generation. Bumping here also invalidates whatever
+    // the *previous* source still has in flight.
+    const generation = ++discoveryGenerationRef.current;
+    const isCurrent = () => discoveryGenerationRef.current === generation;
     if (source?.capabilities.serviceDiscovery) {
       fetchSourceServices(selectedSourceId)
-        .then(setServices)
-        .catch(() => setServices([]));
+        .then((result) => {
+          if (isCurrent()) {
+            setServices(result);
+          }
+        })
+        .catch(() => {
+          if (isCurrent()) {
+            setServices([]);
+          }
+        });
     } else {
       setServices([]);
     }
     if (source?.capabilities.composeProjectScoping) {
       setComposeProjectsLoading(true);
       fetchComposeProjects(selectedSourceId)
-        .then(setComposeProjects)
-        .catch((error: unknown) =>
-          setComposeProjectsError(error instanceof Error ? error.message : 'Failed to discover Compose projects'),
-        )
-        .finally(() => setComposeProjectsLoading(false));
+        .then((result) => {
+          if (isCurrent()) {
+            setComposeProjects(result);
+          }
+        })
+        .catch((error: unknown) => {
+          if (isCurrent()) {
+            setComposeProjectsError(error instanceof Error ? error.message : 'Failed to discover Compose projects');
+          }
+        })
+        .finally(() => {
+          if (isCurrent()) {
+            setComposeProjectsLoading(false);
+          }
+        });
     }
     checkHealth(selectedSourceId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -369,9 +434,21 @@ export function useSearchState() {
     setJourneyError(null);
     setSelectedServices([]); // B's own service set is about to be (re)discovered - A's selections cannot carry over
     if (source.capabilities.serviceDiscovery) {
+      // Same generation guard as the source-change effect: switching
+      // project A -> B must not let A's slower service list land under B.
+      const generation = ++discoveryGenerationRef.current;
+      const isCurrent = () => discoveryGenerationRef.current === generation;
       fetchSourceServices(selectedSourceId, selectedComposeProject ?? undefined)
-        .then(setServices)
-        .catch(() => setServices([]));
+        .then((result) => {
+          if (isCurrent()) {
+            setServices(result);
+          }
+        })
+        .catch(() => {
+          if (isCurrent()) {
+            setServices([]);
+          }
+        });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedComposeProject]);

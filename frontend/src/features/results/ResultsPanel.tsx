@@ -56,11 +56,32 @@ export function ResultsPanel({ state }: { state: SearchState }) {
   const table = useTablePreferences();
 
   if (state.searchError) {
+    /*
+     * UX-R6 §11 - a search failure is a state with a way forward, not a
+     * dead end.
+     *
+     * Measured before UX-R6: this rendered as a bare pink strip carrying
+     * only the backend's own sanitized detail ("source unreachable"),
+     * with no statement of *what* had failed, no action of any kind, and
+     * the rest of the workspace left blank beneath it. The "Load more"
+     * failure path already had exactly the affordance this one lacked
+     * (an inline Retry), so the pattern existed and simply had not been
+     * applied to the primary error.
+     *
+     * The backend's detail is still shown verbatim and is still the only
+     * detail shown - `GlobalExceptionHandler` is what guarantees it never
+     * carries a search value, identifier or secret, and this component
+     * deliberately adds no context of its own that could.
+     */
     return (
       <div className={styles.wrapper}>
         <Breadcrumb state={state} />
         <div className={styles.error} role="alert">
-          {state.searchError}
+          <p className={styles.errorTitle}>Search failed</p>
+          <p className={styles.errorDetail}>{state.searchError}</p>
+          <Button variant="secondary" onClick={() => state.runSearch()} disabled={state.searchLoading}>
+            Retry search
+          </Button>
         </div>
       </div>
     );
