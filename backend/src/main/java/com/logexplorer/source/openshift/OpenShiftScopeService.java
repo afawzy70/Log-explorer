@@ -1,10 +1,12 @@
 package com.logexplorer.source.openshift;
 
+import com.logexplorer.core.model.RawToken;
 import com.logexplorer.source.openshift.OpenShiftApiException.Kind;
 import com.logexplorer.source.openshift.WorkloadDiscovery.KindOutcome;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
@@ -103,7 +105,7 @@ public class OpenShiftScopeService {
           return new WorkloadDiscovery(List.copyOf(workloads), List.copyOf(outcomes));
         })
         .flatMap(discovery -> {
-          if (!session.updateWorkloads(discovery.workloads(), namespace, generation)) {
+          if (!session.updateWorkloads(discovery.workloads(), discovery.kindOutcomes(), namespace, generation)) {
             return Mono.error(new StaleScopeException());
           }
           return Mono.just(discovery);
@@ -131,15 +133,44 @@ public class OpenShiftScopeService {
 
   /**
    * Resolves pods for the currently-selected workload, or - when no
-   * workload is selected ("All workloads", OS-1B §22) - every pod in the
-   * current project. For a selected workload this is exactly two calls:
-   * one to re-read its current selector, one namespace-scoped pod list
-   * filtered by that selector (OS-1B §9/§18) - never a call per pod, and
-   * robust to rolling deployments by construction, since an old and a new
+   * workload is selected ("All workloads", OS-1B §22) - the union of pods
+   * belonging to every currently-discovered <b>supported</b> workload in
+   * the current project.
+   *
+   * <p><b>"All workloads" never means "every pod in the namespace"</b>
+   * (OS-1B review recovery - the defect this method now closes). A pod
+   * owned by a {@code Job}, a {@code CronJob}, an unsupported workload
+   * kind, an operator/controller, or a standalone pod with no supported
+   * owner at all, is never included merely because it happens to live in
+   * the selected namespace - it is included only if it is proven to
+   * belong to one of the workloads {@link #discoverWorkloads()} actually
+   * returned, via that workload's own label selector (the same selector-
+   * based evidence already used for a single selected workload - never a
+   * pod-name guess, never an owner-reference chase that would need
+   * unbounded extra calls).
+   *
+   * <p>For a selected workload this is exactly two calls: one to re-read
+   * its current selector, one namespace-scoped pod list filtered by that
+   * selector (OS-1B §9/§18). For "All workloads" this is exactly one call
+   * per currently-discovered supported workload (its selector is already
+   * known from {@link #discoverWorkloads()} - see {@link
+   * WorkloadSummary#selector()} - so no separate selector re-read is
+   * needed there), run concurrently - never a call per pod, and never a
+   * cluster- or namespace-wide unfiltered listing. Robust to rolling
+   * deployments by construction in both cases, since an old and a new
    * ReplicaSet's pods both still carry the Deployment's own selector
    * labels.
+   *
+   * <p>{@link PodDiscovery#status()} is {@code PARTIAL} for "All
+   * workloads" when the workload set itself is known to be incomplete
+   * (a supported kind is {@code FORBIDDEN}/{@code ERROR} - see {@link
+   * OpenShiftScope#workloadScopeComplete()}) or when any individual
+   * workload's own pod-selector fetch failed - in either case the
+   * returned list is never silently widened to compensate; it is exactly
+   * the pods that could be proven to belong to a known workload, reported
+   * honestly as possibly incomplete (OS-1B §5/§6 of this recovery).
    */
-  public Mono<List<PodSummary>> discoverPods() {
+  public Mono<PodDiscovery> discoverPods() {
     String namespace = requireSelectedProject();
     WorkloadRef selectedWorkload = session.scope().selectedWorkload();
     long generation = session.generation();
@@ -147,14 +178,15 @@ public class OpenShiftScopeService {
     var token = session.token();
     var caPath = session.certificateAuthorityPath();
 
-    Mono<List<PodSummary>> pods = selectedWorkload == null
-        ? client.fetchPods(server, token, caPath, namespace, Map.of(), null)
-        : client.fetchWorkloadSelector(server, token, caPath, selectedWorkload)
-            .flatMap(selector -> client.fetchPods(server, token, caPath, namespace, selector, selectedWorkload));
+    Mono<PodDiscovery> discovery = selectedWorkload != null
+        ? client.fetchWorkloadSelector(server, token, caPath, selectedWorkload)
+            .flatMap(selector -> client.fetchPods(server, token, caPath, namespace, selector, selectedWorkload))
+            .map(pods -> new PodDiscovery(pods, PodDiscovery.Status.COMPLETE))
+        : discoverAllWorkloadsPods(server, token, caPath, namespace);
 
-    return pods
+    return discovery
         .flatMap(result -> {
-          if (!session.updatePods(result, selectedWorkload, generation)) {
+          if (!session.updatePods(result.pods(), namespace, selectedWorkload, generation)) {
             return Mono.error(new StaleScopeException());
           }
           return Mono.just(result);
@@ -166,6 +198,56 @@ public class OpenShiftScopeService {
           return e;
         });
   }
+
+  private Mono<PodDiscovery> discoverAllWorkloadsPods(URI server, RawToken token, String caPath, String namespace) {
+    List<WorkloadSummary> supportedWorkloads = session.scope().workloads();
+    boolean workloadSetComplete = session.scope().workloadScopeComplete();
+
+    if (supportedWorkloads.isEmpty()) {
+      // Nothing to union - genuinely zero known supported workloads. If
+      // that is itself only a partial truth (a kind is forbidden/erroring),
+      // say so rather than reporting a confident empty result.
+      return Mono.just(new PodDiscovery(List.of(),
+          workloadSetComplete ? PodDiscovery.Status.COMPLETE : PodDiscovery.Status.PARTIAL));
+    }
+
+    List<Mono<WorkloadPodAttempt>> attempts = supportedWorkloads.stream()
+        .map(workload -> client.fetchPods(server, token, caPath, namespace, workload.selector(), workload.ref())
+            .map(pods -> new WorkloadPodAttempt(pods, true))
+            .onErrorResume(OpenShiftApiException.class, e -> {
+              if (e.kind() == Kind.UNAUTHORIZED) {
+                return Mono.error(e);
+              }
+              // This one workload's pods could not be resolved (403/429/
+              // 5xx/network/etc.) - excluded, not fabricated, and the
+              // overall result is marked PARTIAL below.
+              return Mono.just(new WorkloadPodAttempt(List.of(), false));
+            }))
+        .toList();
+
+    return Flux.merge(attempts)
+        .collectList()
+        .map(results -> {
+          boolean everyAttemptSucceeded = results.stream().allMatch(WorkloadPodAttempt::succeeded);
+          // De-duplicated by pod name: a pod that happened to match more
+          // than one supported workload's selector is kept once, attributed
+          // to whichever workload's fetch reached it first (deterministic,
+          // since supportedWorkloads is already sorted kind-then-name).
+          Map<String, PodSummary> byName = new LinkedHashMap<>();
+          for (WorkloadPodAttempt attempt : results) {
+            for (PodSummary pod : attempt.pods()) {
+              byName.putIfAbsent(pod.name(), pod);
+            }
+          }
+          List<PodSummary> merged = new ArrayList<>(byName.values());
+          merged.sort(Comparator.comparing(PodSummary::name));
+          boolean complete = workloadSetComplete && everyAttemptSucceeded;
+          return new PodDiscovery(List.copyOf(merged), complete ? PodDiscovery.Status.COMPLETE
+              : PodDiscovery.Status.PARTIAL);
+        });
+  }
+
+  private record WorkloadPodAttempt(List<PodSummary> pods, boolean succeeded) {}
 
   /**
    * Commits a pod selection, rejecting one the last {@link

@@ -3,9 +3,11 @@ package com.logexplorer.api;
 import com.logexplorer.core.model.RawToken;
 import com.logexplorer.source.openshift.MockOpenShiftScopeServer;
 import com.logexplorer.source.openshift.MockOpenShiftScopeServer.PodFixture;
+import com.logexplorer.source.openshift.MockOpenShiftScopeServer.WorkloadFixture;
 import com.logexplorer.source.openshift.OcLoginCommand;
 import com.logexplorer.source.openshift.OpenShiftSession;
 import com.logexplorer.source.openshift.ProjectDiscovery;
+import com.logexplorer.source.openshift.WorkloadKind;
 import java.io.IOException;
 import java.net.URI;
 import java.util.List;
@@ -96,17 +98,43 @@ class OpenShiftScopeControllerIntegrationTest {
   }
 
   @Test
-  void getPodsWithNoWorkloadSelectedReturnsAllPodsInTheNamespace() throws IOException {
+  void getPodsWithNoWorkloadSelectedUnionsOnlyPodsBelongingToADiscoveredSupportedWorkload() throws IOException {
+    // OS-1B review recovery: "All workloads" must never mean "every pod
+    // in the namespace" - a pod is included only once its owning
+    // workload has actually been discovered as supported.
     fixtureServer = new MockOpenShiftScopeServer(NAMESPACE);
+    fixtureServer.setWorkloads(WorkloadKind.DEPLOYMENT, List.of(
+        new WorkloadFixture("payment-api", 1, 1, Map.of("app", "payment-api"))));
     fixtureServer.setPods(List.of(
-        new PodFixture("payment-api-abc", "Running", 1, 1, 0, List.of("application"), Map.of())));
+        new PodFixture("payment-api-abc", "Running", 1, 1, 0, List.of("application"), Map.of("app", "payment-api")),
+        // Never discovered as belonging to any supported workload - must be excluded.
+        new PodFixture("unowned-standalone-pod", "Running", 1, 1, 0, List.of("application"), Map.of())));
     connectTo(fixtureServer.baseUrl());
+    webTestClient.get().uri("/api/v1/sources/openshift/workloads").exchange().expectStatus().isOk();
 
     webTestClient.get().uri("/api/v1/sources/openshift/pods")
         .exchange()
         .expectStatus().isOk()
         .expectBody()
-        .jsonPath("$[0].name").isEqualTo("payment-api-abc");
+        .jsonPath("$.status").isEqualTo("COMPLETE")
+        .jsonPath("$.pods.length()").isEqualTo(1)
+        .jsonPath("$.pods[0].name").isEqualTo("payment-api-abc");
+  }
+
+  @Test
+  void getPodsWithNoSupportedWorkloadsDiscoveredReturnsAnEmptyResultNeverEveryNamespacePod() throws IOException {
+    fixtureServer = new MockOpenShiftScopeServer(NAMESPACE);
+    fixtureServer.setPods(List.of(
+        new PodFixture("some-pod-that-must-never-appear", "Running", 1, 1, 0, List.of("application"), Map.of())));
+    connectTo(fixtureServer.baseUrl());
+    webTestClient.get().uri("/api/v1/sources/openshift/workloads").exchange().expectStatus().isOk();
+
+    webTestClient.get().uri("/api/v1/sources/openshift/pods")
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody()
+        .jsonPath("$.status").isEqualTo("COMPLETE")
+        .jsonPath("$.pods").isEmpty();
   }
 
   @Test

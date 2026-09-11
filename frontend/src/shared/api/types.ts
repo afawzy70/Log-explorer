@@ -359,7 +359,7 @@ export interface OpenShiftWorkloadDiscovery {
 /**
  * One discovered pod (OS-1B §10) - safe scope metadata only. `workloadKind`/
  * `workloadName` are null when this pod came from an unscoped "All
- * workloads" namespace-wide listing.
+ * workloads" union listing.
  */
 export interface OpenShiftPod {
   name: string;
@@ -369,6 +369,20 @@ export interface OpenShiftPod {
   containerNames: string[];
   workloadKind: OpenShiftWorkloadKind | null;
   workloadName: string | null;
+}
+
+/**
+ * {@code GET /pods} response (OS-1B review recovery - "All workloads"
+ * scope truthfulness). `status` is `PARTIAL` when the pod list may be
+ * incomplete - a supported workload kind could not be listed, or one
+ * specific workload's own pods could not be resolved - and is always
+ * `COMPLETE` when a single specific workload is selected. The pod list
+ * itself is never widened to compensate for a `PARTIAL` result; it is
+ * exactly what could be proven to belong to a known, supported workload.
+ */
+export interface OpenShiftPodDiscovery {
+  status: 'COMPLETE' | 'PARTIAL';
+  pods: OpenShiftPod[];
 }
 
 /** The current workload/pod/container selection (OS-1B §12) - a null field genuinely means "All" at that level. */

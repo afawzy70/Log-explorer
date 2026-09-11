@@ -2,7 +2,9 @@ package com.logexplorer.source.openshift;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.logexplorer.source.openshift.WorkloadDiscovery.KindOutcome;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -15,13 +17,14 @@ class OpenShiftScopeTest {
 
   private static final WorkloadRef DEPLOYMENT = new WorkloadRef(WorkloadKind.DEPLOYMENT, "payment-api", "payments");
   private static final WorkloadRef WORKER = new WorkloadRef(WorkloadKind.DEPLOYMENT, "payment-worker", "payments");
-  private static final WorkloadSummary DEPLOYMENT_SUMMARY = new WorkloadSummary(DEPLOYMENT, 2, 2);
-  private static final WorkloadSummary WORKER_SUMMARY = new WorkloadSummary(WORKER, 1, 1);
+  private static final Map<String, String> SELECTOR = Map.of("app", "payment-api");
+  private static final WorkloadSummary DEPLOYMENT_SUMMARY = new WorkloadSummary(DEPLOYMENT, 2, 2, SELECTOR);
+  private static final WorkloadSummary WORKER_SUMMARY = new WorkloadSummary(WORKER, 1, 1, Map.of("app", "worker"));
 
   @Test
   void selectingAWorkloadClearsPodAndContainer() {
     OpenShiftScope scope = OpenShiftScope.EMPTY
-        .withWorkloads(List.of(DEPLOYMENT_SUMMARY))
+        .withWorkloads(List.of(DEPLOYMENT_SUMMARY), List.of())
         .withSelectedWorkload(DEPLOYMENT)
         .withPods(List.of(pod("payment-api-abc123")))
         .withSelectedPod("payment-api-abc123")
@@ -55,12 +58,12 @@ class OpenShiftScopeTest {
   @Test
   void aWorkloadThatDisappearsFromARefreshedListIsClearedWithEverythingBelowIt() {
     OpenShiftScope scope = OpenShiftScope.EMPTY
-        .withWorkloads(List.of(DEPLOYMENT_SUMMARY, WORKER_SUMMARY))
+        .withWorkloads(List.of(DEPLOYMENT_SUMMARY, WORKER_SUMMARY), List.of())
         .withSelectedWorkload(DEPLOYMENT)
         .withPods(List.of(pod("payment-api-abc123")))
         .withSelectedPod("payment-api-abc123");
 
-    OpenShiftScope refreshed = scope.withWorkloads(List.of(WORKER_SUMMARY)); // DEPLOYMENT is gone
+    OpenShiftScope refreshed = scope.withWorkloads(List.of(WORKER_SUMMARY), List.of()); // DEPLOYMENT is gone
 
     assertThat(refreshed.selectedWorkload()).isNull();
     assertThat(refreshed.pods()).isEmpty();
@@ -71,14 +74,15 @@ class OpenShiftScopeTest {
   @Test
   void aWorkloadThatIsStillPresentAfterARefreshKeepsItsDeeperSelection() {
     OpenShiftScope scope = OpenShiftScope.EMPTY
-        .withWorkloads(List.of(DEPLOYMENT_SUMMARY))
+        .withWorkloads(List.of(DEPLOYMENT_SUMMARY), List.of())
         .withSelectedWorkload(DEPLOYMENT)
         .withPods(List.of(pod("payment-api-abc123")))
         .withSelectedPod("payment-api-abc123");
 
     // A refresh that still returns the selected workload (perhaps with a
     // new ready-replica count) must not wipe pod/container beneath it.
-    OpenShiftScope refreshed = scope.withWorkloads(List.of(new WorkloadSummary(DEPLOYMENT, 3, 3)));
+    OpenShiftScope refreshed = scope.withWorkloads(List.of(new WorkloadSummary(DEPLOYMENT, 3, 3, SELECTOR)),
+        List.of());
 
     assertThat(refreshed.selectedWorkload()).isEqualTo(DEPLOYMENT);
     assertThat(refreshed.selectedPod()).isEqualTo("payment-api-abc123");
@@ -114,7 +118,7 @@ class OpenShiftScopeTest {
   @Test
   void clearingAWorkloadSelectionWithNullMeansAllWorkloads() {
     OpenShiftScope scope = OpenShiftScope.EMPTY
-        .withWorkloads(List.of(DEPLOYMENT_SUMMARY))
+        .withWorkloads(List.of(DEPLOYMENT_SUMMARY), List.of())
         .withSelectedWorkload(DEPLOYMENT)
         .withPods(List.of(pod("payment-api-abc123")))
         .withSelectedPod("payment-api-abc123");
@@ -124,6 +128,30 @@ class OpenShiftScopeTest {
     assertThat(cleared.selectedWorkload()).isNull();
     assertThat(cleared.pods()).isEmpty();
     assertThat(cleared.workloads()).containsExactly(DEPLOYMENT_SUMMARY); // the discovered list itself is untouched
+  }
+
+  // ---------------------------------------- OS-1B review recovery: workloadScopeComplete()
+
+  @Test
+  void workloadScopeIsCompleteWhenEveryKindIsAvailableOrGenuinelyUnavailable() {
+    List<KindOutcome> outcomes = List.of(
+        new KindOutcome(WorkloadKind.DEPLOYMENT, KindOutcome.Status.AVAILABLE),
+        new KindOutcome(WorkloadKind.DEPLOYMENT_CONFIG, KindOutcome.Status.UNAVAILABLE_RESOURCE_TYPE),
+        new KindOutcome(WorkloadKind.STATEFUL_SET, KindOutcome.Status.AVAILABLE),
+        new KindOutcome(WorkloadKind.DAEMON_SET, KindOutcome.Status.AVAILABLE));
+
+    OpenShiftScope scope = OpenShiftScope.EMPTY.withWorkloads(List.of(DEPLOYMENT_SUMMARY), outcomes);
+
+    assertThat(scope.workloadScopeComplete()).isTrue();
+  }
+
+  @Test
+  void workloadScopeIsIncompleteWhenAKindIsForbiddenOrErrored() {
+    List<KindOutcome> forbidden = List.of(new KindOutcome(WorkloadKind.DAEMON_SET, KindOutcome.Status.FORBIDDEN));
+    List<KindOutcome> errored = List.of(new KindOutcome(WorkloadKind.STATEFUL_SET, KindOutcome.Status.ERROR));
+
+    assertThat(OpenShiftScope.EMPTY.withWorkloads(List.of(), forbidden).workloadScopeComplete()).isFalse();
+    assertThat(OpenShiftScope.EMPTY.withWorkloads(List.of(), errored).workloadScopeComplete()).isFalse();
   }
 
   private static PodSummary pod(String name) {

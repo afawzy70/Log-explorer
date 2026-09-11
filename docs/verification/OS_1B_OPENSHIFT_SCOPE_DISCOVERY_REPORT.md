@@ -180,8 +180,14 @@ built in `OpenShiftApiClient#podsPath`.
 
 **Pods.** `GET /api/v1/sources/openshift/pods` resolves pods for
 whatever is currently selected: the selected workload's selector, or —
-when no workload is selected ("All workloads", §22) — every pod in the
-namespace via one unscoped, namespace-only GET. `PodSummary` carries
+when no workload is selected ("All workloads", §22) — the **union of
+pods belonging to every currently-discovered supported workload**, via
+one selector-filtered GET per discovered workload (never a cluster- or
+namespace-wide unfiltered listing). See §20 below for the full review-
+recovery writeup — the original text here, "every pod in the namespace
+via one unscoped, namespace-only GET", is **CORRECTED/SUPERSEDED**: that
+was the defect this recovery fixed, not the intended or shipped
+behaviour. `PodSummary` carries
 name, phase, a `readySummary` (e.g. `"1/2"`, computed from
 `status.containerStatuses`, falling back to the spec's container count as
 the denominator for a still-`Pending` pod that has not reported
@@ -211,10 +217,15 @@ of disagreeing with the pod list the user is actually looking at.
 
 ```java
 public record OpenShiftScope(
-    List<WorkloadSummary> workloads, WorkloadRef selectedWorkload,
+    List<WorkloadSummary> workloads, List<WorkloadDiscovery.KindOutcome> workloadKindOutcomes,
+    WorkloadRef selectedWorkload,
     List<PodSummary> pods, String selectedPod,
     List<String> containers, String selectedContainer)
 ```
+
+(`workloadKindOutcomes` was added by the review recovery in §20 — it is
+what lets a later "All workloads" pod resolution know whether the
+workload set it is built from is genuinely complete.)
 
 Every selection is **server-validated against the last discovery result**
 — `OpenShiftSession#selectWorkload`/`selectPod`/`selectContainer` reject
@@ -254,19 +265,27 @@ exact project/workload it was resolved against** before firing the
 network call, and `OpenShiftSession#updateWorkloads`/`updatePods` reject
 the result if either has changed by the time it arrives:
 
-- `updateWorkloads(workloads, expectedProject, generation)` — rejects if
-  the connection was replaced *or* the project selection changed.
-- `updatePods(pods, expectedWorkload, generation)` — rejects if the
-  connection was replaced *or* the workload selection changed (including
-  a change to/from "All workloads", `null`).
+- `updateWorkloads(workloads, kindOutcomes, expectedProject, generation)` —
+  rejects if the connection was replaced *or* the project selection
+  changed.
+- `updatePods(pods, expectedProject, expectedWorkload, generation)` —
+  rejects if the connection was replaced, *or* the project changed, *or*
+  the workload selection changed (including a change to/from "All
+  workloads", `null`). **`expectedProject` was added by the review
+  recovery in §20** — checking only the workload was not sufficient for
+  "All workloads" (`expectedWorkload == null`), since a project switch
+  leaves that value unchanged on both sides of the switch.
 
 A rejected update raises `OpenShiftScopeService.StaleScopeException` → HTTP
 409 with `reason: "STALE_SCOPE"` (mapped in `GlobalExceptionHandler`,
 distinct from OS-1A's own `STALE_CONNECTION` so the two remain
 distinguishable). Proved by
 `aWorkloadDiscoveryResponseForAProjectTheUserHasSinceLeftIsDiscarded`,
-`aPodDiscoveryResponseForAWorkloadTheUserHasSinceLeftIsDiscarded`, and
-`aStaleWorkloadDiscoveryFromAReplacedConnectionThrowsRatherThanOverwriting`.
+`aPodDiscoveryResponseForAWorkloadTheUserHasSinceLeftIsDiscarded`,
+`aStaleWorkloadDiscoveryFromAReplacedConnectionThrowsRatherThanOverwriting`,
+and — added by the review recovery in §20, specifically for the
+`expectedProject` gap — `aStaleAllWorkloadsPodResponseForAnAbandonedProjectIsDiscarded`
+and `aStaleAllWorkloadsPodResponseAfterReconnectIsDiscarded`.
 
 ---
 
@@ -279,6 +298,9 @@ distinguishable). Proved by
 | 403 on every workload kind | `WorkloadDiscovery.status = FORBIDDEN` |
 | 404 on one workload kind's own API | That kind's `KindOutcome.status = UNAVAILABLE_RESOURCE_TYPE` |
 | A genuinely empty, successful list | `SUCCESS`/`AVAILABLE` with zero items — never conflated with `FORBIDDEN` or `UNAVAILABLE_RESOURCE_TYPE` |
+| "All workloads" pods, one supported kind `FORBIDDEN`/`ERROR` (added by the review recovery, §20) | `PodDiscovery.status = PARTIAL` — the pods that could be proven are still returned; the gap is never filled in with unrelated namespace pods |
+| "All workloads" pods, one kind `UNAVAILABLE_RESOURCE_TYPE` only | `PodDiscovery.status = COMPLETE` — a genuinely absent API is not a gap |
+| "All workloads" pods, one specific workload's own pod fetch fails (403/5xx/etc.) | `PodDiscovery.status = PARTIAL`; that workload's pods are excluded, not fabricated |
 
 Frontend copy keeps these distinct (`OpenShiftScopeControls`): "No
 workloads in this project" (genuinely empty) is never shown for a
@@ -335,14 +357,31 @@ client's own sort, not the fixture's.
 
 ## 11. API call bounding (§18)
 
+**Corrected by the review recovery (§20) — read this section together
+with it, not the original text alone.**
+
 One full workload-discovery refresh: **exactly 4 GETs** (one per
 `WorkloadKind`), concurrent, never sequential, never retried into a 5th.
-One pod-discovery-for-a-selected-workload: **exactly 2 GETs** (selector
-re-read, then the filtered pod list). Pod-discovery-for-"All workloads":
-**exactly 1 GET**. Container discovery: **0 GETs** (served from the
+
+One pod-discovery-for-a-selected-workload: **exactly 2 GETs** (one
+selector re-read, then one filtered pod list) — unchanged by the
+recovery.
+
+One pod-discovery-for-**"All workloads"**: **exactly W GETs, where W is
+the number of currently-discovered supported workloads** (one
+selector-filtered pod-list GET per workload, run concurrently) — **not**
+the flat "exactly 1 GET" the original version of this slice had, because
+that 1 GET was the unfiltered, defective listing this recovery removed.
+Each workload's selector is already known from the 4 workload-discovery
+GETs above (captured for free from their list-response bodies — see §4),
+so no separate selector re-read is needed for this path, unlike the
+single-selected-workload case. `W` is bounded by how many supported
+workloads actually exist in the namespace — never cluster-wide, never a
+call per pod. Container discovery remains **0 GETs** (served from the
 cached pod summary). No namespace is ever listed other than the currently
 selected one; no cluster-wide enumeration exists anywhere in
-`OpenShiftScopeService`/`OpenShiftApiClient`'s new methods.
+`OpenShiftScopeService`/`OpenShiftApiClient`'s methods, before or after
+this recovery.
 
 ---
 
@@ -420,20 +459,29 @@ starts. The rendered-DOM component tests above are the evidence available
 at this gate, and are the same class of evidence OS-1A's own equivalent
 truthfulness test already relied on.
 
+**Review recovery addition (§20).** The Pod field gained a truthful
+`PodDiscovery.status === 'PARTIAL'` note ("This list may be incomplete -
+not every workload type could be checked, so some pods may be missing"),
+shown only when the backend actually reports `PARTIAL` — never for an
+ordinary `COMPLETE` result, per the mission's own "do not clutter normal
+successful discovery" instruction. Proved by two new tests: the note
+appears for a `PARTIAL` result (and the pods that *were* proven still
+render normally), and is absent for a `COMPLETE` one.
+
 ---
 
 ## 15. Tests
 
 | Layer | New tests | Result |
 |---|---|---|
-| L1 unit/contract | `WorkloadRefTest` 5, `OpenShiftScopeTest` 7, `OpenShiftSessionScopeCascadeTest` 7 | PASS |
-| L2 fake OpenShift/Kubernetes API | `OpenShiftScopeServiceTest` 23 (`MockOpenShiftScopeServer`) | PASS |
-| Controller integration | `OpenShiftScopeControllerIntegrationTest` 5 | PASS |
-| Backend total (`./mvnw test`) | **809 pass, 0 failures, 0 errors** (+47 over OS-1A review recovery #2's 762 — see the correction note below on the true prior baseline) | PASS |
-| Frontend component | +5 (`OpenShiftSettingsPanel.test.tsx`, "OS-1B scope controls") | PASS |
-| Frontend total | **749 pass** (+5 over 744) | PASS |
-| E2E OS-1A (regression) | **17/17**, re-run against a freshly-restarted dev-profile backend carrying OS-1B's changes | PASS |
-| Full Playwright suite | **287/287 pass** (`npx playwright test`, dev-profile backend, 10.0m) | PASS |
+| L1 unit/contract | `WorkloadRefTest` 5, `OpenShiftScopeTest` 9 (+2 review recovery: `workloadScopeComplete()`), `OpenShiftSessionScopeCascadeTest` 7 | PASS |
+| L2 fake OpenShift/Kubernetes API | `OpenShiftScopeServiceTest` 31 (+8 review recovery: the "All workloads" pod-union block, §20) | PASS |
+| Controller integration | `OpenShiftScopeControllerIntegrationTest` 6 (+1 review recovery) | PASS |
+| Backend total (`./mvnw test`) | **820 pass, 0 failures, 0 errors** (+11 over this report's original 809, all from the review recovery in §20) | PASS |
+| Frontend component | `OpenShiftSettingsPanel.test.tsx` — 25 OS-1B-specific tests total (+2 review recovery: PARTIAL note shown/hidden truthfully) | PASS |
+| Frontend total | **751 pass** (+2 over 749) | PASS |
+| E2E OS-1A (regression) | **17/17**, re-run against a freshly-restarted dev-profile backend carrying the review recovery's changes | PASS |
+| Full Playwright suite | see the review recovery's own validation run in §20 | PASS |
 | Typecheck | `tsc -b --noEmit` | PASS |
 | Production build | `vite build` | PASS |
 | L3 real sandbox, explicit opt-in invocation (`./mvnw test -Dtest=OpenShiftRealSandboxIT`) | **5 skipped, build success** — skips cleanly without credentials | BLOCKED_CREDENTIALS |
@@ -505,6 +553,7 @@ labels a pod actually carries are never read back or exposed.
 | OpenShift source vs `openshift-loki` coexistence | No file under the Loki adapter touched; both sources present in `GET /api/v1/sources` (OS-1A E2E test 11, still green) |
 | This report vs actual test evidence | Every count in §15 was read from `target/surefire-reports/*.txt` / real `vitest run` / `playwright test` output this session, not estimated |
 | REL-1 requirement vs status | Registered as `APPROVED_PENDING` in `OWNER_REQUIREMENTS_REGISTER.md` — not implemented, not marked `IMPLEMENTED` |
+| "All workloads" semantics vs this report's own original text | **Corrected in §20** — §5's original wording ("every pod in the namespace via one unscoped GET") described the actual defect; marked `CORRECTED/SUPERSEDED` in place rather than silently rewritten, per this repository's historical-correction convention |
 
 ---
 
@@ -530,4 +579,169 @@ pattern, directly reusable for whatever request-scoping OS-1C needs; and
 the four-`WorkloadKind` discovery pattern, directly extensible if OS-1C
 ever needs additional per-kind metadata (it should not need a fifth
 kind — Jobs/CronJobs remain their own future design problem, not
-casually added here).
+casually added here). **§20 below adds one further prerequisite: OS-1C
+must consume `PodDiscovery`'s resolved pod set and `status` field as
+authoritative, not reinterpret "All workloads" itself.**
+
+---
+
+## 20. Review recovery — "All workloads" pod scope truthfulness
+
+Mission: `OS_1B_REVIEW_RECOVERY_ALL_WORKLOADS_SCOPE`. PR #40 was not yet
+approved for merge; reviewed HEAD `ad8bdeb70f25345172f7ed1b380b23f751d0b3e5`.
+All CI on that HEAD was green — this was an evidence-backed *scope*
+defect found on review, not a build or test failure.
+
+### The defect
+
+Approved OS-1B semantics define `Workload = All` as "all **supported**
+workloads currently visible in the Project/Namespace" (Deployment,
+DeploymentConfig, StatefulSet, DaemonSet). The shipped
+`OpenShiftScopeService#discoverPods()` instead did, for the "no workload
+selected" branch:
+
+```java
+selectedWorkload == null
+    ? client.fetchPods(server, token, caPath, namespace, Map.of(), null)
+    : ...
+```
+
+`Map.of()` is an empty label selector, and an empty selector on the
+Kubernetes pods-list API matches **every pod in the namespace** —
+including pods owned by a `Job`, a `CronJob`, an unsupported workload
+kind, an operator/controller, or a standalone pod with no owning
+workload at all. This silently widened "all supported workloads" into
+"all pods in the namespace", which is a materially different and
+un-approved scope. §5, §6 (the `OpenShiftScope` record signature) and
+§7/§11 (call bounding) above are corrected in place and marked, rather
+than silently rewritten, per this repository's own historical-correction
+convention (see the inline notes added to each).
+
+### The fix
+
+`OpenShiftScopeService#discoverPods()`'s "All workloads" branch
+(`discoverAllWorkloadsPods`) now builds the pod set as the **union of
+pods belonging to each currently-discovered supported workload**,
+resolved via that workload's own equality-based label selector — never
+an empty/unfiltered selector, and never an owner-reference chase (which
+would need unbounded extra calls per distinct owning ReplicaSet/
+ReplicationController encountered). `WorkloadSummary` now carries the
+workload's own `selector` (`Map<String, String>`), captured for free from
+the same list-response body `discoverWorkloads()` already fetches —
+Kubernetes enforces `Deployment`/`StatefulSet`/`DaemonSet` selectors as
+immutable after creation, and OpenShift's `DeploymentConfig` selector is
+conventionally never changed post-creation either, so a selector captured
+at discovery time is not a staleness risk here.
+
+**Membership truth, not inference.** A pod is included in "All
+workloads" only if its labels satisfy a **known, discovered** supported
+workload's selector — never a pod-name guess, never a fabricated
+ownership claim. Jobs, CronJobs, unsupported kinds, operator-managed pods
+and standalone pods are excluded **structurally**, by never being fetched
+in the first place, not by a client-side filter applied after an
+over-broad fetch.
+
+**Partial-RBAC honesty (§5 of the mission).** A new `PodDiscovery(pods,
+status)` result type (`status: COMPLETE | PARTIAL`) makes incompleteness
+explicit rather than hiding it in a comment:
+
+- `UNAVAILABLE_RESOURCE_TYPE` (a kind genuinely absent from the cluster)
+  does **not** make the scope `PARTIAL` — there is nothing missing to
+  account for (`OpenShiftScope#workloadScopeComplete()`).
+- `FORBIDDEN`/`ERROR` on a workload **kind** during discovery, or a
+  failure resolving one specific already-discovered workload's own pods,
+  **does** make it `PARTIAL` — workloads (and their pods) of that kind
+  may exist and simply could not be proven. The pod list is never
+  widened to compensate; it stays exactly what could be proven, with the
+  gap stated honestly via `status`.
+- A 401 anywhere still aborts the whole operation and expires the
+  session, exactly as before — unchanged.
+
+**A second, independent gap found and fixed in the same pass:**
+`OpenShiftSession#updatePods` guarded stale responses by generation and
+selected-workload only. For "All workloads" (`expectedWorkload == null`),
+a project switch leaves that value `null` on *both* sides of the switch,
+so the existing guard could not detect it — a stale "All workloads" pod
+result for project A could have silently landed on project B's scope.
+Fixed by adding an explicit `expectedProject` check to `updatePods`,
+mirroring the check `updateWorkloads` already had. This is exactly the
+class of defect §15/§20 of this recovery exists to prevent, caught by
+writing the required stale-response test matrix rather than by
+inspection alone.
+
+### OS-1C contract (§10 of the mission — now authoritative)
+
+**OS-1C MUST consume `OpenShiftScopeService#discoverPods()`'s resolved
+`PodDiscovery` unchanged.** It must not re-fetch pods with its own,
+looser selector; it must not reinterpret `Workload = All` as "all
+namespace pods" for its own bounded-search purposes; and it must respect
+`PodDiscovery.status` — a `PARTIAL` result must not be silently presented
+to a search/log-retrieval feature as a complete scope. Any future
+relaxation of this (e.g. deliberately including unsupported-workload pods
+for some new, explicitly-approved reason) requires its own owner decision
+and its own documented row here and in the requirements register, not a
+quiet change to `discoverPods()`'s existing behaviour.
+
+### Test matrix (mission §7, all named tests added)
+
+All new tests live in `OpenShiftScopeServiceTest`'s "OS-1B review
+recovery — 'All workloads' pod union truthfulness" block, plus two in
+`OpenShiftScopeTest`, two session-level stale-protection tests, one
+controller-integration test, and two frontend tests:
+
+| Mission letter | Scenario | Test |
+|---|---|---|
+| A/B/C/D | Deployment/StatefulSet/DaemonSet/DeploymentConfig pods included | `allWorkloadsUnionIncludesOnlyPodsProvenToBelongToASupportedDiscoveredWorkload` |
+| E/F | Job/CronJob-owned pods excluded | same test (distinct fixtures, non-matching labels) |
+| G | Standalone pod excluded | same test |
+| H | Unknown/custom-controller pod excluded | same test |
+| I | Rolling Deployment - old + new ReplicaSet pods both included | `rollingDeploymentPodsAreBothIncludedInTheAllWorkloadsUnion` (and `...ForASelectedWorkload` for the single-workload path, pre-existing, re-verified) |
+| J | Multiple supported types, union with no duplicates | `allWorkloadsUnionIncludesOnlyPodsProvenToBelongToASupportedDiscoveredWorkload` (multiple kinds) + `aPodMatchingTwoSupportedWorkloadsSelectorsIsIncludedOnlyOnce` (the explicit de-dup edge case) |
+| K | One kind `FORBIDDEN` → `PARTIAL`, no namespace widening | `aForbiddenWorkloadKindMakesAllWorkloadsPartialWithoutWideningToNamespacePods` |
+| L | One kind `UNAVAILABLE_RESOURCE_TYPE` → not forbidden, stays `COMPLETE` | `anUnavailableResourceTypeDoesNotMakeAllWorkloadsPartial` |
+| M | Project change during "All workloads" resolution → stale rejected | `aStaleAllWorkloadsPodResponseForAnAbandonedProjectIsDiscarded` |
+| N | Reconnect during resolution → stale rejected | `aStaleAllWorkloadsPodResponseAfterReconnectIsDiscarded` |
+| O | No supported workloads → successful empty result | `noSupportedWorkloadsMeansAnEmptyPodResultNeverEveryPodInTheNamespace` (backend) + `getPodsWithNoSupportedWorkloadsDiscoveredReturnsAnEmptyResultNeverEveryNamespacePod` (controller) |
+| (extra, not in the mission's lettered list but proven anyway) | A specific workload's own pod fetch fails independently of kind-level discovery | `aPerWorkloadPodFetchFailureMarksTheUnionPartialWithoutFailingTheWholeRequest` |
+| (extra) | `workloadScopeComplete()` truth table | `OpenShiftScopeTest#workloadScopeIsCompleteWhenEveryKindIsAvailableOrGenuinelyUnavailable` / `...IsIncompleteWhenAKindIsForbiddenOrErrored` |
+| (extra, controller) | Real HTTP `GET /pods` returns the corrected union + `status` | `getPodsWithNoWorkloadSelectedUnionsOnlyPodsBelongingToADiscoveredSupportedWorkload` |
+| (extra, frontend) | PARTIAL note shown/hidden truthfully | `shows a truthful incompleteness note...` / `shows no incompleteness note for an ordinary COMPLETE pod result` |
+
+**No existing OS-1B test was weakened.** Every pre-existing pod/container
+test that depended on the old unfiltered "All workloads" fetch
+(`discoversAllPodsInTheNamespaceWhenNoWorkloadIsSelected` and several
+pod/container-mechanic tests that never selected a workload) was adapted
+to discover-and-select a specific supported workload first — the same
+underlying pod/container parsing and selection-validation behaviour they
+were actually testing is unchanged and still fully covered; only the
+now-corrected "no workload selected" premise was removed from them.
+
+### Call bounding (mission §8 — see also §11 above)
+
+- Selected workload: **2 GETs**, unchanged.
+- "All workloads": **W GETs** (one selector-filtered pod-list GET per
+  currently-discovered supported workload, concurrent), where selectors
+  come from the 4 workload-discovery GETs' own list-response bodies at no
+  extra cost. Never a call per pod. Never namespace- or cluster-wide.
+
+### Frontend (mission §9)
+
+No redesign. `Workload = All` remains the label. The Pod field gained one
+conditional line - shown only when `status === 'PARTIAL'` - "This list
+may be incomplete - not every workload type could be checked, so some
+pods may be missing." Never shown for an ordinary successful discovery.
+
+### Validation
+
+| Check | Result |
+|---|---|
+| Targeted "All workloads" scope tests | PASS (18 new/adapted tests across backend + frontend) |
+| All OpenShift tests | PASS |
+| Backend full suite (`./mvnw test`) | **820 pass, 0 failures, 0 errors** |
+| Frontend full suite | **751 pass** |
+| OS-1A regression E2E | **17/17** |
+| Full Playwright suite | **287/287 pass**, re-run against a freshly-restarted dev-profile backend carrying this recovery's changes (9.8m) |
+| Typecheck | PASS |
+| Production build | PASS |
+| `REAL_OPENSHIFT_1A` | `BLOCKED_CREDENTIALS` — unchanged, not run |
+| `REAL_OPENSHIFT_1B` | `BLOCKED_CREDENTIALS` — unchanged, not run |

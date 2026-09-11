@@ -13,7 +13,7 @@ import type {
   SourceInfo,
   OpenShiftConnectionSummary,
   OpenShiftFailureReason,
-  OpenShiftPod,
+  OpenShiftPodDiscovery,
   OpenShiftScopeSummary,
   OpenShiftWorkloadDiscovery,
   OpenShiftWorkloadKind,
@@ -247,12 +247,15 @@ export async function selectOpenShiftWorkload(
 }
 
 /**
- * Pods for the currently-selected workload, or every pod in the current
- * project when no workload is selected ("All workloads", OS-1B §22).
+ * Pods for the currently-selected workload, or the union of pods
+ * belonging to every currently-discovered supported workload when no
+ * workload is selected ("All workloads", OS-1B §22) - never every pod in
+ * the namespace (OS-1B review recovery). See {@link OpenShiftPodDiscovery}
+ * for what `status: 'PARTIAL'` means.
  */
-export async function fetchOpenShiftPods(signal?: AbortSignal): Promise<OpenShiftPod[]> {
+export async function fetchOpenShiftPods(signal?: AbortSignal): Promise<OpenShiftPodDiscovery> {
   const response = await fetch('/api/v1/sources/openshift/pods', { signal });
-  return parseJsonOrThrow<OpenShiftPod[]>(response);
+  return parseJsonOrThrow<OpenShiftPodDiscovery>(response);
 }
 
 /** Commits (or clears, with `null`) a pod selection (OS-1B §13). */

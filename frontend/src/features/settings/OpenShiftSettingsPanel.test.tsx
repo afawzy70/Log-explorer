@@ -262,17 +262,22 @@ describe('OpenShiftSettingsPanel - OS-1B scope controls', () => {
     ],
   };
 
-  const PODS = [
-    {
-      name: 'payment-api-abc',
-      phase: 'Running',
-      readySummary: '1/1',
-      restartCount: 0,
-      containerNames: ['application'],
-      workloadKind: null,
-      workloadName: null,
-    },
-  ];
+  const PODS = {
+    status: 'COMPLETE',
+    pods: [
+      {
+        name: 'payment-api-abc',
+        phase: 'Running',
+        readySummary: '1/1',
+        restartCount: 0,
+        containerNames: ['application'],
+        workloadKind: null,
+        workloadName: null,
+      },
+    ],
+  };
+
+  const EMPTY_PODS = { status: 'COMPLETE', pods: [] };
 
   async function openPanelConnectedToAProject() {
     const user = userEvent.setup();
@@ -304,7 +309,7 @@ describe('OpenShiftSettingsPanel - OS-1B scope controls', () => {
     stubFetch((url) => {
       if (url.includes('intake-allowed')) return jsonResponse(true);
       if (url.endsWith('/workloads')) return jsonResponse({ status: 'SUCCESS', workloads: [], kindOutcomes: [] });
-      if (url.endsWith('/pods')) return jsonResponse([]);
+      if (url.endsWith('/pods')) return jsonResponse(EMPTY_PODS);
       return jsonResponse(CONNECTED_WITH_PROJECT);
     });
 
@@ -319,7 +324,7 @@ describe('OpenShiftSettingsPanel - OS-1B scope controls', () => {
       if (url.endsWith('/workloads')) return jsonResponse({ status: 'FORBIDDEN', workloads: [], kindOutcomes: [] });
       // Pod listing is a separate RBAC permission from workload listing -
       // discovery still attempts it independently (OS-1B §17).
-      if (url.endsWith('/pods')) return jsonResponse([]);
+      if (url.endsWith('/pods')) return jsonResponse(EMPTY_PODS);
       return jsonResponse(CONNECTED_WITH_PROJECT);
     });
 
@@ -357,7 +362,7 @@ describe('OpenShiftSettingsPanel - OS-1B scope controls', () => {
       }
       if (url.endsWith('/pods')) {
         podsCall += 1;
-        return jsonResponse(podsCall === 1 ? PODS : scopedPods);
+        return jsonResponse(podsCall === 1 ? PODS : { status: 'COMPLETE', pods: scopedPods });
       }
       return jsonResponse(CONNECTED_WITH_PROJECT);
     });
@@ -397,6 +402,35 @@ describe('OpenShiftSettingsPanel - OS-1B scope controls', () => {
     await user.selectOptions(screen.getByLabelText(/^pod$/i), 'payment-api-abc');
 
     expect(await screen.findByRole('option', { name: 'application' })).toBeInTheDocument();
+  });
+
+  it('shows a truthful incompleteness note when the pod list is PARTIAL, and never implies full coverage', async () => {
+    stubFetch((url) => {
+      if (url.includes('intake-allowed')) return jsonResponse(true);
+      if (url.endsWith('/workloads')) return jsonResponse(WORKLOAD_DISCOVERY);
+      if (url.endsWith('/pods')) return jsonResponse({ status: 'PARTIAL', pods: PODS.pods });
+      return jsonResponse(CONNECTED_WITH_PROJECT);
+    });
+
+    await openPanelConnectedToAProject();
+
+    expect(await screen.findByText(/this list may be incomplete/i)).toBeInTheDocument();
+    // The pods that WERE proven still render normally - PARTIAL is an honest caveat, not a reason to hide the list.
+    expect(screen.getByRole('option', { name: /payment-api-abc/i })).toBeInTheDocument();
+  });
+
+  it('shows no incompleteness note for an ordinary COMPLETE pod result', async () => {
+    stubFetch((url) => {
+      if (url.includes('intake-allowed')) return jsonResponse(true);
+      if (url.endsWith('/workloads')) return jsonResponse(WORKLOAD_DISCOVERY);
+      if (url.endsWith('/pods')) return jsonResponse(PODS);
+      return jsonResponse(CONNECTED_WITH_PROJECT);
+    });
+
+    await openPanelConnectedToAProject();
+    await screen.findByRole('option', { name: /payment-api-abc/i });
+
+    expect(screen.queryByText(/this list may be incomplete/i)).not.toBeInTheDocument();
   });
 });
 

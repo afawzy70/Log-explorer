@@ -48,6 +48,7 @@ public final class MockOpenShiftScopeServer implements AutoCloseable {
   private volatile List<PodFixture> pods = new ArrayList<>();
   private volatile boolean unauthorized = false;
   private volatile int podsDelayMs = 0;
+  private volatile Map<String, String> forbiddenPodsSelector = null;
   private final AtomicInteger podsRequestCount = new AtomicInteger();
   private final AtomicReference<String> lastPodsQuery = new AtomicReference<>();
 
@@ -87,6 +88,17 @@ public final class MockOpenShiftScopeServer implements AutoCloseable {
     this.podsDelayMs = millis;
   }
 
+  /**
+   * The pod-list call for exactly this label selector (an equality-based
+   * OS-1B "resolve pods for one supported workload" request) answers 403
+   * instead of the normal fixture - simulates pod-level RBAC being
+   * narrower than workload-listing RBAC, distinct from a whole kind being
+   * forbidden during workload discovery.
+   */
+  public void setPodsForbiddenForSelector(Map<String, String> selector) {
+    this.forbiddenPodsSelector = Map.copyOf(selector);
+  }
+
   public int podsRequestCount() {
     return podsRequestCount.get();
   }
@@ -106,6 +118,10 @@ public final class MockOpenShiftScopeServer implements AutoCloseable {
     if (path.equals("/api/v1/namespaces/" + namespace + "/pods")) {
       podsRequestCount.incrementAndGet();
       lastPodsQuery.set(query);
+      if (forbiddenPodsSelector != null && forbiddenPodsSelector.equals(parseLabelSelector(query))) {
+        respond(exchange, 403, "{\"message\":\"Forbidden\"}");
+        return;
+      }
       if (podsDelayMs > 0) {
         try {
           Thread.sleep(podsDelayMs);

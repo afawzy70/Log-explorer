@@ -26,6 +26,19 @@ import org.junit.jupiter.api.Test;
  * workload→pod resolution), §10/§11 (pod/container discovery), §13
  * (selection validation), §14 (cascading resets), §15 (stale-response
  * protection one level deeper than OS-1A), and §17 (partial RBAC).
+ *
+ * <h2>OS-1B review recovery — "All workloads" scope truthfulness</h2>
+ *
+ * <p>The block below headed "All workloads pod union" is new. It proves
+ * the corrected invariant: {@code Workload = All} means "the union of
+ * pods belonging to a currently-discovered <b>supported</b> workload",
+ * never "every pod in the namespace". The original
+ * {@code discoversAllPodsInTheNamespaceWhenNoWorkloadIsSelected} test
+ * asserted the defective behaviour directly and has been replaced, not
+ * weakened, by {@code
+ * noSupportedWorkloadsMeansAnEmptyPodResultNeverEveryPodInTheNamespace}
+ * and the tests after it - see the OS-1B verification report for the
+ * full defect writeup.
  */
 class OpenShiftScopeServiceTest {
 
@@ -68,6 +81,15 @@ class OpenShiftScopeServiceTest {
       map.put(kv[i], kv[i + 1]);
     }
     return map;
+  }
+
+  /** Discovers a single supported Deployment and selects it - the setup most pod/container-mechanic tests need. */
+  private WorkloadRef discoverAndSelectDeployment(String name, Map<String, String> selector) {
+    server.setWorkloads(WorkloadKind.DEPLOYMENT, List.of(new WorkloadFixture(name, 1, 1, selector)));
+    scopeService.discoverWorkloads().block();
+    WorkloadRef ref = new WorkloadRef(WorkloadKind.DEPLOYMENT, name, NAMESPACE);
+    assertThat(scopeService.selectWorkload(ref)).isTrue();
+    return ref;
   }
 
   // ------------------------------------------------- workload discovery
@@ -192,28 +214,11 @@ class OpenShiftScopeServiceTest {
     assertThat(scopeService.selectWorkload(null)).isTrue();
   }
 
-  // ------------------------------------------------------------- pods
-
-  @Test
-  void discoversAllPodsInTheNamespaceWhenNoWorkloadIsSelected() {
-    server.setPods(List.of(
-        new PodFixture("payment-api-abc", "Running", 1, 1, 0, List.of("application"), labels("app", "payment-api")),
-        new PodFixture("payment-worker-xyz", "Running", 1, 1, 0, List.of("application"),
-            labels("app", "payment-worker"))));
-
-    List<PodSummary> pods = scopeService.discoverPods().block();
-
-    assertThat(pods).extracting(PodSummary::name).containsExactly("payment-api-abc", "payment-worker-xyz");
-    assertThat(server.lastPodsQuery()).isNull(); // unscoped listing sends no labelSelector at all
-  }
+  // ------------------------------------------------- pods (selected workload)
 
   @Test
   void resolvesPodsForASelectedWorkloadViaItsSelectorOnly() {
-    server.setWorkloads(WorkloadKind.DEPLOYMENT, List.of(
-        new WorkloadFixture("payment-api", 2, 2, labels("app", "payment-api"))));
-    scopeService.discoverWorkloads().block();
-    WorkloadRef ref = new WorkloadRef(WorkloadKind.DEPLOYMENT, "payment-api", NAMESPACE);
-    scopeService.selectWorkload(ref);
+    WorkloadRef ref = discoverAndSelectDeployment("payment-api", labels("app", "payment-api"));
 
     server.setPods(List.of(
         new PodFixture("payment-api-abc", "Running", 1, 1, 0, List.of("application"), labels("app", "payment-api")),
@@ -222,23 +227,21 @@ class OpenShiftScopeServiceTest {
         new PodFixture("payment-worker-xyz", "Running", 1, 1, 0, List.of("application"),
             labels("app", "payment-worker"))));
 
-    List<PodSummary> pods = scopeService.discoverPods().block();
+    PodDiscovery discovery = scopeService.discoverPods().block();
 
-    assertThat(pods).extracting(PodSummary::name).containsExactly("payment-api-abc", "payment-api-def");
-    assertThat(pods).allMatch(p -> p.workload().equals(ref));
+    assertThat(discovery.status()).isEqualTo(PodDiscovery.Status.COMPLETE);
+    assertThat(discovery.pods()).extracting(PodSummary::name).containsExactly("payment-api-abc", "payment-api-def");
+    assertThat(discovery.pods()).allMatch(p -> p.workload().equals(ref));
   }
 
   @Test
-  void rollingDeploymentOldAndNewReplicaSetPodsBothMatchTheSameSelector() {
+  void rollingDeploymentOldAndNewReplicaSetPodsBothMatchTheSameSelectorForASelectedWorkload() {
     // Both the old and new ReplicaSet's pods carry the Deployment's own
     // selector labels during a rollout - selector-based matching correctly
     // includes both, which is the desired behaviour (see the OS-A
     // architecture assessment §8: old-replica visibility during a bad
     // rollout is desirable for log investigation, not a bug).
-    server.setWorkloads(WorkloadKind.DEPLOYMENT, List.of(
-        new WorkloadFixture("payment-api", 2, 1, labels("app", "payment-api"))));
-    scopeService.discoverWorkloads().block();
-    scopeService.selectWorkload(new WorkloadRef(WorkloadKind.DEPLOYMENT, "payment-api", NAMESPACE));
+    discoverAndSelectDeployment("payment-api", labels("app", "payment-api"));
 
     server.setPods(List.of(
         new PodFixture("payment-api-oldrs-1", "Running", 1, 1, 0, List.of("application"),
@@ -246,20 +249,22 @@ class OpenShiftScopeServiceTest {
         new PodFixture("payment-api-newrs-1", "Running", 1, 1, 0, List.of("application"),
             labels("app", "payment-api"))));
 
-    List<PodSummary> pods = scopeService.discoverPods().block();
+    PodDiscovery discovery = scopeService.discoverPods().block();
 
-    assertThat(pods).extracting(PodSummary::name)
+    assertThat(discovery.pods()).extracting(PodSummary::name)
         .containsExactlyInAnyOrder("payment-api-oldrs-1", "payment-api-newrs-1");
   }
 
   @Test
   void aPodWithMultipleContainersReportsAnAccurateReadySummaryAndContainerList() {
+    discoverAndSelectDeployment("payment-api", labels("app", "payment-api"));
     server.setPods(List.of(
-        new PodFixture("payment-api-abc", "Running", 2, 1, 3, List.of("application", "sidecar"), Map.of())));
+        new PodFixture("payment-api-abc", "Running", 2, 1, 3, List.of("application", "sidecar"),
+            labels("app", "payment-api"))));
 
-    List<PodSummary> pods = scopeService.discoverPods().block();
+    PodDiscovery discovery = scopeService.discoverPods().block();
 
-    PodSummary pod = pods.get(0);
+    PodSummary pod = discovery.pods().get(0);
     assertThat(pod.readySummary()).isEqualTo("1/2");
     assertThat(pod.containerNames()).containsExactly("application", "sidecar");
     assertThat(pod.restartCount()).isEqualTo(3);
@@ -276,14 +281,16 @@ class OpenShiftScopeServiceTest {
         new PodFixture("legacy-billing-1", "Running", 1, 1, 0, List.of("application"),
             labels("deploymentconfig", "legacy-billing"))));
 
-    List<PodSummary> pods = scopeService.discoverPods().block();
+    PodDiscovery discovery = scopeService.discoverPods().block();
 
-    assertThat(pods).extracting(PodSummary::name).containsExactly("legacy-billing-1");
+    assertThat(discovery.pods()).extracting(PodSummary::name).containsExactly("legacy-billing-1");
   }
 
   @Test
   void aPodThatDisappearsBetweenDiscoveryCallsIsClearedFromTheSelectionTruthfully() {
-    server.setPods(List.of(new PodFixture("payment-api-abc", "Running", 1, 1, 0, List.of("application"), Map.of())));
+    discoverAndSelectDeployment("payment-api", labels("app", "payment-api"));
+    server.setPods(List.of(
+        new PodFixture("payment-api-abc", "Running", 1, 1, 0, List.of("application"), labels("app", "payment-api"))));
     scopeService.discoverPods().block();
     assertThat(scopeService.selectPod("payment-api-abc")).isTrue();
 
@@ -295,6 +302,7 @@ class OpenShiftScopeServiceTest {
 
   @Test
   void selectingAPodDiscoveryNeverReturnedIsRejected() {
+    discoverAndSelectDeployment("payment-api", labels("app", "payment-api"));
     scopeService.discoverPods().block(); // empty
     assertThat(scopeService.selectPod("fabricated-pod")).isFalse();
   }
@@ -303,8 +311,10 @@ class OpenShiftScopeServiceTest {
 
   @Test
   void containerDiscoveryReturnsTheSelectedPodsCachedContainersWithNoExtraNetworkCall() {
+    discoverAndSelectDeployment("payment-api", labels("app", "payment-api"));
     server.setPods(List.of(
-        new PodFixture("payment-api-abc", "Running", 2, 2, 0, List.of("application", "sidecar"), Map.of())));
+        new PodFixture("payment-api-abc", "Running", 2, 2, 0, List.of("application", "sidecar"),
+            labels("app", "payment-api"))));
     scopeService.discoverPods().block();
     scopeService.selectPod("payment-api-abc");
     int requestsBefore = server.podsRequestCount();
@@ -322,13 +332,176 @@ class OpenShiftScopeServiceTest {
 
   @Test
   void selectingAContainerThePodDoesNotHaveIsRejected() {
-    server.setPods(List.of(new PodFixture("payment-api-abc", "Running", 1, 1, 0, List.of("application"), Map.of())));
+    discoverAndSelectDeployment("payment-api", labels("app", "payment-api"));
+    server.setPods(List.of(
+        new PodFixture("payment-api-abc", "Running", 1, 1, 0, List.of("application"), labels("app", "payment-api"))));
     scopeService.discoverPods().block();
     scopeService.selectPod("payment-api-abc");
     scopeService.discoverContainers();
 
     assertThat(scopeService.selectContainer("does-not-exist")).isFalse();
     assertThat(scopeService.selectContainer("application")).isTrue();
+  }
+
+  // ============================================================
+  // OS-1B review recovery — "All workloads" pod union truthfulness
+  // ============================================================
+
+  @Test
+  void noSupportedWorkloadsMeansAnEmptyPodResultNeverEveryPodInTheNamespace() {
+    // O. No supported workloads -> successful empty pod result. Even
+    // though the fake server has pods sitting in the namespace, "All
+    // workloads" must not fetch them at all, because zero supported
+    // workloads were discovered to justify including any of them.
+    scopeService.discoverWorkloads().block(); // genuinely nothing discovered
+    server.setPods(List.of(
+        new PodFixture("some-pod-that-must-never-appear", "Running", 1, 1, 0, List.of("application"), Map.of())));
+
+    PodDiscovery discovery = scopeService.discoverPods().block();
+
+    assertThat(discovery.status()).isEqualTo(PodDiscovery.Status.COMPLETE);
+    assertThat(discovery.pods()).isEmpty();
+    assertThat(server.podsRequestCount()).isZero(); // no unfiltered fetch ever happened
+  }
+
+  @Test
+  void allWorkloadsUnionIncludesOnlyPodsProvenToBelongToASupportedDiscoveredWorkload() {
+    // A: Deployment pod, B: StatefulSet pod, C: DaemonSet pod, D: DeploymentConfig pod - all INCLUDED.
+    server.setWorkloads(WorkloadKind.DEPLOYMENT, List.of(
+        new WorkloadFixture("payment-api", 1, 1, labels("app", "payment-api"))));
+    server.setWorkloads(WorkloadKind.STATEFUL_SET, List.of(
+        new WorkloadFixture("payment-db", 1, 1, labels("app", "payment-db"))));
+    server.setWorkloads(WorkloadKind.DAEMON_SET, List.of(
+        new WorkloadFixture("log-agent", 1, 1, labels("app", "log-agent"))));
+    server.setWorkloads(WorkloadKind.DEPLOYMENT_CONFIG, List.of(
+        new WorkloadFixture("legacy-billing", 1, 1, labels("deploymentconfig", "legacy-billing"))));
+    scopeService.discoverWorkloads().block();
+
+    server.setPods(List.of(
+        new PodFixture("payment-api-abc", "Running", 1, 1, 0, List.of("application"), labels("app", "payment-api")),
+        new PodFixture("payment-db-0", "Running", 1, 1, 0, List.of("application"), labels("app", "payment-db")),
+        new PodFixture("log-agent-xyz", "Running", 1, 1, 0, List.of("application"), labels("app", "log-agent")),
+        new PodFixture("legacy-billing-1", "Running", 1, 1, 0, List.of("application"),
+            labels("deploymentconfig", "legacy-billing")),
+        // E/F: a Job/CronJob-owned pod - carries batch-specific labels that
+        // match none of the four supported workloads' selectors above.
+        new PodFixture("nightly-batch-job-abc", "Running", 1, 1, 0, List.of("application"),
+            labels("job-name", "nightly-batch")),
+        new PodFixture("cronjob-run-xyz", "Running", 1, 1, 0, List.of("application"),
+            labels("job-name", "cronjob-run-xyz")),
+        // G: a standalone pod with no owning workload's selector at all.
+        new PodFixture("standalone-debug-pod", "Running", 1, 1, 0, List.of("application"), Map.of()),
+        // H: a pod from an unsupported/unknown custom controller.
+        new PodFixture("custom-operator-managed-pod", "Running", 1, 1, 0, List.of("application"),
+            labels("app.kubernetes.io/managed-by", "my-custom-operator"))));
+
+    PodDiscovery discovery = scopeService.discoverPods().block();
+
+    assertThat(discovery.status()).isEqualTo(PodDiscovery.Status.COMPLETE);
+    // J: union of exactly the supported-workload pods, no duplicates, and
+    // none of the excluded (Job/CronJob/standalone/unknown-controller) pods.
+    assertThat(discovery.pods()).extracting(PodSummary::name).containsExactlyInAnyOrder(
+        "payment-api-abc", "payment-db-0", "log-agent-xyz", "legacy-billing-1");
+  }
+
+  @Test
+  void rollingDeploymentPodsAreBothIncludedInTheAllWorkloadsUnion() {
+    // I, for the "All workloads" (union) path specifically - not just the selected-workload path.
+    server.setWorkloads(WorkloadKind.DEPLOYMENT, List.of(
+        new WorkloadFixture("payment-api", 2, 1, labels("app", "payment-api"))));
+    scopeService.discoverWorkloads().block();
+
+    server.setPods(List.of(
+        new PodFixture("payment-api-oldrs-1", "Running", 1, 1, 0, List.of("application"),
+            labels("app", "payment-api")),
+        new PodFixture("payment-api-newrs-1", "Running", 1, 1, 0, List.of("application"),
+            labels("app", "payment-api"))));
+
+    PodDiscovery discovery = scopeService.discoverPods().block();
+
+    assertThat(discovery.pods()).extracting(PodSummary::name)
+        .containsExactlyInAnyOrder("payment-api-oldrs-1", "payment-api-newrs-1");
+  }
+
+  @Test
+  void aPodMatchingTwoSupportedWorkloadsSelectorsIsIncludedOnlyOnce() {
+    // J (no duplicates edge case): a pod whose labels happen to satisfy
+    // more than one discovered workload's selector - a rare but possible
+    // situation - must still appear exactly once in the union.
+    server.setWorkloads(WorkloadKind.DEPLOYMENT, List.of(
+        new WorkloadFixture("payment-api", 1, 1, labels("app", "payment-api"))));
+    server.setWorkloads(WorkloadKind.STATEFUL_SET, List.of(
+        new WorkloadFixture("payment-api-shared", 1, 1, labels("app", "payment-api"))));
+    scopeService.discoverWorkloads().block();
+    server.setPods(List.of(
+        new PodFixture("payment-api-ambiguous", "Running", 1, 1, 0, List.of("application"),
+            labels("app", "payment-api"))));
+
+    PodDiscovery discovery = scopeService.discoverPods().block();
+
+    assertThat(discovery.pods()).extracting(PodSummary::name).containsExactly("payment-api-ambiguous");
+  }
+
+  @Test
+  void aForbiddenWorkloadKindMakesAllWorkloadsPartialWithoutWideningToNamespacePods() {
+    // K: DaemonSet forbidden. Deployment still available and its pods are
+    // included; the DaemonSet's own (undiscoverable) pods are correctly
+    // absent, and the result is marked PARTIAL rather than confidently complete.
+    server.setWorkloads(WorkloadKind.DEPLOYMENT, List.of(
+        new WorkloadFixture("payment-api", 1, 1, labels("app", "payment-api"))));
+    server.setKindStatus(WorkloadKind.DAEMON_SET, KindStatus.FORBIDDEN);
+    scopeService.discoverWorkloads().block();
+
+    server.setPods(List.of(
+        new PodFixture("payment-api-abc", "Running", 1, 1, 0, List.of("application"), labels("app", "payment-api")),
+        // A pod that would have belonged to the forbidden DaemonSet - the
+        // old defective behaviour would have swept this in via an
+        // unfiltered namespace listing; it must NOT appear now.
+        new PodFixture("log-agent-forbidden-xyz", "Running", 1, 1, 0, List.of("application"),
+            labels("app", "log-agent"))));
+
+    PodDiscovery discovery = scopeService.discoverPods().block();
+
+    assertThat(discovery.status()).isEqualTo(PodDiscovery.Status.PARTIAL);
+    assertThat(discovery.pods()).extracting(PodSummary::name).containsExactly("payment-api-abc");
+  }
+
+  @Test
+  void anUnavailableResourceTypeDoesNotMakeAllWorkloadsPartial() {
+    // L: DeploymentConfig 404 (genuinely absent) is not treated as
+    // forbidden - the remaining supported workload scope stays COMPLETE.
+    server.setWorkloads(WorkloadKind.DEPLOYMENT, List.of(
+        new WorkloadFixture("payment-api", 1, 1, labels("app", "payment-api"))));
+    server.setKindStatus(WorkloadKind.DEPLOYMENT_CONFIG, KindStatus.NOT_FOUND);
+    scopeService.discoverWorkloads().block();
+    server.setPods(List.of(
+        new PodFixture("payment-api-abc", "Running", 1, 1, 0, List.of("application"), labels("app", "payment-api"))));
+
+    PodDiscovery discovery = scopeService.discoverPods().block();
+
+    assertThat(discovery.status()).isEqualTo(PodDiscovery.Status.COMPLETE);
+    assertThat(discovery.pods()).extracting(PodSummary::name).containsExactly("payment-api-abc");
+  }
+
+  @Test
+  void aPerWorkloadPodFetchFailureMarksTheUnionPartialWithoutFailingTheWholeRequest() {
+    // A supported workload was discovered successfully, but resolving its
+    // own pods independently fails (e.g. a pod-scoped RBAC gap distinct
+    // from listing the workload object itself) - the union still returns
+    // what it could prove, marked PARTIAL.
+    server.setWorkloads(WorkloadKind.DEPLOYMENT, List.of(
+        new WorkloadFixture("payment-api", 1, 1, labels("app", "payment-api")),
+        new WorkloadFixture("payment-worker", 1, 1, labels("app", "payment-worker"))));
+    scopeService.discoverWorkloads().block();
+    server.setPods(List.of(
+        new PodFixture("payment-worker-xyz", "Running", 1, 1, 0, List.of("application"),
+            labels("app", "payment-worker"))));
+    server.setPodsForbiddenForSelector(labels("app", "payment-api"));
+
+    PodDiscovery discovery = scopeService.discoverPods().block();
+
+    assertThat(discovery.status()).isEqualTo(PodDiscovery.Status.PARTIAL);
+    assertThat(discovery.pods()).extracting(PodSummary::name).containsExactly("payment-worker-xyz");
   }
 
   // -------------------------------------------------- stale-response protection
@@ -343,7 +516,9 @@ class OpenShiftScopeServiceTest {
     // arriving after the user switched projects.
     long generation = session.generation();
     boolean applied = session.updateWorkloads(
-        List.of(new WorkloadSummary(new WorkloadRef(WorkloadKind.DEPLOYMENT, "payment-api", "other-namespace"), 1, 1)),
+        List.of(new WorkloadSummary(new WorkloadRef(WorkloadKind.DEPLOYMENT, "payment-api", "other-namespace"), 1, 1,
+            labels("app", "payment-api"))),
+        List.of(),
         "other-namespace", generation);
 
     assertThat(applied).isFalse();
@@ -366,10 +541,55 @@ class OpenShiftScopeServiceTest {
     scopeService.selectWorkload(workerRef);
     boolean applied = session.updatePods(
         List.of(new PodSummary("payment-api-abc", "Running", "1/1", 0, List.of("application"), apiRef)),
-        apiRef, generation);
+        NAMESPACE, apiRef, generation);
 
     assertThat(applied).isFalse();
     assertThat(session.scope().pods()).isEmpty();
+  }
+
+  @Test
+  void aStaleAllWorkloadsPodResponseForAnAbandonedProjectIsDiscarded() {
+    // M: "All workloads" pod response arrives after the user switched
+    // projects. Both the old and new project start with selectedWorkload
+    // == null, so only an explicit project check (not a workload check)
+    // can catch this - this is exactly the gap this recovery closed in
+    // OpenShiftSession#updatePods.
+    server.setWorkloads(WorkloadKind.DEPLOYMENT, List.of(
+        new WorkloadFixture("payment-api", 1, 1, labels("app", "payment-api"))));
+    scopeService.discoverWorkloads().block();
+    long generation = session.generation();
+
+    // "accounts" must already be a known, visible project before it can
+    // be selected - added here without disturbing the current selection
+    // or scope, exactly like a background project-list refresh would.
+    assertThat(session.updateProjects(List.of(NAMESPACE, "accounts"), ProjectDiscovery.Api.PROJECTS, generation))
+        .isTrue();
+    assertThat(session.selectProject("accounts", generation)).isTrue();
+    boolean applied = session.updatePods(
+        List.of(new PodSummary("payment-api-abc", "Running", "1/1", 0, List.of("application"), null)),
+        NAMESPACE, null, generation);
+
+    assertThat(applied).isFalse();
+    assertThat(session.scope().pods()).isEmpty();
+  }
+
+  @Test
+  void aStaleAllWorkloadsPodResponseAfterReconnectIsDiscarded() {
+    // N: reconnect (new generation) while an "All workloads" pod
+    // resolution for the old connection is still in flight.
+    server.setWorkloads(WorkloadKind.DEPLOYMENT, List.of(
+        new WorkloadFixture("payment-api", 1, 1, labels("app", "payment-api"))));
+    scopeService.discoverWorkloads().block();
+    long staleGeneration = session.generation();
+
+    OcLoginCommand second = new OcLoginCommand(base, TOKEN, null);
+    session.connect(second, "Second", "someone-else", List.of(NAMESPACE), ProjectDiscovery.Api.PROJECTS, null);
+
+    boolean applied = session.updatePods(
+        List.of(new PodSummary("payment-api-abc", "Running", "1/1", 0, List.of("application"), null)),
+        NAMESPACE, null, staleGeneration);
+
+    assertThat(applied).isFalse();
   }
 
   @Test
@@ -383,7 +603,7 @@ class OpenShiftScopeServiceTest {
     OcLoginCommand second = new OcLoginCommand(base, TOKEN, null);
     session.connect(second, "Second", "someone-else", List.of(NAMESPACE), ProjectDiscovery.Api.PROJECTS, null);
 
-    boolean applied = session.updateWorkloads(List.of(), NAMESPACE, staleGeneration);
+    boolean applied = session.updateWorkloads(List.of(), List.of(), NAMESPACE, staleGeneration);
 
     assertThat(applied).isFalse();
   }

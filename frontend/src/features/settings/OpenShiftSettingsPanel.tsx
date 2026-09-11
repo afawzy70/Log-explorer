@@ -19,7 +19,7 @@ import {
 import type {
   OpenShiftConnectionSummary,
   OpenShiftFailureReason,
-  OpenShiftPod,
+  OpenShiftPodDiscovery,
   OpenShiftWorkloadDiscovery,
   OpenShiftWorkloadKind,
 } from '../../shared/api/types';
@@ -95,7 +95,7 @@ export function OpenShiftSettingsPanel() {
   const [selectedWorkload, setSelectedWorkload] = useState<{ kind: OpenShiftWorkloadKind; name: string } | null>(
     null,
   );
-  const [pods, setPods] = useState<OpenShiftPod[] | undefined>(undefined);
+  const [pods, setPods] = useState<OpenShiftPodDiscovery | undefined>(undefined);
   const [selectedPod, setSelectedPod] = useState<string | null>(null);
   const [containers, setContainers] = useState<string[] | undefined>(undefined);
   const [selectedContainer, setSelectedContainer] = useState<string | null>(null);
@@ -464,7 +464,7 @@ interface OpenShiftScopeControlsProps {
   busy: boolean;
   workloadDiscovery: OpenShiftWorkloadDiscovery | undefined;
   selectedWorkload: { kind: OpenShiftWorkloadKind; name: string } | null;
-  pods: OpenShiftPod[] | undefined;
+  pods: OpenShiftPodDiscovery | undefined;
   selectedPod: string | null;
   containers: string[] | undefined;
   selectedContainer: string | null;
@@ -570,13 +570,18 @@ function OpenShiftScopeControls({
               onChange={(e) => onSelectPod(e.target.value)}
             >
               <option value="">All matching pods</option>
-              {pods.map((pod) => (
+              {pods.pods.map((pod) => (
                 <option key={pod.name} value={pod.name}>
                   {pod.name} ({pod.phase}, {pod.readySummary})
                 </option>
               ))}
             </select>
-            {pods.length === 0 ? <p className={styles.hint}>No pods currently match this scope.</p> : null}
+            {pods.pods.length === 0 ? <p className={styles.hint}>No pods currently match this scope.</p> : null}
+            {pods.status === 'PARTIAL' ? (
+              <p className={styles.hint}>
+                This list may be incomplete - not every workload type could be checked, so some pods may be missing.
+              </p>
+            ) : null}
           </>
         )}
       </div>

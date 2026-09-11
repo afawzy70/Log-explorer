@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.logexplorer.core.model.RawToken;
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -26,10 +27,11 @@ class OpenShiftSessionScopeCascadeTest {
     long generation = session.connect(COMMAND, "Prod", "developer", List.of("payments", "accounts"),
         ProjectDiscovery.Api.PROJECTS, null);
     session.selectProject("payments", generation);
-    session.updateWorkloads(List.of(new WorkloadSummary(WORKLOAD, 1, 1)), "payments", generation);
+    session.updateWorkloads(List.of(new WorkloadSummary(WORKLOAD, 1, 1, Map.of("app", "payment-api"))), List.of(),
+        "payments", generation);
     session.selectWorkload(WORKLOAD, generation);
     session.updatePods(List.of(new PodSummary("payment-api-abc", "Running", "1/1", 0, List.of("application"),
-        WORKLOAD)), WORKLOAD, generation);
+        WORKLOAD)), "payments", WORKLOAD, generation);
     session.selectPod("payment-api-abc", generation);
     session.updateContainers(List.of("application"), "payment-api-abc", generation);
     session.selectContainer("application", generation);

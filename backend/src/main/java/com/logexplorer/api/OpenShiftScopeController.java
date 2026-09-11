@@ -1,6 +1,7 @@
 package com.logexplorer.api;
 
 import com.logexplorer.api.dto.OpenShiftContainerSelectionDto;
+import com.logexplorer.api.dto.OpenShiftPodDiscoveryDto;
 import com.logexplorer.api.dto.OpenShiftPodDto;
 import com.logexplorer.api.dto.OpenShiftPodSelectionDto;
 import com.logexplorer.api.dto.OpenShiftScopeSummaryDto;
@@ -10,6 +11,7 @@ import com.logexplorer.api.dto.OpenShiftWorkloadKindOutcomeDto;
 import com.logexplorer.api.dto.OpenShiftWorkloadSelectionDto;
 import com.logexplorer.source.openshift.OpenShiftScopeService;
 import com.logexplorer.source.openshift.OpenShiftSession;
+import com.logexplorer.source.openshift.PodDiscovery;
 import com.logexplorer.source.openshift.PodSummary;
 import com.logexplorer.source.openshift.WorkloadDiscovery;
 import com.logexplorer.source.openshift.WorkloadKind;
@@ -102,8 +104,13 @@ public class OpenShiftScopeController {
   }
 
   @GetMapping("/pods")
-  public Mono<List<OpenShiftPodDto>> pods() {
-    return scopeService.discoverPods().map(pods -> pods.stream().map(this::toDto).toList());
+  public Mono<OpenShiftPodDiscoveryDto> pods() {
+    return scopeService.discoverPods().map(this::toDto);
+  }
+
+  private OpenShiftPodDiscoveryDto toDto(PodDiscovery discovery) {
+    return new OpenShiftPodDiscoveryDto(
+        discovery.status().name(), discovery.pods().stream().map(this::toDto).toList());
   }
 
   private OpenShiftPodDto toDto(PodSummary pod) {

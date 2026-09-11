@@ -340,14 +340,18 @@ public class OpenShiftSession {
    *
    * @return whether the update was applied
    */
-  public boolean updateWorkloads(List<WorkloadSummary> workloads, String expectedProject, long generation) {
+  public boolean updateWorkloads(
+      List<WorkloadSummary> workloads,
+      List<WorkloadDiscovery.KindOutcome> kindOutcomes,
+      String expectedProject,
+      long generation) {
     Snapshot updated = current.updateAndGet(previous -> {
       if (previous.generation() != generation
           || previous.state() != OpenShiftConnectionState.CONNECTED
           || !java.util.Objects.equals(previous.selectedProject(), expectedProject)) {
         return previous;
       }
-      return withScope(previous, previous.scope().withWorkloads(workloads));
+      return withScope(previous, previous.scope().withWorkloads(workloads, kindOutcomes));
     });
     return updated.generation() == generation
         && java.util.Objects.equals(updated.selectedProject(), expectedProject)
@@ -376,24 +380,36 @@ public class OpenShiftSession {
 
   /**
    * Replaces the discovered pod list, guarded exactly like {@link
-   * #updateWorkloads} - by connection generation AND by the workload (or
-   * lack of one, for an unscoped "all pods in project" discovery) the
-   * request was actually made against (OS-1B §15 "Workload A pod request
-   * -> user switches to Workload B -> late A pod response must not
-   * populate B").
+   * #updateWorkloads} - by connection generation, by the project the
+   * request was actually made against, AND by the workload (or lack of
+   * one, for an unscoped "All workloads" discovery) the request was
+   * actually made against (OS-1B §15 "Workload A pod request -> user
+   * switches to Workload B -> late A pod response must not populate B").
+   *
+   * <p><b>{@code expectedProject} matters even when {@code
+   * expectedWorkload} is {@code null}</b> (OS-1B review recovery). "All
+   * workloads" pod resolution for project A and for project B are both
+   * represented by {@code expectedWorkload == null} - checking only the
+   * workload would let a stale "All workloads" result for project A land
+   * on project B the instant the user switches projects, since both
+   * states share the same {@code null} selected-workload value. Checking
+   * the project explicitly closes that gap.
    *
    * @return whether the update was applied
    */
-  public boolean updatePods(List<PodSummary> pods, WorkloadRef expectedWorkload, long generation) {
+  public boolean updatePods(
+      List<PodSummary> pods, String expectedProject, WorkloadRef expectedWorkload, long generation) {
     Snapshot updated = current.updateAndGet(previous -> {
       if (previous.generation() != generation
           || previous.state() != OpenShiftConnectionState.CONNECTED
+          || !java.util.Objects.equals(previous.selectedProject(), expectedProject)
           || !java.util.Objects.equals(previous.scope().selectedWorkload(), expectedWorkload)) {
         return previous;
       }
       return withScope(previous, previous.scope().withPods(pods));
     });
     return updated.generation() == generation
+        && java.util.Objects.equals(updated.selectedProject(), expectedProject)
         && java.util.Objects.equals(updated.scope().selectedWorkload(), expectedWorkload)
         && updated.scope().pods().equals(List.copyOf(pods));
   }

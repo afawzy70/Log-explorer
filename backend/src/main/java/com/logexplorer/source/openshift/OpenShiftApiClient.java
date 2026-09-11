@@ -174,7 +174,12 @@ public class OpenShiftApiClient {
       int ready = kind == WorkloadKind.DAEMON_SET
           ? item.path("status").path("numberReady").asInt(0)
           : item.path("status").path("readyReplicas").asInt(0);
-      summaries.add(new WorkloadSummary(new WorkloadRef(kind, name, namespace), desired, ready));
+      // The list response already carries each item's full spec, so the
+      // selector is captured here for free - no second GET per workload
+      // (OS-1B review recovery: needed to resolve "All workloads" pod
+      // scope truthfully, bounded to the workloads actually discovered).
+      Map<String, String> selector = selectorMatchLabels(item, kind);
+      summaries.add(new WorkloadSummary(new WorkloadRef(kind, name, namespace), desired, ready, selector));
     }
     summaries.sort(Comparator.comparing(w -> w.ref().name()));
     return List.copyOf(summaries);
@@ -184,7 +189,16 @@ public class OpenShiftApiClient {
    * The workload's own label selector, read fresh at pod-resolution time
    * rather than cached from discovery (OS-1B §9) - a single extra GET per
    * pod-discovery-for-a-workload request, which is bounded and far cheaper
-   * than an N+1 per-pod call pattern (OS-1B §18).
+   * than an N+1 per-pod call pattern (OS-1B §18). Used only when the
+   * caller already has a single, specific {@link WorkloadRef} in hand
+   * (a committed selection); resolving pods for "All workloads" instead
+   * uses {@link WorkloadSummary#selector()}, captured once per workload
+   * during {@link #fetchWorkloads} itself, since re-reading every
+   * discovered workload's selector individually would reintroduce the
+   * "N calls per workload" cost this method exists to bound for the
+   * single-workload case (see the OS-1B review-recovery verification
+   * report for the immutability argument that makes the cached value
+   * safe to reuse for that broader case).
    *
    * <p>{@code DeploymentConfig}'s selector is a flat map directly under
    * {@code spec.selector}; every {@code apps/v1} kind nests it one level
