@@ -48,6 +48,20 @@ import org.springframework.stereotype.Component;
  * OpenShiftConnectionService#discoverProjectsOrNamespaces}), and cleared
  * on {@link #disconnect} and {@link #markExpired}: once there is no live,
  * trusted connection, there is no current discovery mode to report either.
+ *
+ * <h2>Workload/pod/container scope (OS-1B)</h2>
+ *
+ * <p>{@link #scope()} carries everything below the selected project -
+ * discovered workloads/pods/containers and the current selection at each
+ * level - as one {@link OpenShiftScope} value. It is replaced wholesale
+ * with {@link OpenShiftScope#EMPTY} whenever the project selection
+ * actually changes ({@link #selectProject}), whenever the project list
+ * itself causes the current selection to be cleared ({@link
+ * #updateProjects}), and on {@link #connect}, {@link #disconnect} and
+ * {@link #markExpired} - a workload/pod/container from a different
+ * project, or from before a reconnect, is never carried forward (OS-1B
+ * §14). Within one project, {@link OpenShiftScope}'s own {@code with*}
+ * methods own the finer-grained workload→pod→container cascade.
  */
 @Component
 public class OpenShiftSession {
@@ -64,10 +78,12 @@ public class OpenShiftSession {
       ProjectDiscovery.Api discoveryApi,
       String selectedProject,
       String proxyDisplay,
+      OpenShiftScope scope,
       long generation) {}
 
   private static final Snapshot EMPTY = new Snapshot(
-      OpenShiftConnectionState.DISCONNECTED, null, RawToken.empty(), null, null, null, List.of(), null, null, null, 0L);
+      OpenShiftConnectionState.DISCONNECTED, null, RawToken.empty(), null, null, null, List.of(), null, null, null,
+      OpenShiftScope.EMPTY, 0L);
 
   private final AtomicReference<Snapshot> current = new AtomicReference<>(EMPTY);
 
@@ -117,6 +133,11 @@ public class OpenShiftSession {
 
   public String selectedProject() {
     return current.get().selectedProject();
+  }
+
+  /** The current workload/pod/container scope beneath the selected project (OS-1B). Never {@code null}. */
+  public OpenShiftScope scope() {
+    return current.get().scope();
   }
 
   public String proxyDisplay() {
@@ -169,6 +190,7 @@ public class OpenShiftSession {
             discoveryApi,
             null, // a new connection never inherits the previous selection
             proxyDisplay,
+            OpenShiftScope.EMPTY, // nor does it inherit the previous workload/pod/container scope
             previous.generation() + 1))
         .generation();
   }
@@ -203,6 +225,13 @@ public class OpenShiftSession {
       String selected = previous.selectedProject() != null && projects.contains(previous.selectedProject())
           ? previous.selectedProject()
           : null;
+      // OS-1B §14 "Project disappears": if the selection was actually
+      // cleared above, the workload/pod/container scope beneath it is
+      // meaningless and is cleared too. If the selection is unchanged, the
+      // scope is left untouched - only the visible project *list* changed.
+      OpenShiftScope scope = java.util.Objects.equals(selected, previous.selectedProject())
+          ? previous.scope()
+          : OpenShiftScope.EMPTY;
       return new Snapshot(
           previous.state(),
           previous.server(),
@@ -214,6 +243,7 @@ public class OpenShiftSession {
           discoveryApi,
           selected,
           previous.proxyDisplay(),
+          scope,
           previous.generation());
     });
     return updated.generation() == generation
@@ -228,7 +258,7 @@ public class OpenShiftSession {
   public void disconnect() {
     current.updateAndGet(previous -> new Snapshot(
         OpenShiftConnectionState.DISCONNECTED, null, RawToken.empty(), null, null, null, List.of(), null, null, null,
-        previous.generation() + 1));
+        OpenShiftScope.EMPTY, previous.generation() + 1));
   }
 
   /**
@@ -251,6 +281,7 @@ public class OpenShiftSession {
         null,
         null,
         previous.proxyDisplay(),
+        OpenShiftScope.EMPTY,
         previous.generation() + 1));
   }
 
@@ -269,6 +300,12 @@ public class OpenShiftSession {
       if (project != null && !previous.projects().contains(project)) {
         return previous; // never select a project this connection cannot see
       }
+      // OS-1B §14 "Project changes -> clear Workload/Pod/Container". A
+      // no-op reselect of the SAME project leaves a valid deeper scope
+      // alone; any actual change wipes it.
+      OpenShiftScope scope = java.util.Objects.equals(project, previous.selectedProject())
+          ? previous.scope()
+          : OpenShiftScope.EMPTY;
       return new Snapshot(
           previous.state(),
           previous.server(),
@@ -280,9 +317,178 @@ public class OpenShiftSession {
           previous.discoveryApi(), // selecting a project never changes the discovery mode
           project,
           previous.proxyDisplay(),
+          scope,
           previous.generation());
     });
     return updated.generation() == generation && java.util.Objects.equals(updated.selectedProject(), project);
+  }
+
+  /**
+   * Replaces the discovered workload list for the current connection
+   * (OS-1B §7/§15), guarded by generation exactly like {@link
+   * #updateProjects} - a workload-discovery response belonging to a
+   * connection (or project selection - see below) that has since changed
+   * must never be applied.
+   *
+   * <p>{@code expectedProject} is the project the discovery request was
+   * actually made against, captured by the caller before firing it. If the
+   * user has since switched projects (same connection, same generation),
+   * this still must not apply - the generation counter alone only protects
+   * against reconnects, not project switches within one connection (OS-1B
+   * §15 "Project A workload request -> user switches to Project B -> late
+   * A response must not populate B").
+   *
+   * @return whether the update was applied
+   */
+  public boolean updateWorkloads(
+      List<WorkloadSummary> workloads,
+      List<WorkloadDiscovery.KindOutcome> kindOutcomes,
+      String expectedProject,
+      long generation) {
+    Snapshot updated = current.updateAndGet(previous -> {
+      if (previous.generation() != generation
+          || previous.state() != OpenShiftConnectionState.CONNECTED
+          || !java.util.Objects.equals(previous.selectedProject(), expectedProject)) {
+        return previous;
+      }
+      return withScope(previous, previous.scope().withWorkloads(workloads, kindOutcomes));
+    });
+    return updated.generation() == generation
+        && java.util.Objects.equals(updated.selectedProject(), expectedProject)
+        && updated.scope().workloads().equals(List.copyOf(workloads));
+  }
+
+  /**
+   * Selects a workload (or clears it with {@code null}), rejecting any
+   * workload not present in the last discovered list for the current
+   * project (OS-1B §13 - never trust the frontend's selection blindly).
+   *
+   * @return whether the selection was applied
+   */
+  public boolean selectWorkload(WorkloadRef ref, long generation) {
+    Snapshot updated = current.updateAndGet(previous -> {
+      if (previous.generation() != generation || previous.state() != OpenShiftConnectionState.CONNECTED) {
+        return previous;
+      }
+      if (ref != null && !previous.scope().hasWorkload(ref)) {
+        return previous; // never select a workload this discovery never returned
+      }
+      return withScope(previous, previous.scope().withSelectedWorkload(ref));
+    });
+    return updated.generation() == generation && java.util.Objects.equals(updated.scope().selectedWorkload(), ref);
+  }
+
+  /**
+   * Replaces the discovered pod list, guarded exactly like {@link
+   * #updateWorkloads} - by connection generation, by the project the
+   * request was actually made against, AND by the workload (or lack of
+   * one, for an unscoped "All workloads" discovery) the request was
+   * actually made against (OS-1B §15 "Workload A pod request -> user
+   * switches to Workload B -> late A pod response must not populate B").
+   *
+   * <p><b>{@code expectedProject} matters even when {@code
+   * expectedWorkload} is {@code null}</b> (OS-1B review recovery). "All
+   * workloads" pod resolution for project A and for project B are both
+   * represented by {@code expectedWorkload == null} - checking only the
+   * workload would let a stale "All workloads" result for project A land
+   * on project B the instant the user switches projects, since both
+   * states share the same {@code null} selected-workload value. Checking
+   * the project explicitly closes that gap.
+   *
+   * @return whether the update was applied
+   */
+  public boolean updatePods(
+      List<PodSummary> pods, String expectedProject, WorkloadRef expectedWorkload, long generation) {
+    Snapshot updated = current.updateAndGet(previous -> {
+      if (previous.generation() != generation
+          || previous.state() != OpenShiftConnectionState.CONNECTED
+          || !java.util.Objects.equals(previous.selectedProject(), expectedProject)
+          || !java.util.Objects.equals(previous.scope().selectedWorkload(), expectedWorkload)) {
+        return previous;
+      }
+      return withScope(previous, previous.scope().withPods(pods));
+    });
+    return updated.generation() == generation
+        && java.util.Objects.equals(updated.selectedProject(), expectedProject)
+        && java.util.Objects.equals(updated.scope().selectedWorkload(), expectedWorkload)
+        && updated.scope().pods().equals(List.copyOf(pods));
+  }
+
+  /**
+   * Selects a pod (or clears it with {@code null}), rejecting any pod not
+   * present in the last discovered pod list (OS-1B §13).
+   *
+   * @return whether the selection was applied
+   */
+  public boolean selectPod(String podName, long generation) {
+    Snapshot updated = current.updateAndGet(previous -> {
+      if (previous.generation() != generation || previous.state() != OpenShiftConnectionState.CONNECTED) {
+        return previous;
+      }
+      if (podName != null && previous.scope().findPod(podName) == null) {
+        return previous; // never select a pod this discovery never returned
+      }
+      return withScope(previous, previous.scope().withSelectedPod(podName));
+    });
+    return updated.generation() == generation && java.util.Objects.equals(updated.scope().selectedPod(), podName);
+  }
+
+  /**
+   * Replaces the discovered container list for the currently-selected pod
+   * (OS-1B §11), guarded by generation and by which pod the caller actually
+   * asked about.
+   *
+   * @return whether the update was applied
+   */
+  public boolean updateContainers(List<String> containers, String expectedPod, long generation) {
+    Snapshot updated = current.updateAndGet(previous -> {
+      if (previous.generation() != generation
+          || previous.state() != OpenShiftConnectionState.CONNECTED
+          || !java.util.Objects.equals(previous.scope().selectedPod(), expectedPod)) {
+        return previous;
+      }
+      return withScope(previous, previous.scope().withContainers(containers));
+    });
+    return updated.generation() == generation
+        && java.util.Objects.equals(updated.scope().selectedPod(), expectedPod)
+        && updated.scope().containers().equals(List.copyOf(containers));
+  }
+
+  /**
+   * Selects a container (or clears it with {@code null}), rejecting any
+   * container not present in the last discovered container list (OS-1B
+   * §13).
+   *
+   * @return whether the selection was applied
+   */
+  public boolean selectContainer(String containerName, long generation) {
+    Snapshot updated = current.updateAndGet(previous -> {
+      if (previous.generation() != generation || previous.state() != OpenShiftConnectionState.CONNECTED) {
+        return previous;
+      }
+      if (containerName != null && !previous.scope().containers().contains(containerName)) {
+        return previous; // never select a container this discovery never returned
+      }
+      return withScope(previous, previous.scope().withSelectedContainer(containerName));
+    });
+    return updated.generation() == generation
+        && java.util.Objects.equals(updated.scope().selectedContainer(), containerName);
+  }
+
+  private static Snapshot withScope(Snapshot previous, OpenShiftScope scope) {
+    return new Snapshot(
+        previous.state(),
+        previous.server(),
+        previous.token(),
+        previous.certificateAuthorityPath(),
+        previous.connectionName(),
+        previous.username(),
+        previous.projects(),
+        previous.discoveryApi(),
+        previous.selectedProject(),
+        previous.proxyDisplay(),
+        scope,
+        previous.generation());
   }
 
   @Override
@@ -293,6 +499,7 @@ public class OpenShiftSession {
         + ", token=[REDACTED]"
         + ", discoveryApi=" + snapshot.discoveryApi()
         + ", projects=" + snapshot.projects().size()
+        + ", scope=" + snapshot.scope()
         + ", generation=" + snapshot.generation()
         + "]";
   }

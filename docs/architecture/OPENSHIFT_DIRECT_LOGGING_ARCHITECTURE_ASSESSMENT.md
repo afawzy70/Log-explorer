@@ -744,6 +744,40 @@ without them.
 **[PROPOSED]** Order: **OS-1A → 1B → 1C → 1D → 1E → 1F**, with **1G
 gated on real-Loki access**.
 
+**[EVIDENCE, established by OS-1B, not this assessment]** The OS-1B row
+above is now implemented for its stated scope (workload/pod/container
+discovery, RBAC/partial-permission semantics via Layer 1+2 evidence) —
+see `docs/verification/OS_1B_OPENSHIFT_SCOPE_DISCOVERY_REPORT.md` and
+`OWNER_REQUIREMENTS_REGISTER.md` §12c for the full requirement-by-
+requirement evidence. "Real workloads/pods discovered" (this table's own
+exit criterion) remains real-sandbox evidence, not yet gathered —
+`REAL_OPENSHIFT_1B = BLOCKED_CREDENTIALS`, exactly the same honest gap
+`REAL_OPENSHIFT_1A` has carried since OS-1A. Two implementation details
+worth recording here since they affect §9's "Workload → pod resolution":
+resolving pods for one *specific, selected* workload re-reads that
+workload's *current* label selector fresh (not cached from discovery);
+resolving pods for "All workloads" instead uses each discovered
+workload's selector as *captured at discovery time* (Kubernetes enforces
+these selectors as immutable after creation, so this is not a staleness
+risk) — re-reading every discovered workload's selector individually
+would have reintroduced an "N calls per workload" cost for exactly the
+case that needs to stay boundedly cheap. Only equality-based
+`matchLabels`/`DeploymentConfig`'s flat `spec.selector` are supported —
+`matchExpressions` is out of scope for this slice.
+
+**[EVIDENCE, established by the OS-1B review recovery
+`OS_1B_REVIEW_RECOVERY_ALL_WORKLOADS_SCOPE`, not this assessment]** A
+review found that OS-1B's first cut of "All workloads" pod resolution
+used an *unfiltered* namespace-wide pod list — silently widening
+"all supported workloads" into "all pods in the namespace" (Job/CronJob/
+unsupported-kind/standalone/operator-managed pods included). Fixed to
+union each discovered supported workload's own selector-filtered pod
+list instead; see `OS_1B_OPENSHIFT_SCOPE_DISCOVERY_REPORT.md` §20. **This
+is now the authoritative OS-1C contract**: any future OS-1C design that
+consumes OS-1B's scope must treat `PodDiscovery` (the resolved pod set
+plus a `COMPLETE`/`PARTIAL` completeness flag) as given, never re-derive
+"All workloads" pod scope by its own, looser query.
+
 **[PROPOSED]** Highest-risk areas, stated plainly: (1) credential intake
 and its unauthenticated-local-endpoint assumption; (2) multi-pod merge
 ordering and pagination truthfulness; (3) Live stream lifecycle across

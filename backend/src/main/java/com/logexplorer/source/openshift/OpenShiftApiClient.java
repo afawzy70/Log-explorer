@@ -15,9 +15,12 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
@@ -28,6 +31,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
+import org.springframework.web.util.UriComponentsBuilder;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.transport.ProxyProvider;
@@ -140,6 +144,153 @@ public class OpenShiftApiClient {
   public Mono<ProjectDiscovery> fetchNamespaces(URI server, RawToken token, String caPath) {
     return get(server, token, caPath, NAMESPACES_PATH)
         .map(json -> new ProjectDiscovery(names(json), ProjectDiscovery.Api.NAMESPACES));
+  }
+
+  /**
+   * One workload kind's list for a namespace (OS-1B §7). Every failure
+   * propagates with its own {@link Kind} - a genuine 404 means this
+   * cluster does not expose {@code kind}'s API at all (e.g. no
+   * DeploymentConfig on a vanilla cluster), a 403 means this user may not
+   * list it, and both are the caller's ({@code OpenShiftScopeService})
+   * decision to classify, never silently swallowed here.
+   */
+  public Mono<List<WorkloadSummary>> fetchWorkloads(URI server, RawToken token, String caPath, WorkloadKind kind,
+      String namespace) {
+    return get(server, token, caPath, kind.listPath(namespace)).map(json -> workloadSummaries(json, kind, namespace));
+  }
+
+  private static List<WorkloadSummary> workloadSummaries(JsonNode listJson, WorkloadKind kind, String namespace) {
+    List<WorkloadSummary> summaries = new ArrayList<>();
+    for (JsonNode item : listJson.path("items")) {
+      String name = item.path("metadata").path("name").asText(null);
+      if (name == null || name.isBlank()) {
+        continue;
+      }
+      // A DaemonSet has no spec.replicas at all - its "desired" count is
+      // scheduler-determined, reported as status.desiredNumberScheduled.
+      int desired = kind == WorkloadKind.DAEMON_SET
+          ? item.path("status").path("desiredNumberScheduled").asInt(0)
+          : item.path("spec").path("replicas").asInt(0);
+      int ready = kind == WorkloadKind.DAEMON_SET
+          ? item.path("status").path("numberReady").asInt(0)
+          : item.path("status").path("readyReplicas").asInt(0);
+      // The list response already carries each item's full spec, so the
+      // selector is captured here for free - no second GET per workload
+      // (OS-1B review recovery: needed to resolve "All workloads" pod
+      // scope truthfully, bounded to the workloads actually discovered).
+      Map<String, String> selector = selectorMatchLabels(item, kind);
+      summaries.add(new WorkloadSummary(new WorkloadRef(kind, name, namespace), desired, ready, selector));
+    }
+    summaries.sort(Comparator.comparing(w -> w.ref().name()));
+    return List.copyOf(summaries);
+  }
+
+  /**
+   * The workload's own label selector, read fresh at pod-resolution time
+   * rather than cached from discovery (OS-1B §9) - a single extra GET per
+   * pod-discovery-for-a-workload request, which is bounded and far cheaper
+   * than an N+1 per-pod call pattern (OS-1B §18). Used only when the
+   * caller already has a single, specific {@link WorkloadRef} in hand
+   * (a committed selection); resolving pods for "All workloads" instead
+   * uses {@link WorkloadSummary#selector()}, captured once per workload
+   * during {@link #fetchWorkloads} itself, since re-reading every
+   * discovered workload's selector individually would reintroduce the
+   * "N calls per workload" cost this method exists to bound for the
+   * single-workload case (see the OS-1B review-recovery verification
+   * report for the immutability argument that makes the cached value
+   * safe to reuse for that broader case).
+   *
+   * <p>{@code DeploymentConfig}'s selector is a flat map directly under
+   * {@code spec.selector}; every {@code apps/v1} kind nests it one level
+   * deeper at {@code spec.selector.matchLabels}. Only equality-based
+   * labels are read - {@code matchExpressions} is not supported in this
+   * slice (OS-1B decision, see the verification report).
+   */
+  public Mono<Map<String, String>> fetchWorkloadSelector(URI server, RawToken token, String caPath, WorkloadRef ref) {
+    return get(server, token, caPath, ref.kind().getPath(ref.namespace(), ref.name()))
+        .map(json -> selectorMatchLabels(json, ref.kind()));
+  }
+
+  private static Map<String, String> selectorMatchLabels(JsonNode workloadJson, WorkloadKind kind) {
+    JsonNode selectorNode = kind == WorkloadKind.DEPLOYMENT_CONFIG
+        ? workloadJson.path("spec").path("selector")
+        : workloadJson.path("spec").path("selector").path("matchLabels");
+    Map<String, String> labels = new LinkedHashMap<>();
+    selectorNode.fields().forEachRemaining(entry -> labels.put(entry.getKey(), entry.getValue().asText()));
+    return Map.copyOf(labels);
+  }
+
+  /**
+   * Pods in {@code namespace}, optionally narrowed by an equality-based
+   * label selector (OS-1B §9/§10/§18) - a single namespace-scoped list
+   * call, never one call per pod. An empty/{@code null} selector lists
+   * every pod in the namespace ("All workloads" scope, OS-1B §22).
+   *
+   * @param workload attached to every returned {@link PodSummary} so the
+   *     caller can tell which workload (if any) this listing was scoped to
+   */
+  public Mono<List<PodSummary>> fetchPods(URI server, RawToken token, String caPath, String namespace,
+      Map<String, String> labelSelector, WorkloadRef workload) {
+    return get(server, token, caPath, podsPath(namespace, labelSelector))
+        .map(json -> podSummaries(json, workload));
+  }
+
+  private static String podsPath(String namespace, Map<String, String> labelSelector) {
+    String base = "/api/v1/namespaces/" + namespace + "/pods";
+    if (labelSelector == null || labelSelector.isEmpty()) {
+      return base;
+    }
+    String selectorValue = labelSelector.entrySet().stream()
+        .sorted(Map.Entry.comparingByKey())
+        .map(e -> e.getKey() + "=" + e.getValue())
+        .collect(Collectors.joining(","));
+    // Deliberately NOT pre-encoded here: WebClient's own uri(String) call in
+    // get() already encodes this template once. Encoding it here too turned
+    // "=" into "%3D" and then "%3D" into "%253D" on the wire - a real,
+    // caught-by-test double-encoding bug (OS-1B) that made the selector
+    // value the server actually received unparseable, which - against this
+    // repo's own deterministic fake API - silently degraded to "no filter
+    // applied" rather than an explicit error. Fixed by encoding exactly
+    // once, here at the WebClient call site.
+    return UriComponentsBuilder.fromPath(base).queryParam("labelSelector", selectorValue).build().toUriString();
+  }
+
+  private static List<PodSummary> podSummaries(JsonNode listJson, WorkloadRef workload) {
+    List<PodSummary> pods = new ArrayList<>();
+    for (JsonNode item : listJson.path("items")) {
+      String name = item.path("metadata").path("name").asText(null);
+      if (name == null || name.isBlank()) {
+        continue;
+      }
+      String phase = item.path("status").path("phase").asText("Unknown");
+      // Runtime containers only - spec.initContainers is deliberately not
+      // read here (OS-1B §11: DEFERRED, never silently merged in).
+      List<String> containerNames = new ArrayList<>();
+      for (JsonNode c : item.path("spec").path("containers")) {
+        String containerName = c.path("name").asText(null);
+        if (containerName != null && !containerName.isBlank()) {
+          containerNames.add(containerName);
+        }
+      }
+      int totalStatuses = 0;
+      int readyCount = 0;
+      int restarts = 0;
+      for (JsonNode status : item.path("status").path("containerStatuses")) {
+        totalStatuses++;
+        if (status.path("ready").asBoolean(false)) {
+          readyCount++;
+        }
+        restarts += status.path("restartCount").asInt(0);
+      }
+      // A pod with no reported containerStatuses yet (e.g. still Pending)
+      // falls back to the container count from its spec as the denominator,
+      // so the ready summary is never a misleading "0/0".
+      int denominator = totalStatuses > 0 ? totalStatuses : containerNames.size();
+      pods.add(new PodSummary(name, phase, readyCount + "/" + denominator, restarts, List.copyOf(containerNames),
+          workload));
+    }
+    pods.sort(Comparator.comparing(PodSummary::name));
+    return List.copyOf(pods);
   }
 
   private static List<String> names(JsonNode listJson) {

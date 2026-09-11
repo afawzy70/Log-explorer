@@ -9,6 +9,7 @@ import com.logexplorer.source.openshift.LoopbackBindingGuard;
 import com.logexplorer.source.openshift.OcLoginParseException;
 import com.logexplorer.source.openshift.OpenShiftApiException;
 import com.logexplorer.source.openshift.OpenShiftConnectionService;
+import com.logexplorer.source.openshift.OpenShiftScopeService;
 import com.logexplorer.source.UnknownSourceException;
 import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
@@ -93,6 +94,20 @@ public class GlobalExceptionHandler {
   public ProblemDetail handleStaleOpenShiftConnection(OpenShiftConnectionService.StaleConnectionException e) {
     ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
     problem.setProperty("reason", "STALE_CONNECTION");
+    return problem;
+  }
+
+  /**
+   * OS-1B - a workload/pod discovery result belonged to a project or
+   * workload selection that has since changed (OS-1B §15) - the same
+   * "discard, don't overwrite" truth as {@link
+   * OpenShiftConnectionService.StaleConnectionException}, one scope level
+   * deeper, kept as its own reason so the two are distinguishable.
+   */
+  @ExceptionHandler(OpenShiftScopeService.StaleScopeException.class)
+  public ProblemDetail handleStaleOpenShiftScope(OpenShiftScopeService.StaleScopeException e) {
+    ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+    problem.setProperty("reason", "STALE_SCOPE");
     return problem;
   }
 
