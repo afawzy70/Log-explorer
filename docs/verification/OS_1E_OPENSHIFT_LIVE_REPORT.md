@@ -720,3 +720,152 @@ validation above was performed and is reported locally. This establishes
 `IMPLEMENTATION_COMPLETE`, not `MERGE_AUTHORIZED` — merge authorization
 remains an explicit owner decision, unchanged from every prior OS-1x
 slice's own stacked-PR posture.
+
+## 15. OS-1E FINAL TERMINAL STATUS DELIVERY FIX — the periodic heartbeat alone could not guarantee terminal-state delivery before SSE close
+
+An independent review of §14's own terminal-SSE grace-close found one
+remaining contract defect: the periodic heartbeat, by itself, was NOT
+sufficient to guarantee the browser ever learned a terminal source state
+before the SSE connection closed.
+
+### 15.1 The defect
+
+`LiveTailProperties`' default `heartbeatInterval` is 15 seconds.
+`terminalGrace` is `min(2×heartbeatInterval, 10s)`, so with the default
+`heartbeatInterval` the formula's `10s` branch is always taken —
+`terminalGrace` defaults to exactly 10 seconds, strictly **less** than the
+15-second heartbeat. §14's `LiveTailService` delivered a terminal
+`LiveSourceStatus` to the browser only through `statusTracker`, which
+updated an in-memory `latestStatus` reference but emitted no SSE event of
+its own — the browser only ever learned the CURRENT status via the next
+periodic heartbeat tick (`Flux.interval(heartbeatInterval)`). The
+resulting race, exactly as this review found it:
+
+```
+t=0   normal heartbeat sends RUNNING
+t=1   source becomes STALE / EXPIRED / NO_ACTIVE_TARGETS
+t=1   terminal grace timer starts
+t=11  SSE closes (terminalGrace elapsed)
+t=15  the next heartbeat WOULD have carried the terminal state, but the
+      connection is already closed
+```
+
+The frontend's `onerror` handler (`useLiveTail.ts`) therefore still read
+`sourceStatusRef.current.state` as the LAST status it actually received —
+`RUNNING` — and incorrectly scheduled the generic bounded reconnect,
+violating the contract §14 itself established: `STALE`/`EXPIRED`/
+`NO_ACTIVE_TARGETS` must suppress the automatic `EventSource` reconnect.
+The frontend code, and the terminal-suppression logic itself, were never
+wrong — the backend simply never delivered the terminal truth in time for
+that logic to see it.
+
+### 15.2 The fix
+
+`LiveTailService`'s `statusTracker` now enforces the invariant
+`TERMINAL_STATUS_DELIVERED_BEFORE_SSE_CLOSE = ALWAYS`:
+
+- The first time `result.status()` emits a terminal
+  `LiveSourceStatus` (`state().isTerminal()`), `statusTracker` now emits
+  ONE immediate `"status"` SSE event carrying that exact terminal
+  snapshot — never waiting for the next periodic heartbeat tick — and
+  only THEN starts the (unchanged) `terminalGrace` timer. A single
+  `AtomicBoolean` CAS guard (`terminalEmitted`) ensures this fires at
+  most once per session, so a session whose status flux emits several
+  terminal-adjacent updates never floods the client with duplicate
+  terminal events.
+- Non-terminal statuses are unaffected — they continue to reach the
+  browser only via the existing periodic heartbeat, exactly as before;
+  this fix does not turn every source-status mutation into its own SSE
+  event, only the one that matters for connection-close safety.
+- The grace timer itself (previously a detached
+  `Mono.delay(terminalGrace).subscribe(tick -> ...)` — a fire-and-forget
+  subscription with its OWN lifecycle, independent of the SSE
+  connection's own cancellation) is now returned as part of the very
+  `Flux` `statusTracker` produces (`Flux.concat(immediateTerminalStatus,
+  graceThenClose)`), which is itself only ever subscribed to as one arm
+  of the top-level `Flux.merge(...)`. It therefore shares that merge's
+  exact subscription lifecycle and is unconditionally disposed the moment
+  that subscription is cancelled for ANY reason — client disconnect,
+  explicit Stop (observed at this layer as the same HTTP-connection
+  cancellation), or the outer `connectionTimeout`. No orphan timer.
+
+Required ordering (now guaranteed): terminal source snapshot observed →
+terminal status SSE emitted → grace timer starts/runs → SSE closes after
+grace. No frontend code changed — `useLiveTail.ts`'s terminal-suppression
+logic (§14) was already correct; it simply never had the terminal status
+it needed, in time, until now.
+
+### 15.3 Tests
+
+`LiveTailServiceTest` (backend), using the REAL default
+`heartbeatInterval` (15s, never overridden, specifically so the defect's
+own exact numeric relationship — 15s heartbeat &gt; 10s grace — is what's
+actually verified, not a scaled-down stand-in):
+
+- `terminalStatusA_staleIsDeliveredImmediatelyNotOnTheNextHeartbeat`,
+  `terminalStatusB_expiredIsDeliveredImmediatelyNotOnTheNextHeartbeat`,
+  `terminalStatusC_noActiveTargetsIsDeliveredImmediatelyNotOnTheNextHeartbeat`
+  — one per terminal state (mission tests A/B/C): the very first SSE
+  event received (via `StepVerifier.withVirtualTime`) is the terminal
+  `"status"` event, with `expectNoEvent(terminalGrace - 200ms)` proving
+  nothing else (not a heartbeat, not the close) arrives before grace
+  elapses, and `verifyComplete()` proving the connection completes
+  exactly at grace — well before the 15s heartbeat would ever have fired
+  (mission test D, folded into the same assertion chain).
+- `terminalStatusE_cancellationDuringGraceCancelsTheTerminalTimerNoOrphanWork`
+  (mission test E): disposes the subscription while still inside the
+  grace window and asserts the underlying status source itself observes
+  `cancel()` — the standard, idiomatic proof in this codebase that
+  Reactor's own cancellation propagation reached the grace timer's
+  hosting operator, so no orphan timer keeps running after teardown.
+
+Frontend tests F and G (mission §6) required no new test: the existing
+`useLiveTail.test.ts` "terminal source state suppresses the generic
+automatic reconnect" describe block (§14) already drives the exact
+sequence these ask for — `latestMockEventSource().emit('status', {...
+terminal...})` (a real terminal `"status"` SSE event, exactly what this
+fix now guarantees the backend sends immediately) followed by
+`latestMockEventSource().emitError()` (the connection closing) — and
+already asserts `connectionState` becomes `'stopped'` with no new
+`EventSource` created (test F), while the sibling
+"NON-terminal source state... still uses the ordinary generic reconnect"
+test already asserts the generic reconnect still fires for an ordinary
+transport failure (test G). Since no frontend production code changed in
+this pass, this existing coverage is the valid, sufficient proof for F/G;
+re-running it (unchanged) confirms no regression.
+
+### 15.4 Validation
+
+| Check | Result |
+|---|---|
+| Backend compile (`./mvnw -q -o clean compile`) | `PASS` |
+| `LiveTailServiceTest` (targeted, 13 tests: 9 pre-existing + 4 new) | `PASS` — 13/13, run 4 times consecutively with no flakiness |
+| Backend full test suite (`./mvnw -q -o clean test`) | `PASS` — exit 0, 0 `ERROR]` matches, run twice |
+| `useLiveTail.test.ts` + `LiveTailPanel.test.tsx` (targeted) | `PASS` — 92/92, unchanged (no frontend production code touched) |
+| Frontend typecheck (`npm run typecheck`) | `PASS` |
+| Frontend production build (`npm run build`) | `PASS` |
+| Frontend full unit suite (`npx vitest run`) | `PASS` — 782/782, unchanged |
+| Playwright — full suite | see final mission response |
+| `TEST-INFRA-1` PNG restoration after the full E2E run | see final mission response |
+
+### 15.5 Files changed (terminal status delivery fix)
+
+Backend:
+- `backend/src/main/java/com/logexplorer/api/live/LiveTailService.java` (`statusTracker` now emits one immediate terminal `"status"` SSE event before arming the grace timer; the grace timer is now part of `statusTracker`'s own `Flux` rather than a detached `Mono.delay(...).subscribe(...)`)
+- `backend/src/test/java/com/logexplorer/source/StubLogSource.java` (new `withStatusFlux`, `followWithStatus` override — lets tests script a `LiveSourceStatus` sequence without a real OpenShift adapter)
+- `backend/src/test/java/com/logexplorer/api/live/LiveTailServiceTest.java` (4 new tests, §15.3 above)
+
+No frontend files changed — the frontend's terminal-reconnect-suppression
+logic (§14) was already correct; only the backend's delivery timing
+needed to change.
+
+**Correction recorded, history preserved.** §14's own "terminal-SSE
+grace-close" and "frontend terminal-state reconnect suppression" rows
+(`OWNER_REQUIREMENTS_REGISTER.md` OS-1E-31/OS-1E-32) are neither reopened
+nor silently rewritten — both mechanisms are unchanged and remain
+correct. This section records a genuine, narrow, additional correction:
+the periodic heartbeat alone was insufficient to guarantee terminal-state
+delivery, because the default heartbeat interval (15s) exceeds the
+default terminal grace (10s). The final invariant going forward is
+`TERMINAL_STATUS_IMMEDIATE_DELIVERY_BEFORE_CLOSE`. `UNTRACKED_OWNER_REQUIREMENTS=0`.
+slice's own stacked-PR posture.
