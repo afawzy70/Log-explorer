@@ -477,7 +477,19 @@ public class DirectPodLogProvider {
     return new PodLogTarget(namespace, null, podName, containerName);
   }
 
-  private List<PodLogTarget> resolveTargets(OpenShiftScope scope, String namespace) {
+  /**
+   * OS-1E reuse: package-private (was {@code private}) so {@link
+   * OpenShiftLiveTailProvider} can resolve the exact same bounded,
+   * deduplicated, deterministic Selected Pod+Container / Pod+Container=All
+   * / Pod=All+Workload / Pod=All+Workload=All target set for a live tail
+   * that search already uses — the mission's own requirement that live
+   * targets "exactly match search's already-implemented" resolution rather
+   * than re-deriving a parallel notion of scope (mission §5). The
+   * {@code maxPods} cap is applied here exactly as before; the
+   * {@code maxTargets} cap and dedup step remain {@link #resolveTargetPlan}
+   * only concerns and are re-applied independently by the live caller.
+   */
+  List<PodLogTarget> resolveTargets(OpenShiftScope scope, String namespace) {
     List<PodLogTarget> targets = new ArrayList<>();
     if (scope.selectedPod() != null) {
       PodSummary pod = scope.findPod(scope.selectedPod());
@@ -696,7 +708,7 @@ public class DirectPodLogProvider {
    * receive-time convention exactly). Falls back to the time this batch
    * was fetched only if the prefix is missing or unparseable - never null.
    */
-  private static Instant extractTimestamp(String line, Instant fallback) {
+  static Instant extractTimestamp(String line, Instant fallback) {
     int idx = line.indexOf(' ');
     if (idx < 0) {
       return fallback;
@@ -708,7 +720,7 @@ public class DirectPodLogProvider {
     }
   }
 
-  private static String stripTimestamp(String line) {
+  static String stripTimestamp(String line) {
     int idx = line.indexOf(' ');
     if (idx < 0) {
       return line;
@@ -730,7 +742,7 @@ public class DirectPodLogProvider {
    * more separate live reads that could each observe a different
    * connection generation than the rest of the operation.
    */
-  private static void requireConnectedWithSelectedProject(ConnectionOperationSnapshot connection) {
+  static void requireConnectedWithSelectedProject(ConnectionOperationSnapshot connection) {
     if (!connection.isConnected()) {
       throw new IllegalStateException("Not connected to OpenShift.");
     }

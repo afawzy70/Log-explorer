@@ -72,6 +72,7 @@ function baseLive(overrides: Partial<LiveTailHandle> = {}): LiveTailHandle {
     reconnectCount: 0,
     followNewest: true,
     unseenCount: 0,
+    sourceWarnings: [],
     start: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),
@@ -216,6 +217,23 @@ describe('LiveTailPanel', () => {
   it('reconnectCount === 0 shows no continuity notice', () => {
     renderPanel('live', { reconnectCount: 0 });
     expect(screen.queryByText(/reconnected/i)).not.toBeInTheDocument();
+  });
+
+  it('OS-1E: sourceWarnings renders each warning truthfully, in order', () => {
+    renderPanel('live', {
+      sourceWarnings: [
+        'Pod payment-api-1 / container app stopped — the pod or container no longer exists (404).',
+        'Only 2 pod/container targets are being tailed live; the resolved scope was larger and was capped (TARGET_CAP_REACHED).',
+      ],
+    });
+    const status = screen.getAllByRole('status').map((el) => el.textContent ?? '');
+    expect(status.some((text) => text.includes('the pod or container no longer exists (404)'))).toBe(true);
+    expect(status.some((text) => text.includes('TARGET_CAP_REACHED'))).toBe(true);
+  });
+
+  it('OS-1E: an empty sourceWarnings renders no warnings list at all', () => {
+    renderPanel('live', { sourceWarnings: [] });
+    expect(screen.queryByText(/TARGET_CAP_REACHED|LIVE_TARGET_STOPPED/i)).not.toBeInTheDocument();
   });
 
   it('clicking "Back to search results" calls live.exit', async () => {

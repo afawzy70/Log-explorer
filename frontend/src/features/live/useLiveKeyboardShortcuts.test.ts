@@ -17,6 +17,7 @@ function baseLive(overrides: Partial<LiveTailHandle> = {}): LiveTailHandle {
     reconnectCount: 0,
     followNewest: true,
     unseenCount: 0,
+    sourceWarnings: [],
     start: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),

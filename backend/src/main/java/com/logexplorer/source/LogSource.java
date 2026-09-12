@@ -2,6 +2,7 @@ package com.logexplorer.source;
 
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.FollowRequest;
+import com.logexplorer.core.model.LiveFollowResult;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceCapabilities;
@@ -106,6 +107,27 @@ public interface LogSource {
    */
   default Flux<CanonicalLogEvent> follow(FollowRequest request) {
     return Flux.error(new UnsupportedOperationException("Live tail is not supported by source " + id()));
+  }
+
+  /**
+   * OS-1E — the same live tail as {@link #follow}, plus a correlated
+   * {@link LiveFollowResult#warnings()} channel truthfully surfacing any
+   * partial-live-state condition discovered while THIS live session runs
+   * (one target permanently stopped after exhausting its bounded
+   * reconnect attempts, hit a permission/not-found wall, or the resolved
+   * target set was capped) — the same "runtime truth belongs to this
+   * call's own return value, never a shared field" discipline {@link
+   * #searchWithOutcome} already established for search, extended to an
+   * ongoing stream. See {@link LiveFollowResult}'s own javadoc for why
+   * both parts must come from one correlated construction.
+   *
+   * <p>The default wraps {@link #follow} with an always-empty warnings
+   * channel — correct for every source with no partial-live-state concept
+   * (Docker, Fixture, Loki). Only {@code source.openshift.OpenShiftLogSource}
+   * overrides this.
+   */
+  default Mono<LiveFollowResult> followWithWarnings(FollowRequest request) {
+    return Mono.just(new LiveFollowResult(follow(request), Flux.empty()));
   }
 
   /**

@@ -504,6 +504,73 @@ describe('useLiveTail (Legacy Remediation Slice 5)', () => {
     });
   });
 
+  describe('source warnings (OS-1E)', () => {
+    it('defaults to empty, and a "status" event populates it from the payload verbatim', () => {
+      const { result } = renderHook(() => useLiveTail());
+      expect(result.current.sourceWarnings).toEqual([]);
+
+      act(() => result.current.start('openshift', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() =>
+        latestMockEventSource().emit('status', {
+          droppedCount: 0,
+          serverTime: '2026-01-01T00:00:00Z',
+          warnings: ['Pod payment-api-1 / container app stopped — the pod or container no longer exists (404).'],
+        }),
+      );
+
+      expect(result.current.sourceWarnings).toEqual([
+        'Pod payment-api-1 / container app stopped — the pod or container no longer exists (404).',
+      ]);
+    });
+
+    it('a later "status" event with an empty warnings array clears a previously-shown warning', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('openshift', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() =>
+        latestMockEventSource().emit('status', {
+          droppedCount: 0,
+          serverTime: '2026-01-01T00:00:00Z',
+          warnings: ['some target stopped'],
+        }),
+      );
+      expect(result.current.sourceWarnings).toEqual(['some target stopped']);
+
+      act(() =>
+        latestMockEventSource().emit('status', { droppedCount: 0, serverTime: '2026-01-01T00:00:01Z', warnings: [] }),
+      );
+      expect(result.current.sourceWarnings).toEqual([]);
+    });
+
+    it('a fresh start() resets sourceWarnings back to empty', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('openshift', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() =>
+        latestMockEventSource().emit('status', {
+          droppedCount: 0,
+          serverTime: '2026-01-01T00:00:00Z',
+          warnings: ['some target stopped'],
+        }),
+      );
+      expect(result.current.sourceWarnings).toEqual(['some target stopped']);
+
+      act(() => result.current.start('openshift', []));
+      expect(result.current.sourceWarnings).toEqual([]);
+    });
+
+    it('a source with no warnings concept (e.g. Docker/Fixture) simply never populates it', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() =>
+        latestMockEventSource().emit('status', { droppedCount: 0, serverTime: '2026-01-01T00:00:00Z', warnings: [] }),
+      );
+      expect(result.current.sourceWarnings).toEqual([]);
+    });
+  });
+
   describe('no sensitive persistence', () => {
     it('never writes to localStorage or sessionStorage at any point in the lifecycle', () => {
       const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');

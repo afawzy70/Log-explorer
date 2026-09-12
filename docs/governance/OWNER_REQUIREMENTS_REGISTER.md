@@ -272,6 +272,39 @@ below during OS-1B or any slice before REL-1 itself.
 | EVIDENCE | None — genuinely not implemented. `desktop/` currently builds only through the existing Slice 9 CI-driven path (`jlink`/`jpackage`/Inno Setup inside `.github/workflows/windows-desktop.yml`), which is exactly the "packaging logic duplicated inside workflow YAML" pattern this new requirement says must eventually be replaced by repository-owned scripts the CI merely calls |
 | NOTES / CONFLICTS | This addendum does not change or weaken §7's existing REL-1 row (GitHub Releases as the end-user distribution surface, versioned installers, SHA-256 checksums, etc.) — it adds the *local, credential-free, CI-independent* reproducibility requirement on top of it, and requires the eventual CI implementation to route through the same local scripts rather than reimplementing packaging twice. `LOCAL_WINDOWS_PACKAGING_STATUS=APPROVED_PENDING_REL_1`, `LOCAL_MACOS_PACKAGING_STATUS=APPROVED_PENDING_REL_1`, `CI_REUSE_LOCAL_PACKAGING_SCRIPTS_REQUIREMENT=TRACKED`, `BUILD_DESKTOP_DOCUMENTATION_REQUIREMENT=TRACKED`. |
 
+### 7c. REL-1 addendum — Reproducible Windows .NET / NuGet Toolchain (registered during OS-1E, blocking evidence from OS-1D's own Windows Desktop gate)
+
+Registered per the OS-1E mission's own explicit instruction: **record
+now, do not implement now.** Background: during OS-1D's final merge gate,
+PR #42's Windows Desktop CI job failed six consecutive times (one
+original run plus five reruns spread across roughly 20+ minutes) with an
+**identical** generic NuGet restore infrastructure error
+(`NuGet.targets(198,5): error MSB4181: The "RestoreTask" task returned
+false but did not log an error.`) at `dotnet publish -r win-x64
+--self-contained true` for `desktop/launcher/LogExplorerLauncher.csproj`.
+Confirmed, not assumed, to be an external CI/toolchain issue rather than a
+code defect: zero `desktop/**` files were changed by the commit under
+test; the immediately-preceding commit on the same branch passed the
+identical workflow; Backend/Frontend/E2E remained green throughout.
+Reported and tracked as `WINDOWS_DESKTOP_GATE=BLOCKED_EXTERNAL_CI` —
+explicitly not force-retried indefinitely, not "fixed" by touching
+`csproj`/workflow/package versions merely to force a green run, and not
+converted to `PASS`.
+
+| Field | Value |
+|---|---|
+| ID | REL-1 (addendum) |
+| NAME | Reproducible Windows .NET / NuGet Toolchain |
+| STATUS | `APPROVED_PENDING` — tracked, **not started**, not implemented |
+| CATEGORY | CI / build infrastructure |
+| OWNER_INTENT | The Windows Desktop build's .NET/NuGet toolchain must be pinned and its restore step deterministic, so a transient upstream NuGet infrastructure hiccup cannot repeatedly block an otherwise-approved, otherwise-green PR merge the way it blocked PR #42. |
+| REQUIRED_FUTURE_BEHAVIOR | A pinned .NET SDK version (`global.json` or an equivalent repository-owned pin) rather than "whatever the CI runner image currently ships"; a deterministic/locked NuGet restore (a lock file or an equivalent reproducibility mechanism) rather than a live, unlocked resolve against the NuGet feed on every run; one unified CI/local toolchain contract, so a developer's local build and CI resolve the exact same dependency graph; bounded, diagnosable retry behavior for a genuinely transient restore failure (distinct from silently retrying forever or from a raw unexplained `MSB4181`). |
+| EXPECTED_FUTURE_DESIGN_DIRECTION | Integrates with, rather than duplicates, §7b's own Local Reproducible Desktop Packaging requirement — the same "one repository-owned entry point, CI calls it too" discipline extended to the .NET/NuGet layer specifically. |
+| TARGET_SLICE_OR_PHASE | REL-1 |
+| ACCEPTANCE_CRITERIA | Deferred to REL-1's own implementation mission — this row exists to guarantee the requirement is never silently lost between now and then |
+| EVIDENCE | `WINDOWS_DESKTOP_GATE=BLOCKED_EXTERNAL_CI` evidence gathered during the "OS-1D Final Windows Gate & Merge" mission (workflow run id, failed step, exact restore error text, confirmed unchanged PR #42 HEAD/tree across every rerun) — the failure this addendum exists to make structurally less likely to recur, not proof the addendum has been implemented |
+| NOTES / CONFLICTS | Does not change or weaken §7b's existing addendum — this is a narrower, .NET/NuGet-specific companion to it, surfaced by a real incident rather than proposed speculatively. Not implemented in OS-1D, OS-1E, or any slice before REL-1 itself. |
+
 ---
 
 ## 8. Desktop Branding
@@ -589,6 +622,39 @@ own fixes remain correct and are not undone; this pass closes the deeper
 "captured through one atomic read, not several" gap those fixes still
 had. `TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`, untouched.
 `REL-1` remains confirmed `APPROVED_PENDING`, untouched.
+
+### 12k. OS-1E — OpenShift Live Tail
+
+Stacked on PR #42's approved HEAD while that PR remained externally
+blocked on the Windows Desktop CI gate (§7c). See
+`docs/verification/OS_1E_OPENSHIFT_LIVE_REPORT.md` for the full account.
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| OS-1E-1 | Direct `follow=true` Kubernetes/OpenShift pod-log streaming — no `oc logs -f`, no shell, no exec/attach/port-forward, no runtime `oc` dependency | `VERIFIED` | `OpenShiftApiClient#followPodLog`; `bodyToFlux(DataBuffer.class)`, never `bodyToMono` |
+| OS-1E-2 | A genuinely streaming, bounded-memory line decoder — never materializes the unbounded body, releases every `DataBuffer`, bridges downstream cancellation to the upstream subscription | `VERIFIED` | `OpenShiftApiClient#decodeLines`/`LineDecodingSubscriber`/`LiveLineDecoder`; `OpenShiftApiClientLiveStreamTest` (15 tests, incl. real pooled-buffer ref-count release proof and real cancellation propagation) |
+| OS-1E-3 | `\n`-delimited line framing is UTF-8-safe across arbitrary chunk boundaries, with a bounded max-line-size safety valve that trims rather than garbles | `VERIFIED` | `LiveLineDecoder`; chunk-boundary-inside-a-UTF-8-character and forced-cutoff-at-a-character-boundary tests |
+| OS-1E-4 | Live targets are resolved through the exact same OS-1B/OS-1C scope logic search already uses (Selected Pod+Container / Pod+Container=All / Pod=All+Workload / Pod=All+Workload=All), bounded by the same `maxPods`/`maxTargets` — never a second, parallel notion of scope | `VERIFIED` | `DirectPodLogProvider#resolveTargets` widened to package-private, reused directly by `OpenShiftLiveTailProvider`; `OpenShiftLiveTailProviderTest` (target-cap and multi-target-merge tests) |
+| OS-1E-5 | The live-session start captures connection state via exactly one atomic `OpenShiftSession#operationSnapshot()` read, reusing OS-1D's own mechanism rather than re-implementing it | `VERIFIED` | `OpenShiftLiveTailProvider#follow`/`startSession` |
+| OS-1E-6 | Per-target bounded reconnect, classified by failure kind (401 permanent + generation-guarded session expiry; 403/404 permanent; transient bounded exponential backoff) — one target's failure never stops another | `VERIFIED` | `OpenShiftLiveTailProvider#reconnectOrStop`; `OpenShiftLiveTailProviderTest` (generation-isolation, 403/404-zero-reconnect, transient-recovers, transient-gives-up-after-max-attempts tests) |
+| OS-1E-7 | A zero-target or all-targets-permanently-stopped session completes the event stream truthfully rather than hanging in a silent "quiet LIVE" | `VERIFIED` | `OpenShiftLiveTailProviderTest#zeroResolvedTargetsCompletesTheStreamAndWarnsRatherThanHanging` |
+| OS-1E-8 | New replicas from a rolling deployment are not auto-attached to a running live session (`LIVE_TARGET_SNAPSHOT=IMMUTABLE`) — Kubernetes Watch-based re-resolution is explicitly deferred, not introduced casually | `VERIFIED` (as a deliberate, documented non-behavior) | `OpenShiftLiveTailProvider#boundedTargets` resolved once at session start, never re-resolved; report §7 |
+| OS-1E-9 | Truthful partial-live-state disclosure (target stopped, target cap reached) reaches the existing generic Live status surface — never fabricated, never a new OpenShift-only side channel | `VERIFIED` | New `LiveFollowResult`/`LogSource#followWithWarnings` default method; `LiveTailService.StatusPayload.warnings`; `OpenShiftLiveTailProviderTest` warnings assertions |
+| OS-1E-10 | Filtering/masking fully reused from the existing canonical pipeline — server-side only, no raw protected value ever reaches the browser via the live path | `VERIFIED` | `LiveTailService#follow` masks every event via the same `EventMapper` every endpoint uses, unchanged by this slice |
+| OS-1E-11 | The existing generic Live architecture (`LiveTailController`/`LiveTailService`/`LiveTailGuard`/`useLiveTail`/`LiveTailPanel`) is reused end to end — no parallel OpenShift-specific Live product, no `OpenShiftLiveTailPanel` | `VERIFIED` | §2 of the OS-1E report; zero changes to `useLiveTail.ts`'s reconnect/lifecycle logic beyond the additive `sourceWarnings` field |
+| OS-1E-12 | `liveTail` capability flips `true` only after full implementation and the full test matrix passed | `VERIFIED` | `OpenShiftLogSource#capabilities()`; `OpenShiftSecurityBoundariesTest`; real running-backend `/api/v1/sources` check; `os-1a-openshift-connection.spec.ts` real-browser pin |
+| OS-1E-13 | Real OpenShift cluster verification | `BLOCKED_CREDENTIALS` | Consistent with every prior OS-1x slice's own honest status; no cluster behavior fabricated |
+
+**OS-1E pass.** No `ContextTargetProofCodec`/`ConnectionOperationSnapshot`/
+`resolveTargetPlan` design changed — both reused exactly as OS-1D left
+them. No historical search, context, or correlation behavior changed.
+One new deferred requirement registered per this slice's own mission:
+`REL-1` addendum, "Reproducible Windows .NET / NuGet Toolchain" (§7c),
+`APPROVED_PENDING`, **not implemented**. `TEST-INFRA-1` remains
+`APPROVED_PENDING_HARDENING`, untouched — re-confirmed via the same
+PNG-restoration mitigation after this slice's own full E2E run.
+`REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`, consistent with every prior
+OS-1x slice.
 
 ---
 
@@ -921,6 +987,27 @@ only reads, the display-only health badge) are documented explicitly,
 not silently left unexplained. `TEST-INFRA-1` remains
 `APPROVED_PENDING_HARDENING`, untouched. `REL_1` remains confirmed
 `APPROVED_PENDING`, untouched.
+
+**OS-1E pass (§12k above).** Reconciled against
+`docs/verification/OS_1E_OPENSHIFT_LIVE_REPORT.md`. Executed as a stacked
+continuation on PR #42's approved HEAD while that PR remained externally
+blocked on the Windows Desktop CI gate — zero commits on
+`os/1d-openshift-context-correlation`, zero changes to PR #42's own diff.
+Confirmed the entire existing generic Live architecture (transport,
+reconnect, lifecycle, masking, buffering) needed no redesign — OS-1E's
+real new work is a genuinely streaming `follow=true` line decoder reusing
+OS-1C's own hardened cancellation-bridge pattern, and a multi-target
+orchestration layer reusing OS-1B's scope resolution and OS-1D's atomic
+snapshot verbatim. A new, previously-untracked requirement surfaced and
+was registered (not implemented), per this slice's own mission: `REL-1`
+addendum "Reproducible Windows .NET / NuGet Toolchain" (§7c), tracking the
+real, observed PR #42 Windows Desktop CI infrastructure failure so a
+transient NuGet restore issue cannot silently block a future merge the
+same way again. `liveTail` flips `true` only after full implementation
+and its full test matrix passed. `TEST-INFRA-1` remains
+`APPROVED_PENDING_HARDENING`, untouched. `REL_1`'s existing rows (§7, §7b)
+remain confirmed `APPROVED_PENDING`, untouched — this pass adds §7c
+alongside them, not in place of them. `REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`.
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0

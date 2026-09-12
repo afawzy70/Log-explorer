@@ -11,10 +11,12 @@ import com.logexplorer.source.LogSourceRegistry;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.BufferOverflowStrategy;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 /**
  * Orchestrates one live tail (IMPLEMENTATION_PLAN.md "Phase J",
@@ -58,39 +60,60 @@ public class LiveTailService {
             Reason.LIVE_TAIL_NOT_SUPPORTED, "Live tail is not supported for source " + sourceId);
       }
 
-      AtomicLong droppedCount = new AtomicLong();
-      Flux<ServerSentEvent<Object>> logEvents = source.follow(new FollowRequest(sourceId, services, composeProject))
-          // "Bounded buffers; backpressure with a dropped-count notice"
-          // (HANDOVER.md §18.4) - a slow SSE consumer (or a burst from the
-          // source) must never accumulate an unbounded backlog server-side;
-          // the oldest buffered event is dropped instead, counted, and
-          // reported via the periodic status event below.
-          .onBackpressureBuffer(
-              properties.getServerBufferSize(),
-              dropped -> droppedCount.incrementAndGet(),
-              BufferOverflowStrategy.DROP_OLDEST)
-          // "Normalize and mask before emit" (HANDOVER.md §18.4) - the
-          // exact same EventMapper/MaskingService boundary every other
-          // endpoint (/search, /context, /journey) already uses.
-          .map(event -> logEvent(eventMapper.toDto(event)));
+      FollowRequest request = new FollowRequest(sourceId, services, composeProject);
+      return source.followWithWarnings(request).flatMapMany(result -> {
+        AtomicLong droppedCount = new AtomicLong();
+        // OS-1E — the most recent truthful partial-live-state disclosure
+        // from this exact session's own warnings() channel (mission §28/
+        // §29). Sampled once per heartbeat, never once per event — a
+        // namespace with several reconnecting targets must not flood the
+        // client with one status event per transient condition. Empty for
+        // every source but OpenShift, whose default `warnings()` is
+        // `Flux.empty()` and therefore never updates this reference at all.
+        AtomicReference<List<String>> latestWarnings = new AtomicReference<>(List.of());
 
-      // A real bug found via this phase's own testing (a slow/limited
-      // downstream demand scenario, exactly what a genuinely slow SSE
-      // client looks like): `Flux.interval` has no buffer of its own -
-      // without `onBackpressureLatest()` here, a tick arriving while the
-      // downstream hasn't yet requested one is a hard `OverflowException`
-      // ("Could not emit tick ... due to lack of requests") that would
-      // kill the *entire* connection, log events included, over nothing
-      // more than a missed heartbeat. `onBackpressureLatest()` is exactly
-      // right for this payload's own semantics too: only the most recent
-      // dropped-count/timestamp is ever meaningful, so silently
-      // superseding a stale pending tick with a fresher one loses nothing.
-      Flux<ServerSentEvent<Object>> status = Flux.interval(properties.getHeartbeatInterval())
-          .onBackpressureLatest()
-          .map(tick -> statusEvent(droppedCount.get()));
+        Flux<ServerSentEvent<Object>> logEvents = result.events()
+            // "Bounded buffers; backpressure with a dropped-count notice"
+            // (HANDOVER.md §18.4) - a slow SSE consumer (or a burst from the
+            // source) must never accumulate an unbounded backlog server-side;
+            // the oldest buffered event is dropped instead, counted, and
+            // reported via the periodic status event below.
+            .onBackpressureBuffer(
+                properties.getServerBufferSize(),
+                dropped -> droppedCount.incrementAndGet(),
+                BufferOverflowStrategy.DROP_OLDEST)
+            // "Normalize and mask before emit" (HANDOVER.md §18.4) - the
+            // exact same EventMapper/MaskingService boundary every other
+            // endpoint (/search, /context, /journey) already uses.
+            .map(event -> logEvent(eventMapper.toDto(event)));
 
-      return guard.guard(Flux.merge(logEvents, status))
-          .take(properties.getConnectionTimeout());
+        // Subscribed alongside logEvents/status (via the merge below) so
+        // its lifecycle - cancellation on client disconnect/Stop included
+        // - is the SAME lifecycle as the rest of this SSE connection,
+        // never a separately-forgotten subscription. Emits no SSE event
+        // of its own; it only updates latestWarnings as a side effect.
+        Flux<ServerSentEvent<Object>> warningsTracker = result.warnings()
+            .doOnNext(latestWarnings::set)
+            .flatMap(w -> Mono.<ServerSentEvent<Object>>empty());
+
+        // A real bug found via this phase's own testing (a slow/limited
+        // downstream demand scenario, exactly what a genuinely slow SSE
+        // client looks like): `Flux.interval` has no buffer of its own -
+        // without `onBackpressureLatest()` here, a tick arriving while the
+        // downstream hasn't yet requested one is a hard `OverflowException`
+        // ("Could not emit tick ... due to lack of requests") that would
+        // kill the *entire* connection, log events included, over nothing
+        // more than a missed heartbeat. `onBackpressureLatest()` is exactly
+        // right for this payload's own semantics too: only the most recent
+        // dropped-count/warnings/timestamp is ever meaningful, so silently
+        // superseding a stale pending tick with a fresher one loses nothing.
+        Flux<ServerSentEvent<Object>> status = Flux.interval(properties.getHeartbeatInterval())
+            .onBackpressureLatest()
+            .map(tick -> statusEvent(droppedCount.get(), latestWarnings.get()));
+
+        return guard.guard(Flux.merge(logEvents, warningsTracker, status))
+            .take(properties.getConnectionTimeout());
+      });
     });
   }
 
@@ -98,11 +121,22 @@ public class LiveTailService {
     return ServerSentEvent.<Object>builder(dto).event("log").build();
   }
 
-  private ServerSentEvent<Object> statusEvent(long droppedCount) {
-    return ServerSentEvent.<Object>builder(new StatusPayload(droppedCount, Instant.now())).event("status").build();
+  private ServerSentEvent<Object> statusEvent(long droppedCount, List<String> warnings) {
+    return ServerSentEvent.<Object>builder(new StatusPayload(droppedCount, Instant.now(), warnings))
+        .event("status")
+        .build();
   }
 
-  /** The periodic "status" event's payload - also this stream's heartbeat (HANDOVER.md §18.4 "heartbeat"). */
-  public record StatusPayload(long droppedCount, Instant serverTime) {
+  /**
+   * The periodic "status" event's payload - also this stream's heartbeat
+   * (HANDOVER.md §18.4 "heartbeat"). {@code warnings} (OS-1E) is always
+   * {@code []} for every source that doesn't override {@link
+   * LogSource#followWithWarnings} - never {@code null}, so the frontend
+   * never needs a null-check to render it.
+   */
+  public record StatusPayload(long droppedCount, Instant serverTime, List<String> warnings) {
+    public StatusPayload {
+      warnings = warnings == null ? List.of() : List.copyOf(warnings);
+    }
   }
 }

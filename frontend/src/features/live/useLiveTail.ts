@@ -92,6 +92,16 @@ export function useLiveTail() {
   const [reconnectCount, setReconnectCount] = useState(0);
   const [followNewest, setFollowNewestState] = useState(true);
   const [unseenCount, setUnseenCount] = useState(0);
+  /**
+   * OS-1E — the source's own truthful partial-live-state disclosure (a
+   * target hit a permission/not-found wall, gave up reconnecting, or the
+   * resolved target set was capped), taken verbatim from the most recent
+   * "status" heartbeat's `warnings` field. Empty for every source that
+   * has nothing to report (the backend default), so this is simply
+   * always `[]` for Docker/Fixture/Loki - never a source-specific UI
+   * branch.
+   */
+  const [sourceWarnings, setSourceWarnings] = useState<string[]>([]);
 
   const sessionRef = useRef(0);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -219,6 +229,7 @@ export function useLiveTail() {
         try {
           const status = JSON.parse(e.data) as LiveStatusPayload;
           setServerDroppedCount(status.droppedCount);
+          setSourceWarnings(status.warnings ?? []);
         } catch {
           // a malformed heartbeat/status tick is never fatal - just skip it
         }
@@ -282,6 +293,7 @@ export function useLiveTail() {
       setReconnectCount(0);
       setFollowNewestState(true);
       setUnseenCount(0);
+      setSourceWarnings([]);
       setConnectionState('connecting');
 
       const args: StartArgs = { sourceId, services, composeProject };
@@ -365,6 +377,7 @@ export function useLiveTail() {
     setReconnectCount(0);
     setFollowNewestState(true);
     setUnseenCount(0);
+    setSourceWarnings([]);
   }, [closeEventSource, clearReconnectTimer, clearFlushInterval]);
 
   /**
@@ -405,6 +418,7 @@ export function useLiveTail() {
     reconnectCount,
     followNewest,
     unseenCount,
+    sourceWarnings,
     start,
     pause,
     resume,
