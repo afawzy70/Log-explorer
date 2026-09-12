@@ -20,6 +20,8 @@ import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -1039,6 +1041,92 @@ class DirectPodLogProviderTest {
             baseRequest().pod("pod-a").containerName("app").contextTargetProof(event.contextTargetProof()).build()))
         .expectErrorMatches(e -> e instanceof OpenShiftApiException ex && ex.kind() == Kind.UPSTREAM_UNAVAILABLE)
         .verify();
+  }
+
+  // ------------------------------------------------------------ OS-1D final review recovery: generation snapshot consistency (mission §7)
+
+  @Test
+  void inFlight_aProofPathContextOperationCompletesAgainstItsCapturedConnectionEvenWhenTheSessionReconnectsMidFlight()
+      throws Exception {
+    // §7.A/§7.D - "ghost-pod" is not in current scope, so this exercises
+    // the proof-verification path (Rule B). The synchronous capture
+    // (generation/server/token) and the authorization decision both
+    // happen before the HTTP call is even dispatched - by the time
+    // subscribe() returns control here, only the slow (300ms) fixture
+    // response is still pending. Reconnecting to a second, independent
+    // mock cluster ("Connection B") right after subscribe() simulates the
+    // session moving on strictly AFTER this operation's own snapshot was
+    // already captured and already used to authorize the target - the
+    // operation must still complete against Connection A's server/token,
+    // and Connection B's server must never be contacted at all.
+    server.setFixture("ghost-pod", "app",
+        Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "from-connection-A")), 300));
+    String proofForA = validProof("ghost-pod", "app");
+
+    try (MockOpenShiftPodLogServer serverB = new MockOpenShiftPodLogServer("other-namespace")) {
+      CompletableFuture<CanonicalLogEvent> future = new CompletableFuture<>();
+      provider.search(baseRequest().pod("ghost-pod").containerName("app").contextTargetProof(proofForA).build())
+          .next()
+          .subscribe(future::complete, future::completeExceptionally);
+
+      OcLoginCommand reconnectToB = new OcLoginCommand(URI.create(serverB.baseUrl()), TOKEN, null);
+      long generationB =
+          session.connect(reconnectToB, "Other", "developer", List.of("other-namespace"), ProjectDiscovery.Api.PROJECTS, null);
+      assertThat(generationB).isNotEqualTo(generation);
+
+      CanonicalLogEvent event = future.get(5, TimeUnit.SECONDS);
+
+      assertThat(event.message()).isEqualTo("from-connection-A");
+      assertThat(serverB.requestCount()).isZero(); // Connection A's operation never touched Connection B
+      assertThat(server.requestCount()).isEqualTo(1); // exactly the one real call, to Connection A
+    }
+  }
+
+  @Test
+  void inFlight_theCurrentScopePathAlsoCompletesAgainstItsCapturedConnectionEvenWhenTheSessionReconnectsMidFlight()
+      throws Exception {
+    // §7.E - the same proof as above, but for a target still in current
+    // OS-1B scope (Rule A, no proof consulted at all) - proves that path
+    // is equally immune to a mid-flight reconnect, not merely the
+    // proof-verification path.
+    seedPods(List.of(pod("pod-a", List.of("app"))), true);
+    server.setFixture("pod-a", "app",
+        Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "in-scope-from-A")), 300));
+
+    try (MockOpenShiftPodLogServer serverB = new MockOpenShiftPodLogServer("other-namespace")) {
+      CompletableFuture<CanonicalLogEvent> future = new CompletableFuture<>();
+      provider.search(baseRequest().pod("pod-a").containerName("app").build())
+          .next()
+          .subscribe(future::complete, future::completeExceptionally);
+
+      OcLoginCommand reconnectToB = new OcLoginCommand(URI.create(serverB.baseUrl()), TOKEN, null);
+      long generationB =
+          session.connect(reconnectToB, "Other", "developer", List.of("other-namespace"), ProjectDiscovery.Api.PROJECTS, null);
+      assertThat(generationB).isNotEqualTo(generation);
+
+      CanonicalLogEvent event = future.get(5, TimeUnit.SECONDS);
+
+      assertThat(event.message()).isEqualTo("in-scope-from-A");
+      assertThat(serverB.requestCount()).isZero();
+    }
+  }
+
+  @Test
+  void aProofNamingADifferentGenerationThanTheOperationsOwnCapturedSnapshotIsRejected() {
+    // §7.C - the operation's own captured generation (this test's
+    // `generation` field, set once in setUp()) governs authorization, not
+    // whatever the live session happens to report. A proof minted for any
+    // other generation number is rejected purely on that mismatch,
+    // independent of live session state.
+    String proofForADifferentGeneration =
+        contextTargetProofCodec.encode("openshift", generation + 1, NAMESPACE, "ghost-pod", "app");
+
+    StepVerifier.create(provider.search(
+            baseRequest().pod("ghost-pod").containerName("app").contextTargetProof(proofForADifferentGeneration).build()))
+        .expectErrorMatches(e -> e instanceof GuardrailViolationException ex
+            && ex.reason() == GuardrailViolationException.Reason.INVALID_CONTEXT_TARGET)
+        .verify();
+    assertThat(server.requestCount()).isZero();
   }
 
   // ------------------------------------------------------------ OS-1D: correlation / trace / journey search

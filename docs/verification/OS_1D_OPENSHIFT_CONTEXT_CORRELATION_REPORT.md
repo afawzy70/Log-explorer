@@ -543,3 +543,111 @@ DISAPPEARED_POD_CONTEXT_REQUIRES_SERVER_TRUSTED_HISTORICAL_SCOPE_PROOF
 | `REAL_OPENSHIFT_1D` | `BLOCKED_CREDENTIALS`, unchanged — this fix is proven against `MockOpenShiftPodLogServer` (real HTTP, deterministic fake Kubernetes pod-log API), not a live cluster; no real-cluster evidence is claimed |
 
 No test was skipped, weakened, or deleted to reach green.
+
+## 15. OS-1D FINAL REVIEW RECOVERY — context proof generation snapshot consistency
+
+A third review pass on PR #42 (reviewed HEAD `962ae379ccb66cd477465146247bf4965528c8b2`)
+found a time-of-check/time-of-use inconsistency in §14's own authorization
+gate, fixed without redesigning the codec, the HMAC format, or any of the
+source/namespace/pod/container binding rules §14 already established.
+
+### The defect
+
+`DirectPodLogProvider#searchWithOutcome` already captures an immutable
+operation snapshot at its very top — `generation`, `server`, `token`,
+`caPath`, `scope` — exactly per OS-1C's own long-established "Immutable
+scope snapshot" discipline (class javadoc §"Immutable scope snapshot").
+§14's new `authorizeNarrowContextTarget`, however, verified the context
+proof using `session.generation()` — a **live** read — instead of the
+`generation` local variable that was already sitting in scope at the call
+site. The rest of the operation (the actual pod-log fetch) still used the
+captured `server`/`token`, so a context request whose authorization step
+happened to observe a *different* live generation than the one that would
+go on to execute the fetch would have been checked against the wrong
+connection's identity — `AUTHORIZATION_SNAPSHOT == EXECUTION_SNAPSHOT` did
+not actually hold in every code path, even though the byte-for-byte
+authorization *rules* (§14) were correct.
+
+### The fix
+
+`generation` is now threaded as an explicit parameter, the same way
+`server`/`token`/`caPath`/`scope` already were:
+
+```
+searchWithOutcome (captures generation once)
+  → resolveTargetPlan(scope, namespace, request, generation)
+    → authorizeNarrowContextTarget(scope, namespace, pod, container, request, generation)
+      → contextTargetProofCodec.verify(proof, SOURCE_ID, generation, namespace, pod, container)
+```
+
+`authorizeNarrowContextTarget` no longer calls `session.generation()` at
+all. `describeScopeWarnings` (the other, pre-search caller of
+`resolveTargetPlan`) had the analogous issue in miniature — it read
+`session.selectedProject()` twice (once for its own null-check, once as
+the `namespace` argument) and had no captured `generation` at all — fixed
+by capturing `generation`/`namespace`/`scope` once, together, at the top
+of that method too, then threading them through consistently. This does
+not change `describeScopeWarnings`' own external behavior (it is still
+correctly "live" in the sense that a *fresh call* always reflects current
+session state, which is exactly right for a synchronous, no-network,
+called-once-per-request method) — it only removes the possibility of a
+single invocation observing two different generations of session state.
+
+No change was made to `ContextTargetProofCodec`, the HMAC envelope format,
+or any of the field-by-field binding rules §14 established (source,
+namespace, pod, container) — only *which value* is compared against the
+proof's own `connectionGeneration` field changed, from a live read to the
+caller's own already-captured snapshot.
+
+### Concurrency tests added (mission §7, all in `DirectPodLogProviderTest.java`)
+
+| Test | Mission ref | Proves |
+|---|---|---|
+| `inFlight_aProofPathContextOperationCompletesAgainstItsCapturedConnectionEvenWhenTheSessionReconnectsMidFlight` | A, D | A genuine reconnect (to an independent second mock cluster, "Connection B") landing strictly after this operation's synchronous capture+authorization has already run, but while its slow (300ms) HTTP response is still pending, never causes the operation to touch Connection B; it completes using exactly Connection A's server/token — the same connection its own authorization decision was made against |
+| `inFlight_theCurrentScopePathAlsoCompletesAgainstItsCapturedConnectionEvenWhenTheSessionReconnectsMidFlight` | E | The same proof, for the still-in-current-scope (no-proof) path — the current-scope authorization path is equally immune to a mid-flight reconnect |
+| `aProofNamingADifferentGenerationThanTheOperationsOwnCapturedSnapshotIsRejected` | C | A proof encoding a generation number that differs from the operation's own captured value is rejected on that basis alone, independent of live session state |
+| `g_aProofFromAnOldConnectionGenerationIsRejectedAfterReconnect` (pre-existing, re-verified) | B, F | A context request that *starts* after a real reconnect, carrying a proof issued under the old generation, is rejected — unchanged, still green after this recovery |
+
+**How the in-flight tests achieve genuine interleaving, deterministically.**
+`DirectPodLogProvider`'s synchronous capture-and-authorize logic runs
+entirely on the subscribing thread before the reactive chain ever hands
+off to Reactor Netty's non-blocking I/O — so by the time a non-blocking
+`.subscribe(...)` call returns control to the test thread, authorization
+has already completed and the HTTP request has already been dispatched
+(only its response, deliberately delayed 300ms server-side, is still
+pending). The test then reconnects on the same (test) thread — a real,
+observable state change on `OpenShiftSession` — before awaiting the
+operation's result via a `CompletableFuture` with a 5s timeout. This is
+not a timing-sensitive race in the flaky sense: the ordering (subscribe →
+authorization already done → reconnect → eventual completion) is
+guaranteed by Reactor Netty's dispatch semantics, not by chance — verified
+by running `DirectPodLogProviderTest` three consecutive times with no
+change in outcome.
+
+### Documentation/history correction
+
+This section is itself the correction, per the mission's own "do not
+erase the previous authorization recovery history" instruction: §14 above
+is left exactly as originally written — its rules, its threat model, and
+its own tests all remain accurate — this section names the additional,
+narrower snapshot-consistency defect §14's own implementation still had,
+and the fix, explicitly:
+
+```
+AUTHORIZATION_SNAPSHOT == EXECUTION_SNAPSHOT
+```
+
+### Validation
+
+| Check | Result |
+|---|---|
+| `./mvnw test -Dtest=DirectPodLogProviderTest` (3 consecutive runs) | PASS — 73/73 every run, 0 failures |
+| `./mvnw test -Dtest='com.logexplorer.source.openshift.**,com.logexplorer.core.search.**'` | PASS — 365 tests, 0 failures |
+| `./mvnw test` (full backend suite) | PASS — 942 tests, 0 failures, 0 errors |
+| `npm run test` (full frontend unit suite) | PASS — 761 tests, 0 failures (no frontend file changed this pass) |
+| `npm run typecheck` | PASS |
+| `npm run build` | PASS, unchanged bundle |
+| Full Playwright E2E | see final mission response |
+| `REAL_OPENSHIFT_1D` | `BLOCKED_CREDENTIALS`, unchanged |
+
+No test was skipped, weakened, or deleted to reach green.

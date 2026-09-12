@@ -543,6 +543,24 @@ full account. The "pod churn is honest by construction" and "`contextView`
 is correctly `true`" claims above remain accurate; only the authorization
 mechanism underneath the disappeared-pod path was corrected.
 
+**[EVIDENCE, established by the OS-1D final review recovery — CORRECTS
+the paragraph immediately above]** The proof-verification gate this
+paragraph describes checked the proof's connection-generation field
+against a *live* `session.generation()` read rather than the same
+immutable operation snapshot (`generation`/`server`/`token`/`caPath`/
+`scope`, captured once at the top of `DirectPodLogProvider#searchWithOutcome`)
+that governs the rest of the operation — a time-of-check/time-of-use gap,
+not a reopening of the authorization rules themselves (source/namespace/
+pod/container binding, the HMAC envelope, and the current-scope-vs-proof
+decision tree all remain exactly as described above). Corrected: the
+already-captured `generation` is now threaded through
+`resolveTargetPlan`/`authorizeNarrowContextTarget` explicitly; no
+`session.generation()` call remains anywhere in the authorization path.
+Proven with genuine interleaving — an actual reconnect to an independent
+second mock cluster, landing after an operation's own snapshot was
+captured, never causes that operation to touch the new connection. See
+`OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §15.
+
 ---
 
 ## 13. Loki's role after first-class OpenShift

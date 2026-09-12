@@ -537,6 +537,31 @@ No other OS-1D/1C/1B/1A requirement changed status. `TEST-INFRA-1` remains
 `APPROVED_PENDING_HARDENING`, untouched. `REL-1` remains confirmed
 `APPROVED_PENDING`, untouched.
 
+### 12i. OS-1D FINAL REVIEW RECOVERY — context proof generation snapshot consistency
+
+See `docs/verification/OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §15
+for the full account, including the correction of §14's own claim that
+its authorization gate fully preserved OS-1C's "immutable scope snapshot"
+discipline — it did, for every field except `generation`, which was
+re-read live at verification time instead of using the caller's own
+already-captured value.
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| OS-1D-26 | Context target proof verification uses the operation's own already-captured connection generation, never a live re-read of `session.generation()` | `VERIFIED` | `DirectPodLogProvider#authorizeNarrowContextTarget` (no `session.generation()` call remains in the authorization path); `aProofNamingADifferentGenerationThanTheOperationsOwnCapturedSnapshotIsRejected` |
+| OS-1D-27 | The connection generation used to authorize a context target and the server/token used to actually perform the pod-log read belong to the same immutable snapshot — no mixed-generation execution | `VERIFIED` — real interleaving, not merely architectural | `inFlight_aProofPathContextOperationCompletesAgainstItsCapturedConnectionEvenWhenTheSessionReconnectsMidFlight` (independent second mock cluster proves zero cross-contamination) |
+| OS-1D-28 | The current-scope (no-proof) authorization path is equally immune to a mid-flight reconnect | `VERIFIED` | `inFlight_theCurrentScopePathAlsoCompletesAgainstItsCapturedConnectionEvenWhenTheSessionReconnectsMidFlight` |
+| OS-1D-29 | A context request that starts after a real reconnect, carrying a proof issued under the old connection generation, remains rejected (regression-checked, unchanged) | `VERIFIED` — pre-existing test re-verified passing unmodified | `g_aProofFromAnOldConnectionGenerationIsRejectedAfterReconnect` |
+| OS-1D-30 | `describeScopeWarnings` captures its own generation/namespace/scope once, together, rather than reading session state piecemeal across the method | `VERIFIED` | `DirectPodLogProvider#describeScopeWarnings` (single capture block at the top) |
+
+**OS-1D FINAL REVIEW RECOVERY pass.** No `ContextTargetProofCodec` design
+element, HMAC format, or field-binding rule from §12h changed — only which
+value (captured vs. live) authorization compares the proof's own
+generation field against. None of OS-1D-1 through OS-1D-25's `VERIFIED`
+rows were reopened; §14's evidence gains the correction above, not a
+rewrite. `TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`, untouched.
+`REL-1` remains confirmed `APPROVED_PENDING`, untouched.
+
 ---
 
 ## 13. Out of Current Scope
@@ -820,6 +845,26 @@ proving zero cluster calls for every unauthorized-target case. The valid
 unaffected and re-verified working through the corrected path. `TEST-INFRA-1`
 remains `APPROVED_PENDING_HARDENING`, untouched. `REL_1` remains confirmed
 `APPROVED_PENDING`, untouched.
+
+**OS-1D FINAL REVIEW RECOVERY pass (§12i above).** Reconciled against
+`docs/verification/OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §15. A
+narrower time-of-check/time-of-use defect was found in §12h's own
+authorization gate: `authorizeNarrowContextTarget` verified the context
+proof against a live `session.generation()` read instead of the
+`generation` value `searchWithOutcome` already captures as part of its own
+immutable operation snapshot (the same snapshot that governs `server`/
+`token`/`caPath`/`scope`) — a real, if narrow, inconsistency in an
+otherwise-correct authorization gate, not a reopening of §12h's own
+threat model. Fixed by threading the captured `generation` down through
+`resolveTargetPlan`/`authorizeNarrowContextTarget` and capturing
+`describeScopeWarnings`' own generation/namespace/scope once, together, at
+its top. Closed as OS-1D-26 through OS-1D-30, with 3 new tests proving
+real interleaving (an actual reconnect to an independent second mock
+cluster, landing strictly after an operation's own snapshot was captured,
+never causes that operation to touch the new connection). No
+`ContextTargetProofCodec` design, HMAC format, or field-binding rule
+changed. `TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`, untouched.
+`REL_1` remains confirmed `APPROVED_PENDING`, untouched.
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0

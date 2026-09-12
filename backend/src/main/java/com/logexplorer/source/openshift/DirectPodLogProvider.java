@@ -144,7 +144,7 @@ public class DirectPodLogProvider {
       var caPath = session.certificateAuthorityPath();
       OpenShiftScope scope = session.scope();
 
-      TargetPlan plan = resolveTargetPlan(scope, namespace, request);
+      TargetPlan plan = resolveTargetPlan(scope, namespace, request, generation);
       Mono<SourceSearchOutcome> result = plan.queried().isEmpty()
           ? Mono.just(SourceSearchOutcome.of(List.of()))
           : fetchAndMerge(server, token, caPath, plan, request, generation);
@@ -261,11 +261,26 @@ public class DirectPodLogProvider {
    * completeness (OS-1B review recovery's {@code workloadScopeComplete}/
    * {@code podScopeComplete}) and target-cap truncation. See the class
    * javadoc for why per-target runtime failures are not included here.
+   *
+   * <p><b>OS-1D final review recovery — one consistent snapshot, captured
+   * once.</b> {@code namespace}, {@code scope}, and {@code generation} are
+   * each read from {@link #session} exactly once, at the top, and then
+   * threaded through to {@link #resolveTargetPlan}/{@link
+   * #authorizeNarrowContextTarget} — never re-read individually
+   * mid-method. This method itself is still correctly "live" in the sense
+   * that mattered before (a fresh call always reflects current session
+   * state, which is exactly right for a synchronous, no-network,
+   * called-once-per-request informational method) — what changed is only
+   * that the several session reads this one call makes can no longer
+   * observe two different generations of session state within a single
+   * invocation (mission §6/§9 "AUTHORIZATION_SNAPSHOT == EXECUTION_SNAPSHOT").
    */
   public List<String> describeScopeWarnings(SearchRequest request) {
     if (!session.isConnected() || session.selectedProject() == null) {
       return List.of();
     }
+    long generation = session.generation();
+    String namespace = session.selectedProject();
     OpenShiftScope scope = session.scope();
     List<String> warnings = new ArrayList<>();
     if (!scope.workloadScopeComplete()) {
@@ -280,7 +295,7 @@ public class DirectPodLogProvider {
       warnings.add("Only " + properties.getMaxPods() + " of " + scope.pods().size()
           + " resolved pods were included in this search (TARGET_CAP_REACHED) - some pods were skipped.");
     }
-    TargetPlan plan = resolveTargetPlan(scope, session.selectedProject(), request);
+    TargetPlan plan = resolveTargetPlan(scope, namespace, request, generation);
     if (plan.resolvedCount() > plan.queried().size()) {
       warnings.add("Only " + plan.queried().size() + " of " + plan.resolvedCount()
           + " resolved pod/container targets were queried (TARGET_CAP_REACHED) - some pods were skipped.");
@@ -355,11 +370,11 @@ public class DirectPodLogProvider {
    * (mission §13/§16 - correlation stays inside the full resolved scope,
    * never narrowed to one historical target).
    */
-  private TargetPlan resolveTargetPlan(OpenShiftScope scope, String namespace, SearchRequest request) {
+  private TargetPlan resolveTargetPlan(OpenShiftScope scope, String namespace, SearchRequest request, long generation) {
     String narrowPod = blankToNull(request.pod());
     String narrowContainer = blankToNull(request.containerName());
     List<PodLogTarget> resolved = narrowPod != null && narrowContainer != null
-        ? List.of(authorizeNarrowContextTarget(scope, namespace, narrowPod, narrowContainer, request))
+        ? List.of(authorizeNarrowContextTarget(scope, namespace, narrowPod, narrowContainer, request, generation))
         : resolveTargets(scope, namespace);
     Map<String, PodLogTarget> deduped = new LinkedHashMap<>();
     for (PodLogTarget target : resolved) {
@@ -383,9 +398,28 @@ public class DirectPodLogProvider {
    * containerName) was a legitimate target, never trusting the request
    * fields alone. See {@link #resolveTargetPlan}'s own javadoc for the
    * full rule table (mission §6).
+   *
+   * <p><b>OS-1D final review recovery — {@code generation} is the
+   * caller's own already-captured snapshot, never re-read here.</b> The
+   * original implementation called {@code session.generation()} directly
+   * at the point of verification — a time-of-check/time-of-use
+   * inconsistency: {@code searchWithOutcome} already captures {@code
+   * generation} (alongside {@code server}/{@code token}/{@code caPath}/
+   * {@code scope}) as one immutable snapshot for the whole operation
+   * before this method ever runs, and the actual pod-log fetch that
+   * follows authorization uses that same captured {@code server}/{@code
+   * token} — reading live session state here instead would let this one
+   * check silently drift onto a *different* connection generation than
+   * the one whose credentials will actually perform the read, the exact
+   * "AUTHORIZATION_SNAPSHOT == EXECUTION_SNAPSHOT" invariant this
+   * recovery exists to restore. {@code generation} must always be the
+   * value the caller already captured, threaded down through {@link
+   * #resolveTargetPlan}, never {@code session.generation()} read fresh
+   * inside this method.
    */
   private PodLogTarget authorizeNarrowContextTarget(
-      OpenShiftScope scope, String namespace, String podName, String containerName, SearchRequest request) {
+      OpenShiftScope scope, String namespace, String podName, String containerName, SearchRequest request,
+      long generation) {
     PodSummary pod = scope.findPod(podName);
     if (pod != null && pod.containerNames().contains(containerName)) {
       // Rule A - still in current OS-1B scope: ordinary, unweakened
@@ -400,9 +434,11 @@ public class DirectPodLogProvider {
     // one, or any single field mismatch (wrong source, stale connection
     // generation, wrong namespace, wrong pod, wrong container) alike, so
     // this call site never has to branch on (and therefore never risks
-    // leaking) which specific check failed.
+    // leaking) which specific check failed. Verified against THIS
+    // operation's own captured `generation`, never a fresh
+    // session.generation() read (see this method's own javadoc).
     contextTargetProofCodec.verify(
-        request.contextTargetProof(), SOURCE_ID, session.generation(), namespace, podName, containerName);
+        request.contextTargetProof(), SOURCE_ID, generation, namespace, podName, containerName);
     // Workload identity is genuinely unknown for a target no longer in the
     // local cache - null here is the same "workload unknown" fallback
     // every other OK-outcome path already tolerates (see
