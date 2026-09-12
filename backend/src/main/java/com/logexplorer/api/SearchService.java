@@ -9,6 +9,7 @@ import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.ResultCounts;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.SearchResult;
+import com.logexplorer.core.model.SourceSearchOutcome;
 import com.logexplorer.core.query.QueryPlan;
 import com.logexplorer.core.query.QueryPlanBuilder;
 import com.logexplorer.core.search.PageCursor;
@@ -16,12 +17,12 @@ import com.logexplorer.core.search.PageCursorCodec;
 import com.logexplorer.source.LogSource;
 import com.logexplorer.source.LogSourceRegistry;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import org.springframework.stereotype.Component;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /**
@@ -112,22 +113,34 @@ public class SearchService {
       // disclosure can never drift from what was really queried.
       QueryPlan queryPlan = QueryPlanBuilder.build(request, source.describePushDown(scoped), source.describeScopeWarnings(scoped));
 
-      Flux<CanonicalLogEvent> guarded = concurrencyGuard.guard(source.search(scoped));
+      // OS-1C review recovery - searchWithOutcome() (default: delegates to
+      // search()/collectList(), reporting no runtime warnings) replaces a
+      // bare source.search(scoped).collectList() so a source can also
+      // report runtime completeness metadata for this exact invocation
+      // (see SourceSearchOutcome's own javadoc) - request-scoped by
+      // construction, never a shared/mutable side channel, so two
+      // overlapping concurrent searches on the same source can never leak
+      // a warning into each other's result. ConcurrencyGuard's own
+      // contract is a Flux<T>; .flux()/.single() round-trips through it
+      // unchanged (still exactly the same acquire-before-subscribe/
+      // release-on-terminal-signal semantics), never bypassed.
+      Mono<SourceSearchOutcome> guarded = concurrencyGuard.guard(source.searchWithOutcome(scoped).flux()).single();
 
       // Every LogSource implementation already fully materializes its own
-      // per-request-bounded result set before this Flux emits anything
+      // per-request-bounded result set before this Mono emits anything
       // (Docker: one blocking read per relevant container, each already
       // capped at DockerProperties#defaultTailLines; Loki: one query_range
       // call capped at LokiProperties#maxResultsPerQuery; fixture: its
-      // fixed, small in-memory corpus) - collecting the whole thing here
-      // adds no new unbounded-memory risk beyond what each adapter already
-      // accepts today, and is what makes a truthful, non-guessed
-      // truncation signal and (on an unpaginated first page) an exact
-      // total possible.
+      // fixed, small in-memory corpus; OpenShift: one bounded per-target
+      // byte/line fetch fanned out and merged, capped again at
+      // DirectPodLogProperties#maxEventsOverall) - collecting the whole
+      // thing here adds no new unbounded-memory risk beyond what each
+      // adapter already accepts today, and is what makes a truthful,
+      // non-guessed truncation signal and (on an unpaginated first page)
+      // an exact total possible.
       return guarded
-          .collectList()
           .timeout(validated.timeout())
-          .map(list -> toResult(list, validated.effectiveLimit(), request, cursor, queryPlan));
+          .map(outcome -> toResult(outcome, validated.effectiveLimit(), request, cursor, queryPlan));
     });
   }
 
@@ -148,7 +161,8 @@ public class SearchService {
   }
 
   private SearchResult toResult(
-      List<CanonicalLogEvent> fetched, int effectiveLimit, SearchRequest originalRequest, PageCursor incoming, QueryPlan queryPlan) {
+      SourceSearchOutcome outcome, int effectiveLimit, SearchRequest originalRequest, PageCursor incoming, QueryPlan queryPlan) {
+    List<CanonicalLogEvent> fetched = outcome.events();
     boolean backward = originalRequest.direction() != SearchRequest.Direction.FORWARD;
 
     List<CanonicalLogEvent> deduped = incoming == null
@@ -167,14 +181,41 @@ public class SearchService {
     // exists, it just cannot be safely paged to) rather than silently
     // claiming the page was complete.
     String nextCursor = moreWithinThisFetch ? buildNextCursor(page, originalRequest, incoming) : null;
-    boolean truncated = moreWithinThisFetch;
+
+    // OS-1C review recovery - a source-reported runtime warning (a target
+    // could not be read, a byte/line/event cap was actually hit) makes
+    // this result exactly as untrustworthy-as-complete as ordinary
+    // pagination truncation does: in both cases, more matching events may
+    // exist than what is shown, and estimatedTotal must not be reported as
+    // exact. Reusing the same ResultCounts#truncated() flag (rather than a
+    // new, source-specific field) is deliberate - it is the one existing,
+    // already-rendered-everywhere signal for "this may not be the complete
+    // picture," and the two conditions share that exact meaning even
+    // though their root causes differ.
+    boolean runtimeIncomplete = !outcome.runtimeWarnings().isEmpty();
+    boolean truncated = moreWithinThisFetch || runtimeIncomplete;
 
     // Exact only for a genuinely complete, unpaginated single-page result
     // (see class javadoc "Totals"). Never returned=total, never null=zero.
     Integer estimatedTotal = (incoming == null && !truncated) ? page.size() : null;
 
     ResultCounts counts = new ResultCounts(estimatedTotal, page.size(), page.size(), effectiveLimit, truncated);
-    return new SearchResult(page, counts, nextCursor, queryPlan);
+    QueryPlan effectivePlan = runtimeIncomplete ? withAppendedNotes(queryPlan, outcome.runtimeWarnings()) : queryPlan;
+    return new SearchResult(page, counts, nextCursor, effectivePlan);
+  }
+
+  /**
+   * OS-1C review recovery - runtime warnings are appended to the SAME
+   * {@code notes} list {@code describeScopeWarnings} already populated
+   * pre-search, never a second parallel list: a search can genuinely have
+   * both a known-incomplete scope AND a runtime target failure at once,
+   * and the reader should see both reasons together, in one place,
+   * without needing to know two different channels exist.
+   */
+  private static QueryPlan withAppendedNotes(QueryPlan plan, List<String> extra) {
+    List<String> notes = new ArrayList<>(plan.notes());
+    notes.addAll(extra);
+    return new QueryPlan(plan.resolvedQuery(), plan.rawLogQlMode(), plan.pushedDownConditions(), plan.postFilterConditions(), notes);
   }
 
   /**

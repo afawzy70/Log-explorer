@@ -60,6 +60,30 @@ public class OpenShiftApiException extends RuntimeException {
      * means "the Projects API exists but this call to it failed."
      */
     MALFORMED_RESPONSE,
+    /**
+     * OS-1C review recovery — the cluster API did not respond in time.
+     * Deliberately its own kind, split out of what used to be folded into
+     * {@link #NETWORK}: a DNS/connect failure ("nothing is listening
+     * there") and a timeout ("something is listening but too slow/stuck")
+     * are different truths a caller may want to treat differently (e.g.
+     * OS-1C's own per-target runtime warnings distinguish
+     * {@code TARGET_TIMEOUT} from a generic upstream error) — see the
+     * class javadoc's own "these are not interchangeable" principle.
+     */
+    TIMEOUT,
+    /**
+     * OS-1C review recovery — none of the resolved pod/container log-fetch
+     * targets for one search could be read at all, for a reason other than
+     * permissions (that stays {@link #FORBIDDEN}, unchanged). Deliberately
+     * its own kind rather than reusing {@link #NOT_FOUND} (scoped
+     * specifically to "the Projects API itself does not exist on this
+     * cluster") or {@link #NETWORK}/{@link #TIMEOUT} (connection-level,
+     * not specific to a pod-log fetch that individually failed) — reusing
+     * either would blur two genuinely different questions, the same
+     * mistake OS-1A's own review already corrected once for
+     * {@link #NOT_FOUND} vs {@link #MALFORMED_RESPONSE}.
+     */
+    UPSTREAM_UNAVAILABLE,
   }
 
   private final Kind kind;

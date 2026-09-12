@@ -127,17 +127,29 @@ Docker, and is not a gap introduced by this slice.
 
 ## 4. The bounded fetch model (§7/§8) — every limit is real
 
+**Correction (OS-1C review recovery — see §21).** This section originally
+claimed `maxBytesPerTarget` was enforced by "client-side truncation of the
+response body in `fetchPodLog`." That was **not accurate**: the original
+implementation called `bodyToMono(String.class)` (materializing the
+*entire* upstream response into memory first) and only then truncated the
+resulting `String` by `.length()` — a UTF-16 character count, not a byte
+count, and no memory bound at all (the full body was already buffered
+before truncation ever ran). §21 documents the real fix: true streaming
+byte-counted consumption that never materializes more than `maxBytes` of
+the response, regardless of upstream size. The table below is corrected
+to describe the *current*, real implementation.
+
 `config.DirectPodLogProperties` (`logexplorer.openshift.direct-search.*`):
 
 | Property | Default | Enforced by |
 |---|---|---|
 | `maxPods` | 20 | `resolveTargets` — caps distinct pods **before** per-pod container expansion |
 | `maxTargets` | 40 | `resolveTargetPlan` — caps the resulting (pod, container) fan-out, after dedup |
-| `maxLinesPerTarget` | 2000 | `tailLines` on the pod-log request itself |
-| `maxBytesPerTarget` | 2,000,000 | client-side truncation of the response body in `fetchPodLog` |
-| `maxEventsOverall` | 2000 | `trimToInternalCap`, applied to the final merged/sorted list |
+| `maxLinesPerTarget` | 2000 | `tailLines` on the pod-log request itself, plus a conservative `LINE_CAP_REACHED_OR_POSSIBLE` runtime warning when exactly that many lines come back (§21 — the API gives no separate "there were more" signal) |
+| `maxBytesPerTarget` | 2,000,000 | **true streaming byte-bounded consumption** in `OpenShiftApiClient#readBounded` (§21) — real encoded bytes counted as `DataBuffer`s arrive off the wire, upstream subscription cancelled the instant the cap is reached, never a full-body read followed by a `String.length()` truncation |
+| `maxEventsOverall` | 2000 | `trimToInternalCap`, applied to the final merged/sorted list, and disclosed as `OVERALL_EVENT_CAP` (§21) when this internal safety cap — never the caller's own smaller requested limit — is what actually trimmed the result |
 | `maxConcurrency` | 6 | `Flux#flatMap(fn, maxConcurrency)` in `fetchAndMerge` |
-| `perTargetTimeout` | 10s | per-target `.timeout(...)` in `fetchPodLog` |
+| `perTargetTimeout` | 10s | per-target `.timeout(...)` in `fetchPodLog`, classified as its own `Kind.TIMEOUT` (§21) distinct from a generic network/upstream failure |
 | `overallTimeout` | 20s | whole-search `.timeout(...)` in `search()`, deliberately shorter than the 30s app-wide default so an OpenShift search fails predictably on its own bound |
 
 **`maxPods` vs `maxTargets` — two independently enforced dimensions.**
@@ -275,11 +287,13 @@ cursor semantics. Proved by
 
 | Scenario | Behavior | Test |
 |---|---|---|
-| One pod 404s (disappeared) | excluded; others still return | `oneDisappearedPodDoesNotFailTheWholeSearch` |
-| One target 403s, others readable | excluded; result is partial, not an error | `oneForbiddenTargetIsPartialWhenOthersAreReadable` |
+| One pod 404s (disappeared) | excluded; others still return; **now also named as a `TARGET_NOT_FOUND` runtime warning (§21)** | `oneDisappearedPodDoesNotFailTheWholeSearch`, `oneOkPlusOneNotFoundIsPartialWithATargetNotFoundReason` |
+| One target 403s, others readable | excluded; result is partial, not an error; **now also named as a `PERMISSION_DENIED` runtime warning (§21)** | `oneForbiddenTargetIsPartialWhenOthersAreReadable`, `oneOkPlusOneForbiddenIsPartialWithAPermissionDeniedReason` |
 | **Every** target 403s | explicit `OpenShiftApiException(Kind.FORBIDDEN)` — never a silent empty result | `everyTargetForbiddenIsAnExplicitForbiddenResultNeverASilentEmptySearch` |
+| **Every** target 404s, times out, or errors (no 403 involved) | **OS-1C review recovery (§21):** explicit `OpenShiftApiException(Kind.UPSTREAM_UNAVAILABLE)` — previously a silent, complete-looking empty result | `everyTargetNotFoundIsAnExplicitFailureNeverASilentCompleteEmptyResult`, `everyTargetTimedOutOrErroredIsAnExplicitFailureNeverASilentCompleteEmptyResult` |
 | Any target 401s | the whole search aborts, session is marked `EXPIRED` | `unauthorizedAbortsTheSearchAndExpiresTheSession` |
-| One target exceeds `perTargetTimeout` | excluded; others still return | `oneSlowPodExceedingItsPerTargetTimeoutIsExcludedButOthersStillReturn` |
+| One target exceeds `perTargetTimeout` | excluded; others still return; **now also named as a `TARGET_TIMEOUT` runtime warning, distinct from a generic upstream error (§21)** | `oneSlowPodExceedingItsPerTargetTimeoutIsExcludedButOthersStillReturn`, `oneOkPlusOneTimeoutIsPartialWithATargetTimeoutReason` |
+| One target's response exceeds `maxBytesPerTarget` | truncated to exactly the cap, never dropped; **now named as a `BYTE_CAP_REACHED` runtime warning (§21)** | `oneOkPlusOneByteCappedTargetIsPartialWithABytesCapReachedReason`, `aByteCappedTargetIsCancelledWhileOtherTargetsContinueNormally` |
 | A specific container 404s (missing) | excluded like any other 404 | `aMissingContainerIsExcludedLikeAnyOtherFourOhFour` |
 
 A workload rolling mid-search never attaches new pods — the scope
@@ -378,17 +392,25 @@ channel:
   `podScopeComplete()`), and target/pod-cap truncation
   (`TARGET_CAP_REACHED`).
 
-**Known, disclosed gap.** A specific target's own *runtime* failure (one
-pod 403s, one 404s, one times out) is only known *during* `search()`, and
+**Known, disclosed gap — RESOLVED (OS-1C review recovery, §21).** This
+paragraph originally read: *"A specific target's own runtime failure (one
+pod 403s, one 404s, one times out) is only known during `search()`, and
 `LogSource#search` has no return channel back into the query-plan notes
-`SearchService` builds *before* the search runs. Those per-target failures
-are still handled correctly — the target is skipped, the search continues
-with whatever else is readable (§21) — but are not yet individually named
-as their own user-visible note in this slice (`POD_DISAPPEARED`,
-`PERMISSION_DENIED`, `CONTAINER_NOT_FOUND` as distinct per-target labels).
-The available signal today is the scope-level `describeScopeWarnings` note
-plus finding fewer events than expected. This is documented as a
-follow-up, not silently dropped — see §17 below.
+`SearchService` builds before the search runs... not yet individually
+named as their own user-visible note in this slice... documented as a
+follow-up, not silently dropped."* That gap is now closed:
+`LogSource#searchWithOutcome` (a new default method, §21) gives every
+source — not only OpenShift — a return channel for exactly this kind of
+runtime metadata, and `DirectPodLogProvider#searchWithOutcome` populates
+it with per-condition-kind runtime warnings (`TARGET_NOT_FOUND`,
+`PERMISSION_DENIED`, `TARGET_TIMEOUT`, `UPSTREAM_ERROR`,
+`BYTE_CAP_REACHED`, `LINE_CAP_REACHED_OR_POSSIBLE`, `OVERALL_EVENT_CAP`),
+which `SearchService` appends into the same `QueryPlan.notes` channel this
+section already established for scope-level warnings — pre-search and
+runtime reasons now coexist in one place, never two. This history is kept
+here rather than deleted so the gap this slice originally, honestly
+disclosed remains visible alongside its later fix — see §21 for the full
+before/after account.
 
 ---
 
@@ -501,6 +523,8 @@ logs, REL-1, macOS packaging, GitHub Releases, Phase M.
 | `npx playwright test e2e/os-1a-openshift-connection.spec.ts` | PASS — 17/17, including the corrected capability assertion |
 | `npx playwright test` (full suite) | PASS — 287/287 |
 
+**Superseded by the OS-1C review recovery — see §21's own "Validation" subsection for the current, post-recovery numbers** (new byte-bound and runtime-partial test files added, one pre-existing test updated for an intentionally-changed behavior). The row above is kept, not deleted, as the record of what this slice's original PR validated before recovery.
+
 **Precision note, carried forward from the OS-1B recovery's own finding:**
 `OpenShiftRealSandboxIT`'s `*IT` suffix means it is excluded from Maven
 Surefire's default discovery pattern (no Failsafe plugin is configured in
@@ -524,7 +548,7 @@ precision discipline.
 | Capability flags (`historicalSearch=true`, everything else `false`) vs frontend gating (none exists) vs this report's §12/§14 | Consistent |
 | Frontend semantics (`QueryPlan.notes`, `SourceHealth.warnings`, `counts.truncated`, "Load more") vs backend's actual outputs | Consistent — traced generically, no source-specific frontend branch exists to drift from the backend |
 | Real-test status (`REAL_OPENSHIFT_1C=BLOCKED_CREDENTIALS`) vs no fabricated PASS anywhere in this report or the register | Consistent |
-| Known gap (§13, per-target runtime-failure notes) vs register (`OS-1C` table does not claim this is solved) | Consistent — the register's OS-1C-4 row describes exactly what is proactively disclosed (scope/cap warnings), not per-target runtime failures |
+| Known gap (§13, per-target runtime-failure notes) — **RESOLVED, §21** | Now consistent the other way: the register's `OS-1C-4` row (and the new runtime-truthfulness rows §21 adds) claim this is solved *with evidence*, matching the actual `searchWithOutcome`/`SourceSearchOutcome` implementation |
 
 No disagreement found between code and documentation. The one genuinely
 new limitation surfaced by this slice — `maxPods` initially unused — was
@@ -539,9 +563,9 @@ buggy state, so no test ever needed weakening or deletion to reach green
 Live tail/follow, context view, correlation-wide fan-out, raw LogQL for
 this source, real pagination, Jobs/CronJob logs, init-container logs,
 Kubernetes Watch, multi-cluster, REL-1 desktop packaging (remains
-`APPROVED_PENDING`, untouched, not implemented this slice), per-target
-runtime-failure names in `describeScopeWarnings` (documented follow-up,
-§13).
+`APPROVED_PENDING`, untouched, not implemented this slice). Per-target
+runtime-failure names were a documented follow-up as of this slice's
+original PR (§13) — **now implemented, see §21**.
 
 ---
 
@@ -570,3 +594,252 @@ No `OPENSHIFT_API_SERVER`/`OPENSHIFT_TOKEN` were supplied this mission.
 No OS-1C-specific real-sandbox integration test was written — consistent
 with OS-1A/1B's own precedent of writing that test only once credentials
 exist to verify anything against. No skipped test was converted to `PASS`.
+
+---
+
+## 21. OS-1C REVIEW RECOVERY — true byte-bounded fetch & runtime partial-result truthfulness
+
+Reviewed HEAD at the start of this recovery: `37f39f9826cd00095672228ba617b54f1f6b9fbd`
+(PR #41, CI and Windows Desktop green). Two evidence-backed defects were
+found and fixed. This section documents both — the real defect, the real
+fix, and the real evidence — without deleting §4/§9/§13's own original
+(now-corrected) claims above; those stay visible as the honest record of
+what this slice originally shipped and disclosed.
+
+### Defect A — `maxBytes` was not a real fetch bound
+
+**Before.** `OpenShiftApiClient#fetchPodLog` called
+`.retrieve().bodyToMono(String.class)` — materializing the *entire*
+upstream response body into memory — then
+`.map(body -> body.length() > maxBytes ? body.substring(0, (int) maxBytes) : body)`.
+Two independent problems: (1) the full body was already buffered before
+any truncation happened, so `maxBytes` bounded nothing about memory use;
+(2) `String#length()` counts UTF-16 chars, not encoded bytes, so even the
+*truncation point itself* was wrong for any non-ASCII content. The
+report's own §4 (above) claimed this was "client-side truncation of the
+response body" — true only in the most literal sense (a `String` was
+truncated), not in the sense the mission's own contract promised (a real
+client-side *byte* bound enforced *during* consumption).
+
+**After.** `OpenShiftApiClient#readBounded` consumes the response as a
+raw `Flux<DataBuffer>` (`.retrieve().bodyToFlux(DataBuffer.class)`, never
+`bodyToMono`) through a hand-rolled `BaseSubscriber`:
+
+- Counts real encoded bytes via `DataBuffer#readableByteCount()`/`#read(byte[])`
+  as buffers arrive, never `String.length()`.
+- Never accumulates more than `maxBytes` — the buffer that straddles the
+  cap is copied only up to the remaining budget; nothing beyond that is
+  ever written to the accumulator.
+- Calls `cancel()` on the upstream subscription the instant the cap is
+  reached — Reactor Netty propagates this to the real connection, so nothing
+  beyond a small, Reactive-Streams-permitted number of already-in-flight
+  buffers is ever read off the wire for an oversized response.
+- Releases every consumed `DataBuffer` in a `finally` block (success, cap,
+  or error path alike) — proven with real pooled Netty buffers and
+  `ByteBuf#refCnt()` reaching exactly `0`, not merely "release() was
+  called."
+- Never touches Spring's default in-memory codec limit
+  (`spring.codec.max-in-memory-size`, 256 KB) — that limit only applies to
+  strategies that themselves aggregate a whole body (`bodyToMono`, an
+  unbounded `DataBufferUtils.join`); raw `Flux<DataBuffer>` consumption has
+  no such limit, so `maxBytes` (this call's own parameter) is the only
+  bound in effect regardless of whether it is smaller or larger than that
+  default.
+- Decodes UTF-8 exactly once, after the bounded byte array is complete.
+  `OpenShiftApiClient#trimIncompleteUtf8Suffix` walks backward from the cut
+  point (at most 3 bytes, using UTF-8's own self-describing lead/
+  continuation-byte structure) and drops a genuinely incomplete trailing
+  multi-byte sequence, so a truncated response never ends in a garbled
+  U+FFFD replacement character — every byte before the cut is untouched.
+
+`fetchPodLog` now returns `Mono<PodLogFetchResult>`
+(`record PodLogFetchResult(String body, boolean byteCapReached)`) instead
+of `Mono<String>` — the byte cap having actually fired is a first-class,
+never-hidden part of the return value, not something a caller has to
+infer.
+
+**A second, related bug this recovery self-caught and fixed.** With true
+byte-bounded reading in place, a `DirectPodLogProviderTest` run first
+surfaced that a byte-capped response's own trailing (necessarily
+incomplete) line was being parsed into a real, visible "malformed" event —
+an artifact of exactly where the client's own cap happened to stop
+reading, never a real line the upstream actually sent. Fixed in
+`DirectPodLogProvider#fetchTarget`: when `byteCapReached` is true and the
+truncated body does not end in `\n`, the trailing split line is dropped
+before parsing.
+
+### Line cap truthfulness
+
+`tailLines` remains a real, server-side hard bound (unchanged from §5).
+What changed: when a target's response comes back with *exactly*
+`maxLinesPerTarget` lines, `DirectPodLogProvider#fetchTarget` now flags
+that target's own `linesPossiblyCapped`. The Kubernetes pod-log API gives
+no separate "there were more, this was truncated" signal, so this is
+deliberately conservative — surfaced as `LINE_CAP_REACHED_OR_POSSIBLE`,
+never a claimed certainty (`LINE_CAP_REACHED` alone was deliberately never
+used). A response with fewer lines than the limit is never flagged.
+
+### Defect B — runtime target failures are now user-visible
+
+**Before.** `DirectPodLogProvider#search` returned `Flux<CanonicalLogEvent>`
+only. A target that 403'd/404'd/timed out was correctly skipped (§9's
+resilience behavior, unchanged), but nothing about *why* the result might
+be incomplete reached the caller — `SearchService` builds the query plan
+(and its `notes`) *before* `source.search()` even runs, so there was
+structurally no channel for a runtime discovery to reach it. Worse: when
+**every** resolved target failed for a reason other than 403 (all 404,
+all timeout, all generic error), the result was a plain, successful,
+*empty* `SearchResult` — indistinguishable from "this project genuinely
+has zero matching events right now."
+
+**After — the request-scoped outcome channel.** A new record,
+`core.model.SourceSearchOutcome(events, runtimeWarnings)`, and a new
+default `LogSource` method:
+
+```java
+default Mono<SourceSearchOutcome> searchWithOutcome(SearchRequest request) {
+  return search(request).collectList().map(SourceSearchOutcome::of);
+}
+```
+
+Every existing source (Fixture, Docker, Loki) gets this for free, with an
+always-empty `runtimeWarnings` list and zero code changes — exactly
+correct, since none of them has a partial-target-failure concept today.
+Only `OpenShiftLogSource` overrides it, delegating to a new
+`DirectPodLogProvider#searchWithOutcome`, which is now the *one* real
+implementation — the pre-existing `Flux<CanonicalLogEvent> search(...)`
+(still used by `OpenShiftLogSource#search` for the two SPI methods that
+still need a plain `Flux`, and by every pre-recovery test) is a thin
+wrapper: `searchWithOutcome(request).flatMapMany(o -> Flux.fromIterable(o.events()))`.
+
+**Never a shared/mutable side channel (mission §4).** `SourceSearchOutcome`
+is carried entirely by each call's own return value — no field was added
+to `DirectPodLogProvider`, `OpenShiftLogSource`, or `OpenShiftSession` to
+hold "the last search's warnings." Proven executable, not just
+architectural: `concurrentSearchesOnTheSameProviderInstanceNeverCrossContaminateOutcomes`
+(provider level) and
+`overlappingConcurrentSearchesOnDifferentSourcesNeverLeakOneSourcesRuntimeWarningsIntoTheOthers`
+(`SearchService` level) each run two *genuinely concurrent* searches
+(`Mono.zip`, subscribing to both before either necessarily completes) with
+deliberately different failure profiles, and assert neither result's
+warnings ever mention the other's target/source.
+
+**Aggregated, never per-target-noisy.** `DirectPodLogProvider#buildRuntimeWarnings`
+emits at most one note per distinct condition actually observed across a
+search's targets ("2 of 5 pod/container targets could not be found..."),
+never one note per pod — a namespace with dozens of pods must not flood
+the query-plan disclosure. Vocabulary used, matching the mission's own
+required set: `TARGET_NOT_FOUND`, `PERMISSION_DENIED`, `TARGET_TIMEOUT`,
+`UPSTREAM_ERROR`, `BYTE_CAP_REACHED`, `LINE_CAP_REACHED_OR_POSSIBLE`,
+`OVERALL_EVENT_CAP` (runtime, via `searchWithOutcome`); `SCOPE_PARTIAL`,
+`TARGET_CAP_REACHED` (pre-search, via `describeScopeWarnings`, unchanged).
+
+**All-targets-failed is never a silent complete-empty result.**
+`DirectPodLogProvider#fetchAndMerge` now checks `anyOk` (at least one
+target succeeded), not just `allForbidden`:
+
+- All-forbidden → unchanged, still `OpenShiftApiException(Kind.FORBIDDEN)`
+  (mission §7 case D — "existing behavior should remain").
+- All-failed for any other reason (all 404, all timeout, all generic
+  error, or a mix of those with zero successes) → **new** —
+  `OpenShiftApiException(Kind.UPSTREAM_UNAVAILABLE)`, a new `Kind` added
+  specifically for this (deliberately not reusing `Kind.NOT_FOUND`, which
+  means something narrower and connection-level-specific — "the Projects
+  API itself does not exist on this cluster" — or `Kind.NETWORK`/`Kind.TIMEOUT`,
+  which are connection-level, not pod-log-fetch-specific). Covers mission
+  §7 cases C and E.
+- `Kind.TIMEOUT` is also new — split out of what used to be folded into
+  `Kind.NETWORK`, so a per-target timeout is distinguishable from a
+  generic connect/DNS failure (mission §8).
+- Mixed (at least one success) → unchanged resilience behavior, now with
+  runtime warnings attached — mission §7 cases A/B (partial, not
+  "no results").
+
+### Integration into `SearchResult` — reusing existing truncation/notes, no new DTO field
+
+`api.SearchService#toResult` now takes `SourceSearchOutcome` instead of a
+plain event list. When `outcome.runtimeWarnings()` is non-empty:
+
+- `ResultCounts#truncated()` is set `true` — the *same* existing field
+  ordinary pagination truncation already uses, deliberately reused rather
+  than inventing an OpenShift-only completeness flag: both conditions
+  share the exact same real-world meaning ("more matching events may exist
+  than what is shown"), just with different root causes. `estimatedTotal`
+  is correspondingly never reported as an exact number when this is true —
+  the same discipline the class javadoc's own "Totals" section already
+  established for pagination truncation.
+- The runtime warnings are appended into the *same* `QueryPlan.notes` list
+  `describeScopeWarnings` already populates pre-search (`SearchService#withAppendedNotes`)
+  — a search can genuinely have both a known-partial scope *and* a runtime
+  target failure at once, and both reasons now coexist in the one place a
+  reader already looks (mission §5/§10 "scope PARTIAL + runtime target
+  failure -> both reasons preserved" — covered by
+  `preSearchScopeWarningsAndRuntimeWarningsCoexistInTheSameNotesList` and
+  `targetCapAndByteCapReasonsBothSurviveTogether`).
+
+No new DTO field, no new frontend concept — see the "Frontend" subsection
+below.
+
+### Frontend — real rendered evidence, zero code changes
+
+Per mission §14, LERUX-1 was run again now that the runtime-metadata
+contract exists. Finding: **zero frontend changes were needed.**
+`frontend/src/features/results/QueryPlanDisclosure.tsx` already renders
+`queryPlan.notes` generically (no source-specific branch), and
+`frontend/src/features/results/counts.ts#buildCountsSummary` already
+renders `counts.truncated` generically. Both were already proven correct
+for Docker/Loki's own pre-existing warning use; OS-1C's new note text
+flows through the identical, unmodified code path.
+
+Proven with real rendered-browser evidence (LERUX-1's own "reproduce,
+capture, inspect the payload" discipline), not "looks right in source"
+alone: the real dev app, driven by Playwright, with `/api/v1/logs/search`'s
+response stubbed to a realistic OS-1C-shaped payload
+(`counts.truncated: true`, one `queryPlan.notes` entry containing
+`TARGET_NOT_FOUND`) —
+
+```
+Showing 1 event loaded — total unknown for this source, more available — showing results for ...
+▾ Query details
+  Notes
+  • This source reports no source-side push-down for this search — every condition below is evaluated after retrieval.
+  • 1 of 2 pod/container targets could not be found - the pod may have been deleted or recycled since scope was last resolved (TARGET_NOT_FOUND).
+```
+
+Both the always-visible counts-summary line and the existing collapsed
+"Query details" disclosure correctly show the new signal, non-modally, with
+no OpenShift-specific visual clutter — exactly the mission's own "prefer
+existing generic surfaces... no broad Search redesign" requirement. A real
+OpenShift cluster was not available in this environment to drive this
+same evidence end-to-end from a genuine backend response (same
+`REAL_OPENSHIFT_1C=BLOCKED_CREDENTIALS` constraint as §20) — the stubbed
+wire payload matches the DTO shape `SearchController`/`EventMapper`
+actually produce byte-for-byte, so this is real evidence of the frontend's
+own rendering contract, not a claim about a live cluster.
+
+### Tests added/changed
+
+| File | What |
+|---|---|
+| `OpenShiftApiClientByteBoundTest.java` (new, 20 tests) | Unit-level `readBounded`/`trimIncompleteUtf8Suffix` coverage (under/at/over cap, multi-buffer boundary straddling, real-byte-vs-char-count proof, a 2,000-chunk/~20 MB synthetic source proving no full materialization and real cancellation, pooled-buffer `refCnt()` release proof including the cap-mid-stream/discard case, error-path release) plus end-to-end `fetchPodLog` coverage against `MockOpenShiftPodLogServer` (under-cap, over-cap, a real ~5 MB HTTP response bounded to 4 KB) |
+| `DirectPodLogProviderTest.java` (+15 new tests, 1 updated) | The full runtime-partial matrix (mission §10): one-OK-plus-one-{404,403,timeout,byte-capped}, all-404/all-timeout explicit failure, line-cap-possible flagging (positive and negative), target-cap+byte-cap coexistence, `OVERALL_EVENT_CAP` (and the negative case — the caller's own smaller `limit` never flagged as a safety-cap surprise), a byte-capped target cancelled alongside a normal one, and the concurrent-searches-never-cross-contaminate proof. `deselectingWorkloadStillOnlyQueriesWhatOs1bResolvedNeverEveryNamespacePod` was updated (its own single-unregistered-pod scenario is now, correctly, the all-failed case — StepVerifier now expects `Kind.UPSTREAM_UNAVAILABLE`, and the request-count assertion it actually exists to prove is retained) |
+| `SearchServiceTest.java` (+4 new tests) | Runtime-warning → `truncated=true`/`notes` merge, the no-warnings-regression case, scope+runtime coexistence, and the `SearchService`-level cross-search-isolation proof |
+| `StubLogSource.java` (test-only, extended) | `withScopeWarnings`/`withRuntimeWarnings` builders + `describeScopeWarnings`/`searchWithOutcome` overrides, so `SearchServiceTest` can exercise the full merge path without a real OpenShift adapter |
+
+### Validation (post-recovery)
+
+| Check | Result |
+|---|---|
+| `./mvnw test -Dtest='com.logexplorer.source.openshift.**'` | PASS — 267 tests, 0 failures, 0 errors, 5 skipped (`OpenShiftRealSandboxIT`, credential-gated) |
+| `./mvnw test` (full backend suite) | PASS — 894 tests, 0 failures, 0 errors, 5 skipped |
+| `npm run test` (full frontend unit suite) | PASS — 751 tests, unchanged (no frontend file touched) |
+| `npm run typecheck` | PASS |
+| `npm run build` | PASS, unchanged bundle (no frontend file touched) |
+| Real rendered-browser frontend check (stubbed OS-1C-shaped response) | PASS — see "Frontend" subsection above |
+| `REAL_OPENSHIFT_1C` (live cluster) | `BLOCKED_CREDENTIALS`, unchanged from §20 — no credentials available in this environment |
+
+No test was skipped, weakened, or deleted to reach green. The one
+pre-existing test whose own premise the fix intentionally changed
+(`deselectingWorkloadStillOnlyQueriesWhatOs1bResolvedNeverEveryNamespacePod`)
+was updated deliberately, with its real invariant (request count) kept
+intact, exactly as CLAUDE.md §3 requires.

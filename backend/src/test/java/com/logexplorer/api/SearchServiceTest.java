@@ -182,6 +182,96 @@ class SearchServiceTest {
         .verifyComplete();
   }
 
+  // ------------------------------------------------------------ OS-1C review recovery: runtime completeness metadata
+
+  @Test
+  void aSourceReportedRuntimeWarningMarksTheResultTruncatedAndAppendsItToQueryPlanNotes() {
+    stub.withSearchFlux(Flux.fromIterable(events(2)))
+        .withRuntimeWarnings(List.of("1 of 2 pod/container targets could not be found (TARGET_NOT_FOUND)."));
+
+    StepVerifier.create(newService().search(baseRequest().build()))
+        .assertNext(result -> {
+          assertThat(result.events()).hasSize(2); // the successful target's own events are still returned
+          assertThat(result.counts().truncated()).isTrue();
+          assertThat(result.counts().estimatedTotal()).isNull(); // never an exact total when incomplete
+          assertThat(result.queryPlan().notes())
+              .anySatisfy(note -> assertThat(note).contains("TARGET_NOT_FOUND"));
+        })
+        .verifyComplete();
+  }
+
+  @Test
+  void noRuntimeWarningsLeavesResultsExactlyAsBeforeThisRecovery() {
+    stub.withSearchFlux(Flux.fromIterable(events(2))); // no .withRuntimeWarnings() - the default, empty
+
+    StepVerifier.create(newService().search(baseRequest().build()))
+        .assertNext(result -> {
+          assertThat(result.counts().truncated()).isFalse();
+          assertThat(result.counts().estimatedTotal()).isEqualTo(2);
+        })
+        .verifyComplete();
+  }
+
+  @Test
+  void preSearchScopeWarningsAndRuntimeWarningsCoexistInTheSameNotesList() {
+    // OS-1C review recovery mission §5/§10 - "scope PARTIAL + runtime
+    // target failure -> both reasons preserved," never one silently
+    // replacing the other.
+    stub.withSearchFlux(Flux.fromIterable(events(1)))
+        .withScopeWarnings(List.of("Pod scope may be incomplete (SCOPE_PARTIAL)."))
+        .withRuntimeWarnings(List.of("1 of 3 pod/container targets timed out (TARGET_TIMEOUT)."));
+
+    StepVerifier.create(newService().search(baseRequest().build()))
+        .assertNext(result -> {
+          assertThat(result.queryPlan().notes())
+              .anySatisfy(note -> assertThat(note).contains("SCOPE_PARTIAL"))
+              .anySatisfy(note -> assertThat(note).contains("TARGET_TIMEOUT"));
+          assertThat(result.counts().truncated()).isTrue();
+        })
+        .verifyComplete();
+  }
+
+  @Test
+  void overlappingConcurrentSearchesOnDifferentSourcesNeverLeakOneSourcesRuntimeWarningsIntoTheOthers() {
+    // OS-1C review recovery mission §4/§10 - runtime metadata must belong
+    // to the exact search invocation, never a shared/mutable side channel.
+    // Proven here the same way a real leak would actually show up: two
+    // genuinely concurrent searches (Mono.zip subscribes to both before
+    // either necessarily completes), each against its own source with its
+    // own distinct warning text, asserting neither result ever contains
+    // the other's warning.
+    StubLogSource sourceA = new StubLogSource("source-a")
+        .withSearchFlux(Flux.fromIterable(events(1)))
+        .withRuntimeWarnings(List.of("SOURCE-A-ONLY-WARNING (TARGET_NOT_FOUND)."));
+    StubLogSource sourceB = new StubLogSource("source-b")
+        .withSearchFlux(Flux.fromIterable(events(1)))
+        .withRuntimeWarnings(List.of("SOURCE-B-ONLY-WARNING (PERMISSION_DENIED)."));
+
+    SearchGuardrails guardrails = new SearchGuardrails(properties);
+    ConcurrencyGuard concurrencyGuard = new ConcurrencyGuard(properties);
+    LogSourceRegistry registry = new LogSourceRegistry(List.of(sourceA, sourceB), new SourcesProperties());
+    SearchService service =
+        new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()));
+
+    SearchRequest requestA = SearchRequest.builder().sourceId("source-a").start(NOW.minusSeconds(60)).end(NOW).build();
+    SearchRequest requestB = SearchRequest.builder().sourceId("source-b").start(NOW.minusSeconds(60)).end(NOW).build();
+
+    reactor.core.publisher.Mono<com.logexplorer.core.model.SearchResult[]> both =
+        reactor.core.publisher.Mono.zip(service.search(requestA), service.search(requestB))
+            .map(tuple -> new com.logexplorer.core.model.SearchResult[] {tuple.getT1(), tuple.getT2()});
+
+    StepVerifier.create(both)
+        .assertNext(results -> {
+          List<String> notesA = results[0].queryPlan().notes();
+          List<String> notesB = results[1].queryPlan().notes();
+          assertThat(notesA).anySatisfy(n -> assertThat(n).contains("SOURCE-A-ONLY-WARNING"));
+          assertThat(notesA).noneSatisfy(n -> assertThat(n).contains("SOURCE-B-ONLY-WARNING"));
+          assertThat(notesB).anySatisfy(n -> assertThat(n).contains("SOURCE-B-ONLY-WARNING"));
+          assertThat(notesB).noneSatisfy(n -> assertThat(n).contains("SOURCE-A-ONLY-WARNING"));
+        })
+        .verifyComplete();
+  }
+
   private List<CanonicalLogEvent> events(int count) {
     return IntStream.range(0, count)
         .mapToObj(i -> CanonicalLogEvent.builder()

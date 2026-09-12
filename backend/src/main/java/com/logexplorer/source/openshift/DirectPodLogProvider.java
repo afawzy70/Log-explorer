@@ -4,6 +4,7 @@ import com.logexplorer.config.DirectPodLogProperties;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.RawToken;
 import com.logexplorer.core.model.SearchRequest;
+import com.logexplorer.core.model.SourceSearchOutcome;
 import com.logexplorer.core.parse.LogLineParser;
 import com.logexplorer.core.search.EventFilters;
 import com.logexplorer.source.openshift.OpenShiftApiException.Kind;
@@ -65,22 +66,24 @@ import reactor.core.publisher.Mono;
  * UX-R3) — this class adds no new mechanism for that, per OS-1C §23's own
  * "reuse existing search request/race protections."
  *
- * <h2>What this class deliberately does not surface (documented gap)</h2>
+ * <h2>Runtime warnings — RESOLVED (OS-1C review recovery)</h2>
  *
- * <p>{@link #describeScopeWarnings} can only report what is known
+ * <p>{@link #describeScopeWarnings} can only ever report what is known
  * <em>before</em> any network call is made (scope completeness, target-cap
  * truncation) — a specific target's own runtime failure (403 on one pod,
- * 404 because it disappeared, a timeout) is only known <em>during</em>
- * {@link #search}, and {@code LogSource#search} has no return channel back
- * to the query-plan notes {@code SearchService} builds before the search
- * even runs. Those per-target failures are still handled correctly (the
- * target is skipped, the search continues with whatever else is
- * readable — OS-1C §21) but are not yet individually named as a
- * user-visible note in this slice; seeing the query-plan warnings already
- * present for scope-level partiality/truncation, and finding fewer events
- * than expected, is the available signal today. Naming individual
- * per-target failures as their own note is tracked as a follow-up (see
- * the OS-1C verification report), not silently dropped.
+ * 404 because it disappeared, a timeout, a byte/line cap actually hit) is
+ * only known <em>during</em> {@link #search}. This section previously
+ * documented that gap as "not yet individually named as a user-visible
+ * note." It is now closed: {@link #searchWithOutcome} returns a {@link
+ * SourceSearchOutcome} whose {@code runtimeWarnings} names exactly these
+ * conditions, which {@code api.SearchService} appends into the same
+ * query-plan {@code notes} channel {@link #describeScopeWarnings} already
+ * uses — pre-search and runtime reasons now coexist in one place. {@link
+ * #search} (the plain {@code Flux<CanonicalLogEvent>} form {@code
+ * OpenShiftLogSource} and every pre-recovery test still use) is preserved
+ * unchanged as a thin wrapper over {@link #searchWithOutcome} for exactly
+ * that reason — see the OS-1C verification report's own "CI_RECOVERY"-
+ * style section for the full before/after account of this fix.
  */
 @Component
 public class DirectPodLogProvider {
@@ -98,8 +101,32 @@ public class DirectPodLogProvider {
     this.properties = properties;
   }
 
-  /** Bounded, cancellable direct search — see the class javadoc for the full contract. */
+  /**
+   * Bounded, cancellable direct search — see the class javadoc for the
+   * full contract. A thin wrapper over {@link #searchWithOutcome}
+   * preserving this method's own exact prior external behavior (same
+   * event stream, same error semantics) — {@link #searchWithOutcome} is
+   * the one real implementation; this exists only because it predates
+   * OS-1C review recovery and {@code OpenShiftLogSource}/every existing
+   * test still calls it directly.
+   */
   public Flux<CanonicalLogEvent> search(SearchRequest request) {
+    return searchWithOutcome(request).flatMapMany(outcome -> Flux.fromIterable(outcome.events()));
+  }
+
+  /**
+   * OS-1C review recovery — same search as {@link #search}, but the
+   * returned {@link SourceSearchOutcome} also names, per this exact
+   * invocation: which targets could not be read and why (not found,
+   * forbidden, timed out, a generic upstream error), which targets had
+   * their response truncated at the per-target byte cap, which targets
+   * returned exactly the requested line cap (so older matching lines may
+   * exist unseen), and whether the internal overall-event safety cap
+   * (never the caller's own smaller requested limit) trimmed the merged
+   * result. See the class javadoc's "What this class deliberately does
+   * not surface" section — this method is what closes that gap.
+   */
+  public Mono<SourceSearchOutcome> searchWithOutcome(SearchRequest request) {
     return Mono.defer(() -> {
       String namespace = requireSelectedProject();
       long generation = session.generation();
@@ -109,8 +136,8 @@ public class DirectPodLogProvider {
       OpenShiftScope scope = session.scope();
 
       TargetPlan plan = resolveTargetPlan(scope, namespace);
-      Mono<List<CanonicalLogEvent>> result = plan.queried().isEmpty()
-          ? Mono.just(List.<CanonicalLogEvent>of())
+      Mono<SourceSearchOutcome> result = plan.queried().isEmpty()
+          ? Mono.just(SourceSearchOutcome.of(List.of()))
           : fetchAndMerge(server, token, caPath, plan, request);
 
       return result
@@ -121,24 +148,102 @@ public class DirectPodLogProvider {
             }
             return e;
           });
-    }).flatMapMany(Flux::fromIterable);
+    });
   }
 
-  private Mono<List<CanonicalLogEvent>> fetchAndMerge(
+  private Mono<SourceSearchOutcome> fetchAndMerge(
       URI server, RawToken token, String caPath, TargetPlan plan, SearchRequest request) {
     Instant fetchedAt = Instant.now();
     return Flux.fromIterable(plan.queried())
         .flatMap(target -> fetchTarget(server, token, caPath, target, request.start()), properties.getMaxConcurrency())
         .collectList()
         .flatMap(attempts -> {
-          boolean allForbidden = attempts.stream().allMatch(a -> a.outcome() == TargetOutcome.FORBIDDEN);
-          if (allForbidden) {
-            return Mono.error(new OpenShiftApiException(
-                Kind.FORBIDDEN, "Not permitted to read logs for any resolved pod/container in this project."));
+          boolean anyOk = attempts.stream().anyMatch(a -> a.outcome() == TargetOutcome.OK);
+          if (!anyOk) {
+            boolean allForbidden = attempts.stream().allMatch(a -> a.outcome() == TargetOutcome.FORBIDDEN);
+            if (allForbidden) {
+              return Mono.error(new OpenShiftApiException(
+                  Kind.FORBIDDEN, "Not permitted to read logs for any resolved pod/container in this project."));
+            }
+            // OS-1C review recovery - generalizes the all-forbidden check
+            // above to every other all-failed case (all 404, all timeout,
+            // all generic upstream error, or a mix of those with zero
+            // successes): none of this is a legitimate "complete search,
+            // zero matching events" result, and must never be returned as
+            // one (mission §7 cases C/E). A distinct Kind (never NOT_FOUND/
+            // NETWORK/TIMEOUT, which each mean something connection- or
+            // discovery-level elsewhere) keeps this pod-log-fetch-specific
+            // truth from being confused with those.
+            return Mono.error(new OpenShiftApiException(Kind.UPSTREAM_UNAVAILABLE,
+                "None of the " + attempts.size() + " resolved pod/container target"
+                    + (attempts.size() == 1 ? "" : "s") + " could be read (" + summarizeFailureKinds(attempts) + ")."));
           }
           List<CanonicalLogEvent> events = parseFilterAndMerge(attempts, request, fetchedAt);
-          return Mono.just(trimToInternalCap(events, request));
+          List<String> warnings = new ArrayList<>(buildRuntimeWarnings(attempts));
+          TrimResult trimmed = trimToInternalCap(events, request);
+          if (trimmed.safetyCapReached()) {
+            warnings.add("Only " + trimmed.events().size() + " of " + trimmed.candidateCount()
+                + " matching events were returned; an internal safety cap was reached, more matching events may "
+                + "exist that were never evaluated (OVERALL_EVENT_CAP).");
+          }
+          return Mono.just(new SourceSearchOutcome(trimmed.events(), warnings));
         });
+  }
+
+  /** A short, safe (kind names only, never a response body) summary for the all-targets-failed exception message. */
+  private static String summarizeFailureKinds(List<TargetAttempt> attempts) {
+    Map<TargetOutcome, Long> byKind = new LinkedHashMap<>();
+    for (TargetAttempt attempt : attempts) {
+      byKind.merge(attempt.outcome(), 1L, Long::sum);
+    }
+    List<String> parts = new ArrayList<>();
+    byKind.forEach((outcome, count) -> parts.add(count + " " + outcome.name()));
+    return String.join(", ", parts);
+  }
+
+  /**
+   * OS-1C review recovery - one aggregated, human-readable note per
+   * distinct runtime condition actually observed across this search's
+   * targets (never one note per target - a namespace with dozens of pods
+   * must not flood the query-plan disclosure). Empty when every queried
+   * target came back {@code OK} with no cap hit, which is the common case.
+   */
+  private static List<String> buildRuntimeWarnings(List<TargetAttempt> attempts) {
+    int total = attempts.size();
+    long notFound = attempts.stream().filter(a -> a.outcome() == TargetOutcome.NOT_FOUND).count();
+    long forbidden = attempts.stream().filter(a -> a.outcome() == TargetOutcome.FORBIDDEN).count();
+    long timedOut = attempts.stream().filter(a -> a.outcome() == TargetOutcome.TIMEOUT).count();
+    long errored = attempts.stream().filter(a -> a.outcome() == TargetOutcome.ERROR).count();
+    long byteCapped = attempts.stream().filter(TargetAttempt::byteCapReached).count();
+    long lineCapped = attempts.stream().filter(TargetAttempt::linesPossiblyCapped).count();
+
+    List<String> warnings = new ArrayList<>();
+    if (notFound > 0) {
+      warnings.add(countOf(notFound, total) + " could not be found - the pod may have been deleted or recycled "
+          + "since scope was last resolved (TARGET_NOT_FOUND).");
+    }
+    if (forbidden > 0) {
+      warnings.add(countOf(forbidden, total) + " not permitted to read (PERMISSION_DENIED).");
+    }
+    if (timedOut > 0) {
+      warnings.add(countOf(timedOut, total) + " did not respond in time (TARGET_TIMEOUT).");
+    }
+    if (errored > 0) {
+      warnings.add(countOf(errored, total) + " could not be read due to an upstream error (UPSTREAM_ERROR).");
+    }
+    if (byteCapped > 0) {
+      warnings.add(countOf(byteCapped, total) + " own log response was truncated at the configured byte limit - "
+          + "earlier lines within that response may be missing (BYTE_CAP_REACHED).");
+    }
+    if (lineCapped > 0) {
+      warnings.add(countOf(lineCapped, total) + " returned exactly the requested line limit; older matching lines "
+          + "may exist that were never read (LINE_CAP_REACHED_OR_POSSIBLE).");
+    }
+    return warnings;
+  }
+
+  private static String countOf(long count, int total) {
+    return count + " of " + total + " pod/container target" + (total == 1 ? "" : "s");
   }
 
   /**
@@ -245,25 +350,66 @@ public class DirectPodLogProvider {
 
   // ------------------------------------------------------------ fetch
 
-  private enum TargetOutcome { OK, FORBIDDEN, NOT_FOUND, ERROR }
+  /** OS-1C review recovery adds {@code TIMEOUT}, distinct from the generic {@code ERROR} bucket (mission §8). */
+  private enum TargetOutcome { OK, FORBIDDEN, NOT_FOUND, TIMEOUT, ERROR }
 
-  private record TargetAttempt(PodLogTarget target, List<String> rawLines, TargetOutcome outcome) {}
+  /**
+   * {@code byteCapReached}/{@code linesPossiblyCapped} are OS-1C review
+   * recovery additions - real, per-target truncation signals (never
+   * inferred after the fact) that {@link #buildRuntimeWarnings} turns
+   * into aggregate, user-visible notes.
+   */
+  private record TargetAttempt(
+      PodLogTarget target, List<String> rawLines, TargetOutcome outcome, boolean byteCapReached,
+      boolean linesPossiblyCapped) {
+    private static TargetAttempt failed(PodLogTarget target, TargetOutcome outcome) {
+      return new TargetAttempt(target, List.of(), outcome, false, false);
+    }
+  }
 
   private Mono<TargetAttempt> fetchTarget(
       URI server, RawToken token, String caPath, PodLogTarget target, Instant sinceTime) {
+    int maxLines = properties.getMaxLinesPerTarget();
     return client
         .fetchPodLog(server, token, caPath, target.namespace(), target.podName(), target.containerName(),
-            sinceTime, properties.getMaxLinesPerTarget(), properties.getMaxBytesPerTarget(),
-            properties.getPerTargetTimeout())
-        .map(body -> new TargetAttempt(target, splitLines(body), TargetOutcome.OK))
+            sinceTime, maxLines, properties.getMaxBytesPerTarget(), properties.getPerTargetTimeout())
+        .map(result -> {
+          List<String> lines = splitLines(result.body());
+          boolean byteCapped = result.byteCapReached();
+          if (byteCapped && !lines.isEmpty() && !result.body().endsWith("\n")) {
+            // OS-1C review recovery - the byte cap almost always cuts off
+            // mid-line; the trailing "line" left in the truncated body is
+            // an artifact of exactly where OUR OWN client-side cap
+            // happened to stop reading, never a real, complete line the
+            // upstream actually sent. Surfacing it as a "malformed" event
+            // would misrepresent an artifact of truncation as real (if
+            // garbled) log content - dropped instead, same "never
+            // fabricate/mislead" discipline as the byte-level UTF-8
+            // boundary trim in OpenShiftApiClient. If the cap happened to
+            // land exactly on a line boundary (body ends with \n), every
+            // split line is genuinely complete and none of this applies.
+            lines = lines.subList(0, lines.size() - 1);
+          }
+          // "Exactly tailLines came back" is the only truthful signal
+          // available (mission §2/§9) - the Kubernetes pod-log API gives
+          // no separate "there were more" indicator, so this is
+          // deliberately a conservative POSSIBLE, never a claimed
+          // certainty (LINE_CAP_REACHED_OR_POSSIBLE, never
+          // LINE_CAP_REACHED alone).
+          boolean linesPossiblyCapped = lines.size() >= maxLines;
+          return new TargetAttempt(target, lines, TargetOutcome.OK, byteCapped, linesPossiblyCapped);
+        })
         .onErrorResume(OpenShiftApiException.class, e -> {
           if (e.kind() == Kind.UNAUTHORIZED) {
             return Mono.error(e);
           }
-          TargetOutcome outcome = e.kind() == Kind.FORBIDDEN ? TargetOutcome.FORBIDDEN
-              : e.kind() == Kind.NOT_FOUND ? TargetOutcome.NOT_FOUND
-              : TargetOutcome.ERROR;
-          return Mono.just(new TargetAttempt(target, List.of(), outcome));
+          TargetOutcome outcome = switch (e.kind()) {
+            case FORBIDDEN -> TargetOutcome.FORBIDDEN;
+            case NOT_FOUND -> TargetOutcome.NOT_FOUND;
+            case TIMEOUT -> TargetOutcome.TIMEOUT;
+            default -> TargetOutcome.ERROR;
+          };
+          return Mono.just(TargetAttempt.failed(target, outcome));
         });
   }
 
@@ -331,12 +477,28 @@ public class DirectPodLogProvider {
    * source, which is what makes {@code pagination=false} true rather than
    * aspirational (OS-1C never invents a cursor by slicing an
    * already-truncated array).
+   *
+   * @return the (possibly trimmed) events, plus whether an internal safety
+   *     cap ({@code maxEventsOverall} — never the caller's own smaller
+   *     requested {@code limit}, which trimming here without comment
+   *     already always honored) is what actually did the trimming (OS-1C
+   *     review recovery mission §6 — "distinguish request limit
+   *     intentionally requested ... from ... internal safety cap")
    */
-  private List<CanonicalLogEvent> trimToInternalCap(List<CanonicalLogEvent> events, SearchRequest request) {
-    int cap = request.limit() != null
-        ? Math.min(request.limit(), properties.getMaxEventsOverall())
-        : properties.getMaxEventsOverall();
-    return events.size() > cap ? events.subList(0, cap) : events;
+  private record TrimResult(List<CanonicalLogEvent> events, int candidateCount, boolean safetyCapReached) {}
+
+  private TrimResult trimToInternalCap(List<CanonicalLogEvent> events, SearchRequest request) {
+    int maxEventsOverall = properties.getMaxEventsOverall();
+    int cap = request.limit() != null ? Math.min(request.limit(), maxEventsOverall) : maxEventsOverall;
+    boolean trimmed = events.size() > cap;
+    // The safety cap is only the "surprise" worth naming when it is what
+    // actually controlled the result - if the caller's own smaller
+    // request.limit() is what trimmed, that is ordinary, expected, already
+    // truthfully reflected by ResultCounts#limit()/truncated() upstream in
+    // api.SearchService, and never worth an extra OS-1C-specific note.
+    boolean safetyCapControlling = request.limit() == null || maxEventsOverall < request.limit();
+    List<CanonicalLogEvent> result = trimmed ? events.subList(0, cap) : events;
+    return new TrimResult(result, events.size(), trimmed && safetyCapControlling);
   }
 
   /**

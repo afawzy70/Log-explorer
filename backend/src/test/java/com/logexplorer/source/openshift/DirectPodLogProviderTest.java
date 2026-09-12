@@ -8,6 +8,7 @@ import com.logexplorer.config.DirectPodLogProperties;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.RawToken;
 import com.logexplorer.core.model.SearchRequest;
+import com.logexplorer.core.model.SourceSearchOutcome;
 import com.logexplorer.core.parse.LogLineParser;
 import com.logexplorer.source.openshift.MockOpenShiftPodLogServer.Fixture;
 import com.logexplorer.source.openshift.OpenShiftApiException.Kind;
@@ -152,11 +153,17 @@ class DirectPodLogProviderTest {
     // (OS-1C §4/§10) - this asserts that DirectPodLogProvider never
     // broadens beyond scope.pods() regardless of why it is small.
     seedPods(List.of(pod("standalone-untouched", List.of("app"))), true);
-    // No fixture registered for this pod/container -> a 404 from the mock,
-    // proving the provider only ever asks for what OS-1B resolved and does
-    // not invent any other pod.
-    List<CanonicalLogEvent> events = provider.search(baseRequest().build()).collectList().block();
-    assertThat(events).isEmpty();
+    // No fixture registered for this pod/container -> a 404 from the mock.
+    // With exactly one resolved target and it 404s, every target failed -
+    // OS-1C review recovery mission §7 case C: this is now an explicit
+    // "no readable target" failure, never a silent complete-empty success
+    // (see everyTargetNotFoundIsAnExplicitFailureNeverASilentEmptySearch
+    // below for the dedicated coverage of that behavior) - the request
+    // count here still proves the provider only ever asked for the one pod
+    // OS-1B actually resolved, never invented any other.
+    StepVerifier.create(provider.search(baseRequest().build()))
+        .expectErrorMatches(e -> e instanceof OpenShiftApiException ex && ex.kind() == Kind.UPSTREAM_UNAVAILABLE)
+        .verify();
     assertThat(server.requestCount()).isEqualTo(1);
   }
 
@@ -400,6 +407,236 @@ class DirectPodLogProviderTest {
     provider.search(baseRequest().start(start).build()).collectList().block();
 
     assertThat(server.lastQuery("pod-a", "app")).contains("sinceTime");
+  }
+
+  // ------------------------------------------------------------ OS-1C review recovery: runtime completeness (searchWithOutcome)
+
+  @Test
+  void oneOkPlusOneNotFoundIsPartialWithATargetNotFoundReason() {
+    seedPods(List.of(pod("healthy-pod", List.of("app")), pod("gone-pod", List.of("app"))), true);
+    server.setFixture("healthy-pod", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "readable"))));
+    server.setFixture("gone-pod", "app", Fixture.notFound());
+
+    SourceSearchOutcome outcome = provider.searchWithOutcome(baseRequest().build()).block();
+
+    assertThat(outcome.events()).extracting(CanonicalLogEvent::message).containsExactly("readable");
+    assertThat(outcome.runtimeWarnings()).anySatisfy(w -> assertThat(w).contains("TARGET_NOT_FOUND"));
+  }
+
+  @Test
+  void oneOkPlusOneForbiddenIsPartialWithAPermissionDeniedReason() {
+    seedPods(List.of(pod("healthy-pod", List.of("app")), pod("forbidden-pod", List.of("app"))), true);
+    server.setFixture("healthy-pod", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "readable"))));
+    server.setFixture("forbidden-pod", "app", Fixture.forbidden());
+
+    SourceSearchOutcome outcome = provider.searchWithOutcome(baseRequest().build()).block();
+
+    assertThat(outcome.events()).extracting(CanonicalLogEvent::message).containsExactly("readable");
+    assertThat(outcome.runtimeWarnings()).anySatisfy(w -> assertThat(w).contains("PERMISSION_DENIED"));
+  }
+
+  @Test
+  void oneOkPlusOneTimeoutIsPartialWithATargetTimeoutReason() {
+    properties.setPerTargetTimeout(Duration.ofMillis(100));
+    seedPods(List.of(pod("healthy-pod", List.of("app")), pod("slow-pod", List.of("app"))), true);
+    server.setFixture("healthy-pod", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "readable"))));
+    server.setFixture("slow-pod", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "too slow")), 2000));
+
+    SourceSearchOutcome outcome = provider.searchWithOutcome(baseRequest().build()).block();
+
+    assertThat(outcome.events()).extracting(CanonicalLogEvent::message).containsExactly("readable");
+    assertThat(outcome.runtimeWarnings()).anySatisfy(w -> assertThat(w).contains("TARGET_TIMEOUT"));
+  }
+
+  @Test
+  void oneOkPlusOneGenericUpstreamErrorIsPartialWithAnUpstreamErrorReason() {
+    seedPods(List.of(pod("healthy-pod", List.of("app")), pod("broken-pod", List.of("app"))), true);
+    server.setFixture("healthy-pod", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "readable"))));
+    server.setFixture("broken-pod", "app", Fixture.error());
+
+    SourceSearchOutcome outcome = provider.searchWithOutcome(baseRequest().build()).block();
+
+    assertThat(outcome.events()).extracting(CanonicalLogEvent::message).containsExactly("readable");
+    assertThat(outcome.runtimeWarnings()).anySatisfy(w -> assertThat(w).contains("UPSTREAM_ERROR"));
+  }
+
+  @Test
+  void oneOkPlusOneByteCappedTargetIsPartialWithABytesCapReachedReason() {
+    // Large enough to comfortably fit the healthy pod's own one-line
+    // response whole, small enough that the noisy pod's own much larger
+    // line still genuinely exceeds it.
+    properties.setMaxBytesPerTarget(300);
+    seedPods(List.of(pod("healthy-pod", List.of("app")), pod("noisy-pod", List.of("app"))), true);
+    server.setFixture("healthy-pod", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "readable"))));
+    server.setFixture("noisy-pod", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", "z".repeat(500))));
+
+    SourceSearchOutcome outcome = provider.searchWithOutcome(baseRequest().build()).block();
+
+    assertThat(outcome.events()).extracting(CanonicalLogEvent::message).containsExactly("readable");
+    assertThat(outcome.runtimeWarnings()).anySatisfy(w -> assertThat(w).contains("BYTE_CAP_REACHED"));
+  }
+
+  @Test
+  void aTargetReturningExactlyTheLineLimitIsFlaggedLineCapPossiblyReached() {
+    properties.setMaxLinesPerTarget(2);
+    seedPods(List.of(pod("pod-a", List.of("app"))), true);
+    String body = line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "one"))
+        + "\n" + line("2026-09-12T10:00:01.000000000Z", jsonLine("payments", "INFO", "two"));
+    server.setFixture("pod-a", "app", Fixture.ok(body));
+
+    SourceSearchOutcome outcome = provider.searchWithOutcome(baseRequest().build()).block();
+
+    assertThat(outcome.events()).hasSize(2);
+    assertThat(outcome.runtimeWarnings()).anySatisfy(w -> assertThat(w).contains("LINE_CAP_REACHED_OR_POSSIBLE"));
+  }
+
+  @Test
+  void fewerLinesThanTheLimitIsNeverFlaggedAsLineCapped() {
+    properties.setMaxLinesPerTarget(50);
+    seedPods(List.of(pod("pod-a", List.of("app"))), true);
+    server.setFixture("pod-a", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "only one line"))));
+
+    SourceSearchOutcome outcome = provider.searchWithOutcome(baseRequest().build()).block();
+
+    assertThat(outcome.runtimeWarnings()).noneSatisfy(w -> assertThat(w).contains("LINE_CAP"));
+  }
+
+  @Test
+  void noRuntimeWarningsWhenEveryTargetSucceedsCleanly() {
+    seedPods(List.of(pod("pod-a", List.of("app"))), true);
+    server.setFixture("pod-a", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "clean"))));
+
+    SourceSearchOutcome outcome = provider.searchWithOutcome(baseRequest().build()).block();
+
+    assertThat(outcome.runtimeWarnings()).isEmpty();
+  }
+
+  @Test
+  void everyTargetNotFoundIsAnExplicitFailureNeverASilentCompleteEmptyResult() {
+    seedPods(List.of(pod("gone-1", List.of("app")), pod("gone-2", List.of("app"))), true);
+    server.setFixture("gone-1", "app", Fixture.notFound());
+    server.setFixture("gone-2", "app", Fixture.notFound());
+
+    StepVerifier.create(provider.searchWithOutcome(baseRequest().build()))
+        .expectErrorMatches(e -> e instanceof OpenShiftApiException ex && ex.kind() == Kind.UPSTREAM_UNAVAILABLE)
+        .verify();
+  }
+
+  @Test
+  void everyTargetTimedOutOrErroredIsAnExplicitFailureNeverASilentCompleteEmptyResult() {
+    properties.setPerTargetTimeout(Duration.ofMillis(100));
+    seedPods(List.of(pod("slow-pod", List.of("app")), pod("broken-pod", List.of("app"))), true);
+    server.setFixture("slow-pod", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "x")), 2000));
+    server.setFixture("broken-pod", "app", Fixture.error());
+
+    StepVerifier.create(provider.searchWithOutcome(baseRequest().build()))
+        .expectErrorMatches(e -> e instanceof OpenShiftApiException ex && ex.kind() == Kind.UPSTREAM_UNAVAILABLE)
+        .verify();
+  }
+
+  @Test
+  void targetCapAndByteCapReasonsBothSurviveTogether() {
+    // OS-1C review recovery mission §10 - "target-cap + byte-cap -> both
+    // reasons preserved." Target-cap is a pre-search (describeScopeWarnings)
+    // reason; byte-cap is a runtime (searchWithOutcome) reason - both must
+    // independently still be true/observable for the exact same search.
+    properties.setMaxTargets(1);
+    properties.setMaxBytesPerTarget(50);
+    seedPods(List.of(pod("pod-a", List.of("app")), pod("pod-b", List.of("app"))), true);
+    server.setFixture("pod-a", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", "z".repeat(500))));
+    server.setFixture("pod-b", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "never queried"))));
+
+    SourceSearchOutcome outcome = provider.searchWithOutcome(baseRequest().build()).block();
+    List<String> scopeWarnings = provider.describeScopeWarnings(baseRequest().build());
+
+    assertThat(scopeWarnings).anySatisfy(w -> assertThat(w).contains("TARGET_CAP_REACHED"));
+    assertThat(outcome.runtimeWarnings()).anySatisfy(w -> assertThat(w).contains("BYTE_CAP_REACHED"));
+  }
+
+  @Test
+  void internalOverallEventCapIsExposedAsARuntimeWarningWhenItActuallyControlsTrimming() {
+    properties.setMaxEventsOverall(1);
+    seedPods(List.of(pod("pod-a", List.of("app"))), true);
+    String body = line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "one"))
+        + "\n" + line("2026-09-12T10:00:01.000000000Z", jsonLine("payments", "INFO", "two"));
+    server.setFixture("pod-a", "app", Fixture.ok(body));
+
+    SourceSearchOutcome outcome = provider.searchWithOutcome(baseRequest().build()).block();
+
+    assertThat(outcome.events()).hasSize(1);
+    assertThat(outcome.runtimeWarnings()).anySatisfy(w -> assertThat(w).contains("OVERALL_EVENT_CAP"));
+  }
+
+  @Test
+  void theCallersOwnSmallerRequestedLimitTrimmingIsNeverFlaggedAsOverallEventCap() {
+    // The internal safety cap (maxEventsOverall) is generous here - the
+    // caller's own explicit, smaller request.limit() is what trims, which
+    // is ordinary requested-limit behavior, not a safety-cap surprise.
+    properties.setMaxEventsOverall(1000);
+    seedPods(List.of(pod("pod-a", List.of("app"))), true);
+    String body = line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "one"))
+        + "\n" + line("2026-09-12T10:00:01.000000000Z", jsonLine("payments", "INFO", "two"));
+    server.setFixture("pod-a", "app", Fixture.ok(body));
+
+    SourceSearchOutcome outcome = provider.searchWithOutcome(baseRequest().limit(1).build()).block();
+
+    assertThat(outcome.events()).hasSize(1);
+    assertThat(outcome.runtimeWarnings()).noneSatisfy(w -> assertThat(w).contains("OVERALL_EVENT_CAP"));
+  }
+
+  @Test
+  void aByteCappedTargetIsCancelledWhileOtherTargetsContinueNormally() {
+    // OS-1C review recovery mission §11 - concurrency/cancellation
+    // regression coverage: one target's own byte cap firing must never
+    // disturb another, genuinely different target's normal completion.
+    // Large enough to comfortably fit the normal pod's own one-line
+    // response whole, small enough that the noisy pod's own much larger
+    // line still genuinely exceeds it.
+    properties.setMaxBytesPerTarget(300);
+    seedPods(List.of(pod("noisy-pod", List.of("app")), pod("normal-pod", List.of("app"))), true);
+    server.setFixture("noisy-pod", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", "n".repeat(5000))));
+    server.setFixture("normal-pod", "app", Fixture.ok(line("2026-09-12T10:00:01.000000000Z", jsonLine("payments", "INFO", "unaffected"))));
+
+    SourceSearchOutcome outcome = provider.searchWithOutcome(baseRequest().build()).block();
+
+    assertThat(outcome.events()).extracting(CanonicalLogEvent::message).containsExactly("unaffected");
+    assertThat(outcome.runtimeWarnings()).anySatisfy(w -> assertThat(w).contains("BYTE_CAP_REACHED"));
+  }
+
+  @Test
+  void concurrentSearchesOnTheSameProviderInstanceNeverCrossContaminateOutcomes() {
+    // OS-1C review recovery mission §4/§10 - runtime metadata is carried
+    // entirely by each call's own SourceSearchOutcome return value, never
+    // a shared/mutable field on this provider instance - proven here by
+    // actually running two overlapping searches concurrently (Mono.zip
+    // subscribes to both before either necessarily finishes) with
+    // deliberately different failure profiles, and asserting neither
+    // result's warnings ever mention the other's target.
+    properties.setPerTargetTimeout(Duration.ofSeconds(5));
+    seedPods(List.of(pod("pod-a", List.of("app")), pod("pod-b", List.of("app"))), true);
+    server.setFixture("pod-a", "app", Fixture.notFound());
+    server.setFixture("pod-b", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "b-event")), 80));
+
+    // Two different requests naturally target this test's one shared
+    // scope - the isolation property under test is about the RETURN VALUE
+    // never being shared, not about differing scopes (OpenShiftSession's
+    // own single-connection-per-user model makes differing concurrent
+    // scopes on one provider instance a scenario that does not arise in
+    // this application - see DirectPodLogProvider's own "Immutable scope
+    // snapshot" class javadoc).
+    reactor.core.publisher.Mono<SourceSearchOutcome[]> both = reactor.core.publisher.Mono.zip(
+            provider.searchWithOutcome(baseRequest().build()),
+            provider.searchWithOutcome(baseRequest().build()))
+        .map(tuple -> new SourceSearchOutcome[] {tuple.getT1(), tuple.getT2()});
+
+    StepVerifier.create(both)
+        .assertNext(outcomes -> {
+          for (SourceSearchOutcome outcome : outcomes) {
+            assertThat(outcome.events()).extracting(CanonicalLogEvent::message).containsExactly("b-event");
+            assertThat(outcome.runtimeWarnings()).anySatisfy(w -> assertThat(w).contains("TARGET_NOT_FOUND"));
+          }
+        })
+        .verifyComplete();
   }
 
   // ------------------------------------------------------------ scope completeness / warnings

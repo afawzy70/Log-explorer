@@ -436,6 +436,20 @@ before `SearchService` ever sees it, which is what keeps `pagination`
 honestly `false` without inventing any window-narrowing cursor concept —
 see the report's §8.
 
+**[EVIDENCE, established by OS-1C review recovery]** The §10 proposal's
+own "Per-pod byte cap | `limitBytes` set | always set" row (above) named
+the *intent* correctly but the first implementation did not fully deliver
+it: `maxBytesPerTarget` was enforced by truncating an already-fully-
+materialized `String` by character count, not a real streaming byte
+bound. Corrected to true streaming byte-counted consumption (never more
+than `maxBytes` ever held in memory, cancelled on the wire the instant the
+cap is reached) — see `OS_1C_OPENSHIFT_DIRECT_SEARCH_REPORT.md` §21 for
+the full before/after account, and per-target runtime failures (a pod
+403/404/timeout/error) are now also disclosed through the same
+`describeScopeWarnings`/`QueryPlan.notes` channel this section describes,
+closing the "not yet individually named" gap the original OS-1C
+implementation disclosed.
+
 ---
 
 ## 11. Correlation / trace / journey

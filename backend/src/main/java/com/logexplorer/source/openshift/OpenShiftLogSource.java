@@ -5,6 +5,7 @@ import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceCapabilities;
 import com.logexplorer.core.model.SourceHealth;
+import com.logexplorer.core.model.SourceSearchOutcome;
 import com.logexplorer.source.LogSource;
 import java.time.Instant;
 import java.util.List;
@@ -130,6 +131,12 @@ public class OpenShiftLogSource implements LogSource {
   @Override
   public Flux<CanonicalLogEvent> search(SearchRequest request) {
     return directPodLogProvider.search(request);
+  }
+
+  /** OS-1C review recovery - the one source where runtime per-target metadata can genuinely be non-empty. */
+  @Override
+  public Mono<SourceSearchOutcome> searchWithOutcome(SearchRequest request) {
+    return directPodLogProvider.searchWithOutcome(request);
   }
 
   @Override

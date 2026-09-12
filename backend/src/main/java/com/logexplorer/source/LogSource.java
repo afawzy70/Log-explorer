@@ -6,6 +6,7 @@ import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceCapabilities;
 import com.logexplorer.core.model.SourceHealth;
+import com.logexplorer.core.model.SourceSearchOutcome;
 import java.util.List;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -68,6 +69,33 @@ public interface LogSource {
    * implementation must never assume it is the only line of defense.
    */
   Flux<CanonicalLogEvent> search(SearchRequest request);
+
+  /**
+   * OS-1C review recovery — the same historical search as {@link #search},
+   * but also exposes any RUNTIME completeness/warning metadata discovered
+   * while executing this exact invocation (a specific target could not be
+   * read, an internal byte/line/event cap was actually reached while
+   * fetching) — distinct from {@link #describeScopeWarnings}, which can
+   * only ever report what is known <em>before</em> any network call is
+   * made, since {@code api.SearchService} builds the query plan before
+   * calling this method. The metadata is carried entirely by this call's
+   * own return value ({@link SourceSearchOutcome}) — never a shared/
+   * mutable "last search" field on the source instance — so it is safe by
+   * construction for two overlapping concurrent searches on the same
+   * source.
+   *
+   * <p>The default delegates to {@link #search} and reports no runtime
+   * warnings, which is exactly correct for every source that doesn't
+   * override this (Fixture, Docker, Loki): each of those sources' own
+   * {@code search()} already either fully succeeds or fails the whole
+   * reactive chain — there is no partial-target-failure case for them to
+   * report today. Only {@code source.openshift.OpenShiftLogSource}
+   * overrides this, because only OS-1C's own multi-target fan-out can
+   * genuinely have some targets succeed while others fail.
+   */
+  default Mono<SourceSearchOutcome> searchWithOutcome(SearchRequest request) {
+    return search(request).collectList().map(SourceSearchOutcome::of);
+  }
 
   /**
    * Live tail (IMPLEMENTATION_PLAN.md "Phase J", HANDOVER.md §18) - an
