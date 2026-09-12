@@ -79,6 +79,7 @@ public class EventMapper {
         event.containerName(),
         event.stream(),
         event.namespace(),
-        event.pod());
+        event.pod(),
+        event.contextTargetProof());
   }
 }

@@ -64,6 +64,21 @@ public record SearchRequest(
      * narrows a Docker context call.
      */
     String containerName,
+    /**
+     * OS-1D review recovery — the opaque, server-issued, HMAC-signed proof
+     * ({@code core.search.ContextTargetProofCodec}) that {@link #pod}/
+     * {@link #containerName} were a real, legitimately-resolved target of
+     * a search this backend itself produced. Only ever populated by the
+     * {@code /context} endpoint, exactly like {@code pod}/{@code
+     * containerName} — required by {@code DirectPodLogProvider} only when
+     * the named target is no longer present in the currently cached OS-1B
+     * scope (a pod that disappeared since the original search); a target
+     * still in current scope is authorized by normal scope validation and
+     * never needs this field at all. A client-supplied {@code pod}/{@code
+     * containerName} pair is never, by itself, sufficient authorization —
+     * see {@code DirectPodLogProvider#resolveTargetPlan}'s own javadoc.
+     */
+    String contextTargetProof,
     RawSensitiveFields sensitiveFilters,
     QueryExpr query,
     String rawLogQl,
@@ -110,7 +125,8 @@ public record SearchRequest(
         sourceId, start, end, direction, limit, services, levels, text,
         traceId, spanId, correlationId, journeyId, eventId, errorCode,
         businessStep, uiIdentifier, loggerContains, devicePlatform, language,
-        containerId, pod, containerName, sensitiveFilters, query, rawLogQl, cursor, boundary, composeProject);
+        containerId, pod, containerName, contextTargetProof, sensitiveFilters, query, rawLogQl, cursor, boundary,
+        composeProject);
   }
 
   @Override
@@ -137,6 +153,7 @@ public record SearchRequest(
         + ", containerId=" + containerId
         + ", pod=" + pod
         + ", containerName=" + containerName
+        + ", contextTargetProof=" + (contextTargetProof == null ? "null" : "[REDACTED]")
         + ", sensitiveFilters=" + sensitiveFilters
         + ", query=" + (query == null ? "null" : "[REDACTED]")
         + ", rawLogQl=" + (rawLogQl == null ? "null" : "[REDACTED]")
@@ -173,6 +190,7 @@ public record SearchRequest(
     private String containerId;
     private String pod;
     private String containerName;
+    private String contextTargetProof;
     private RawSensitiveFields sensitiveFilters = RawSensitiveFields.empty();
     private QueryExpr query;
     private String rawLogQl;
@@ -203,6 +221,8 @@ public record SearchRequest(
     public Builder pod(String v) { this.pod = v; return this; }
     /** OS-1D — generic container-name scope hint (see the field's own javadoc). */
     public Builder containerName(String v) { this.containerName = v; return this; }
+    /** OS-1D review recovery — see the field's own javadoc. */
+    public Builder contextTargetProof(String v) { this.contextTargetProof = v; return this; }
     public Builder cursor(String v) { this.cursor = v; return this; }
     /** Test-only convenience — production callers use {@link SearchRequest#withPageBoundary}. */
     public Builder pageBoundary(Instant v) { this.pageBoundary = v; return this; }
@@ -248,7 +268,8 @@ public record SearchRequest(
           sourceId, start, end, direction, limit, services, levels, text,
           traceId, spanId, correlationId, journeyId, eventId, errorCode,
           businessStep, uiIdentifier, loggerContains, devicePlatform, language,
-          containerId, pod, containerName, sensitiveFilters, query, rawLogQl, cursor, pageBoundary, composeProject);
+          containerId, pod, containerName, contextTargetProof, sensitiveFilters, query, rawLogQl, cursor,
+          pageBoundary, composeProject);
     }
   }
 }

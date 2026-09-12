@@ -85,7 +85,23 @@ public record CanonicalLogEvent(
     String stream,
     String namespace,
     String pod,
-    Instant sourceTimestamp
+    Instant sourceTimestamp,
+    /**
+     * OS-1D review recovery — an opaque, server-issued, HMAC-signed proof
+     * ({@code core.search.ContextTargetProofCodec}) that this event's own
+     * ({@code sourceId}, connection generation, {@code namespace}, {@code
+     * pod}, {@code containerName}) tuple was a real, legitimately-resolved
+     * search target — set only by {@code DirectPodLogProvider} for
+     * OpenShift events. Carried through to {@code api.dto.EventDto}
+     * unchanged (unlike {@code sourceTimestamp}) so the frontend can echo
+     * it back on a later "Show surrounding logs" call; every other source
+     * leaves this {@code null}. Not sensitive (a signed opaque token, the
+     * same class of value {@code SearchRequest#cursor} already is), but
+     * kept out of {@code toString}-style logging anyway per this recovery's
+     * own "do not log it" instruction — see {@code SearchRequest#toString}
+     * for the matching request-side redaction.
+     */
+    String contextTargetProof
 ) {
 
   public CanonicalLogEvent {
@@ -157,7 +173,8 @@ public record CanonicalLogEvent(
         .stream(stream)
         .namespace(namespace)
         .pod(pod)
-        .sourceTimestamp(sourceTimestamp);
+        .sourceTimestamp(sourceTimestamp)
+        .contextTargetProof(contextTargetProof);
   }
 
   /** Builder for a large immutable record — plain positional construction would be error-prone. */
@@ -199,6 +216,7 @@ public record CanonicalLogEvent(
     private String namespace;
     private String pod;
     private Instant sourceTimestamp;
+    private String contextTargetProof;
 
     public Builder timestamp(Instant v) { this.timestamp = v; return this; }
     public Builder timestampRaw(String v) { this.timestampRaw = v; return this; }
@@ -237,6 +255,8 @@ public record CanonicalLogEvent(
     public Builder namespace(String v) { this.namespace = v; return this; }
     public Builder pod(String v) { this.pod = v; return this; }
     public Builder sourceTimestamp(Instant v) { this.sourceTimestamp = v; return this; }
+    /** OS-1D review recovery — see the field's own javadoc. */
+    public Builder contextTargetProof(String v) { this.contextTargetProof = v; return this; }
 
     public CanonicalLogEvent build() {
       return new CanonicalLogEvent(
@@ -246,7 +266,7 @@ public record CanonicalLogEvent(
           errorCode, correlationId, sensitive, devicePlatformType, language,
           serverIp, serverHost, unknownTopLevelFields, unknownMdcFields,
           malformed, rawLine, sourceId, composeProject, composeService, containerId, containerName, stream,
-          namespace, pod, sourceTimestamp);
+          namespace, pod, sourceTimestamp, contextTargetProof);
     }
   }
 }

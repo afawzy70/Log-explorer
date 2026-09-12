@@ -5,7 +5,10 @@ import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.RawToken;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.SourceSearchOutcome;
+import com.logexplorer.core.guard.GuardrailViolationException;
+import com.logexplorer.core.guard.GuardrailViolationException.Reason;
 import com.logexplorer.core.parse.LogLineParser;
+import com.logexplorer.core.search.ContextTargetProofCodec;
 import com.logexplorer.core.search.EventFilters;
 import com.logexplorer.source.openshift.OpenShiftApiException.Kind;
 import java.net.URI;
@@ -88,17 +91,23 @@ import reactor.core.publisher.Mono;
 @Component
 public class DirectPodLogProvider {
 
+  /** Every proof this class issues/verifies is scoped to exactly this source id — see {@code resolveTargetPlan}. */
+  private static final String SOURCE_ID = "openshift";
+
   private final OpenShiftApiClient client;
   private final OpenShiftSession session;
   private final LogLineParser parser;
   private final DirectPodLogProperties properties;
+  private final ContextTargetProofCodec contextTargetProofCodec;
 
   public DirectPodLogProvider(
-      OpenShiftApiClient client, OpenShiftSession session, LogLineParser parser, DirectPodLogProperties properties) {
+      OpenShiftApiClient client, OpenShiftSession session, LogLineParser parser, DirectPodLogProperties properties,
+      ContextTargetProofCodec contextTargetProofCodec) {
     this.client = client;
     this.session = session;
     this.parser = parser;
     this.properties = properties;
+    this.contextTargetProofCodec = contextTargetProofCodec;
   }
 
   /**
@@ -138,7 +147,7 @@ public class DirectPodLogProvider {
       TargetPlan plan = resolveTargetPlan(scope, namespace, request);
       Mono<SourceSearchOutcome> result = plan.queried().isEmpty()
           ? Mono.just(SourceSearchOutcome.of(List.of()))
-          : fetchAndMerge(server, token, caPath, plan, request);
+          : fetchAndMerge(server, token, caPath, plan, request, generation);
 
       return result
           .timeout(properties.getOverallTimeout())
@@ -152,7 +161,7 @@ public class DirectPodLogProvider {
   }
 
   private Mono<SourceSearchOutcome> fetchAndMerge(
-      URI server, RawToken token, String caPath, TargetPlan plan, SearchRequest request) {
+      URI server, RawToken token, String caPath, TargetPlan plan, SearchRequest request, long generation) {
     Instant fetchedAt = Instant.now();
     return Flux.fromIterable(plan.queried())
         .flatMap(target -> fetchTarget(server, token, caPath, target, request.start()), properties.getMaxConcurrency())
@@ -178,7 +187,7 @@ public class DirectPodLogProvider {
                 "None of the " + attempts.size() + " resolved pod/container target"
                     + (attempts.size() == 1 ? "" : "s") + " could be read (" + summarizeFailureKinds(attempts) + ")."));
           }
-          List<CanonicalLogEvent> events = parseFilterAndMerge(attempts, request, fetchedAt);
+          List<CanonicalLogEvent> events = parseFilterAndMerge(attempts, request, fetchedAt, generation);
           List<String> warnings = new ArrayList<>(buildRuntimeWarnings(attempts));
           TrimResult trimmed = trimToInternalCap(events, request);
           if (trimmed.safetyCapReached()) {
@@ -289,32 +298,68 @@ public class DirectPodLogProvider {
    * target cap (§8) — truncation is never silent; {@link #describeScopeWarnings}
    * reports it using the same {@code resolvedCount} this method computes.
    *
-   * <p><b>OS-1D narrow-context override.</b> When {@code request} carries
-   * both {@link SearchRequest#pod()} and {@link SearchRequest#containerName()}
-   * — which only ever happens for a "Show surrounding logs" call, the one
-   * place {@code api.SearchController}'s {@code /context} endpoint
-   * populates either field for this source — this resolves to <em>exactly
-   * that one (pod, container) target</em> instead of the full currently-
-   * selected OS-1B scope (mission §8: "Surrounding logs → same pod/
-   * container by default", §16: never broaden scope implicitly). The
-   * target is queried even if it is no longer present in the locally
-   * cached {@code scope.pods()} (a pod can legitimately disappear between
-   * the original search and the investigator clicking the action) —
-   * constructing it directly and letting the real Kubernetes API call
-   * answer truthfully (404 if genuinely gone) is what makes "pod
-   * disappeared" a real, evidenced {@code TARGET_NOT_FOUND}/{@code
-   * UPSTREAM_UNAVAILABLE} outcome (mission §9/§19/§32) rather than a
-   * silent, successful empty result from a target list that was never
-   * even attempted. Correlation/trace/journey calls never set these
-   * fields, so they are completely unaffected and keep resolving the full
-   * OS-1B scope exactly as before (mission §13/§16 - correlation stays
-   * inside the full resolved scope, not narrowed to one pod).
+   * <p><b>OS-1D narrow-context override, corrected (OS-1D review
+   * recovery).</b> When {@code request} carries both {@link
+   * SearchRequest#pod()} and {@link SearchRequest#containerName()} — which
+   * only ever happens for a "Show surrounding logs" call, the one place
+   * {@code api.SearchController}'s {@code /context} endpoint populates
+   * either field for this source — this resolves to <em>exactly that one
+   * (pod, container) target</em> instead of the full currently-selected
+   * OS-1B scope (mission §8: "Surrounding logs → same pod/container by
+   * default", §16: never broaden scope implicitly).
+   *
+   * <p><b>CLIENT_POD_CONTAINER_FIELDS != AUTHORIZATION.</b> The original
+   * OS-1D implementation constructed this single target directly from
+   * {@code request.pod()}/{@code request.containerName()} whenever the pod
+   * was absent from {@code scope.pods()}, with no further check — a real
+   * server-side scope-integrity defect: those two fields come straight off
+   * the HTTP request body, so a crafted request could name any pod/
+   * container name in the current namespace (a Job pod, a standalone pod,
+   * an operator pod — anything OS-1B never resolved into scope at all) and
+   * this backend would still call the cluster's real pod-log API for it.
+   * Corrected here: {@link #authorizeNarrowContextTarget} now requires
+   * EITHER (a) the target is still present in the current {@code
+   * scope.pods()} (ordinary, unchanged server-side scope validation — see
+   * mission §12, this remains authoritative and is never weakened), OR
+   * (b) {@link SearchRequest#contextTargetProof()} is a valid, {@link
+   * ContextTargetProofCodec}-verified proof that this exact (source,
+   * connection generation, namespace, pod, container) tuple was a real
+   * target this backend itself resolved and queried at some point in the
+   * current connection's lifetime — never inferred from message text,
+   * traceId, correlationId, eventId, or a workload name the frontend
+   * merely supplied (mission §7). Neither path ever authorizes anything
+   * beyond exactly the one (pod, container) pair named — see {@link
+   * ContextTargetProofCodec#verify}'s own javadoc for the full field-by-
+   * field binding (source, generation, namespace, pod, container all must
+   * match exactly). Failing both paths throws {@link
+   * GuardrailViolationException} ({@link Reason#INVALID_CONTEXT_TARGET})
+   * <em>before this method returns a target at all</em> — {@link
+   * #fetchTarget}/{@code OpenShiftApiClient#fetchPodLog} are never
+   * reached, so an unauthorized target results in genuinely zero cluster
+   * calls, never a 404 that would otherwise (falsely) prove or disprove
+   * the target's existence to an unauthorized caller (mission §8: "do not
+   * leak whether arbitrary pod names exist").
+   *
+   * <p>A historically-valid but now-disappeared pod (the original, still-
+   * valid OS-1D requirement: "a pod can legitimately disappear between the
+   * original search and the investigator clicking the action") still
+   * works exactly as before via path (b) — the real Kubernetes API call
+   * still answers truthfully (404 if genuinely gone), which is what makes
+   * "pod disappeared" a real, evidenced {@code TARGET_NOT_FOUND}/{@code
+   * UPSTREAM_UNAVAILABLE} outcome (mission §9/§19/§32) rather than either
+   * a silent empty result or an unauthorized-access risk.
+   *
+   * <p>Correlation/trace/journey calls never set {@code pod}/{@code
+   * containerName} at all, so they are completely unaffected by any of
+   * this and keep resolving the full OS-1B scope exactly as before
+   * (mission §13/§16 - correlation stays inside the full resolved scope,
+   * never narrowed to one historical target).
    */
   private TargetPlan resolveTargetPlan(OpenShiftScope scope, String namespace, SearchRequest request) {
     String narrowPod = blankToNull(request.pod());
     String narrowContainer = blankToNull(request.containerName());
     List<PodLogTarget> resolved = narrowPod != null && narrowContainer != null
-        ? List.of(narrowContextTarget(scope, namespace, narrowPod, narrowContainer))
+        ? List.of(authorizeNarrowContextTarget(scope, namespace, narrowPod, narrowContainer, request))
         : resolveTargets(scope, namespace);
     Map<String, PodLogTarget> deduped = new LinkedHashMap<>();
     for (PodLogTarget target : resolved) {
@@ -332,18 +377,37 @@ public class DirectPodLogProvider {
   }
 
   /**
-   * OS-1D — the exact single target a "Show surrounding logs" call
-   * resolves to. {@code scope.findPod} is consulted only to attach a real
-   * {@link WorkloadRef} (for a nicer Service hint) when the pod happens to
-   * still be locally cached — never to decide whether the target is
-   * queried at all; a cache miss still produces a target (workload
-   * unknown), so a pod that has genuinely rotated out of the OS-1B cache
-   * is still actually asked about, never assumed absent.
+   * OS-1D review recovery — the single security-critical gate for "Show
+   * surrounding logs": returns the exact one target to query only after
+   * establishing this backend's own evidence that (namespace, podName,
+   * containerName) was a legitimate target, never trusting the request
+   * fields alone. See {@link #resolveTargetPlan}'s own javadoc for the
+   * full rule table (mission §6).
    */
-  private static PodLogTarget narrowContextTarget(
-      OpenShiftScope scope, String namespace, String podName, String containerName) {
+  private PodLogTarget authorizeNarrowContextTarget(
+      OpenShiftScope scope, String namespace, String podName, String containerName, SearchRequest request) {
     PodSummary pod = scope.findPod(podName);
-    return new PodLogTarget(namespace, pod != null ? pod.workload() : null, podName, containerName);
+    if (pod != null && pod.containerNames().contains(containerName)) {
+      // Rule A - still in current OS-1B scope: ordinary, unweakened
+      // server-side scope validation is authoritative on its own: no
+      // proof is required or consulted at all.
+      return new PodLogTarget(namespace, pod.workload(), podName, containerName);
+    }
+    // Rule B/C/D/E/F - not in current scope: a valid, server-issued
+    // historical proof is the ONLY other path. contextTargetProofCodec
+    // throws GuardrailViolationException(INVALID_CONTEXT_TARGET) - the
+    // exact same fixed message - for a missing proof, a tampered/forged
+    // one, or any single field mismatch (wrong source, stale connection
+    // generation, wrong namespace, wrong pod, wrong container) alike, so
+    // this call site never has to branch on (and therefore never risks
+    // leaking) which specific check failed.
+    contextTargetProofCodec.verify(
+        request.contextTargetProof(), SOURCE_ID, session.generation(), namespace, podName, containerName);
+    // Workload identity is genuinely unknown for a target no longer in the
+    // local cache - null here is the same "workload unknown" fallback
+    // every other OK-outcome path already tolerates (see
+    // parseFilterAndMerge's own serviceHint fallback).
+    return new PodLogTarget(namespace, null, podName, containerName);
   }
 
   private List<PodLogTarget> resolveTargets(OpenShiftScope scope, String namespace) {
@@ -469,23 +533,35 @@ public class DirectPodLogProvider {
   private record ParsedEvent(CanonicalLogEvent event, PodLogTarget target, int sequence) {}
 
   private List<CanonicalLogEvent> parseFilterAndMerge(
-      List<TargetAttempt> attempts, SearchRequest request, Instant fetchedAt) {
+      List<TargetAttempt> attempts, SearchRequest request, Instant fetchedAt, long generation) {
     List<ParsedEvent> parsed = new ArrayList<>();
     for (TargetAttempt attempt : attempts) {
       if (attempt.outcome() != TargetOutcome.OK) {
         continue;
       }
+      // OS-1D review recovery - issued once per target (not per line):
+      // this is the server-side evidence that (namespace, pod, container)
+      // was a real, legitimately-queried target of THIS search, which
+      // authorizeNarrowContextTarget later requires before it will accept
+      // this exact target again once it has aged out of the OS-1B scope
+      // cache (see that method's own javadoc for the full authorization
+      // contract - a client-supplied pod/containerName pair is never, by
+      // itself, sufficient).
+      String contextTargetProof = contextTargetProofCodec.encode(
+          SOURCE_ID, generation, attempt.target().namespace(), attempt.target().podName(),
+          attempt.target().containerName());
       int sequence = 0;
       for (String rawLine : attempt.rawLines()) {
         Instant sourceTimestamp = extractTimestamp(rawLine, fetchedAt);
         String content = stripTimestamp(rawLine);
         String serviceHint = attempt.target().workload() != null ? attempt.target().workload().name() : null;
         CanonicalLogEvent event = parser.parse(content, serviceHint).toBuilder()
-            .sourceId("openshift")
+            .sourceId(SOURCE_ID)
             .namespace(attempt.target().namespace())
             .pod(attempt.target().podName())
             .containerName(attempt.target().containerName())
             .sourceTimestamp(sourceTimestamp)
+            .contextTargetProof(contextTargetProof)
             .build();
         if (EventFilters.matches(event, request)) {
           parsed.add(new ParsedEvent(event, attempt.target(), sequence));

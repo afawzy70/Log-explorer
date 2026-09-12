@@ -526,6 +526,23 @@ now correctly `true` for OpenShift, reported honestly only after real
 end-to-end verification (§8/§10 of that report) — the exact discipline
 this paragraph itself calls for.
 
+**[EVIDENCE, established by the OS-1D review recovery — CORRECTS the
+paragraph immediately above]** "A target that has disappeared is queried
+for real" was true but incomplete: the first implementation let the
+*request itself* decide whether a target was queried at all, using
+nothing but the client-supplied `pod`/`containerName` fields once the
+target left the local scope cache — a real server-side authorization gap,
+not merely an incompleteness. A crafted request could name any pod in the
+namespace (a Job pod, a standalone pod, an operator pod) and reach the
+real pod-log API for it. Corrected: a target absent from current scope
+now requires a server-issued, HMAC-signed historical proof
+(`core.search.ContextTargetProofCodec`) binding source, connection
+generation, namespace, pod, and container — before the cluster is ever
+called. See `OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §14 for the
+full account. The "pod churn is honest by construction" and "`contextView`
+is correctly `true`" claims above remain accurate; only the authorization
+mechanism underneath the disappeared-pod path was corrected.
+
 ---
 
 ## 13. Loki's role after first-class OpenShift

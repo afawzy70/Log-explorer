@@ -8,6 +8,7 @@ import com.logexplorer.config.DirectPodLogProperties;
 import com.logexplorer.core.model.RawToken;
 import com.logexplorer.core.model.SourceHealth;
 import com.logexplorer.core.parse.LogLineParser;
+import com.logexplorer.core.search.ContextTargetProofCodec;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
@@ -170,8 +171,8 @@ class OpenShiftSecurityBoundariesTest {
   private static OpenShiftLogSource logSource(OpenShiftSession session) {
     OpenShiftApiClient client = new OpenShiftApiClient(Map.of());
     DirectPodLogProperties properties = new DirectPodLogProperties();
-    DirectPodLogProvider provider =
-        new DirectPodLogProvider(client, session, new LogLineParser(new ObjectMapper()), properties);
+    DirectPodLogProvider provider = new DirectPodLogProvider(
+        client, session, new LogLineParser(new ObjectMapper()), properties, new ContextTargetProofCodec(new ObjectMapper()));
     return new OpenShiftLogSource(session, provider);
   }
 

@@ -889,6 +889,10 @@ export function useSearchState() {
           // a source with no such concept (Docker, Loki) simply never sets
           // it, so this is a no-op for them.
           containerName: event.containerName ?? undefined,
+          // OS-1D review recovery — echoed back verbatim; the backend
+          // requires it only when this target has since left its cached
+          // scope (see ContextRequestBody#contextTargetProof).
+          contextTargetProof: event.contextTargetProof ?? undefined,
         },
         controller.signal,
       )

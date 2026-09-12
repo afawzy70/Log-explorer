@@ -506,6 +506,37 @@ no new `OpenShiftApiException.Kind` value was needed. `REL-1` (local
 reproducible desktop packaging) remains confirmed `APPROVED_PENDING`,
 untouched.
 
+### 12h. OS-1D REVIEW RECOVERY — context target authorization & scope proof
+
+See `docs/verification/OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §14
+for the full account, including the historical correction of OS-1D-1's
+original evidence (the pre-recovery narrow-context mechanism unintentionally
+permitted reading any pod/container name in the namespace via a crafted
+request — fixed, not silently erased).
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| OS-1D-14 | A client-supplied `pod`/`containerName` pair alone must never authorize direct pod-log retrieval — the backend must hold its own evidence the target was a real, legitimately-resolved search target | `VERIFIED` | `DirectPodLogProvider#authorizeNarrowContextTarget`; `c_anArbitraryOutOfScopePodWithNoProofIsRejectedWithZeroClusterCalls` |
+| OS-1D-15 | A pod still present in the current OS-1B resolved scope is authorized by ordinary, unweakened scope validation alone — no proof required or consulted | `VERIFIED` | `a_currentScopeTargetIsAllowedWithNoProofAtAll`, `l_theProofMechanismDoesNotBreakTheNormalContextWorkflowWhenTheTargetIsStillInScope` |
+| OS-1D-16 | A pod that has disappeared from current scope since the original search is still reachable via a valid, server-issued historical scope proof, and a genuine 404 remains truthful | `VERIFIED` | `core.search.ContextTargetProofCodec`; `b_aDisappearedPodWithAValidProofStillReachesTheRealApiAndGetsATruthfulNotFound` |
+| OS-1D-17 | A forged or tampered proof is rejected before any cluster call, with zero pod-log API calls made | `VERIFIED` | `d_anArbitraryOutOfScopePodWithAForgedOrTamperedProofIsRejectedWithZeroClusterCalls`; `ContextTargetProofCodecTest` (tamper/malformed/cross-instance rejection) |
+| OS-1D-18 | A valid proof binds to the exact connection generation it was issued under — reconnecting invalidates every previously-issued proof | `VERIFIED` | `g_aProofFromAnOldConnectionGenerationIsRejectedAfterReconnect` (real reconnect, new generation) |
+| OS-1D-19 | A valid proof binds to the exact namespace/project it was issued for | `VERIFIED` | `f_aValidProofForADifferentNamespaceIsRejected` |
+| OS-1D-20 | A valid proof binds to the exact (pod, container) pair it was issued for — never just the pod | `VERIFIED` | `e_aValidProofForADifferentContainerIsRejected` |
+| OS-1D-21 | A valid proof binds to the exact source id it was issued for | `VERIFIED` | `h_aProofIssuedForAnotherSourceIdIsRejected` |
+| OS-1D-22 | Job/CronJob-owned, standalone, and operator/unknown-controller pods — never part of any OS-1B-resolved scope — cannot be read through a crafted context request, with or without an attempted proof | `VERIFIED` | `i_...Job...`, `j_...standalone...`, `k_...operator...` (all three: zero cluster calls) |
+| OS-1D-23 | An unauthorized/out-of-scope context target never becomes an oracle for whether an arbitrary pod name exists — the rejection is a single fixed message regardless of which check failed | `VERIFIED` | `ContextTargetProofCodecTest#theRejectionMessageIsAlwaysTheSameFixedStringAndNeverEchoesFieldValues` |
+| OS-1D-24 | Correlation/trace/journey search is unaffected by the authorization gate (never narrowed to one historical target, never requires a proof) | `VERIFIED` — unchanged, re-verified | Pre-existing correlation/trace/journey test suite passes unmodified; `authorizeNarrowContextTarget` is only reachable when both `pod` and `containerName` are set, which correlation/trace/journey never do |
+| OS-1D-25 | `contextTargetProof` is never displayed, copied to clipboard, persisted, put in a URL, or logged | `VERIFIED` | See report §14 "`contextTargetProof` handling" subsection for the full per-surface audit |
+
+**OS-1D REVIEW RECOVERY pass.** OS-1D-1 through OS-1D-13's evidence is
+corrected where it described the pre-recovery mechanism (see report §14's
+own "Documentation/history correction" subsection) — never silently
+rewritten, the original text is preserved with the correction appended.
+No other OS-1D/1C/1B/1A requirement changed status. `TEST-INFRA-1` remains
+`APPROVED_PENDING_HARDENING`, untouched. `REL-1` remains confirmed
+`APPROVED_PENDING`, untouched.
+
 ---
 
 ## 13. Out of Current Scope
@@ -772,6 +803,23 @@ opportunistically inside OS-1D, since doing so risked distracting from
 this slice's own actual scope. `REL_1` remains confirmed
 `APPROVED_PENDING`, untouched. `OS_1E`/`OS_1F`/`OS_1G`/`Phase M` remain
 `NOT_STARTED`.
+
+**OS-1D REVIEW RECOVERY pass (§12h above).** Reconciled against
+`docs/verification/OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §14. A
+real, previously-untracked server-side scope-integrity defect was found in
+§12g's own narrow-context work: a client-supplied `pod`/`containerName`
+pair alone could authorize direct pod-log retrieval for a target that was
+never part of any OS-1B-resolved scope (a Job/CronJob/standalone/operator
+pod, or any arbitrary name). Fixed and closed as OS-1D-14 through OS-1D-25
+with a new, independently-keyed HMAC proof codec
+(`core.search.ContextTargetProofCodec`, modeled on the existing
+`PageCursorCodec`) and 25 new executable tests (13 integration-level in
+`DirectPodLogProviderTest`, 12 codec-level in `ContextTargetProofCodecTest`)
+proving zero cluster calls for every unauthorized-target case. The valid
+"disappeared pod" requirement this mechanism exists to satisfy is
+unaffected and re-verified working through the corrected path. `TEST-INFRA-1`
+remains `APPROVED_PENDING_HARDENING`, untouched. `REL_1` remains confirmed
+`APPROVED_PENDING`, untouched.
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0

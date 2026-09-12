@@ -27,6 +27,15 @@ public record ContextRequestDto(
      * SearchRequest#containerName}'s own javadoc). Optional; a source with
      * no such concept (Docker, Loki) simply never receives one.
      */
-    String containerName
+    String containerName,
+    /**
+     * OS-1D review recovery — the opaque proof echoed back from the
+     * originally-selected event's own {@code EventDto#contextTargetProof}
+     * (see {@code SearchRequest#contextTargetProof}'s own javadoc).
+     * Optional; only required by {@code DirectPodLogProvider} when {@code
+     * pod}/{@code containerName} name a target no longer in the currently
+     * cached OS-1B scope.
+     */
+    String contextTargetProof
 ) {
 }

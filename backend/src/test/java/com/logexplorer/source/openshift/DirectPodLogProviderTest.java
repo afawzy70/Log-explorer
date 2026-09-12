@@ -5,11 +5,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.logexplorer.config.DirectPodLogProperties;
+import com.logexplorer.core.guard.GuardrailViolationException;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.RawToken;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.SourceSearchOutcome;
 import com.logexplorer.core.parse.LogLineParser;
+import com.logexplorer.core.search.ContextTargetProofCodec;
 import com.logexplorer.source.openshift.MockOpenShiftPodLogServer.Fixture;
 import com.logexplorer.source.openshift.OpenShiftApiException.Kind;
 import com.logexplorer.source.openshift.WorkloadDiscovery.KindOutcome;
@@ -44,6 +46,7 @@ class DirectPodLogProviderTest {
   private OpenShiftSession session;
   private DirectPodLogProperties properties;
   private DirectPodLogProvider provider;
+  private ContextTargetProofCodec contextTargetProofCodec;
   private long generation;
 
   @BeforeEach
@@ -53,7 +56,8 @@ class DirectPodLogProviderTest {
     session = new OpenShiftSession();
     properties = new DirectPodLogProperties();
     LogLineParser parser = new LogLineParser(new ObjectMapper());
-    provider = new DirectPodLogProvider(client, session, parser, properties);
+    contextTargetProofCodec = new ContextTargetProofCodec(new ObjectMapper());
+    provider = new DirectPodLogProvider(client, session, parser, properties, contextTargetProofCodec);
 
     OcLoginCommand command = new OcLoginCommand(URI.create(server.baseUrl()), TOKEN, null);
     generation = session.connect(command, "Test", "developer", List.of(NAMESPACE), ProjectDiscovery.Api.PROJECTS, null);
@@ -702,7 +706,8 @@ class DirectPodLogProviderTest {
   void noWarningsWhenNotConnectedOrNoProjectSelected() {
     OpenShiftSession disconnected = new OpenShiftSession();
     DirectPodLogProvider disconnectedProvider =
-        new DirectPodLogProvider(client, disconnected, new LogLineParser(new ObjectMapper()), properties);
+        new DirectPodLogProvider(
+            client, disconnected, new LogLineParser(new ObjectMapper()), properties, contextTargetProofCodec);
     assertThat(disconnectedProvider.describeScopeWarnings(baseRequest().build())).isEmpty();
   }
 
@@ -714,7 +719,8 @@ class DirectPodLogProviderTest {
     OcLoginCommand command = new OcLoginCommand(URI.create(server.baseUrl()), TOKEN, null);
     noProject.connect(command, "Test", "developer", List.of(NAMESPACE), ProjectDiscovery.Api.PROJECTS, null);
     DirectPodLogProvider noProjectProvider =
-        new DirectPodLogProvider(client, noProject, new LogLineParser(new ObjectMapper()), properties);
+        new DirectPodLogProvider(
+            client, noProject, new LogLineParser(new ObjectMapper()), properties, contextTargetProofCodec);
 
     assertThatThrownBy(() -> noProjectProvider.search(baseRequest().build()).collectList().block())
         .isInstanceOf(IllegalStateException.class);
@@ -766,13 +772,15 @@ class DirectPodLogProviderTest {
   void aContextRequestForAPodThatHasDisappearedFromCurrentScopeStillAsksTheRealApiRatherThanSilentlyReturningEmpty() {
     // "Pod disappeared between the original search and Show surrounding
     // logs" (mission §9/§19/§32) - the pod is NOT in current OS-1B scope at
-    // all (never seeded), but the context request still names it directly
-    // (from the originally selected event's own identity), and the target
-    // is queried for real rather than assumed absent because a local cache
-    // does not currently list it.
+    // all (never seeded), but the context request carries a VALID
+    // server-issued historical proof (OS-1D review recovery - a bare
+    // pod/containerName pair is no longer, by itself, sufficient), and the
+    // target is queried for real rather than assumed absent because a
+    // local cache does not currently list it.
     server.setFixture("ghost-pod", "app", Fixture.notFound());
+    String proof = contextTargetProofCodec.encode("openshift", generation, NAMESPACE, "ghost-pod", "app");
 
-    StepVerifier.create(provider.search(baseRequest().pod("ghost-pod").containerName("app").build()))
+    StepVerifier.create(provider.search(baseRequest().pod("ghost-pod").containerName("app").contextTargetProof(proof).build()))
         .expectErrorMatches(e -> e instanceof OpenShiftApiException ex && ex.kind() == Kind.UPSTREAM_UNAVAILABLE)
         .verify();
     assertThat(server.requestCount()).isEqualTo(1); // a real API call was made, not a silent local decision
@@ -836,6 +844,201 @@ class DirectPodLogProviderTest {
 
     assertThat(events).extracting(CanonicalLogEvent::message).containsExactly("a");
     assertThat(server.requestCount()).isEqualTo(2); // both pods queried - not narrowed at the fetch level
+  }
+
+  // ------------------------------------------------------------ OS-1D review recovery: context target authorization (mission §14)
+
+  private String validProof(String podName, String containerName) {
+    return contextTargetProofCodec.encode("openshift", generation, NAMESPACE, podName, containerName);
+  }
+
+  @Test
+  void a_currentScopeTargetIsAllowedWithNoProofAtAll() {
+    // §14.A - ordinary path, unchanged: still-in-scope targets never need
+    // (or consult) a proof.
+    seedPods(List.of(pod("pod-a", List.of("app"))), true);
+    server.setFixture("pod-a", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "in-scope"))));
+
+    List<CanonicalLogEvent> events =
+        provider.search(baseRequest().pod("pod-a").containerName("app").build()).collectList().block();
+
+    assertThat(events).extracting(CanonicalLogEvent::message).containsExactly("in-scope");
+  }
+
+  @Test
+  void b_aDisappearedPodWithAValidProofStillReachesTheRealApiAndGetsATruthfulNotFound() {
+    // §14.B - proof issued for a target that has since left scope; the
+    // real cluster call is attempted and its genuine 404 becomes the
+    // truthful failure - never a silent empty result, never a blind trust
+    // of the request fields alone.
+    server.setFixture("ghost-pod", "app", Fixture.notFound());
+    String proof = validProof("ghost-pod", "app");
+
+    StepVerifier.create(provider.search(baseRequest().pod("ghost-pod").containerName("app").contextTargetProof(proof).build()))
+        .expectErrorMatches(e -> e instanceof OpenShiftApiException ex && ex.kind() == Kind.UPSTREAM_UNAVAILABLE)
+        .verify();
+    assertThat(server.requestCount()).isEqualTo(1);
+  }
+
+  @Test
+  void c_anArbitraryOutOfScopePodWithNoProofIsRejectedWithZeroClusterCalls() {
+    // §14.C - the core defect this recovery fixes: a crafted pod/container
+    // name that was never part of any resolved scope, and no proof at all.
+    server.setFixture("attacker-named-pod", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "should never be readable"))));
+
+    StepVerifier.create(provider.search(baseRequest().pod("attacker-named-pod").containerName("app").build()))
+        .expectErrorMatches(e -> e instanceof GuardrailViolationException ex
+            && ex.reason() == GuardrailViolationException.Reason.INVALID_CONTEXT_TARGET)
+        .verify();
+    assertThat(server.requestCount()).isZero(); // the cluster was never called
+  }
+
+  @Test
+  void d_anArbitraryOutOfScopePodWithAForgedOrTamperedProofIsRejectedWithZeroClusterCalls() {
+    // §14.D
+    server.setFixture("attacker-named-pod", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "should never be readable"))));
+    String tampered = validProof("attacker-named-pod", "app") + "tampered";
+    String forgedFromScratch = "not-a-real-proof.also-not-real";
+
+    StepVerifier.create(provider.search(baseRequest().pod("attacker-named-pod").containerName("app").contextTargetProof(tampered).build()))
+        .expectErrorMatches(e -> e instanceof GuardrailViolationException ex
+            && ex.reason() == GuardrailViolationException.Reason.INVALID_CONTEXT_TARGET)
+        .verify();
+    StepVerifier.create(provider.search(baseRequest().pod("attacker-named-pod").containerName("app").contextTargetProof(forgedFromScratch).build()))
+        .expectErrorMatches(e -> e instanceof GuardrailViolationException ex
+            && ex.reason() == GuardrailViolationException.Reason.INVALID_CONTEXT_TARGET)
+        .verify();
+    assertThat(server.requestCount()).isZero();
+  }
+
+  @Test
+  void e_aValidProofForADifferentContainerIsRejected() {
+    // §14.E - proof for pod-a/app must never authorize pod-a/privileged-sidecar.
+    String proofForApp = validProof("pod-a", "app");
+
+    StepVerifier.create(provider.search(baseRequest().pod("pod-a").containerName("privileged-sidecar").contextTargetProof(proofForApp).build()))
+        .expectErrorMatches(e -> e instanceof GuardrailViolationException ex
+            && ex.reason() == GuardrailViolationException.Reason.INVALID_CONTEXT_TARGET)
+        .verify();
+    assertThat(server.requestCount()).isZero();
+  }
+
+  @Test
+  void f_aValidProofForADifferentNamespaceIsRejected() {
+    // §14.F - a proof minted for this namespace must never authorize a
+    // pod name replayed against a different namespace.
+    String proofForAnotherNamespace = contextTargetProofCodec.encode("openshift", generation, "project-a", "pod-x", "app");
+
+    StepVerifier.create(provider.search(baseRequest().pod("pod-x").containerName("app").contextTargetProof(proofForAnotherNamespace).build()))
+        .expectErrorMatches(e -> e instanceof GuardrailViolationException ex
+            && ex.reason() == GuardrailViolationException.Reason.INVALID_CONTEXT_TARGET)
+        .verify();
+    assertThat(server.requestCount()).isZero();
+  }
+
+  @Test
+  void g_aProofFromAnOldConnectionGenerationIsRejectedAfterReconnect() {
+    // §14.G - reconnecting invalidates every previously-issued proof.
+    String staleProof = validProof("pod-a", "app");
+    OcLoginCommand reconnect = new OcLoginCommand(URI.create(server.baseUrl()), TOKEN, null);
+    long newGeneration =
+        session.connect(reconnect, "Test", "developer", List.of(NAMESPACE), ProjectDiscovery.Api.PROJECTS, null);
+    assertThat(session.selectProject(NAMESPACE, newGeneration)).isTrue();
+    assertThat(newGeneration).isNotEqualTo(generation);
+
+    StepVerifier.create(provider.search(baseRequest().pod("pod-a").containerName("app").contextTargetProof(staleProof).build()))
+        .expectErrorMatches(e -> e instanceof GuardrailViolationException ex
+            && ex.reason() == GuardrailViolationException.Reason.INVALID_CONTEXT_TARGET)
+        .verify();
+    assertThat(server.requestCount()).isZero();
+  }
+
+  @Test
+  void h_aProofIssuedForAnotherSourceIdIsRejected() {
+    // §14.H
+    String proofForAnotherSource = contextTargetProofCodec.encode("openshift-loki", generation, NAMESPACE, "pod-a", "app");
+
+    StepVerifier.create(provider.search(baseRequest().pod("pod-a").containerName("app").contextTargetProof(proofForAnotherSource).build()))
+        .expectErrorMatches(e -> e instanceof GuardrailViolationException ex
+            && ex.reason() == GuardrailViolationException.Reason.INVALID_CONTEXT_TARGET)
+        .verify();
+    assertThat(server.requestCount()).isZero();
+  }
+
+  @Test
+  void i_aJobOwnedPodOutsideSupportedWorkloadScopeCannotBeReadViaACraftedContextRequest() {
+    // §14.I - OS-1B never resolves Job/CronJob pods into scope at all, so
+    // scope.findPod always misses, and no legitimate search could ever
+    // have issued a proof for one either.
+    server.setFixture("payment-job-27182818", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "job output should never leak"))));
+
+    StepVerifier.create(provider.search(baseRequest().pod("payment-job-27182818").containerName("app").build()))
+        .expectErrorMatches(e -> e instanceof GuardrailViolationException ex
+            && ex.reason() == GuardrailViolationException.Reason.INVALID_CONTEXT_TARGET)
+        .verify();
+    assertThat(server.requestCount()).isZero();
+  }
+
+  @Test
+  void j_aStandalonePodOutsideScopeCannotBeReadViaACraftedContextRequest() {
+    // §14.J
+    server.setFixture("manually-created-debug-pod", "shell", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "should never leak"))));
+
+    StepVerifier.create(provider.search(baseRequest().pod("manually-created-debug-pod").containerName("shell").build()))
+        .expectErrorMatches(e -> e instanceof GuardrailViolationException ex
+            && ex.reason() == GuardrailViolationException.Reason.INVALID_CONTEXT_TARGET)
+        .verify();
+    assertThat(server.requestCount()).isZero();
+  }
+
+  @Test
+  void k_anOperatorOrUnknownControllerPodCannotBeReadViaACraftedContextRequest() {
+    // §14.K
+    server.setFixture("some-operator-controller-manager-7d8f", "manager", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "should never leak"))));
+
+    StepVerifier.create(provider.search(baseRequest().pod("some-operator-controller-manager-7d8f").containerName("manager").build()))
+        .expectErrorMatches(e -> e instanceof GuardrailViolationException ex
+            && ex.reason() == GuardrailViolationException.Reason.INVALID_CONTEXT_TARGET)
+        .verify();
+    assertThat(server.requestCount()).isZero();
+  }
+
+  @Test
+  void l_theProofMechanismDoesNotBreakTheNormalContextWorkflowWhenTheTargetIsStillInScope() {
+    // §14.L - the authorization gate must be invisible/no-op for the
+    // common, everyday case: target still in scope, no proof supplied at
+    // all (mirrors the pre-existing "same pod/container by default" test).
+    seedPods(List.of(pod("pod-a", List.of("app")), pod("pod-b", List.of("app")), pod("pod-c", List.of("app"))), true);
+    server.setFixture("pod-b", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "b"))));
+
+    List<CanonicalLogEvent> events =
+        provider.search(baseRequest().pod("pod-b").containerName("app").build()).collectList().block();
+
+    assertThat(events).extracting(CanonicalLogEvent::message).containsExactly("b");
+    assertThat(server.requestCount()).isEqualTo(1);
+  }
+
+  @Test
+  void anIssuedProofRoundTripsThroughSearchWithOutcomeOntoEachOpenShiftEvent() {
+    // Proves the proof is actually ISSUED (not just verified) - every OK
+    // OpenShift event carries a non-blank contextTargetProof usable on a
+    // later "Show surrounding logs" call for exactly that event's own
+    // (pod, container).
+    seedPods(List.of(pod("pod-a", List.of("app"))), true);
+    server.setFixture("pod-a", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "hello"))));
+
+    CanonicalLogEvent event = provider.search(baseRequest().build()).blockFirst();
+
+    assertThat(event.contextTargetProof()).isNotBlank();
+    // The issued proof is itself independently valid against the exact
+    // target it was issued for - proven by using it as a real disappeared-
+    // pod proof for that same (pod, container).
+    server.setFixture("pod-a", "app", Fixture.notFound());
+    session.updatePods(List.of(), true, NAMESPACE, null, generation); // pod-a rotates out of scope
+    StepVerifier.create(provider.search(
+            baseRequest().pod("pod-a").containerName("app").contextTargetProof(event.contextTargetProof()).build()))
+        .expectErrorMatches(e -> e instanceof OpenShiftApiException ex && ex.kind() == Kind.UPSTREAM_UNAVAILABLE)
+        .verify();
   }
 
   // ------------------------------------------------------------ OS-1D: correlation / trace / journey search

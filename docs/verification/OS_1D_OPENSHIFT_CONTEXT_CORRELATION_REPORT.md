@@ -373,3 +373,173 @@ No test was skipped, weakened, or deleted to reach green. Every existing
 `ContextRequestDto` construction site (6, in `RequestMapperTest.java`) was
 updated for the new positional field with unchanged assertions — a
 mechanical, additive change, not a behavior change.
+
+## 14. OS-1D REVIEW RECOVERY — context target authorization & scope proof
+
+A second review pass on PR #42 (reviewed HEAD `df7ce6a8222d8905059657c39a0a90bae23b9942`)
+found a real server-side scope-integrity defect in §4/§6's own narrow-context
+target resolution, fixed without touching the rest of OS-1D's design
+(correlation/trace/journey, root identity, gap model, capability truthfulness
+all unchanged).
+
+### The defect
+
+**`CLIENT_POD_CONTAINER_FIELDS != AUTHORIZATION`, corrected.** The original
+`DirectPodLogProvider#resolveTargetPlan` narrow-context branch constructed a
+`PodLogTarget` directly from `request.pod()`/`request.containerName()`
+whenever the pod was absent from the locally cached `scope.pods()` — with
+no further check. Since those two fields arrive straight off the
+`/api/v1/logs/context` HTTP request body, a crafted request could name
+**any** pod/container name in the currently-selected namespace — a Job
+pod, a CronJob pod, a standalone pod, an operator/controller pod, or any
+other workload kind OS-1B never resolves into scope at all — and this
+backend would still issue the real Kubernetes pod-log `GET` for it. The
+"disappeared pod" requirement this branch existed to satisfy (a pod
+present when the original search ran, gone by the time the investigator
+clicks "Show surrounding logs") was genuine and correct; the mechanism
+chosen to satisfy it conflated *"the request named this target"* with
+*"this backend has evidence this target was ever legitimately resolved,"*
+which are not the same thing.
+
+### The fix — server-verifiable, non-forgeable historical scope proof
+
+**`core.search.ContextTargetProofCodec`** (new, deliberately modeled on
+the existing `PageCursorCodec` — same opaque "base64 payload . base64 HMAC
+signature" envelope, same in-memory-only `SecureRandom` signing key
+generated once at process start, same "one fixed rejection message, never
+reveal which check failed" discipline — but its own small, independent
+codec with its own independent key, since a context-target proof answers a
+completely different question ("was this pod/container a real target of a
+search this backend produced") than a pagination cursor does):
+
+- **Issued** once per (namespace, pod, container) target, inside
+  `DirectPodLogProvider#parseFilterAndMerge`, only for a target this
+  search actually, successfully queried — binds `sourceId="openshift"`,
+  `OpenShiftSession#generation()`, `namespace`, `pod`, `container`.
+- Carried to the browser as `EventDto#contextTargetProof` (new field,
+  `CanonicalLogEvent#contextTargetProof` → `EventMapper` → `EventDto`,
+  `null` for every source except OpenShift) and echoed back verbatim by
+  the frontend (`LogEvent#contextTargetProof`, `showContext`,
+  `ContextRequestBody#contextTargetProof`) on a later "Show surrounding
+  logs" call, through `ContextRequestDto#contextTargetProof` →
+  `RequestMapper#toContextDomain` → `SearchRequest#contextTargetProof`.
+- **Verified** inside a new `DirectPodLogProvider#authorizeNarrowContextTarget`,
+  which replaces the old unconditional target construction:
+
+  1. **Target still in current `scope.pods()`** — ordinary, unweakened
+     OS-1B scope validation is authoritative on its own; no proof is
+     required or consulted at all (mission §12 — this path was, and
+     remains, unchanged).
+  2. **Target not in current scope** — `ContextTargetProofCodec#verify`
+     is required to succeed against every one of: source id, connection
+     generation, namespace, pod, container. Any mismatch (missing proof,
+     tampered/forged proof, wrong source, stale generation, wrong
+     namespace, wrong pod, wrong container) throws
+     `GuardrailViolationException(Reason.INVALID_CONTEXT_TARGET)` —
+     **before `resolveTargetPlan` returns a target at all**, so
+     `fetchTarget`/`OpenShiftApiClient#fetchPodLog` are never reached and
+     the cluster is never called for an unauthorized target. The
+     rejection message is always the same fixed string
+     ("This log location could not be verified for surrounding-log
+     retrieval.") regardless of which check failed, so it can never
+     become an oracle for probing arbitrary pod names (mission §8).
+
+  A historically-valid but now-disappeared pod still works exactly as
+  the original OS-1D design intended: a valid proof lets the real API
+  call through, and a genuine 404 becomes the truthful
+  `TARGET_NOT_FOUND`/`UPSTREAM_UNAVAILABLE` outcome — nothing about that
+  behavior changed, only *what is required to reach it*.
+
+- Correlation/trace/journey requests never set `pod`/`containerName` at
+  all, so `authorizeNarrowContextTarget` is never invoked for them — they
+  continue resolving the full OS-1B scope exactly as before (mission §13,
+  unchanged, re-verified by the pre-existing correlation test suite
+  passing unmodified).
+
+### Why no proof expiry beyond connection-generation binding
+
+The proof never grants access beyond what the requester's own current
+OpenShift bearer token and connection already permit — the Kubernetes
+API itself is still the real authorization boundary for the actual read;
+this proof only re-attempts a read the backend itself already resolved
+once before, during the same connection. Reconnecting (`OcLoginCommand`
+→ a new `OpenShiftSession#generation()`) invalidates every previously-
+issued proof outright (mission §9), which is the staleness control the
+mission actually asks for; no separate wall-clock TTL was added on top.
+
+### Security tests added (mission §14, all in `DirectPodLogProviderTest.java` unless noted)
+
+| Test | Mission ref | Proves |
+|---|---|---|
+| `a_currentScopeTargetIsAllowedWithNoProofAtAll` | A | Unchanged fast path |
+| `b_aDisappearedPodWithAValidProofStillReachesTheRealApiAndGetsATruthfulNotFound` | B | Valid historical proof still works |
+| `c_anArbitraryOutOfScopePodWithNoProofIsRejectedWithZeroClusterCalls` | C | The core defect - fixed, zero cluster calls |
+| `d_anArbitraryOutOfScopePodWithAForgedOrTamperedProofIsRejectedWithZeroClusterCalls` | D | Both a modified real proof and a fabricated-from-scratch string rejected |
+| `e_aValidProofForADifferentContainerIsRejected` | E | Container binding |
+| `f_aValidProofForADifferentNamespaceIsRejected` | F | Namespace binding |
+| `g_aProofFromAnOldConnectionGenerationIsRejectedAfterReconnect` | G | Generation binding, real reconnect |
+| `h_aProofIssuedForAnotherSourceIdIsRejected` | H | Source binding |
+| `i_aJobOwnedPodOutsideSupportedWorkloadScopeCannotBeReadViaACraftedContextRequest` | I | Job pods unreachable |
+| `j_aStandalonePodOutsideScopeCannotBeReadViaACraftedContextRequest` | J | Standalone pods unreachable |
+| `k_anOperatorOrUnknownControllerPodCannotBeReadViaACraftedContextRequest` | K | Operator/controller pods unreachable |
+| `l_theProofMechanismDoesNotBreakTheNormalContextWorkflowWhenTheTargetIsStillInScope` | L | No regression to the common case |
+| `anIssuedProofRoundTripsThroughSearchWithOutcomeOntoEachOpenShiftEvent` | — | End-to-end: a proof this class itself issues is later accepted as valid for that exact target |
+| `ContextTargetProofCodecTest` (new, 12 tests) | — | Codec-level: round-trip, missing/malformed/tampered/forged rejection, every field mismatch individually, fixed non-leaking rejection message |
+| `RequestMapperTest#contextTargetProofIsCarriedThroughUnchangedForOs1dReviewRecovery` | — | DTO→domain passthrough |
+| `useSearchState.contextReturn.test.ts` (+2) | — | Frontend echoes the proof verbatim when present, sends nothing when absent |
+
+The pre-existing "disappeared pod" test
+(`aContextRequestForAPodThatHasDisappearedFromCurrentScopeStillAsksTheRealApiRatherThanSilentlyReturningEmpty`)
+was updated to supply a valid proof (it previously relied on the now-fixed
+defect) — its own real invariant (`server.requestCount()==1`, a genuine
+API call happens) is preserved unchanged.
+
+### `contextTargetProof` handling (mission §15)
+
+Not a secret — a signed opaque token, the same class of value
+`SearchRequest#cursor` already is. Never displayed (absent from both
+`buildOverviewFields` and the explicit, closed field list
+`buildCanonicalFieldEntries` builds for "All fields" — nothing needed to
+be added to *exclude* it, it was simply never added to either list). Never
+copied to clipboard (`RequestFlowSection`'s copyable-identifier set is a
+closed five-field list — `journeyId`/`correlationId`/`traceId`/`spanId`/
+`eventId` — `contextTargetProof` is not and will never be a member).
+Never persisted (no `localStorage` write in this codebase touches event
+data at all — confirmed unchanged, `tablePreferences.ts`'s own writes are
+column-visibility/order/density preferences only). Never put in a URL
+(only ever a JSON POST body field, the same discipline every other
+search/context/journey field already follows). Kept out of `toString()`-
+style logging defensively: `SearchRequest#toString()` now redacts it the
+same way `query`/`rawLogQl` already are, even though it is not sensitive
+user data — caution per the mission's own explicit "do not log it".
+
+### Documentation/history correction (mission §17)
+
+This section itself is that correction: the original OS-1D report (§4/§6
+above) described the pre-recovery target-construction behavior as
+correct and complete. It was not — it satisfied the valid "disappeared
+pod" requirement by a mechanism that also, unintentionally, permitted
+reading any pod/container name in the namespace. That description is left
+in place above (never silently rewritten); this section names the defect,
+the fix, and the new invariant explicitly:
+
+```
+CLIENT_TARGET_FIELDS != AUTHORIZATION
+DISAPPEARED_POD_CONTEXT_REQUIRES_SERVER_TRUSTED_HISTORICAL_SCOPE_PROOF
+```
+
+### Validation
+
+| Check | Result |
+|---|---|
+| `./mvnw test -Dtest=DirectPodLogProviderTest,ContextTargetProofCodecTest,RequestMapperTest,EventFiltersTest` | PASS — 70 + 12 + 15 + 21 tests, 0 failures |
+| `./mvnw test -Dtest='com.logexplorer.source.openshift.**,com.logexplorer.core.search.**,com.logexplorer.api.**'` | PASS — 499 tests, 0 failures |
+| `./mvnw test -Dtest='com.logexplorer.source.openshift.**'` | PASS — 302 tests, 0 failures |
+| `./mvnw test` (full backend suite) | PASS — 939 tests, 0 failures, 0 errors |
+| `npm run test` (full frontend unit suite) | PASS — 759 tests, 0 failures |
+| `npm run typecheck` | PASS |
+| `npm run build` | PASS |
+| Full Playwright E2E | see final mission response |
+| `REAL_OPENSHIFT_1D` | `BLOCKED_CREDENTIALS`, unchanged — this fix is proven against `MockOpenShiftPodLogServer` (real HTTP, deterministic fake Kubernetes pod-log API), not a live cluster; no real-cluster evidence is claimed |
+
+No test was skipped, weakened, or deleted to reach green.

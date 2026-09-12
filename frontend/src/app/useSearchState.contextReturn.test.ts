@@ -67,6 +67,7 @@ function event(message: string, timestamp: string) {
     stream: null,
     namespace: null,
     pod: null,
+    contextTargetProof: null,
   };
 }
 
@@ -299,5 +300,31 @@ describe('UX-R5 - context detour state', () => {
 
     const body = JSON.parse(contextCalls[contextCalls.length - 1].body) as { containerName?: string };
     expect(body.containerName).toBeUndefined();
+  });
+
+  it('OS-1D review recovery - the event own contextTargetProof is echoed back verbatim on the context request', async () => {
+    const result = await searchedState();
+    const openshiftEvent = {
+      ...result.current.searchResult!.events[1],
+      pod: 'payment-api-abc',
+      containerName: 'app',
+      containerId: null,
+      contextTargetProof: 'server-issued-opaque-proof-value',
+    };
+
+    await act(async () => result.current.showContext(openshiftEvent));
+
+    const body = JSON.parse(contextCalls[contextCalls.length - 1].body) as { contextTargetProof?: string };
+    expect(body.contextTargetProof).toBe('server-issued-opaque-proof-value');
+  });
+
+  it('OS-1D review recovery - an event with no contextTargetProof never sends the field at all', async () => {
+    const result = await searchedState();
+    // result.current.searchResult events already have contextTargetProof: null by default (non-OpenShift fixture).
+
+    await act(async () => result.current.showContext(result.current.searchResult!.events[1]));
+
+    const body = JSON.parse(contextCalls[contextCalls.length - 1].body) as { contextTargetProof?: string };
+    expect(body.contextTargetProof).toBeUndefined();
   });
 });

@@ -87,6 +87,7 @@ public class RequestMapper {
         .containerId(dto.containerId())
         .pod(dto.pod())
         .containerName(dto.containerName())
+        .contextTargetProof(dto.contextTargetProof())
         .composeProject(dto.composeProject())
         .build();
   }
