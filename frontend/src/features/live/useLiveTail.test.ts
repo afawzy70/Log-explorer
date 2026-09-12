@@ -504,10 +504,17 @@ describe('useLiveTail (Legacy Remediation Slice 5)', () => {
     });
   });
 
-  describe('source warnings (OS-1E)', () => {
-    it('defaults to empty, and a "status" event populates it from the payload verbatim', () => {
+  describe('source status (OS-1E review recovery)', () => {
+    it('defaults to the nominal/RUNNING status, and a "status" event populates it from the payload verbatim', () => {
       const { result } = renderHook(() => useLiveTail());
-      expect(result.current.sourceWarnings).toEqual([]);
+      expect(result.current.sourceStatus).toEqual({
+        state: 'RUNNING',
+        resolvedTargets: 0,
+        activeTargets: 0,
+        reconnectingTargets: 0,
+        stoppedTargets: 0,
+        warnings: [],
+      });
 
       act(() => result.current.start('openshift', []));
       act(() => latestMockEventSource().emitOpen());
@@ -515,16 +522,26 @@ describe('useLiveTail (Legacy Remediation Slice 5)', () => {
         latestMockEventSource().emit('status', {
           droppedCount: 0,
           serverTime: '2026-01-01T00:00:00Z',
+          liveSourceState: 'DEGRADED',
+          resolvedTargets: 2,
+          activeTargets: 1,
+          reconnectingTargets: 0,
+          stoppedTargets: 1,
           warnings: ['Pod payment-api-1 / container app stopped — the pod or container no longer exists (404).'],
         }),
       );
 
-      expect(result.current.sourceWarnings).toEqual([
-        'Pod payment-api-1 / container app stopped — the pod or container no longer exists (404).',
-      ]);
+      expect(result.current.sourceStatus).toEqual({
+        state: 'DEGRADED',
+        resolvedTargets: 2,
+        activeTargets: 1,
+        reconnectingTargets: 0,
+        stoppedTargets: 1,
+        warnings: ['Pod payment-api-1 / container app stopped — the pod or container no longer exists (404).'],
+      });
     });
 
-    it('a later "status" event with an empty warnings array clears a previously-shown warning', () => {
+    it('a later "status" event replaces the whole snapshot - a resolved target no longer clears a stale field', () => {
       const { result } = renderHook(() => useLiveTail());
       act(() => result.current.start('openshift', []));
       act(() => latestMockEventSource().emitOpen());
@@ -532,18 +549,33 @@ describe('useLiveTail (Legacy Remediation Slice 5)', () => {
         latestMockEventSource().emit('status', {
           droppedCount: 0,
           serverTime: '2026-01-01T00:00:00Z',
+          liveSourceState: 'NO_ACTIVE_TARGETS',
+          resolvedTargets: 1,
+          activeTargets: 0,
+          reconnectingTargets: 0,
+          stoppedTargets: 1,
           warnings: ['some target stopped'],
         }),
       );
-      expect(result.current.sourceWarnings).toEqual(['some target stopped']);
+      expect(result.current.sourceStatus.state).toBe('NO_ACTIVE_TARGETS');
 
       act(() =>
-        latestMockEventSource().emit('status', { droppedCount: 0, serverTime: '2026-01-01T00:00:01Z', warnings: [] }),
+        latestMockEventSource().emit('status', {
+          droppedCount: 0,
+          serverTime: '2026-01-01T00:00:01Z',
+          liveSourceState: 'RUNNING',
+          resolvedTargets: 1,
+          activeTargets: 1,
+          reconnectingTargets: 0,
+          stoppedTargets: 0,
+          warnings: [],
+        }),
       );
-      expect(result.current.sourceWarnings).toEqual([]);
+      expect(result.current.sourceStatus.state).toBe('RUNNING');
+      expect(result.current.sourceStatus.warnings).toEqual([]);
     });
 
-    it('a fresh start() resets sourceWarnings back to empty', () => {
+    it('a fresh start() resets sourceStatus back to nominal', () => {
       const { result } = renderHook(() => useLiveTail());
       act(() => result.current.start('openshift', []));
       act(() => latestMockEventSource().emitOpen());
@@ -551,23 +583,38 @@ describe('useLiveTail (Legacy Remediation Slice 5)', () => {
         latestMockEventSource().emit('status', {
           droppedCount: 0,
           serverTime: '2026-01-01T00:00:00Z',
+          liveSourceState: 'EXPIRED',
+          resolvedTargets: 1,
+          activeTargets: 0,
+          reconnectingTargets: 0,
+          stoppedTargets: 1,
           warnings: ['some target stopped'],
         }),
       );
-      expect(result.current.sourceWarnings).toEqual(['some target stopped']);
+      expect(result.current.sourceStatus.state).toBe('EXPIRED');
 
       act(() => result.current.start('openshift', []));
-      expect(result.current.sourceWarnings).toEqual([]);
+      expect(result.current.sourceStatus.state).toBe('RUNNING');
+      expect(result.current.sourceStatus.warnings).toEqual([]);
     });
 
-    it('a source with no warnings concept (e.g. Docker/Fixture) simply never populates it', () => {
+    it('a source with no per-target concept (e.g. Docker/Fixture) simply never leaves RUNNING', () => {
       const { result } = renderHook(() => useLiveTail());
       act(() => result.current.start('fixture', []));
       act(() => latestMockEventSource().emitOpen());
       act(() =>
-        latestMockEventSource().emit('status', { droppedCount: 0, serverTime: '2026-01-01T00:00:00Z', warnings: [] }),
+        latestMockEventSource().emit('status', {
+          droppedCount: 0,
+          serverTime: '2026-01-01T00:00:00Z',
+          liveSourceState: 'RUNNING',
+          resolvedTargets: 0,
+          activeTargets: 0,
+          reconnectingTargets: 0,
+          stoppedTargets: 0,
+          warnings: [],
+        }),
       );
-      expect(result.current.sourceWarnings).toEqual([]);
+      expect(result.current.sourceStatus.state).toBe('RUNNING');
     });
   });
 

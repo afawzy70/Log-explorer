@@ -958,6 +958,28 @@ life of one session, never silently re-resolved. `REAL_OPENSHIFT_1E =
 BLOCKED_CREDENTIALS`, the same honest gap every prior OS-1x slice has
 carried.
 
+**[EVIDENCE, established by the OS-1E REVIEW RECOVERY, not this
+assessment]** A post-implementation review found the first cut above had
+not fully delivered "memory bounds" and "Stop/Pause/Resume" as robustly
+as claimed: (a) the initial-tail replay-on-reconnect defect meant the
+reconnect *attempt count* itself was not a reliable bound (distinct from
+the byte/line memory bounds, which were correct); (b) one oversized
+physical log line could become several synthetic events rather than
+being bounded to exactly one; (c) "bounded fan-out" (§10 below) had a
+gap specific to Live: `maxConcurrency` was reused by name but never
+wired into the actual live connect/reconnect path at all. All three are
+now corrected — see `OWNER_REQUIREMENTS_REGISTER.md` §12l and
+`OS_1E_OPENSHIFT_LIVE_REPORT.md`'s own review-recovery section for the
+full before/after account, including two further truthfulness gaps this
+same review found beyond the original table's own scope: a session with
+zero active targets could remain visually indistinguishable from a
+healthy LIVE session, and a connection/scope change during an
+already-running immutable snapshot was never actively surfaced. Neither
+gap involved the credential/token model — the "old session never
+migrates onto new credentials" invariant held throughout; what was
+missing was the old session *actively terminating and saying so*, not a
+security boundary.
+
 ---
 
 ## 21. Release order

@@ -395,10 +395,20 @@ public class OpenShiftApiClient {
    * OS-1E — the same read-only Kubernetes pod-log endpoint {@link
    * #fetchPodLog} uses, but with {@code follow=true}: an unbounded stream
    * of raw log lines, one per {@code \n}-delimited line, as they arrive.
-   * {@code tailLines} here is always {@code initialTailLines} — small and
-   * bounded (mission §14) — never {@code maxLinesPerTarget}, which is a
-   * bounded-search concept that does not apply to a stream with no upper
-   * line count at all.
+   *
+   * <p><b>OS-1E review recovery</b> — {@code tailLines} is now an
+   * explicit caller-supplied parameter, never hard-wired to the
+   * configured initial-tail bound. The caller ({@code
+   * OpenShiftLiveTailProvider}) passes the real, small, bounded initial
+   * tail size only for a session's very first connection to a target, and
+   * {@code 0} for every reconnect — {@code tailLines=0} is the
+   * Kubernetes-documented, well-established {@code kubectl logs -f
+   * --tail=0} idiom for "follow new lines only, replay nothing" — so a
+   * reconnect can never re-deliver the same historical line(s) a previous
+   * attempt on this same target already emitted (see the mission's own
+   * "historical replay != recovery" requirement, and {@code
+   * OpenShiftLiveTailProvider}'s own javadoc for the full reconnect/
+   * recovery contract this enables).
    *
    * <p>Never materializes the response body — {@link #decodeLines} is a
    * genuinely streaming line decoder (see its own javadoc), so a pod that
@@ -410,9 +420,9 @@ public class OpenShiftApiClient {
    * same "adapter reports the truth, the orchestrator decides" split
    * {@link #fetchPodLog} already has with {@code DirectPodLogProvider}.
    */
-  public Flux<String> followPodLog(
+  public Flux<DecodedLine> followPodLog(
       URI server, RawToken token, String caPath, String namespace, String podName, String containerName,
-      int initialTailLines, int maxLineBytes) {
+      int tailLines, int maxLineBytes) {
     WebClient client;
     try {
       client = build(server, caPath);
@@ -424,7 +434,7 @@ public class OpenShiftApiClient {
         .queryParam("container", containerName)
         .queryParam("timestamps", "true")
         .queryParam("follow", "true")
-        .queryParam("tailLines", initialTailLines);
+        .queryParam("tailLines", tailLines);
     Flux<DataBuffer> rawBody = client
         .get()
         .uri(uri.build().toUriString())
@@ -432,6 +442,17 @@ public class OpenShiftApiClient {
         .retrieve()
         .bodyToFlux(DataBuffer.class);
     return decodeLines(rawBody, maxLineBytes).onErrorMap(OpenShiftApiClient::classify);
+  }
+
+  /**
+   * OS-1E — one decoded logical line. {@code truncated} is {@code true}
+   * only for the single event produced when a PHYSICAL upstream line
+   * exceeded {@code maxLineBytes} before a real {@code \n} was ever seen
+   * (OS-1E review recovery — see {@link LiveLineDecoder}'s own javadoc
+   * for why this is always exactly one event per physical line, never
+   * more).
+   */
+  record DecodedLine(String content, boolean truncated) {
   }
 
   /**
@@ -459,7 +480,7 @@ public class OpenShiftApiClient {
    * FluxSink#onCancel} to the upstream subscription, every {@link
    * DataBuffer} released in a {@code finally} block regardless of path.
    */
-  static Flux<String> decodeLines(Flux<DataBuffer> source, int maxLineBytes) {
+  static Flux<DecodedLine> decodeLines(Flux<DataBuffer> source, int maxLineBytes) {
     return Flux.create(sink -> {
       LineDecodingSubscriber subscriber = new LineDecodingSubscriber(maxLineBytes, sink);
       sink.onCancel(subscriber::cancelFromDownstream);
@@ -469,11 +490,11 @@ public class OpenShiftApiClient {
 
   /** The {@link BaseSubscriber} behind {@link #decodeLines}. */
   private static final class LineDecodingSubscriber extends BaseSubscriber<DataBuffer> {
-    private final FluxSink<String> sink;
+    private final FluxSink<DecodedLine> sink;
     private final LiveLineDecoder decoder;
     private final AtomicReference<Boolean> downstreamCancelled = new AtomicReference<>(Boolean.FALSE);
 
-    LineDecodingSubscriber(int maxLineBytes, FluxSink<String> sink) {
+    LineDecodingSubscriber(int maxLineBytes, FluxSink<DecodedLine> sink) {
       this.sink = sink;
       this.decoder = new LiveLineDecoder(maxLineBytes);
     }
@@ -492,7 +513,7 @@ public class OpenShiftApiClient {
         int readable = buffer.readableByteCount();
         byte[] chunk = new byte[readable];
         buffer.read(chunk);
-        for (String line : decoder.onChunk(chunk)) {
+        for (DecodedLine line : decoder.onChunk(chunk)) {
           sink.next(line);
         }
       } finally {
@@ -535,35 +556,67 @@ public class OpenShiftApiClient {
    * buffered for the next chunk. Kept entirely separate from the
    * reactive/subscription plumbing so it can be unit-tested directly with
    * plain byte arrays, independent of any real or fake HTTP transport.
+   *
+   * <h2>OS-1E review recovery — one physical line, at most one event</h2>
+   *
+   * <p>The original implementation called {@code finishLine()} every time
+   * {@code maxLineBytes} was reached, even mid-physical-line, and then
+   * kept accumulating the SAME physical line's remaining bytes into a
+   * fresh buffer — a pod emitting one 200 KB physical line with a
+   * 64 KB {@code maxLineBytes} cap would silently become THREE synthetic
+   * {@code CanonicalLogEvent}s, none of which are real, independent log
+   * lines the upstream ever sent. Fixed: once the cap is hit before a
+   * real {@code \n} is seen, exactly ONE {@link DecodedLine} is emitted
+   * (content truncated to {@code maxLineBytes}, {@code truncated=true}),
+   * and the decoder enters {@link #discardingOverlong} mode — every
+   * further byte of THAT SAME physical line is discarded (not buffered,
+   * not emitted) until the real terminating {@code \n} arrives, at which
+   * point decoding of the next physical line resumes normally. Memory
+   * stays bounded (discarded bytes are never buffered at all) without
+   * ever fabricating a second or third event for one real line.
    */
   static final class LiveLineDecoder {
     private final int maxLineBytes;
     private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+    private boolean discardingOverlong = false;
 
     LiveLineDecoder(int maxLineBytes) {
       this.maxLineBytes = maxLineBytes;
     }
 
     /**
-     * @return every complete line newly found in {@code chunk}, in order;
-     *     empty if {@code chunk} contained no newline and did not push
-     *     the buffered fragment over {@code maxLineBytes}
+     * @return every complete/truncated line newly found in {@code chunk},
+     *     in order; empty if {@code chunk} contained no newline and did
+     *     not push the buffered fragment over {@code maxLineBytes}
      */
-    List<String> onChunk(byte[] chunk) {
-      List<String> lines = new ArrayList<>();
+    List<DecodedLine> onChunk(byte[] chunk) {
+      List<DecodedLine> lines = new ArrayList<>();
       for (byte b : chunk) {
+        if (discardingOverlong) {
+          // Mission §5/§6 - this physical line already produced its one
+          // truncated event; every further byte belongs to content that
+          // was already declared lost, never a new line of its own.
+          if (b == '\n') {
+            discardingOverlong = false;
+          }
+          continue;
+        }
         if (b == '\n') {
-          lines.add(finishLine());
+          lines.add(new DecodedLine(finishLine(), false));
         } else {
           buffer.write(b);
           if (buffer.size() >= maxLineBytes) {
             // Safety valve (mission §11 "bounded maximum logical line
             // size") - a pod emitting one very long line with no newline
-            // at all must never grow this decoder's memory without bound.
-            // The emitted "line" is genuinely incomplete (no upstream
-            // newline was ever seen) - trimIncompleteUtf8Suffix below
-            // still applies, so it is never garbled, only truncated.
-            lines.add(finishLine());
+            // at all must never grow this decoder's memory without
+            // bound. Exactly one event for this physical line -
+            // discardingOverlong swallows the remainder until the real
+            // terminator, so a long line can never become several fake
+            // ones. trimIncompleteUtf8Suffix below still applies, so the
+            // truncated content is never garbled, only shorter than the
+            // real line.
+            lines.add(new DecodedLine(finishLine(), true));
+            discardingOverlong = true;
           }
         }
       }

@@ -15,22 +15,61 @@ export type LiveConnectionState =
   | 'failed';
 
 /**
+ * OS-1E review recovery — the source's own CURRENT per-target runtime
+ * truth, mirrored from backend `LiveSourceStatus`. `'RUNNING'` is the
+ * value every source without a per-target concept (Docker/Fixture/Loki)
+ * always reports - never any other value - so a component can safely
+ * treat any other state as "this source has something specific to say."
+ * See `LiveSourceStatus`'s own backend javadoc for the exact derivation
+ * rule and what each state means.
+ */
+export type LiveSourceState = 'RUNNING' | 'DEGRADED' | 'RECONNECTING' | 'NO_ACTIVE_TARGETS' | 'EXPIRED' | 'STALE';
+
+/**
  * The "status" SSE event's payload - mirrors backend
  * `LiveTailService.StatusPayload` (IMPLEMENTATION_PLAN.md "Phase J").
  *
- * `warnings` (OS-1E) is the truthful partial-live-state disclosure
- * channel - never fabricated, always exactly what the source's own
- * `liveWarnings()` reported since the last heartbeat tick (a target hit a
- * permission/not-found wall, gave up reconnecting, or the resolved target
- * set was capped). Always present as an array (possibly empty) for every
- * source, per the backend's own `StatusPayload` contract - never
- * undefined, so callers never need an extra null-check.
+ * OS-1E review recovery — `liveSourceState`/`resolvedTargets`/
+ * `activeTargets`/`reconnectingTargets`/`stoppedTargets`/`warnings`
+ * replace the original single-warning-string design, which could only
+ * ever report the single most recently changed target's own warning
+ * (target A stopped, then target B also stopped - the old channel
+ * reported only B). Every one of these fields is a full CURRENT snapshot
+ * on every "status" tick, never a delta - always present (never
+ * undefined) for every source, so a component never needs a null-check
+ * to render them; `liveSourceState: 'RUNNING'`/all counts `0`/
+ * `warnings: []` for every source with no per-target concept.
  */
 export interface LiveStatusPayload {
   droppedCount: number;
   serverTime: string;
+  liveSourceState: LiveSourceState;
+  resolvedTargets: number;
+  activeTargets: number;
+  reconnectingTargets: number;
+  stoppedTargets: number;
   warnings: string[];
 }
+
+/** The subset of {@link LiveStatusPayload} `useLiveTail.ts` tracks as its own `sourceStatus` state - the same fields, without the per-tick `droppedCount`/`serverTime` (already tracked separately). */
+export interface LiveSourceStatusView {
+  state: LiveSourceState;
+  resolvedTargets: number;
+  activeTargets: number;
+  reconnectingTargets: number;
+  stoppedTargets: number;
+  warnings: string[];
+}
+
+/** Mirrors backend `LiveSourceStatus.NOMINAL` - the default for every source with no per-target concept. */
+export const NOMINAL_SOURCE_STATUS: LiveSourceStatusView = {
+  state: 'RUNNING',
+  resolvedTargets: 0,
+  activeTargets: 0,
+  reconnectingTargets: 0,
+  stoppedTargets: 0,
+  warnings: [],
+};
 
 /**
  * Event retention limit (Legacy Remediation Slice 5 - "Define and

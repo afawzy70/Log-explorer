@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { LogEvent } from '../../shared/api/types';
-import type { LiveConnectionState, LiveStatusPayload } from './liveTailTypes';
+import type { LiveConnectionState, LiveSourceStatusView, LiveStatusPayload } from './liveTailTypes';
 import {
   BATCH_FLUSH_MS,
+  NOMINAL_SOURCE_STATUS,
   RECONNECT_BASE_DELAY_MS,
   RECONNECT_JITTER_RATIO,
   RECONNECT_MAX_ATTEMPTS,
@@ -93,15 +94,16 @@ export function useLiveTail() {
   const [followNewest, setFollowNewestState] = useState(true);
   const [unseenCount, setUnseenCount] = useState(0);
   /**
-   * OS-1E — the source's own truthful partial-live-state disclosure (a
-   * target hit a permission/not-found wall, gave up reconnecting, or the
-   * resolved target set was capped), taken verbatim from the most recent
-   * "status" heartbeat's `warnings` field. Empty for every source that
-   * has nothing to report (the backend default), so this is simply
-   * always `[]` for Docker/Fixture/Loki - never a source-specific UI
-   * branch.
+   * OS-1E review recovery — the source's own CURRENT per-target runtime
+   * truth (which/how many targets are active/reconnecting/stopped, and
+   * why), taken verbatim from the most recent "status" heartbeat - a
+   * full snapshot every tick, never a delta (see `LiveSourceStatus`'s own
+   * backend javadoc). `NOMINAL_SOURCE_STATUS` for every source with no
+   * per-target concept (Docker/Fixture/Loki) - never a source-specific UI
+   * branch; `LiveTailPanel.tsx` decides how to render based on the
+   * VALUES here, not on which source is selected.
    */
-  const [sourceWarnings, setSourceWarnings] = useState<string[]>([]);
+  const [sourceStatus, setSourceStatus] = useState<LiveSourceStatusView>(NOMINAL_SOURCE_STATUS);
 
   const sessionRef = useRef(0);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -229,7 +231,14 @@ export function useLiveTail() {
         try {
           const status = JSON.parse(e.data) as LiveStatusPayload;
           setServerDroppedCount(status.droppedCount);
-          setSourceWarnings(status.warnings ?? []);
+          setSourceStatus({
+            state: status.liveSourceState ?? 'RUNNING',
+            resolvedTargets: status.resolvedTargets ?? 0,
+            activeTargets: status.activeTargets ?? 0,
+            reconnectingTargets: status.reconnectingTargets ?? 0,
+            stoppedTargets: status.stoppedTargets ?? 0,
+            warnings: status.warnings ?? [],
+          });
         } catch {
           // a malformed heartbeat/status tick is never fatal - just skip it
         }
@@ -293,7 +302,7 @@ export function useLiveTail() {
       setReconnectCount(0);
       setFollowNewestState(true);
       setUnseenCount(0);
-      setSourceWarnings([]);
+      setSourceStatus(NOMINAL_SOURCE_STATUS);
       setConnectionState('connecting');
 
       const args: StartArgs = { sourceId, services, composeProject };
@@ -377,7 +386,7 @@ export function useLiveTail() {
     setReconnectCount(0);
     setFollowNewestState(true);
     setUnseenCount(0);
-    setSourceWarnings([]);
+    setSourceStatus(NOMINAL_SOURCE_STATUS);
   }, [closeEventSource, clearReconnectTimer, clearFlushInterval]);
 
   /**
@@ -418,7 +427,7 @@ export function useLiveTail() {
     reconnectCount,
     followNewest,
     unseenCount,
-    sourceWarnings,
+    sourceStatus,
     start,
     pause,
     resume,

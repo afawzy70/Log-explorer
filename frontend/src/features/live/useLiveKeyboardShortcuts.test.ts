@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, renderHook } from '@testing-library/react';
 import { useLiveKeyboardShortcuts } from './useLiveKeyboardShortcuts';
 import { ShortcutRegistryProvider } from '../../shared/keyboard/ShortcutRegistry';
+import { NOMINAL_SOURCE_STATUS } from './liveTailTypes';
 import type { LiveTailHandle } from './useLiveTail';
 
 function baseLive(overrides: Partial<LiveTailHandle> = {}): LiveTailHandle {
@@ -17,7 +18,7 @@ function baseLive(overrides: Partial<LiveTailHandle> = {}): LiveTailHandle {
     reconnectCount: 0,
     followNewest: true,
     unseenCount: 0,
-    sourceWarnings: [],
+    sourceStatus: NOMINAL_SOURCE_STATUS,
     start: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),

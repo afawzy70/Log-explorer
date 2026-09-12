@@ -44,6 +44,28 @@ public class OpenShiftLiveProperties {
   /** Hard ceiling every per-target reconnect backoff is capped at. */
   private Duration maxReconnectDelay = Duration.ofSeconds(30);
 
+  /**
+   * OS-1E review recovery — bounds how many of one live session's own
+   * targets may simultaneously be in the "opening/reconnecting" admission
+   * phase (see {@code OpenShiftLiveTailProvider}'s own "connect permit"
+   * javadoc for the full rationale) - a target's admission permit is
+   * released as soon as its first line/error/completion arrives, OR after
+   * this timeout elapses, whichever comes first, so a connection that is
+   * genuinely established but simply has no new data yet never holds its
+   * permit forever and starves later targets.
+   */
+  private Duration connectPermitTimeout = Duration.ofSeconds(3);
+
+  /**
+   * OS-1E review recovery — how often one live session checks, from
+   * already-in-memory {@code OpenShiftSession} state only (never a
+   * cluster/network call), whether the connection generation or the
+   * selected project/workload/pod/container it captured at start is still
+   * current. A mismatch marks the session {@code STALE} and stops it -
+   * see mission §16/§17.
+   */
+  private Duration stalenessCheckInterval = Duration.ofSeconds(5);
+
   public int getInitialTailLines() {
     return initialTailLines;
   }
@@ -82,5 +104,21 @@ public class OpenShiftLiveProperties {
 
   public void setMaxReconnectDelay(Duration maxReconnectDelay) {
     this.maxReconnectDelay = maxReconnectDelay;
+  }
+
+  public Duration getConnectPermitTimeout() {
+    return connectPermitTimeout;
+  }
+
+  public void setConnectPermitTimeout(Duration connectPermitTimeout) {
+    this.connectPermitTimeout = connectPermitTimeout;
+  }
+
+  public Duration getStalenessCheckInterval() {
+    return stalenessCheckInterval;
+  }
+
+  public void setStalenessCheckInterval(Duration stalenessCheckInterval) {
+    this.stalenessCheckInterval = stalenessCheckInterval;
   }
 }
