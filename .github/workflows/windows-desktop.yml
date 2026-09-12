@@ -153,27 +153,24 @@ jobs:
       # and `publish --no-restore` below can never silently perform its
       # own second, different dependency resolution. Restore is invoked
       # with the SAME `-r win-x64` RuntimeIdentifier as the publish step
-      # below - a real defect this bootstrap pass's own first CI run
+      # below - a real defect this hardening pass's own first CI run
       # caught: restoring without `-r win-x64` produces a
-      # `project.assets.json` with no RID-specific target at all, so the
+      # `project.assets.json` with no RID-specific target at all, so a
       # later `publish --no-restore -r win-x64` fails with
       # `NETSDK1047: ... doesn't have a target for 'net8.0-windows/win-x64'`
       # even though restore itself succeeded cleanly.
       #
-      # BOOTSTRAP NOTE (platform/windows-dotnet-nuget-restore-hardening,
-      # first pass): `desktop/launcher/packages.lock.json` does not exist
-      # in the repository yet - this run's job is partly to GENERATE it
-      # (via `RestorePackagesWithLockFile=true` in the .csproj, which
-      # writes the lock file on a restore that doesn't find one) so it can
-      # be reviewed and committed. `--locked-mode` is intentionally NOT
-      # yet passed here for that reason; it is added in a follow-up commit
-      # on this same branch once the generated lock file is committed -
-      # see docs/verification/WINDOWS_DOTNET_NUGET_HARDENING_REPORT.md.
-      # `--verbosity diagnostic` is deliberately maximal for this
-      # bootstrap/root-cause pass only (mission §3: "temporarily improve
-      # workflow diagnostics on THIS hardening branch only"); it is dialed
-      # back once root cause is confirmed and the lock file is committed.
-      - name: Restore NuGet packages (bootstrap - generates packages.lock.json; bounded retry on transient network/feed failures only)
+      # `--locked-mode` makes this restore fail loudly the moment the
+      # committed `packages.lock.json` (generated and reviewed during this
+      # hardening pass's own bootstrap CI run, real content hashes from
+      # nuget.org - never hand-written) no longer matches what
+      # `LogExplorerLauncher.csproj` actually declares, instead of silently
+      # re-resolving and rewriting the lock file mid-CI (mission §6: "Do
+      # not regenerate the lock file silently during normal CI"). To
+      # intentionally update the pinned dependency graph, regenerate the
+      # lock file locally/via CI without `--locked-mode`, review the diff,
+      # and commit it as its own explicit change.
+      - name: Restore NuGet packages (locked mode; bounded retry on transient network/feed failures only)
         working-directory: desktop/launcher
         shell: pwsh
         run: |
@@ -204,7 +201,7 @@ jobs:
           while ($attempt -lt $maxAttempts) {
             $attempt++
             Write-Host "---- dotnet restore attempt $attempt/$maxAttempts ----"
-            $output = & dotnet restore LogExplorerLauncher.csproj -r win-x64 --verbosity diagnostic 2>&1
+            $output = & dotnet restore LogExplorerLauncher.csproj -r win-x64 --locked-mode --verbosity detailed 2>&1
             $exitCode = $LASTEXITCODE
             $output | ForEach-Object { Write-Host $_ }
             if ($exitCode -eq 0) { break }
@@ -214,7 +211,14 @@ jobs:
               if ($joined -match [regex]::Escape($pattern)) { $isTransient = $true; break }
             }
             if (-not $isTransient -or $attempt -ge $maxAttempts) {
-              Write-Host "##[error] dotnet restore failed (attempt $attempt/$maxAttempts, classified-transient=$isTransient) - not retrying further."
+              Write-Host "##[error] dotnet restore failed (attempt $attempt/$maxAttempts, classified-transient=$isTransient) - not retrying further. See the diagnostic dump below (selected SDK / NuGet sources / locked-mode status) before investigating further."
+              Write-Host '---- Failure diagnostics: effective SDK ----'
+              dotnet --version
+              Write-Host '---- Failure diagnostics: NuGet sources ----'
+              dotnet nuget list source
+              Write-Host '---- Failure diagnostics: locked-mode status ----'
+              Write-Host 'Restore was invoked with --locked-mode against the committed desktop/launcher/packages.lock.json.'
+              Write-Host 'A NU1004/NU1101/lock-mismatch-shaped error above means the lock file and the .csproj have drifted - regenerate deliberately, do not silently re-lock in CI.'
               exit $exitCode
             }
             Write-Host "##[warning] dotnet restore failed with a transient-looking network/feed error (attempt $attempt/$maxAttempts) - retrying once after a short delay."
@@ -222,11 +226,11 @@ jobs:
           }
           if ($exitCode -ne 0) { exit $exitCode }
 
-      - name: Upload generated packages.lock.json (bootstrap artifact - to be reviewed and committed)
+      - name: Upload current packages.lock.json (evidence - should always equal the committed file byte-for-byte under locked-mode restore)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bootstrap-packages-lock-json
+          name: nuget-packages-lock-json
           path: desktop/launcher/packages.lock.json
           retention-days: 14
           if-no-files-found: warn
