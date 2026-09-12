@@ -980,6 +980,34 @@ migrates onto new credentials" invariant held throughout; what was
 missing was the old session *actively terminating and saying so*, not a
 security boundary.
 
+**[EVIDENCE, established by the OS-1E FINAL IMPLEMENTATION, not this
+assessment]** A separate, owner-authorized text-only design-closure pass
+treated the review-recovery implementation above as input, not authority,
+and found the review-recovery pass had itself missed a real defect: a
+target was still marked `ACTIVE` at connection-attempt *start* rather than
+at genuine HTTP establishment, so a target still queued behind
+`maxConcurrency` admission could be displayed as active. This is now
+corrected by switching `OpenShiftApiClient#followPodLog` to WebClient
+`exchangeToFlux`, so an HTTP `2xx` response — not attempt start, not the
+first log line — is the sole evidence of establishment. The same pass
+closed five further design gaps: the long-line truncation boundary was
+off by one byte at exactly `maxLineBytes`; no final-partial-line flush
+existed for any termination cause (clean EOF/error/cancellation now have
+three distinct, tested outcomes); no `connectingTargets` state existed in
+`LiveSourceStatus`, risking a false `NO_ACTIVE_TARGETS` reading at session
+start; establishment becoming its own signal created a risk of
+conflating "stream active" with "reconnect budget reset" (now explicitly
+separated — only genuine post-reconnect data resets the budget); and a
+terminal SSE session had no bounded grace-close and the frontend's
+generic `EventSource` auto-reconnect could not distinguish a deliberate
+terminal close from an ordinary transport failure (now both bounded and
+distinguished). See `OWNER_REQUIREMENTS_REGISTER.md` §12m and
+`OS_1E_OPENSHIFT_LIVE_REPORT.md`'s own §14 for the full before/after
+account. No credential/token/scope-migration invariant changed by this
+pass — it is scoped entirely to connection-establishment truthfulness,
+long-line/partial-line byte-level correctness, and status/transport
+lifecycle precision. `REAL_OPENSHIFT_1E = BLOCKED_CREDENTIALS`, unchanged.
+
 ---
 
 ## 21. Release order

@@ -9,8 +9,10 @@ import com.logexplorer.core.model.FollowRequest;
 import com.logexplorer.core.model.LiveSourceStatus;
 import com.logexplorer.source.LogSource;
 import com.logexplorer.source.LogSourceRegistry;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.http.codec.ServerSentEvent;
@@ -18,6 +20,7 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.BufferOverflowStrategy;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 
 /**
  * Orchestrates one live tail (IMPLEMENTATION_PLAN.md "Phase J",
@@ -64,14 +67,13 @@ public class LiveTailService {
       FollowRequest request = new FollowRequest(sourceId, services, composeProject);
       return source.followWithStatus(request).flatMapMany(result -> {
         AtomicLong droppedCount = new AtomicLong();
-        // OS-1E review recovery — the most recent CURRENT snapshot from
-        // this exact session's own status() channel (mission §13: a full
-        // current snapshot on every emission, never a delta), sampled
-        // once per heartbeat, never once per event — a namespace with
-        // several reconnecting targets must not flood the client with
-        // one status event per transient condition. `LiveSourceStatus.NOMINAL`
-        // for every source but OpenShift, whose default status() never
-        // changes it.
+        // OS-1E — the most recent CURRENT snapshot from this exact
+        // session's own status() channel (a full current snapshot on
+        // every emission, never a delta), sampled once per heartbeat,
+        // never once per event — a namespace with several reconnecting
+        // targets must not flood the client with one status event per
+        // transient condition. `LiveSourceStatus.NOMINAL` for every
+        // source but OpenShift, whose default status() never changes it.
         AtomicReference<LiveSourceStatus> latestStatus = new AtomicReference<>(LiveSourceStatus.NOMINAL);
 
         Flux<ServerSentEvent<Object>> logEvents = result.events()
@@ -89,13 +91,40 @@ public class LiveTailService {
             // endpoint (/search, /context, /journey) already uses.
             .map(event -> logEvent(eventMapper.toDto(event)));
 
+        // OS-1E final implementation — terminal-SSE grace-close (mission
+        // §19): once a status first becomes terminal (`LiveSourceStatus.State#isTerminal()`
+        // — NO_ACTIVE_TARGETS/EXPIRED/STALE), no future work is possible
+        // for this session (its target snapshot is immutable; a stale
+        // session only ever stops itself). Holding the SSE connection
+        // open until the full `connectionTimeout` (tens of minutes) would
+        // waste a live socket for a session that can never produce
+        // another event. `terminalCloseSignal` fires exactly ONCE, a
+        // bounded `terminalGrace` after the first terminal status is
+        // observed (long enough for that final status to actually reach
+        // the browser), and `takeUntilOther` below completes the WHOLE
+        // merged flux at that point - the status heartbeat included, so
+        // the frontend's very last "status" event is guaranteed to carry
+        // the terminal truth. `Sinks.Empty` (not a plain `Mono.delay`)
+        // deliberately guarantees at-most-once firing even under
+        // concurrent status emissions, without a separate guard flag.
+        Duration terminalGrace = Duration.ofMillis(
+            Math.min(2 * properties.getHeartbeatInterval().toMillis(), Duration.ofSeconds(10).toMillis()));
+        Sinks.Empty<Void> terminalCloseSignal = Sinks.empty();
+        AtomicBoolean terminalTimerStarted = new AtomicBoolean(false);
+
         // Subscribed alongside logEvents/status (via the merge below) so
         // its lifecycle - cancellation on client disconnect/Stop included
         // - is the SAME lifecycle as the rest of this SSE connection,
         // never a separately-forgotten subscription. Emits no SSE event
-        // of its own; it only updates latestStatus as a side effect.
+        // of its own; it only updates latestStatus as a side effect and
+        // arms the terminal-close timer (once) when appropriate.
         Flux<ServerSentEvent<Object>> statusTracker = result.status()
             .doOnNext(latestStatus::set)
+            .doOnNext(status -> {
+              if (status.state().isTerminal() && terminalTimerStarted.compareAndSet(false, true)) {
+                Mono.delay(terminalGrace).subscribe(tick -> terminalCloseSignal.tryEmitEmpty());
+              }
+            })
             .flatMap(s -> Mono.<ServerSentEvent<Object>>empty());
 
         // A real bug found via this phase's own testing (a slow/limited
@@ -109,16 +138,17 @@ public class LiveTailService {
         // right for this payload's own semantics too: only the most recent
         // dropped-count/status/timestamp is ever meaningful, so silently
         // superseding a stale pending tick with a fresher one loses nothing.
-        // Deliberately outlives `logEvents` completing (OS-1E review
-        // recovery mission §14): a zero-active-target OpenShift session
-        // still needs this heartbeat to deliver the final truthful status
-        // to the frontend, even though no more "log" events will ever
-        // arrive - `logEvents` completing does not end this merged flux.
+        // Deliberately outlives `logEvents` completing: a zero-active-
+        // target OpenShift session still needs this heartbeat to deliver
+        // the final truthful status to the frontend, even though no more
+        // "log" events will ever arrive - `logEvents` completing does not
+        // end this merged flux (only `terminalCloseSignal`, or explicit
+        // Stop/disconnect, or `connectionTimeout`, do).
         Flux<ServerSentEvent<Object>> status = Flux.interval(properties.getHeartbeatInterval())
             .onBackpressureLatest()
             .map(tick -> statusEvent(droppedCount.get(), latestStatus.get()));
 
-        return guard.guard(Flux.merge(logEvents, statusTracker, status))
+        return guard.guard(Flux.merge(logEvents, statusTracker, status).takeUntilOther(terminalCloseSignal.asMono()))
             .take(properties.getConnectionTimeout());
       });
     });
@@ -131,24 +161,24 @@ public class LiveTailService {
   private ServerSentEvent<Object> statusEvent(long droppedCount, LiveSourceStatus liveSourceStatus) {
     return ServerSentEvent.<Object>builder(new StatusPayload(
             droppedCount, Instant.now(), liveSourceStatus.state().name(), liveSourceStatus.resolvedTargets(),
-            liveSourceStatus.activeTargets(), liveSourceStatus.reconnectingTargets(),
-            liveSourceStatus.stoppedTargets(), liveSourceStatus.warnings()))
+            liveSourceStatus.connectingTargets(), liveSourceStatus.activeTargets(),
+            liveSourceStatus.reconnectingTargets(), liveSourceStatus.stoppedTargets(), liveSourceStatus.warnings()))
         .event("status")
         .build();
   }
 
   /**
    * The periodic "status" event's payload - also this stream's heartbeat
-   * (HANDOVER.md §18.4 "heartbeat"). OS-1E review recovery — the fields
-   * from {@code liveSourceState} onward mirror {@link LiveSourceStatus}
-   * (flattened rather than nested, so the frontend DTO stays a plain
-   * object) and are always present (never {@code null}) for every
-   * source, since {@link LogSource#followWithStatus}'s default reports
-   * {@link LiveSourceStatus#NOMINAL} rather than omitting the channel.
+   * (HANDOVER.md §18.4 "heartbeat"). OS-1E — the fields from {@code
+   * liveSourceState} onward mirror {@link LiveSourceStatus} (flattened
+   * rather than nested, so the frontend DTO stays a plain object) and are
+   * always present (never {@code null}) for every source, since {@link
+   * LogSource#followWithStatus}'s default reports {@link
+   * LiveSourceStatus#NOMINAL} rather than omitting the channel.
    */
   public record StatusPayload(
-      long droppedCount, Instant serverTime, String liveSourceState, int resolvedTargets, int activeTargets,
-      int reconnectingTargets, int stoppedTargets, List<String> warnings) {
+      long droppedCount, Instant serverTime, String liveSourceState, int resolvedTargets, int connectingTargets,
+      int activeTargets, int reconnectingTargets, int stoppedTargets, List<String> warnings) {
     public StatusPayload {
       warnings = warnings == null ? List.of() : List.copyOf(warnings);
     }
