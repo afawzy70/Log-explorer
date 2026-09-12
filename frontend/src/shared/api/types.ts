@@ -232,6 +232,14 @@ export interface ContextRequestBody {
   pod?: string;
   /** UX-R3 §9 — request-scoped Docker Compose project selection. */
   composeProject?: string;
+  /**
+   * OS-1D — generic container-name scope hint, parallel to `containerId`
+   * (Docker's own hash-based identity). Only ever set for a source (like
+   * OpenShift) with no short container-id concept of its own, so "Show
+   * surrounding logs" narrows to the exact (pod, container) the selected
+   * event came from rather than the source's full currently-resolved scope.
+   */
+  containerName?: string;
 }
 
 /** The exact four non-sensitive identifiers "Find this X" (IMPLEMENTATION_PLAN.md "Phase I") can search by - never a sensitive field, structurally. */

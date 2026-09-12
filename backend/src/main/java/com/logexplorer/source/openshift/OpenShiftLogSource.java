@@ -63,20 +63,25 @@ public class OpenShiftLogSource implements LogSource {
 
   @Override
   public SourceCapabilities capabilities() {
-    // historicalSearch is now true (OS-1C) - bounded direct search over
-    // whatever pods/containers OS-1B's scope currently resolves to. Every
-    // other capability stays false and unchanged from OS-1A/1B:
-    // liveTail/contextView are OS-1D/1E's job; rawLogQL is Loki-only and
-    // this is not Loki; serviceDiscovery/composeProjectScoping are
-    // Docker-shaped concepts this source expresses through its own OS-1B
-    // scope endpoints instead, not this seven-boolean record;
+    // historicalSearch is true (OS-1C) - bounded direct search over
+    // whatever pods/containers OS-1B's scope currently resolves to.
+    // contextView is now also true (OS-1D): DirectPodLogProvider#
+    // searchWithOutcome narrows to exactly the (pod, container) a "Show
+    // surrounding logs" call names (see resolveTargetPlan's own javadoc),
+    // reusing the identical generic /api/v1/logs/context endpoint and
+    // ContextResult/gap/truncation UI every other source already uses -
+    // no OpenShift-only contract, tested end to end (see the OS-1D
+    // verification report). liveTail remains OS-1E's job; rawLogQL is
+    // Loki-only and this is not Loki; serviceDiscovery/composeProjectScoping
+    // are Docker-shaped concepts this source expresses through its own
+    // OS-1B scope endpoints instead, not this seven-boolean record;
     // queryStatistics was never implemented for any source. Pagination is
     // not a field of this record (see api.dto.SearchResponseDto's own
     // "pagination" reporting, which is derived from whether a result
     // actually carries a nextCursor - OS-1C's own DirectPodLogProvider
     // never produces one, so that stays honestly false without this
     // source needing to say so twice).
-    return new SourceCapabilities(true, false, false, false, false, false, false);
+    return new SourceCapabilities(true, false, false, false, false, true, false);
   }
 
   /**

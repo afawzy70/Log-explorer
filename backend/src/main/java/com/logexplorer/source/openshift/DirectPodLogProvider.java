@@ -135,7 +135,7 @@ public class DirectPodLogProvider {
       var caPath = session.certificateAuthorityPath();
       OpenShiftScope scope = session.scope();
 
-      TargetPlan plan = resolveTargetPlan(scope, namespace);
+      TargetPlan plan = resolveTargetPlan(scope, namespace, request);
       Mono<SourceSearchOutcome> result = plan.queried().isEmpty()
           ? Mono.just(SourceSearchOutcome.of(List.of()))
           : fetchAndMerge(server, token, caPath, plan, request);
@@ -271,7 +271,7 @@ public class DirectPodLogProvider {
       warnings.add("Only " + properties.getMaxPods() + " of " + scope.pods().size()
           + " resolved pods were included in this search (TARGET_CAP_REACHED) - some pods were skipped.");
     }
-    TargetPlan plan = resolveTargetPlan(scope, session.selectedProject());
+    TargetPlan plan = resolveTargetPlan(scope, session.selectedProject(), request);
     if (plan.resolvedCount() > plan.queried().size()) {
       warnings.add("Only " + plan.queried().size() + " of " + plan.resolvedCount()
           + " resolved pod/container targets were queried (TARGET_CAP_REACHED) - some pods were skipped.");
@@ -288,9 +288,34 @@ public class DirectPodLogProvider {
    * only the already-cached OS-1B scope, then dedups and applies the hard
    * target cap (§8) — truncation is never silent; {@link #describeScopeWarnings}
    * reports it using the same {@code resolvedCount} this method computes.
+   *
+   * <p><b>OS-1D narrow-context override.</b> When {@code request} carries
+   * both {@link SearchRequest#pod()} and {@link SearchRequest#containerName()}
+   * — which only ever happens for a "Show surrounding logs" call, the one
+   * place {@code api.SearchController}'s {@code /context} endpoint
+   * populates either field for this source — this resolves to <em>exactly
+   * that one (pod, container) target</em> instead of the full currently-
+   * selected OS-1B scope (mission §8: "Surrounding logs → same pod/
+   * container by default", §16: never broaden scope implicitly). The
+   * target is queried even if it is no longer present in the locally
+   * cached {@code scope.pods()} (a pod can legitimately disappear between
+   * the original search and the investigator clicking the action) —
+   * constructing it directly and letting the real Kubernetes API call
+   * answer truthfully (404 if genuinely gone) is what makes "pod
+   * disappeared" a real, evidenced {@code TARGET_NOT_FOUND}/{@code
+   * UPSTREAM_UNAVAILABLE} outcome (mission §9/§19/§32) rather than a
+   * silent, successful empty result from a target list that was never
+   * even attempted. Correlation/trace/journey calls never set these
+   * fields, so they are completely unaffected and keep resolving the full
+   * OS-1B scope exactly as before (mission §13/§16 - correlation stays
+   * inside the full resolved scope, not narrowed to one pod).
    */
-  private TargetPlan resolveTargetPlan(OpenShiftScope scope, String namespace) {
-    List<PodLogTarget> resolved = resolveTargets(scope, namespace);
+  private TargetPlan resolveTargetPlan(OpenShiftScope scope, String namespace, SearchRequest request) {
+    String narrowPod = blankToNull(request.pod());
+    String narrowContainer = blankToNull(request.containerName());
+    List<PodLogTarget> resolved = narrowPod != null && narrowContainer != null
+        ? List.of(narrowContextTarget(scope, namespace, narrowPod, narrowContainer))
+        : resolveTargets(scope, namespace);
     Map<String, PodLogTarget> deduped = new LinkedHashMap<>();
     for (PodLogTarget target : resolved) {
       deduped.putIfAbsent(target.targetKey(), target);
@@ -300,6 +325,25 @@ public class DirectPodLogProvider {
         ? all.subList(0, properties.getMaxTargets())
         : all;
     return new TargetPlan(capped, all.size());
+  }
+
+  private static String blankToNull(String value) {
+    return value == null || value.isBlank() ? null : value;
+  }
+
+  /**
+   * OS-1D — the exact single target a "Show surrounding logs" call
+   * resolves to. {@code scope.findPod} is consulted only to attach a real
+   * {@link WorkloadRef} (for a nicer Service hint) when the pod happens to
+   * still be locally cached — never to decide whether the target is
+   * queried at all; a cache miss still produces a target (workload
+   * unknown), so a pod that has genuinely rotated out of the OS-1B cache
+   * is still actually asked about, never assumed absent.
+   */
+  private static PodLogTarget narrowContextTarget(
+      OpenShiftScope scope, String namespace, String podName, String containerName) {
+    PodSummary pod = scope.findPod(podName);
+    return new PodLogTarget(namespace, pod != null ? pod.workload() : null, podName, containerName);
   }
 
   private List<PodLogTarget> resolveTargets(OpenShiftScope scope, String namespace) {

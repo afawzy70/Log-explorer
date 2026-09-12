@@ -91,6 +91,17 @@ class DirectPodLogProviderTest {
         + "\",\"message\":\"" + message + "\"}";
   }
 
+  /** OS-1D — a JSON log line carrying correlation/trace/journey/event MDC fields, per LogLineParser's own contract. */
+  private static String jsonLineWithMdc(
+      String app, String message, String correlationId, String traceId, String journeyId, String eventId) {
+    return "{\"@timestamp\":\"2026-09-12T10:00:00Z\",\"application\":\"" + app + "\",\"level\":\"INFO\""
+        + ",\"message\":\"" + message + "\",\"mdc\":{"
+        + "\"event.correlationId\":\"" + correlationId + "\","
+        + "\"traceId\":\"" + traceId + "\","
+        + "\"x-journey-trace-id\":\"" + journeyId + "\","
+        + "\"eventId\":\"" + eventId + "\"}}";
+  }
+
   private SearchRequest.Builder baseRequest() {
     return SearchRequest.builder().sourceId("openshift").direction(SearchRequest.Direction.BACKWARD);
   }
@@ -716,5 +727,193 @@ class DirectPodLogProviderTest {
     List<CanonicalLogEvent> events = provider.search(baseRequest().build()).collectList().block();
     assertThat(events).isEmpty();
     assertThat(server.requestCount()).isZero();
+  }
+
+  // ------------------------------------------------------------ OS-1D: narrow "Show surrounding logs" context
+
+  @Test
+  void aContextRequestNamingPodAndContainerQueriesOnlyThatOneTargetEvenWithManyPodsInScope() {
+    // Workload=All/Pod=All currently resolves three pods - a context call
+    // naming exactly one (pod, container) must query only that one, never
+    // the full currently-resolved scope (mission §8 "same pod/container by
+    // default", §16 "never broaden scope implicitly").
+    seedPods(List.of(pod("pod-a", List.of("app")), pod("pod-b", List.of("app")), pod("pod-c", List.of("app"))), true);
+    server.setFixture("pod-a", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "a"))));
+    server.setFixture("pod-b", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "b"))));
+    server.setFixture("pod-c", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "c"))));
+
+    List<CanonicalLogEvent> events =
+        provider.search(baseRequest().pod("pod-b").containerName("app").build()).collectList().block();
+
+    assertThat(events).extracting(CanonicalLogEvent::message).containsExactly("b");
+    assertThat(server.requestCount()).isEqualTo(1); // only pod-b/app was ever asked about
+  }
+
+  @Test
+  void aContextRequestNarrowsToTheNamedContainerEvenWhenAnotherContainerInThatSamePodMatchesTimeWindow() {
+    seedPods(List.of(pod("pod-a", List.of("app", "sidecar"))), true);
+    server.setFixture("pod-a", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "from-app"))));
+    server.setFixture("pod-a", "sidecar", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "from-sidecar"))));
+
+    List<CanonicalLogEvent> events =
+        provider.search(baseRequest().pod("pod-a").containerName("app").build()).collectList().block();
+
+    assertThat(events).extracting(CanonicalLogEvent::message).containsExactly("from-app");
+    assertThat(server.requestCount()).isEqualTo(1);
+  }
+
+  @Test
+  void aContextRequestForAPodThatHasDisappearedFromCurrentScopeStillAsksTheRealApiRatherThanSilentlyReturningEmpty() {
+    // "Pod disappeared between the original search and Show surrounding
+    // logs" (mission §9/§19/§32) - the pod is NOT in current OS-1B scope at
+    // all (never seeded), but the context request still names it directly
+    // (from the originally selected event's own identity), and the target
+    // is queried for real rather than assumed absent because a local cache
+    // does not currently list it.
+    server.setFixture("ghost-pod", "app", Fixture.notFound());
+
+    StepVerifier.create(provider.search(baseRequest().pod("ghost-pod").containerName("app").build()))
+        .expectErrorMatches(e -> e instanceof OpenShiftApiException ex && ex.kind() == Kind.UPSTREAM_UNAVAILABLE)
+        .verify();
+    assertThat(server.requestCount()).isEqualTo(1); // a real API call was made, not a silent local decision
+  }
+
+  @Test
+  void aContextRequestForAForbiddenPodIsAnExplicitForbiddenResultNeverASilentEmptyContext() {
+    seedPods(List.of(pod("pod-a", List.of("app"))), true);
+    server.setFixture("pod-a", "app", Fixture.forbidden());
+
+    StepVerifier.create(provider.search(baseRequest().pod("pod-a").containerName("app").build()))
+        .expectErrorMatches(e -> e instanceof OpenShiftApiException ex && ex.kind() == Kind.FORBIDDEN)
+        .verify();
+  }
+
+  @Test
+  void aContextRequestStillSurfacesByteAndLineCapTruncationOnTheSingleNarrowedTarget() {
+    properties.setMaxBytesPerTarget(50);
+    seedPods(List.of(pod("pod-a", List.of("app"))), true);
+    server.setFixture("pod-a", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", "y".repeat(500))));
+
+    SourceSearchOutcome outcome =
+        provider.searchWithOutcome(baseRequest().pod("pod-a").containerName("app").build()).block();
+
+    assertThat(outcome.runtimeWarnings()).anySatisfy(w -> assertThat(w).contains("BYTE_CAP_REACHED"));
+  }
+
+  @Test
+  void ordinaryFullScopeSearchIsUnaffectedWhenNeitherPodNorContainerNameIsSet() {
+    // Regression guard: the OS-1D narrow-context override must only ever
+    // trigger when BOTH pod and containerName are present - an ordinary
+    // search/correlation/trace/journey call (neither field set) still
+    // queries the full currently-resolved scope exactly as before OS-1D.
+    seedPods(List.of(pod("pod-a", List.of("app")), pod("pod-b", List.of("app"))), true);
+    server.setFixture("pod-a", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "a"))));
+    server.setFixture("pod-b", "app", Fixture.ok(line("2026-09-12T10:00:01.000000000Z", jsonLine("payments", "INFO", "b"))));
+
+    List<CanonicalLogEvent> events = provider.search(baseRequest().build()).collectList().block();
+
+    assertThat(events).extracting(CanonicalLogEvent::message).containsExactlyInAnyOrder("a", "b");
+    assertThat(server.requestCount()).isEqualTo(2);
+  }
+
+  @Test
+  void aPodOnlyContextHintWithoutAContainerNameIsTreatedAsAnOrdinaryFullScopeSearch() {
+    // Defensive: OpenShift events always carry both pod and containerName,
+    // so a real "Show surrounding logs" call always sets both together.
+    // pod-without-containerName is not a real OpenShift product scenario
+    // (it is how Docker/Loki's own context calls are shaped instead) - it
+    // must never be misinterpreted as a narrow-context signal, which could
+    // otherwise construct an unqueryable single target with an empty
+    // container name.
+    seedPods(List.of(pod("pod-a", List.of("app")), pod("pod-b", List.of("app"))), true);
+    server.setFixture("pod-a", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "a"))));
+    server.setFixture("pod-b", "app", Fixture.ok(line("2026-09-12T10:00:01.000000000Z", jsonLine("payments", "INFO", "b"))));
+
+    // request.pod() alone still acts as the pre-existing generic
+    // EventFilters post-filter (unchanged since before OS-1D), narrowing
+    // the RESULT to pod-a even though both pods were queried.
+    List<CanonicalLogEvent> events = provider.search(baseRequest().pod("pod-a").build()).collectList().block();
+
+    assertThat(events).extracting(CanonicalLogEvent::message).containsExactly("a");
+    assertThat(server.requestCount()).isEqualTo(2); // both pods queried - not narrowed at the fetch level
+  }
+
+  // ------------------------------------------------------------ OS-1D: correlation / trace / journey search
+
+  @Test
+  void correlationIdMatchesEventsAcrossDifferentPodsWithinTheCurrentlyResolvedScope() {
+    seedPods(List.of(pod("pod-a", List.of("app")), pod("pod-b", List.of("app"))), true);
+    server.setFixture("pod-a", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z",
+        jsonLineWithMdc("gateway", "start", "corr-1", "trace-1", "", ""))));
+    server.setFixture("pod-b", "app", Fixture.ok(line("2026-09-12T10:00:01.000000000Z",
+        jsonLineWithMdc("payment-service", "processed", "corr-1", "trace-2", "", ""))));
+
+    List<CanonicalLogEvent> events =
+        provider.search(baseRequest().correlationId("corr-1").build()).collectList().block();
+
+    assertThat(events).extracting(CanonicalLogEvent::message).containsExactlyInAnyOrder("start", "processed");
+    assertThat(events).allSatisfy(e -> assertThat(e.correlationId()).isEqualTo("corr-1"));
+  }
+
+  @Test
+  void traceIdMatchesEventsAcrossMultipleServicesAndPods() {
+    seedPods(List.of(pod("pod-a", List.of("app")), pod("pod-b", List.of("app"))), true);
+    server.setFixture("pod-a", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z",
+        jsonLineWithMdc("gateway", "start", "", "trace-shared", "", ""))));
+    server.setFixture("pod-b", "app", Fixture.ok(line("2026-09-12T10:00:01.000000000Z",
+        jsonLineWithMdc("ledger-service", "committed", "", "trace-shared", "", ""))));
+
+    List<CanonicalLogEvent> events = provider.search(baseRequest().traceId("trace-shared").build()).collectList().block();
+
+    assertThat(events).extracting(CanonicalLogEvent::message).containsExactlyInAnyOrder("start", "committed");
+  }
+
+  @Test
+  void journeyIdMatchesEventsWithinTheCurrentOpenShiftResolvedScope() {
+    seedPods(List.of(pod("pod-a", List.of("app"))), true);
+    server.setFixture("pod-a", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z",
+        jsonLineWithMdc("gateway", "journey-event", "", "", "journey-42", ""))));
+
+    List<CanonicalLogEvent> events = provider.search(baseRequest().journeyId("journey-42").build()).collectList().block();
+
+    assertThat(events).extracting(CanonicalLogEvent::message).containsExactly("journey-event");
+  }
+
+  @Test
+  void aCorrelationIdWithNoMatchesIsAnOrdinaryEmptyResultNeverAnError() {
+    seedPods(List.of(pod("pod-a", List.of("app"))), true);
+    server.setFixture("pod-a", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z",
+        jsonLineWithMdc("gateway", "unrelated", "corr-other", "", "", ""))));
+
+    List<CanonicalLogEvent> events =
+        provider.search(baseRequest().correlationId("corr-missing").build()).collectList().block();
+
+    assertThat(events).isEmpty();
+  }
+
+  @Test
+  void correlationSearchWithOneForbiddenTargetStillReturnsMatchesFromTheReadableOneWithAPartialWarning() {
+    // Mission §42 - 1 success + 1 forbidden -> correlated results AND a
+    // partial warning, never a silent complete-looking result.
+    seedPods(List.of(pod("pod-a", List.of("app")), pod("pod-b", List.of("app"))), true);
+    server.setFixture("pod-a", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z",
+        jsonLineWithMdc("gateway", "readable", "corr-9", "", "", ""))));
+    server.setFixture("pod-b", "app", Fixture.forbidden());
+
+    SourceSearchOutcome outcome = provider.searchWithOutcome(baseRequest().correlationId("corr-9").build()).block();
+
+    assertThat(outcome.events()).extracting(CanonicalLogEvent::message).containsExactly("readable");
+    assertThat(outcome.runtimeWarnings()).anySatisfy(w -> assertThat(w).contains("PERMISSION_DENIED"));
+  }
+
+  @Test
+  void correlationSearchWithAllTargetsUnavailableIsAnExplicitFailureNeverASilentNoReadableTargetsSuccess() {
+    seedPods(List.of(pod("pod-a", List.of("app")), pod("pod-b", List.of("app"))), true);
+    server.setFixture("pod-a", "app", Fixture.notFound());
+    server.setFixture("pod-b", "app", Fixture.notFound());
+
+    StepVerifier.create(provider.search(baseRequest().correlationId("corr-1").build()))
+        .expectErrorMatches(e -> e instanceof OpenShiftApiException ex && ex.kind() == Kind.UPSTREAM_UNAVAILABLE)
+        .verify();
   }
 }

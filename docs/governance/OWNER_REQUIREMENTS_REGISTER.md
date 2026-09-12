@@ -476,6 +476,36 @@ account: `docs/verification/OS_1C_OPENSHIFT_DIRECT_SEARCH_REPORT.md` §21.
 | OS-1C-35 | Backpressure against the raw body publisher is pull-style (`request(1)` at subscribe, `request(1)` again only after each buffer is processed and released) rather than unlimited (`request(Long.MAX_VALUE)`) | `VERIFIED` — all 20 pre-existing + 8 new byte-bound tests pass unchanged under this strategy | `OpenShiftApiClient.BoundedBodyCollector#hookOnSubscribe`/`hookOnNext` |
 | OS-1C-36 | Unrelated historical evidence PNGs unintentionally modified by the OS-1C review recovery commit are restored byte-identical to their pre-recovery content, never regenerated/recompressed | `VERIFIED` | 188 files under `docs/verification/{UX_R1,UX_R3,UX_R4,UX_R5,UX_R6}_EVIDENCE/`, `legacy-slice8/`, `m/`, `ui-gap-closure/`, `ui-parity/`, `OS_1A_EVIDENCE/` restored via `git checkout 37f39f9 -- <paths>`; verified with an empty `git diff 37f39f9 -- <paths>` |
 
+### 12g. OS-1D — OpenShift context, surrounding logs & correlation
+
+See `docs/verification/OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` for
+the full account. Summary table:
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| OS-1D-1 | "Show surrounding logs" works for an OpenShift direct-search result, reusing the existing generic `/api/v1/logs/context` endpoint - no OpenShift-only endpoint | `VERIFIED` | `DirectPodLogProvider#resolveTargetPlan`'s narrow-context override; `aContextRequestNamingPodAndContainerQueriesOnlyThatOneTargetEvenWithManyPodsInScope` |
+| OS-1D-2 | Root identity is the strongest available (not message text alone): timestamp, source, namespace, pod, container, correlation/trace/journey/event ids | `VERIFIED` | `useSearchState.ts#eventIdentity` extended with `containerName`/`namespace`; `ResultsTable.test.tsx`'s sibling-container and cross-namespace collision tests |
+| OS-1D-3 | Context view is chronological (oldest first), root visibly marked when present, deterministic tie-breaking | `VERIFIED` — unchanged, pre-existing (`ContextSummary`/`sortByTimestampAscending`/OS-1C merge ordering), re-verified for OpenShift events | `ResultsTable.test.tsx` root-marking tests; `DirectPodLogProvider`'s existing deterministic merge (OS-1C, unchanged) |
+| OS-1D-4 | Root-unavailable and other context gaps (byte/line cap, pod disappeared, forbidden, timeout) are truthfully distinguished, never collapsed into "No results" | `VERIFIED` | `ContextSummary`'s new root-unavailable notice; `aContextRequestForAPodThatHasDisappearedFromCurrentScopeStillAsksTheRealApiRatherThanSilentlyReturningEmpty`, `aContextRequestForAForbiddenPodIsAnExplicitForbiddenResultNeverASilentEmptyContext`, `aContextRequestStillSurfacesByteAndLineCapTruncationOnTheSingleNarrowedTarget` |
+| OS-1D-5 | Correlation search (`correlationId`) works within the current OS-1B resolved scope, bounded, no unbounded cluster query | `VERIFIED` | `correlationIdMatchesEventsAcrossDifferentPodsWithinTheCurrentlyResolvedScope`, `aCorrelationIdWithNoMatchesIsAnOrdinaryEmptyResultNeverAnError` |
+| OS-1D-6 | Trace search (`traceId`) works across multiple pods/services within resolved scope; `spanId` preserved as evidence | `VERIFIED` | `traceIdMatchesEventsAcrossMultipleServicesAndPods`; `spanId` already a canonical `CanonicalLogEvent` field, unaffected |
+| OS-1D-7 | Journey correlation (`x-journey-trace-id`) reuses the existing generic Journey view/endpoint, bounded to OS-1B resolved scope | `VERIFIED` | `journeyIdMatchesEventsWithinTheCurrentOpenShiftResolvedScope`; `SearchController#journey` unchanged, source-agnostic |
+| OS-1D-8 | Cross-pod/cross-workload correlation stays inside the OS-1B resolved supported-workload pod set; never all-namespace, never Jobs/CronJobs/standalone pods | `VERIFIED` — unchanged from OS-1B/1C, re-confirmed | `resolveTargets`' full-scope path (untouched); no new workload-kind resolution added |
+| OS-1D-9 | OS-1C runtime-partial-result metadata (`TARGET_NOT_FOUND`/`PERMISSION_DENIED`/`TARGET_TIMEOUT`/`UPSTREAM_ERROR`/`BYTE_CAP_REACHED`/`LINE_CAP_REACHED_OR_POSSIBLE`/`OVERALL_EVENT_CAP`) is preserved for context and correlation calls, not just plain search | `VERIFIED` | `aContextRequestStillSurfacesByteAndLineCapTruncationOnTheSingleNarrowedTarget`; `correlationSearchWithOneForbiddenTargetStillReturnsMatchesFromTheReadableOneWithAPartialWarning` |
+| OS-1D-10 | No fabricated causality - context/correlation copy uses "correlated"/"observed"/"nearby", never "caused"/"root cause"/"call graph" | `VERIFIED` | `ContextSummary`'s existing and new copy audited; no new causal-language string was introduced anywhere in this slice |
+| OS-1D-11 | Inspector shows truthful OpenShift location metadata (Source, Namespace, Pod, Container) without raw Kubernetes metadata dumps | `VERIFIED` — already satisfied before this slice, confirmed not regressed | `frontend/src/features/inspector/sections.ts#buildOverviewFields` (pre-existing `Namespace`/`Pod`/`Container` rows) |
+| OS-1D-12 | `contextView` capability is only advertised `true` once genuinely tested end to end (backend narrowing + real rendered frontend) | `VERIFIED` | `OpenShiftLogSource#capabilities()`; `OpenShiftSecurityBoundariesTest#openShiftAdvertisesExactlyTheCapabilitiesItCanDeliver` (CORRECTED); LERUX-1 real-browser evidence, OS-1D report §8 |
+| OS-1D-13 | `REAL_OPENSHIFT_1D` real-cluster verification gate is run if credentials are available, never fabricated if not | `BLOCKED_CREDENTIALS` | No live OpenShift credentials available in this environment; honestly reported, not simulated |
+| TEST-INFRA-1 | Historical Evidence Mutation Isolation — running normal verification/E2E must not modify tracked historical evidence files unless explicitly requested | `APPROVED_PENDING_HARDENING` (deferred, tracked, registered per mission §46 — not fixed opportunistically in OS-1D) | Observed twice now (OS-1C final review recovery, and again during OS-1D's own validation pass - both times restored via `git checkout` before finalizing, verified via an empty `git diff --name-status main...HEAD -- '*.png'`); root cause is `frontend/e2e/helpers.ts#captureScreenshot` writing directly into `docs/verification/<phase>/` rather than a temporary/output directory by default |
+
+**OS-1D pass.** No previously-`VERIFIED` OS-1A/1B/1C requirement was
+reopened or changed status. `Kind.UPSTREAM_UNAVAILABLE`/`Kind.FORBIDDEN`/
+`Kind.TIMEOUT` (all pre-existing, OS-1C review recovery) are reused
+unchanged for the new narrow-context target-not-found/forbidden cases -
+no new `OpenShiftApiException.Kind` value was needed. `REL-1` (local
+reproducible desktop packaging) remains confirmed `APPROVED_PENDING`,
+untouched.
+
 ---
 
 ## 13. Out of Current Scope
@@ -724,6 +754,24 @@ repository-hygiene defect in how that commit was assembled, not a defect
 in OS-1C's own design or test coverage. No existing OS-1C requirement's
 status changed as a result of this pass; none of §12a-§12e's `VERIFIED`
 rows were reopened.
+
+**OS-1D pass (§12g above).** Reconciled against `docs/verification/OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md`.
+Confirmed that context, correlation, trace, and journey search for
+OpenShift are almost entirely reuse of pre-existing generic machinery
+(`/api/v1/logs/context`/`/journey`, `EventFilters`) — the only genuinely
+new backend surface is the `containerName` generic scope-hint field and
+`DirectPodLogProvider`'s narrow-context target-resolution override, both
+tracked as OS-1D-1 above. `contextView` capability truthfully flips to
+`true` only after real end-to-end verification (backend + rendered
+frontend), never merely because an endpoint now technically accepts the
+request. A new test-infrastructure defect (`TEST-INFRA-1`, historical
+evidence PNGs mutated by ordinary E2E execution) was independently
+re-observed during this pass's own validation and is registered as a
+deferred, tracked hardening item per mission §46 — explicitly not fixed
+opportunistically inside OS-1D, since doing so risked distracting from
+this slice's own actual scope. `REL_1` remains confirmed
+`APPROVED_PENDING`, untouched. `OS_1E`/`OS_1F`/`OS_1G`/`Phase M` remain
+`NOT_STARTED`.
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0

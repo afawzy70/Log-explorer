@@ -21,6 +21,12 @@ public record ContextRequestDto(
     String containerId,
     String pod,
     /** UX-R3 §9 — request-scoped Docker Compose project selection, never sensitive. */
-    String composeProject
+    String composeProject,
+    /**
+     * OS-1D — generic container-name scope hint (see {@code
+     * SearchRequest#containerName}'s own javadoc). Optional; a source with
+     * no such concept (Docker, Loki) simply never receives one.
+     */
+    String containerName
 ) {
 }

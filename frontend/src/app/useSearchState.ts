@@ -72,16 +72,22 @@ function recomputeRelativeRange(range: CommittedTimeRange): CommittedTimeRange {
 
 /**
  * A practical, non-sensitive content identity for one event (Legacy
- * Remediation Slice 1) - used only for client-side defensive dedup of
+ * Remediation Slice 1) - used both for client-side defensive dedup of
  * appended "Load more" pages, mirroring the backend's own
  * `PageCursorCodec#eventFingerprint` in spirit (never touches
  * `protectedFields`, the frontend never sees a raw sensitive value to
- * begin with).
+ * begin with), and (OS-1D) as the "strongest available identity" a
+ * surrounding-logs context view re-identifies its own root event by
+ * (mission §9: "must not rely on message text alone"). `containerName`/
+ * `namespace` were added in OS-1D so a repeated log line from a sibling
+ * container in the same pod, or the same pod name reused across two
+ * different OpenShift namespaces, is never mistaken for the root - `pod`
+ * alone was not a strong enough identity for either case.
  */
 export function eventIdentity(e: LogEvent): string {
   return [
-    e.timestamp, e.sourceId, e.containerId, e.pod, e.stream, e.rawLine ?? e.message,
-    e.logger, e.thread, e.traceId, e.spanId, e.correlationId, e.journeyId, e.eventId,
+    e.timestamp, e.sourceId, e.containerId, e.pod, e.containerName, e.namespace, e.stream,
+    e.rawLine ?? e.message, e.logger, e.thread, e.traceId, e.spanId, e.correlationId, e.journeyId, e.eventId,
   ].join('');
 }
 
@@ -879,6 +885,10 @@ export function useSearchState() {
           containerId: event.containerId ?? undefined,
           pod: event.pod ?? undefined,
           composeProject: selectedComposeProject ?? undefined,
+          // OS-1D — every OpenShift event carries its own container name;
+          // a source with no such concept (Docker, Loki) simply never sets
+          // it, so this is a no-op for them.
+          containerName: event.containerName ?? undefined,
         },
         controller.signal,
       )

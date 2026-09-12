@@ -480,6 +480,17 @@ aggregated provider (§13): cross-service journey reconstruction is
 exactly what an index is for. Direct mode should present journey results
 as "within this project and window" and say so.
 
+**[EVIDENCE, established by OS-1D]** The bounded fan-out post-filter
+described above is implemented exactly as proposed, with one correction:
+it required **zero new fan-out logic** — `DirectPodLogProvider` already
+threads every `SearchRequest` filter field (`traceId`/`correlationId`/
+`journeyId`/`eventId` included) through the shared, source-agnostic
+`EventFilters.matches` call every ordinary search already uses, so
+correlation/trace/journey search "just worked" once tested. Scope is
+exactly "the current OS-1B resolved pod set," never cluster-wide, never
+all-namespace, matching this section's own proposal precisely. See
+`OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §2/§6.
+
 ---
 
 ## 12. Context (±30s)
@@ -498,6 +509,22 @@ must reuse it rather than implying completeness.
 **[PROPOSED]** The `contextView` capability should be reported per
 provider, honestly — a lesson already learned in UX-R4, where all three
 sources declared `contextView=false` while the feature worked.
+
+**[EVIDENCE, established by OS-1D]** Implemented at exactly pod/container
+scope, as proposed, via a target-resolution override in
+`DirectPodLogProvider#resolveTargetPlan` rather than "workload scope
+within the pod cap" — the mission's own explicit decision was "same pod/
+container by default, do not broaden scope implicitly" (mission §8),
+which is a narrower, more conservative choice than this section's own
+earlier proposal; the workload-scope option remains available as a future
+opt-in broaden action, not implemented here. Pod churn during the window
+is honest by construction: a target that has disappeared is queried for
+real (never assumed absent from a local cache) and a genuine 404 becomes
+an explicit failure, never a silently "complete" empty context — see
+`OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §4/§6. `contextView` is
+now correctly `true` for OpenShift, reported honestly only after real
+end-to-end verification (§8/§10 of that report) — the exact discipline
+this paragraph itself calls for.
 
 ---
 

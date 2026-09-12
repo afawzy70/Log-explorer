@@ -50,6 +50,20 @@ public record SearchRequest(
     String language,
     String containerId,
     String pod,
+    /**
+     * OS-1D — a generic (source-interpreted) container-name scope hint,
+     * parallel to {@link #containerId} (Docker's own hash-based identity)
+     * and {@link #pod} (already shared by Loki and OpenShift). Only ever
+     * populated by {@code api.SearchController}'s {@code /context}
+     * endpoint, exactly like {@code containerId}/{@code pod} already are —
+     * never a general-search filter. {@code OpenShiftLogSource} has no
+     * short container-id concept at all (a Kubernetes container's only
+     * durable identity within a pod is its name), so this is what lets
+     * "Show surrounding logs" narrow to the exact (pod, container) an
+     * OpenShift event came from, the same way {@code containerId} already
+     * narrows a Docker context call.
+     */
+    String containerName,
     RawSensitiveFields sensitiveFilters,
     QueryExpr query,
     String rawLogQl,
@@ -96,7 +110,7 @@ public record SearchRequest(
         sourceId, start, end, direction, limit, services, levels, text,
         traceId, spanId, correlationId, journeyId, eventId, errorCode,
         businessStep, uiIdentifier, loggerContains, devicePlatform, language,
-        containerId, pod, sensitiveFilters, query, rawLogQl, cursor, boundary, composeProject);
+        containerId, pod, containerName, sensitiveFilters, query, rawLogQl, cursor, boundary, composeProject);
   }
 
   @Override
@@ -122,6 +136,7 @@ public record SearchRequest(
         + ", language=" + language
         + ", containerId=" + containerId
         + ", pod=" + pod
+        + ", containerName=" + containerName
         + ", sensitiveFilters=" + sensitiveFilters
         + ", query=" + (query == null ? "null" : "[REDACTED]")
         + ", rawLogQl=" + (rawLogQl == null ? "null" : "[REDACTED]")
@@ -157,6 +172,7 @@ public record SearchRequest(
     private String language;
     private String containerId;
     private String pod;
+    private String containerName;
     private RawSensitiveFields sensitiveFilters = RawSensitiveFields.empty();
     private QueryExpr query;
     private String rawLogQl;
@@ -185,6 +201,8 @@ public record SearchRequest(
     public Builder language(String v) { this.language = v; return this; }
     public Builder containerId(String v) { this.containerId = v; return this; }
     public Builder pod(String v) { this.pod = v; return this; }
+    /** OS-1D — generic container-name scope hint (see the field's own javadoc). */
+    public Builder containerName(String v) { this.containerName = v; return this; }
     public Builder cursor(String v) { this.cursor = v; return this; }
     /** Test-only convenience — production callers use {@link SearchRequest#withPageBoundary}. */
     public Builder pageBoundary(Instant v) { this.pageBoundary = v; return this; }
@@ -230,7 +248,7 @@ public record SearchRequest(
           sourceId, start, end, direction, limit, services, levels, text,
           traceId, spanId, correlationId, journeyId, eventId, errorCode,
           businessStep, uiIdentifier, loggerContains, devicePlatform, language,
-          containerId, pod, sensitiveFilters, query, rawLogQl, cursor, pageBoundary, composeProject);
+          containerId, pod, containerName, sensitiveFilters, query, rawLogQl, cursor, pageBoundary, composeProject);
     }
   }
 }

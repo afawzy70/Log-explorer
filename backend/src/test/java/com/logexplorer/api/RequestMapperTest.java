@@ -25,7 +25,7 @@ class RequestMapperTest {
 
   @Test
   void windowIsExactlyThirtySecondsOnEachSideOfTheTimestamp() {
-    SearchRequest request = mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, null, null, null, null));
+    SearchRequest request = mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, null, null, null, null, null));
 
     assertThat(request.start()).isEqualTo(TIMESTAMP.minus(Duration.ofSeconds(30)));
     assertThat(request.end()).isEqualTo(TIMESTAMP.plus(Duration.ofSeconds(30)));
@@ -33,32 +33,41 @@ class RequestMapperTest {
 
   @Test
   void serviceIsCarriedAsASingleElementServicesFilterWhenPresent() {
-    SearchRequest request = mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, "gateway", null, null, null));
+    SearchRequest request = mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, "gateway", null, null, null, null));
     assertThat(request.services()).containsExactly("gateway");
   }
 
   @Test
   void aBlankOrMissingServiceProducesNoServiceFilterRatherThanAnEmptyStringFilter() {
-    assertThat(mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, null, null, null, null)).services()).isEmpty();
-    assertThat(mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, "  ", null, null, null)).services()).isEmpty();
+    assertThat(mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, null, null, null, null, null)).services()).isEmpty();
+    assertThat(mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, "  ", null, null, null, null)).services()).isEmpty();
   }
 
   @Test
   void containerIdAndPodAreCarriedThroughUnchanged() {
-    SearchRequest request = mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, null, "c1", "pod-abc", null));
+    SearchRequest request = mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, null, "c1", "pod-abc", null, null));
     assertThat(request.containerId()).isEqualTo("c1");
     assertThat(request.pod()).isEqualTo("pod-abc");
   }
 
   @Test
+  void containerNameIsCarriedThroughUnchangedForOs1dOpenshiftNarrowContext() {
+    SearchRequest request =
+        mapper.toContextDomain(new ContextRequestDto("openshift", TIMESTAMP, null, null, "pod-abc", null, "app"));
+    assertThat(request.pod()).isEqualTo("pod-abc");
+    assertThat(request.containerName()).isEqualTo("app");
+    assertThat(request.containerId()).isNull();
+  }
+
+  @Test
   void sourceIdIsCarriedThroughUnchanged() {
-    SearchRequest request = mapper.toContextDomain(new ContextRequestDto("openshift-loki", TIMESTAMP, null, null, null, null));
+    SearchRequest request = mapper.toContextDomain(new ContextRequestDto("openshift-loki", TIMESTAMP, null, null, null, null, null));
     assertThat(request.sourceId()).isEqualTo("openshift-loki");
   }
 
   @Test
   void composeProjectIsCarriedThroughUnchangedForContextUxR3() {
-    SearchRequest request = mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, null, null, null, "project-a"));
+    SearchRequest request = mapper.toContextDomain(new ContextRequestDto("local-docker", TIMESTAMP, null, null, null, "project-a", null));
     assertThat(request.composeProject()).isEqualTo("project-a");
   }
 

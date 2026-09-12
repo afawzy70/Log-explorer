@@ -270,4 +270,34 @@ describe('UX-R5 - context detour state', () => {
     await act(async () => result.current.restoreOriginalSearch());
     expect(result.current.searchResult!.events.map((e) => e.message)).toEqual(['first', 'second', 'third']);
   });
+
+  it('OS-1D - a context request for an OpenShift-shaped event (pod + containerName) narrows to same pod/container by default', async () => {
+    const result = await searchedState();
+    const openshiftEvent = {
+      ...result.current.searchResult!.events[1],
+      pod: 'payment-api-abc',
+      containerName: 'app',
+      containerId: null,
+    };
+
+    await act(async () => result.current.showContext(openshiftEvent));
+
+    const body = JSON.parse(contextCalls[contextCalls.length - 1].body) as {
+      pod?: string;
+      containerName?: string;
+      containerId?: string;
+    };
+    expect(body.pod).toBe('payment-api-abc');
+    expect(body.containerName).toBe('app');
+    expect(body.containerId).toBeUndefined();
+  });
+
+  it('OS-1D - a context request for a non-OpenShift event never sends a containerName field', async () => {
+    const result = await searchedState();
+
+    await act(async () => result.current.showContext(result.current.searchResult!.events[1]));
+
+    const body = JSON.parse(contextCalls[contextCalls.length - 1].body) as { containerName?: string };
+    expect(body.containerName).toBeUndefined();
+  });
 });
