@@ -476,6 +476,120 @@ account: `docs/verification/OS_1C_OPENSHIFT_DIRECT_SEARCH_REPORT.md` §21.
 | OS-1C-35 | Backpressure against the raw body publisher is pull-style (`request(1)` at subscribe, `request(1)` again only after each buffer is processed and released) rather than unlimited (`request(Long.MAX_VALUE)`) | `VERIFIED` — all 20 pre-existing + 8 new byte-bound tests pass unchanged under this strategy | `OpenShiftApiClient.BoundedBodyCollector#hookOnSubscribe`/`hookOnNext` |
 | OS-1C-36 | Unrelated historical evidence PNGs unintentionally modified by the OS-1C review recovery commit are restored byte-identical to their pre-recovery content, never regenerated/recompressed | `VERIFIED` | 188 files under `docs/verification/{UX_R1,UX_R3,UX_R4,UX_R5,UX_R6}_EVIDENCE/`, `legacy-slice8/`, `m/`, `ui-gap-closure/`, `ui-parity/`, `OS_1A_EVIDENCE/` restored via `git checkout 37f39f9 -- <paths>`; verified with an empty `git diff 37f39f9 -- <paths>` |
 
+### 12g. OS-1D — OpenShift context, surrounding logs & correlation
+
+See `docs/verification/OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` for
+the full account. Summary table:
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| OS-1D-1 | "Show surrounding logs" works for an OpenShift direct-search result, reusing the existing generic `/api/v1/logs/context` endpoint - no OpenShift-only endpoint | `VERIFIED` | `DirectPodLogProvider#resolveTargetPlan`'s narrow-context override; `aContextRequestNamingPodAndContainerQueriesOnlyThatOneTargetEvenWithManyPodsInScope` |
+| OS-1D-2 | Root identity is the strongest available (not message text alone): timestamp, source, namespace, pod, container, correlation/trace/journey/event ids | `VERIFIED` | `useSearchState.ts#eventIdentity` extended with `containerName`/`namespace`; `ResultsTable.test.tsx`'s sibling-container and cross-namespace collision tests |
+| OS-1D-3 | Context view is chronological (oldest first), root visibly marked when present, deterministic tie-breaking | `VERIFIED` — unchanged, pre-existing (`ContextSummary`/`sortByTimestampAscending`/OS-1C merge ordering), re-verified for OpenShift events | `ResultsTable.test.tsx` root-marking tests; `DirectPodLogProvider`'s existing deterministic merge (OS-1C, unchanged) |
+| OS-1D-4 | Root-unavailable and other context gaps (byte/line cap, pod disappeared, forbidden, timeout) are truthfully distinguished, never collapsed into "No results" | `VERIFIED` | `ContextSummary`'s new root-unavailable notice; `aContextRequestForAPodThatHasDisappearedFromCurrentScopeStillAsksTheRealApiRatherThanSilentlyReturningEmpty`, `aContextRequestForAForbiddenPodIsAnExplicitForbiddenResultNeverASilentEmptyContext`, `aContextRequestStillSurfacesByteAndLineCapTruncationOnTheSingleNarrowedTarget` |
+| OS-1D-5 | Correlation search (`correlationId`) works within the current OS-1B resolved scope, bounded, no unbounded cluster query | `VERIFIED` | `correlationIdMatchesEventsAcrossDifferentPodsWithinTheCurrentlyResolvedScope`, `aCorrelationIdWithNoMatchesIsAnOrdinaryEmptyResultNeverAnError` |
+| OS-1D-6 | Trace search (`traceId`) works across multiple pods/services within resolved scope; `spanId` preserved as evidence | `VERIFIED` | `traceIdMatchesEventsAcrossMultipleServicesAndPods`; `spanId` already a canonical `CanonicalLogEvent` field, unaffected |
+| OS-1D-7 | Journey correlation (`x-journey-trace-id`) reuses the existing generic Journey view/endpoint, bounded to OS-1B resolved scope | `VERIFIED` | `journeyIdMatchesEventsWithinTheCurrentOpenShiftResolvedScope`; `SearchController#journey` unchanged, source-agnostic |
+| OS-1D-8 | Cross-pod/cross-workload correlation stays inside the OS-1B resolved supported-workload pod set; never all-namespace, never Jobs/CronJobs/standalone pods | `VERIFIED` — unchanged from OS-1B/1C, re-confirmed | `resolveTargets`' full-scope path (untouched); no new workload-kind resolution added |
+| OS-1D-9 | OS-1C runtime-partial-result metadata (`TARGET_NOT_FOUND`/`PERMISSION_DENIED`/`TARGET_TIMEOUT`/`UPSTREAM_ERROR`/`BYTE_CAP_REACHED`/`LINE_CAP_REACHED_OR_POSSIBLE`/`OVERALL_EVENT_CAP`) is preserved for context and correlation calls, not just plain search | `VERIFIED` | `aContextRequestStillSurfacesByteAndLineCapTruncationOnTheSingleNarrowedTarget`; `correlationSearchWithOneForbiddenTargetStillReturnsMatchesFromTheReadableOneWithAPartialWarning` |
+| OS-1D-10 | No fabricated causality - context/correlation copy uses "correlated"/"observed"/"nearby", never "caused"/"root cause"/"call graph" | `VERIFIED` | `ContextSummary`'s existing and new copy audited; no new causal-language string was introduced anywhere in this slice |
+| OS-1D-11 | Inspector shows truthful OpenShift location metadata (Source, Namespace, Pod, Container) without raw Kubernetes metadata dumps | `VERIFIED` — already satisfied before this slice, confirmed not regressed | `frontend/src/features/inspector/sections.ts#buildOverviewFields` (pre-existing `Namespace`/`Pod`/`Container` rows) |
+| OS-1D-12 | `contextView` capability is only advertised `true` once genuinely tested end to end (backend narrowing + real rendered frontend) | `VERIFIED` | `OpenShiftLogSource#capabilities()`; `OpenShiftSecurityBoundariesTest#openShiftAdvertisesExactlyTheCapabilitiesItCanDeliver` (CORRECTED); LERUX-1 real-browser evidence, OS-1D report §8 |
+| OS-1D-13 | `REAL_OPENSHIFT_1D` real-cluster verification gate is run if credentials are available, never fabricated if not | `BLOCKED_CREDENTIALS` | No live OpenShift credentials available in this environment; honestly reported, not simulated |
+| TEST-INFRA-1 | Historical Evidence Mutation Isolation — running normal verification/E2E must not modify tracked historical evidence files unless explicitly requested | `APPROVED_PENDING_HARDENING` (deferred, tracked, registered per mission §46 — not fixed opportunistically in OS-1D) | Observed twice now (OS-1C final review recovery, and again during OS-1D's own validation pass - both times restored via `git checkout` before finalizing, verified via an empty `git diff --name-status main...HEAD -- '*.png'`); root cause is `frontend/e2e/helpers.ts#captureScreenshot` writing directly into `docs/verification/<phase>/` rather than a temporary/output directory by default |
+
+**OS-1D pass.** No previously-`VERIFIED` OS-1A/1B/1C requirement was
+reopened or changed status. `Kind.UPSTREAM_UNAVAILABLE`/`Kind.FORBIDDEN`/
+`Kind.TIMEOUT` (all pre-existing, OS-1C review recovery) are reused
+unchanged for the new narrow-context target-not-found/forbidden cases -
+no new `OpenShiftApiException.Kind` value was needed. `REL-1` (local
+reproducible desktop packaging) remains confirmed `APPROVED_PENDING`,
+untouched.
+
+### 12h. OS-1D REVIEW RECOVERY — context target authorization & scope proof
+
+See `docs/verification/OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §14
+for the full account, including the historical correction of OS-1D-1's
+original evidence (the pre-recovery narrow-context mechanism unintentionally
+permitted reading any pod/container name in the namespace via a crafted
+request — fixed, not silently erased).
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| OS-1D-14 | A client-supplied `pod`/`containerName` pair alone must never authorize direct pod-log retrieval — the backend must hold its own evidence the target was a real, legitimately-resolved search target | `VERIFIED` | `DirectPodLogProvider#authorizeNarrowContextTarget`; `c_anArbitraryOutOfScopePodWithNoProofIsRejectedWithZeroClusterCalls` |
+| OS-1D-15 | A pod still present in the current OS-1B resolved scope is authorized by ordinary, unweakened scope validation alone — no proof required or consulted | `VERIFIED` | `a_currentScopeTargetIsAllowedWithNoProofAtAll`, `l_theProofMechanismDoesNotBreakTheNormalContextWorkflowWhenTheTargetIsStillInScope` |
+| OS-1D-16 | A pod that has disappeared from current scope since the original search is still reachable via a valid, server-issued historical scope proof, and a genuine 404 remains truthful | `VERIFIED` | `core.search.ContextTargetProofCodec`; `b_aDisappearedPodWithAValidProofStillReachesTheRealApiAndGetsATruthfulNotFound` |
+| OS-1D-17 | A forged or tampered proof is rejected before any cluster call, with zero pod-log API calls made | `VERIFIED` | `d_anArbitraryOutOfScopePodWithAForgedOrTamperedProofIsRejectedWithZeroClusterCalls`; `ContextTargetProofCodecTest` (tamper/malformed/cross-instance rejection) |
+| OS-1D-18 | A valid proof binds to the exact connection generation it was issued under — reconnecting invalidates every previously-issued proof | `VERIFIED` | `g_aProofFromAnOldConnectionGenerationIsRejectedAfterReconnect` (real reconnect, new generation) |
+| OS-1D-19 | A valid proof binds to the exact namespace/project it was issued for | `VERIFIED` | `f_aValidProofForADifferentNamespaceIsRejected` |
+| OS-1D-20 | A valid proof binds to the exact (pod, container) pair it was issued for — never just the pod | `VERIFIED` | `e_aValidProofForADifferentContainerIsRejected` |
+| OS-1D-21 | A valid proof binds to the exact source id it was issued for | `VERIFIED` | `h_aProofIssuedForAnotherSourceIdIsRejected` |
+| OS-1D-22 | Job/CronJob-owned, standalone, and operator/unknown-controller pods — never part of any OS-1B-resolved scope — cannot be read through a crafted context request, with or without an attempted proof | `VERIFIED` | `i_...Job...`, `j_...standalone...`, `k_...operator...` (all three: zero cluster calls) |
+| OS-1D-23 | An unauthorized/out-of-scope context target never becomes an oracle for whether an arbitrary pod name exists — the rejection is a single fixed message regardless of which check failed | `VERIFIED` | `ContextTargetProofCodecTest#theRejectionMessageIsAlwaysTheSameFixedStringAndNeverEchoesFieldValues` |
+| OS-1D-24 | Correlation/trace/journey search is unaffected by the authorization gate (never narrowed to one historical target, never requires a proof) | `VERIFIED` — unchanged, re-verified | Pre-existing correlation/trace/journey test suite passes unmodified; `authorizeNarrowContextTarget` is only reachable when both `pod` and `containerName` are set, which correlation/trace/journey never do |
+| OS-1D-25 | `contextTargetProof` is never displayed, copied to clipboard, persisted, put in a URL, or logged | `VERIFIED` | See report §14 "`contextTargetProof` handling" subsection for the full per-surface audit |
+
+**OS-1D REVIEW RECOVERY pass.** OS-1D-1 through OS-1D-13's evidence is
+corrected where it described the pre-recovery mechanism (see report §14's
+own "Documentation/history correction" subsection) — never silently
+rewritten, the original text is preserved with the correction appended.
+No other OS-1D/1C/1B/1A requirement changed status. `TEST-INFRA-1` remains
+`APPROVED_PENDING_HARDENING`, untouched. `REL-1` remains confirmed
+`APPROVED_PENDING`, untouched.
+
+### 12i. OS-1D FINAL REVIEW RECOVERY — context proof generation snapshot consistency
+
+See `docs/verification/OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §15
+for the full account, including the correction of §14's own claim that
+its authorization gate fully preserved OS-1C's "immutable scope snapshot"
+discipline — it did, for every field except `generation`, which was
+re-read live at verification time instead of using the caller's own
+already-captured value.
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| OS-1D-26 | Context target proof verification uses the operation's own already-captured connection generation, never a live re-read of `session.generation()` | `VERIFIED` | `DirectPodLogProvider#authorizeNarrowContextTarget` (no `session.generation()` call remains in the authorization path); `aProofNamingADifferentGenerationThanTheOperationsOwnCapturedSnapshotIsRejected` |
+| OS-1D-27 | The connection generation used to authorize a context target and the server/token used to actually perform the pod-log read belong to the same immutable snapshot — no mixed-generation execution | `VERIFIED` — real interleaving, not merely architectural | `inFlight_aProofPathContextOperationCompletesAgainstItsCapturedConnectionEvenWhenTheSessionReconnectsMidFlight` (independent second mock cluster proves zero cross-contamination) |
+| OS-1D-28 | The current-scope (no-proof) authorization path is equally immune to a mid-flight reconnect | `VERIFIED` | `inFlight_theCurrentScopePathAlsoCompletesAgainstItsCapturedConnectionEvenWhenTheSessionReconnectsMidFlight` |
+| OS-1D-29 | A context request that starts after a real reconnect, carrying a proof issued under the old connection generation, remains rejected (regression-checked, unchanged) | `VERIFIED` — pre-existing test re-verified passing unmodified | `g_aProofFromAnOldConnectionGenerationIsRejectedAfterReconnect` |
+| OS-1D-30 | `describeScopeWarnings` captures its own generation/namespace/scope once, together, rather than reading session state piecemeal across the method | `VERIFIED` | `DirectPodLogProvider#describeScopeWarnings` (single capture block at the top) |
+
+**OS-1D FINAL REVIEW RECOVERY pass.** No `ContextTargetProofCodec` design
+element, HMAC format, or field-binding rule from §12h changed — only which
+value (captured vs. live) authorization compares the proof's own
+generation field against. None of OS-1D-1 through OS-1D-25's `VERIFIED`
+rows were reopened; §14's evidence gains the correction above, not a
+rewrite. `TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`, untouched.
+`REL-1` remains confirmed `APPROVED_PENDING`, untouched.
+
+### 12j. OS-1D FINAL SNAPSHOT ATOMICITY RECOVERY
+
+See `docs/verification/OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §16
+for the full account, including the correction of §12i's own claim that
+threading the captured `generation` value was sufficient — the value
+itself, and every other connection-sensitive field, was still obtained
+through several independent `OpenShiftSession` getter calls rather than
+one atomic read.
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| OS-1D-31 | Every authenticated OpenShift operation (search, context authorization, workload/pod/container discovery, project refresh) captures its connection-sensitive state via exactly one atomic `OpenShiftSession` read, never several independent getter calls | `VERIFIED` | New `OpenShiftSession#operationSnapshot()` (single `current.get()`), consumed by `DirectPodLogProvider#searchWithOutcome`/`describeScopeWarnings`, `OpenShiftScopeService#discoverWorkloads`/`discoverPods`, `OpenShiftConnectionService#refreshProjects` |
+| OS-1D-32 | The returned operation snapshot is immutable and does not expose the raw token outside the minimum required package boundary | `VERIFIED` | `ConnectionOperationSnapshot` (package-private record, package-private `token()` accessor — verified via reflection on the type/method modifiers, not merely by convention); `ConnectionOperationSnapshotTest` |
+| OS-1D-33 | It is structurally impossible for one operation to observe connection-sensitive fields from two different connections (e.g. `generation=A` paired with `server=B`) | `VERIFIED` | `ConnectionOperationSnapshotTest#everyFieldOriginatesFromTheSameUnderlyingRead_neverAMixOfTwoConnections`; structural proof — `operationSnapshot()` is the only way to obtain a `ConnectionOperationSnapshot`, and it performs exactly one `current.get()` |
+| OS-1D-34 | An operation snapshot remains unchanged after a later reconnect or disconnect — it is a captured value, never a live view | `VERIFIED` | `ConnectionOperationSnapshotTest#remainsUnchangedAfterALaterReconnect...`/`...ALaterDisconnect` |
+| OS-1D-35 | An operation started fresh after a reconnect fully adopts the new connection (server, namespace, scope) — not merely "the old proof is rejected" | `VERIFIED` | `anOperationStartedAfterAReconnectFullyAdoptsTheNewConnectionsServerNamespaceAndScope` (real search against an independent second mock cluster) |
+| OS-1D-36 | `describeScopeWarnings` and every workload/pod/container discovery method (`OpenShiftScopeService`) use the same one-atomic-read discipline as search/context authorization | `VERIFIED` | `DirectPodLogProvider#describeScopeWarnings`; `OpenShiftScopeService#discoverWorkloads`/`discoverPods` (with `scope` threaded as a parameter into `discoverAllWorkloadsPods`, never re-read there) |
+| OS-1D-37 | Intentionally-safe remaining independent `OpenShiftSession` reads (the generation guard, single-expression CAS-guard reads, local-cache-only reads, the health badge) are documented, not silently left unexplained | `VERIFIED` | Report §16 "Audit of remaining `OpenShiftSession` multi-field reads" — full table with verdicts |
+
+**OS-1D FINAL SNAPSHOT ATOMICITY RECOVERY pass.** No `ContextTargetProofCodec`
+design, HMAC format, or field-binding rule changed. No OS-1C search bound,
+correlation/trace/journey behavior, or pagination invariant changed. None
+of OS-1D-1 through OS-1D-30's `VERIFIED` rows were reopened — §14/§15's
+own fixes remain correct and are not undone; this pass closes the deeper
+"captured through one atomic read, not several" gap those fixes still
+had. `TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`, untouched.
+`REL-1` remains confirmed `APPROVED_PENDING`, untouched.
+
 ---
 
 ## 13. Out of Current Scope
@@ -724,6 +838,89 @@ repository-hygiene defect in how that commit was assembled, not a defect
 in OS-1C's own design or test coverage. No existing OS-1C requirement's
 status changed as a result of this pass; none of §12a-§12e's `VERIFIED`
 rows were reopened.
+
+**OS-1D pass (§12g above).** Reconciled against `docs/verification/OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md`.
+Confirmed that context, correlation, trace, and journey search for
+OpenShift are almost entirely reuse of pre-existing generic machinery
+(`/api/v1/logs/context`/`/journey`, `EventFilters`) — the only genuinely
+new backend surface is the `containerName` generic scope-hint field and
+`DirectPodLogProvider`'s narrow-context target-resolution override, both
+tracked as OS-1D-1 above. `contextView` capability truthfully flips to
+`true` only after real end-to-end verification (backend + rendered
+frontend), never merely because an endpoint now technically accepts the
+request. A new test-infrastructure defect (`TEST-INFRA-1`, historical
+evidence PNGs mutated by ordinary E2E execution) was independently
+re-observed during this pass's own validation and is registered as a
+deferred, tracked hardening item per mission §46 — explicitly not fixed
+opportunistically inside OS-1D, since doing so risked distracting from
+this slice's own actual scope. `REL_1` remains confirmed
+`APPROVED_PENDING`, untouched. `OS_1E`/`OS_1F`/`OS_1G`/`Phase M` remain
+`NOT_STARTED`.
+
+**OS-1D REVIEW RECOVERY pass (§12h above).** Reconciled against
+`docs/verification/OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §14. A
+real, previously-untracked server-side scope-integrity defect was found in
+§12g's own narrow-context work: a client-supplied `pod`/`containerName`
+pair alone could authorize direct pod-log retrieval for a target that was
+never part of any OS-1B-resolved scope (a Job/CronJob/standalone/operator
+pod, or any arbitrary name). Fixed and closed as OS-1D-14 through OS-1D-25
+with a new, independently-keyed HMAC proof codec
+(`core.search.ContextTargetProofCodec`, modeled on the existing
+`PageCursorCodec`) and 25 new executable tests (13 integration-level in
+`DirectPodLogProviderTest`, 12 codec-level in `ContextTargetProofCodecTest`)
+proving zero cluster calls for every unauthorized-target case. The valid
+"disappeared pod" requirement this mechanism exists to satisfy is
+unaffected and re-verified working through the corrected path. `TEST-INFRA-1`
+remains `APPROVED_PENDING_HARDENING`, untouched. `REL_1` remains confirmed
+`APPROVED_PENDING`, untouched.
+
+**OS-1D FINAL REVIEW RECOVERY pass (§12i above).** Reconciled against
+`docs/verification/OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §15. A
+narrower time-of-check/time-of-use defect was found in §12h's own
+authorization gate: `authorizeNarrowContextTarget` verified the context
+proof against a live `session.generation()` read instead of the
+`generation` value `searchWithOutcome` already captures as part of its own
+immutable operation snapshot (the same snapshot that governs `server`/
+`token`/`caPath`/`scope`) — a real, if narrow, inconsistency in an
+otherwise-correct authorization gate, not a reopening of §12h's own
+threat model. Fixed by threading the captured `generation` down through
+`resolveTargetPlan`/`authorizeNarrowContextTarget` and capturing
+`describeScopeWarnings`' own generation/namespace/scope once, together, at
+its top. Closed as OS-1D-26 through OS-1D-30, with 3 new tests proving
+real interleaving (an actual reconnect to an independent second mock
+cluster, landing strictly after an operation's own snapshot was captured,
+never causes that operation to touch the new connection). No
+`ContextTargetProofCodec` design, HMAC format, or field-binding rule
+changed. `TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`, untouched.
+`REL_1` remains confirmed `APPROVED_PENDING`, untouched.
+
+**OS-1D FINAL SNAPSHOT ATOMICITY RECOVERY pass (§12j above).** Reconciled
+against `docs/verification/OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md`
+§16. The deepest layer of this same class of defect: §12i correctly
+threaded the *value* of `generation` through authorization, but that
+value - and `server`/`token`/`caPath`/`scope` alongside it - was still
+obtained through several independent `OpenShiftSession` getter calls
+(each its own atomic read), not one atomic read of the session as a
+whole. A reconnect landing between two of those getter calls could still
+produce a hybrid pre-/post-reconnect operation state. Fixed with a new
+`OpenShiftSession#operationSnapshot()` (one `current.get()`, projected
+into a new package-private `ConnectionOperationSnapshot` record) and
+applied to all three classes in `source.openshift` that make
+authenticated cluster calls from multiple session fields:
+`DirectPodLogProvider` (`searchWithOutcome`, `describeScopeWarnings`),
+`OpenShiftScopeService` (`discoverWorkloads`, `discoverPods`), and
+`OpenShiftConnectionService` (`refreshProjects`) - confirmed to be the
+complete set via a repository-wide search, not assumed. 9 new
+session-level unit tests plus 1 new integration-level test close this;
+the pre-existing §14/§15 race tests were re-verified passing unchanged
+under the new mechanism (3 consecutive full-suite runs of both
+`DirectPodLogProviderTest` and the whole `source.openshift` package, no
+change in outcome). Intentionally-unchanged remaining independent reads
+(the generation guard, single-expression CAS-guard reads, local-cache-
+only reads, the display-only health badge) are documented explicitly,
+not silently left unexplained. `TEST-INFRA-1` remains
+`APPROVED_PENDING_HARDENING`, untouched. `REL_1` remains confirmed
+`APPROVED_PENDING`, untouched.
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0

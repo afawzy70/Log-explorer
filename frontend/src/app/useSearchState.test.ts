@@ -50,6 +50,7 @@ function eventWithMessage(message: string) {
     stream: null,
     namespace: null,
     pod: null,
+    contextTargetProof: null,
   };
 }
 

@@ -55,6 +55,7 @@ function event(overrides: Partial<LogEvent> = {}): LogEvent {
     stream: null,
     namespace: null,
     pod: null,
+    contextTargetProof: null,
     ...overrides,
   };
 }

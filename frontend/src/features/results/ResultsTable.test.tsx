@@ -44,6 +44,7 @@ function event(overrides: Partial<LogEvent> = {}): LogEvent {
     stream: null,
     namespace: null,
     pod: null,
+    contextTargetProof: null,
     ...overrides,
   };
 }
@@ -386,6 +387,30 @@ describe('ResultsTable', () => {
       expect(row.className).toMatch(/selected/i);
       expect(row.className).toMatch(/contextRoot/i);
       expect(row).toHaveAttribute('aria-current', 'location');
+    });
+
+    it('OS-1D §9/§40-C - a repeated message+timestamp from a SIBLING CONTAINER in the same pod is never mistaken for the root', () => {
+      // Same message, same timestamp, same pod - only the container differs.
+      // Root identity must not rely on message text (or pod) alone.
+      const root = event({ message: 'started', timestamp: '2026-01-01T00:00:00.000Z', pod: 'payment-api-abc', containerName: 'app' });
+      const sibling = event({ message: 'started', timestamp: '2026-01-01T00:00:00.000Z', pod: 'payment-api-abc', containerName: 'sidecar' });
+      const { container } = render(
+        <ResultsTable events={[sibling, root]} contextRootIdentity={eventIdentity(root)} />,
+      );
+      const rows = container.querySelectorAll('tbody tr');
+      expect(rows[0].className).not.toMatch(/contextRoot/i); // the sibling container's identical-looking line
+      expect(rows[1].className).toMatch(/contextRoot/i); // the real root
+    });
+
+    it('OS-1D §9 - the same pod name in a different namespace is never mistaken for the root', () => {
+      const root = event({ message: 'started', timestamp: '2026-01-01T00:00:00.000Z', pod: 'worker-0', namespace: 'prod', containerName: 'app' });
+      const lookalike = event({ message: 'started', timestamp: '2026-01-01T00:00:00.000Z', pod: 'worker-0', namespace: 'staging', containerName: 'app' });
+      const { container } = render(
+        <ResultsTable events={[lookalike, root]} contextRootIdentity={eventIdentity(root)} />,
+      );
+      const rows = container.querySelectorAll('tbody tr');
+      expect(rows[0].className).not.toMatch(/contextRoot/i);
+      expect(rows[1].className).toMatch(/contextRoot/i);
     });
   });
 

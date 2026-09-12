@@ -5,6 +5,7 @@ import { ContextSummary } from './ContextSummary';
 import type { LogEvent } from '../../shared/api/types';
 import type { CommittedTimeRange } from '../timerange/types';
 import { CUSTOM_RANGE_ID } from '../../shared/time/presets';
+import { eventIdentity } from '../../app/useSearchState';
 
 function event(overrides: Partial<LogEvent> = {}): LogEvent {
   return {
@@ -44,6 +45,7 @@ function event(overrides: Partial<LogEvent> = {}): LogEvent {
     stream: null,
     namespace: null,
     pod: null,
+    contextTargetProof: null,
     ...overrides,
   };
 }
@@ -176,6 +178,42 @@ describe('ContextSummary enrichment (Legacy Remediation Slice 6)', () => {
     const events = [event({ timestamp: '2026-01-01T12:00:00Z' }), event({ timestamp: '2026-01-01T12:00:20Z' })];
     const counts = { estimatedTotal: null, returned: 200, visible: 200, limit: 200, truncated: true };
     const { container } = render(<ContextSummary events={events} range={range} source="Fixture" counts={counts} />);
+    expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+describe('ContextSummary root-availability notice (OS-1D §9/§36)', () => {
+  it('shows no root-unavailable notice when rootIdentity is not supplied at all (pre-OS-1D behavior unchanged)', () => {
+    render(<ContextSummary events={[event()]} range={range} />);
+    expect(screen.queryByText(/original event is no longer available/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/highlighted row below is the original event/i)).toBeInTheDocument();
+  });
+
+  it('shows no root-unavailable notice when the root event is present among the returned events', () => {
+    const root = event({ pod: 'pod-a', containerName: 'app', timestamp: '2026-01-01T12:00:00Z' });
+    render(<ContextSummary events={[root]} range={range} rootIdentity={eventIdentity(root)} />);
+    expect(screen.queryByText(/original event is no longer available/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/highlighted row below is the original event/i)).toBeInTheDocument();
+  });
+
+  it('shows an explicit, truthful root-unavailable notice when the root event is not among the returned events', () => {
+    const nearby = event({ pod: 'pod-a', containerName: 'app', timestamp: '2026-01-01T12:00:05Z', message: 'nearby' });
+    const missingRootIdentity = eventIdentity(event({ pod: 'pod-a', containerName: 'app', timestamp: '2026-01-01T12:00:00Z', message: 'gone' }));
+
+    render(<ContextSummary events={[nearby]} range={range} rootIdentity={missingRootIdentity} />);
+
+    expect(screen.getByText(/original event is no longer available/i)).toBeInTheDocument();
+    expect(screen.getByText(/could not be re-identified below/i)).toBeInTheDocument();
+    expect(screen.queryByText(/highlighted row below is the original event/i)).not.toBeInTheDocument();
+    // Nearby evidence is still shown, never hidden just because the root is gone (mission §9).
+    expect(screen.getByText('Events').nextElementSibling).toHaveTextContent('1');
+  });
+
+  it('has no detectable accessibility violations when the root-unavailable notice is shown', async () => {
+    const missingRootIdentity = eventIdentity(event({ message: 'gone' }));
+    const { container } = render(
+      <ContextSummary events={[event({ message: 'nearby' })]} range={range} rootIdentity={missingRootIdentity} />,
+    );
     expect(await axe(container)).toHaveNoViolations();
   });
 });

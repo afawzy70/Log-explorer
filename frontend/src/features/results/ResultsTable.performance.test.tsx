@@ -58,6 +58,7 @@ function syntheticEvent(index: number): LogEvent {
     stream: null,
     namespace: null,
     pod: null,
+    contextTargetProof: null,
   };
 }
 

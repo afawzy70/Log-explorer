@@ -145,6 +145,17 @@ export interface LogEvent {
   stream: string | null;
   namespace: string | null;
   pod: string | null;
+  /**
+   * OS-1D review recovery — an opaque, server-issued, HMAC-signed proof
+   * that this event's own (source, connection generation, namespace, pod,
+   * container) tuple was a real, legitimately-resolved search target.
+   * `null` for every source except OpenShift. Treat as fully opaque:
+   * never display it, never persist it (localStorage or otherwise), never
+   * copy it to the clipboard, never log it — it exists solely to be
+   * echoed back verbatim on a later "Show surrounding logs" call (see
+   * `ContextRequestBody#contextTargetProof`).
+   */
+  contextTargetProof: string | null;
 }
 
 export interface ResultCounts {
@@ -232,6 +243,23 @@ export interface ContextRequestBody {
   pod?: string;
   /** UX-R3 §9 — request-scoped Docker Compose project selection. */
   composeProject?: string;
+  /**
+   * OS-1D — generic container-name scope hint, parallel to `containerId`
+   * (Docker's own hash-based identity). Only ever set for a source (like
+   * OpenShift) with no short container-id concept of its own, so "Show
+   * surrounding logs" narrows to the exact (pod, container) the selected
+   * event came from rather than the source's full currently-resolved scope.
+   */
+  containerName?: string;
+  /**
+   * OS-1D review recovery — echoed verbatim from the originally-selected
+   * event's own `LogEvent#contextTargetProof`. Required by the backend
+   * only when `pod`/`containerName` name a target that is no longer in
+   * its currently cached OS-1B scope (a pod that disappeared since the
+   * original search) — a target still in scope needs no proof at all.
+   * Opaque: never displayed, never persisted, never logged.
+   */
+  contextTargetProof?: string;
 }
 
 /** The exact four non-sensitive identifiers "Find this X" (IMPLEMENTATION_PLAN.md "Phase I") can search by - never a sensitive field, structurally. */
