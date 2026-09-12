@@ -26,7 +26,7 @@ class OpenShiftScopeTest {
     OpenShiftScope scope = OpenShiftScope.EMPTY
         .withWorkloads(List.of(DEPLOYMENT_SUMMARY), List.of())
         .withSelectedWorkload(DEPLOYMENT)
-        .withPods(List.of(pod("payment-api-abc123")))
+        .withPods(List.of(pod("payment-api-abc123")), true)
         .withSelectedPod("payment-api-abc123")
         .withContainers(List.of("application"))
         .withSelectedContainer("application");
@@ -43,7 +43,7 @@ class OpenShiftScopeTest {
   @Test
   void selectingAPodClearsContainer() {
     OpenShiftScope scope = OpenShiftScope.EMPTY
-        .withPods(List.of(pod("a"), pod("b")))
+        .withPods(List.of(pod("a"), pod("b")), true)
         .withSelectedPod("a")
         .withContainers(List.of("application"))
         .withSelectedContainer("application");
@@ -60,7 +60,7 @@ class OpenShiftScopeTest {
     OpenShiftScope scope = OpenShiftScope.EMPTY
         .withWorkloads(List.of(DEPLOYMENT_SUMMARY, WORKER_SUMMARY), List.of())
         .withSelectedWorkload(DEPLOYMENT)
-        .withPods(List.of(pod("payment-api-abc123")))
+        .withPods(List.of(pod("payment-api-abc123")), true)
         .withSelectedPod("payment-api-abc123");
 
     OpenShiftScope refreshed = scope.withWorkloads(List.of(WORKER_SUMMARY), List.of()); // DEPLOYMENT is gone
@@ -76,7 +76,7 @@ class OpenShiftScopeTest {
     OpenShiftScope scope = OpenShiftScope.EMPTY
         .withWorkloads(List.of(DEPLOYMENT_SUMMARY), List.of())
         .withSelectedWorkload(DEPLOYMENT)
-        .withPods(List.of(pod("payment-api-abc123")))
+        .withPods(List.of(pod("payment-api-abc123")), true)
         .withSelectedPod("payment-api-abc123");
 
     // A refresh that still returns the selected workload (perhaps with a
@@ -91,12 +91,12 @@ class OpenShiftScopeTest {
   @Test
   void aPodThatDisappearsFromARefreshedListIsClearedWithItsContainer() {
     OpenShiftScope scope = OpenShiftScope.EMPTY
-        .withPods(List.of(pod("a"), pod("b")))
+        .withPods(List.of(pod("a"), pod("b")), true)
         .withSelectedPod("a")
         .withContainers(List.of("application"))
         .withSelectedContainer("application");
 
-    OpenShiftScope refreshed = scope.withPods(List.of(pod("b"))); // "a" is gone
+    OpenShiftScope refreshed = scope.withPods(List.of(pod("b")), true); // "a" is gone
 
     assertThat(refreshed.selectedPod()).isNull();
     assertThat(refreshed.containers()).isEmpty();
@@ -120,7 +120,7 @@ class OpenShiftScopeTest {
     OpenShiftScope scope = OpenShiftScope.EMPTY
         .withWorkloads(List.of(DEPLOYMENT_SUMMARY), List.of())
         .withSelectedWorkload(DEPLOYMENT)
-        .withPods(List.of(pod("payment-api-abc123")))
+        .withPods(List.of(pod("payment-api-abc123")), true)
         .withSelectedPod("payment-api-abc123");
 
     OpenShiftScope cleared = scope.withSelectedWorkload(null);

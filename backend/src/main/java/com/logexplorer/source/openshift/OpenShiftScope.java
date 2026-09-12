@@ -32,18 +32,29 @@ import java.util.List;
  * {@code FORBIDDEN} or {@code ERROR}). Without this, a forbidden
  * {@code DaemonSet} listing would silently and indistinguishably look
  * identical to a namespace that genuinely has zero DaemonSets.
+ *
+ * <h2>{@code podScopeComplete} (OS-1C)</h2>
+ *
+ * <p>Carried alongside {@link #pods()} for the same reason: OS-1C's search
+ * captures this whole scope as an immutable snapshot at search start (OS-1C
+ * §23) and must know whether the resolved pod set itself is known-complete
+ * or only partial (e.g. one supported workload's own pod-selector fetch
+ * failed — {@code OpenShiftScopeService#discoverAllWorkloadsPods}) —
+ * without this, that per-workload gap would be invisible by the time
+ * search reads the cached scope.
  */
 public record OpenShiftScope(
     List<WorkloadSummary> workloads,
     List<KindOutcome> workloadKindOutcomes,
     WorkloadRef selectedWorkload,
     List<PodSummary> pods,
+    boolean podScopeComplete,
     String selectedPod,
     List<String> containers,
     String selectedContainer) {
 
   public static final OpenShiftScope EMPTY =
-      new OpenShiftScope(List.of(), List.of(), null, List.of(), null, List.of(), null);
+      new OpenShiftScope(List.of(), List.of(), null, List.of(), true, null, List.of(), null);
 
   /**
    * Replaces the discovered workload list and the per-kind outcomes it was
@@ -57,47 +68,49 @@ public record OpenShiftScope(
         && newWorkloads.stream().anyMatch(w -> w.ref().equals(selectedWorkload));
     if (stillPresent) {
       return new OpenShiftScope(List.copyOf(newWorkloads), List.copyOf(newKindOutcomes), selectedWorkload, pods,
-          selectedPod, containers, selectedContainer);
+          podScopeComplete, selectedPod, containers, selectedContainer);
     }
-    return new OpenShiftScope(List.copyOf(newWorkloads), List.copyOf(newKindOutcomes), null, List.of(), null,
+    return new OpenShiftScope(List.copyOf(newWorkloads), List.copyOf(newKindOutcomes), null, List.of(), true, null,
         List.of(), null);
   }
 
   /** Selects a workload (or clears it with {@code null}), clearing pod and container below it. */
   public OpenShiftScope withSelectedWorkload(WorkloadRef ref) {
-    return new OpenShiftScope(workloads, workloadKindOutcomes, ref, List.of(), null, List.of(), null);
+    return new OpenShiftScope(workloads, workloadKindOutcomes, ref, List.of(), true, null, List.of(), null);
   }
 
   /**
-   * Replaces the discovered pod list. If the currently-selected pod is no
-   * longer in it, the selection (and its container) is cleared truthfully
-   * (OS-1B §14 "Pod disappears").
+   * Replaces the discovered pod list and whether that resolution is known
+   * complete. If the currently-selected pod is no longer in it, the
+   * selection (and its container) is cleared truthfully (OS-1B §14 "Pod
+   * disappears").
    */
-  public OpenShiftScope withPods(List<PodSummary> newPods) {
+  public OpenShiftScope withPods(List<PodSummary> newPods, boolean complete) {
     boolean stillPresent = selectedPod != null && newPods.stream().anyMatch(p -> p.name().equals(selectedPod));
     if (stillPresent) {
-      return new OpenShiftScope(workloads, workloadKindOutcomes, selectedWorkload, List.copyOf(newPods), selectedPod,
-          containers, selectedContainer);
+      return new OpenShiftScope(workloads, workloadKindOutcomes, selectedWorkload, List.copyOf(newPods), complete,
+          selectedPod, containers, selectedContainer);
     }
-    return new OpenShiftScope(workloads, workloadKindOutcomes, selectedWorkload, List.copyOf(newPods), null,
+    return new OpenShiftScope(workloads, workloadKindOutcomes, selectedWorkload, List.copyOf(newPods), complete, null,
         List.of(), null);
   }
 
   /** Selects a pod (or clears it with {@code null}), clearing the container below it. */
   public OpenShiftScope withSelectedPod(String podName) {
-    return new OpenShiftScope(workloads, workloadKindOutcomes, selectedWorkload, pods, podName, List.of(), null);
+    return new OpenShiftScope(workloads, workloadKindOutcomes, selectedWorkload, pods, podScopeComplete, podName,
+        List.of(), null);
   }
 
   /** Replaces the discovered container list, clearing the selection if it is no longer present. */
   public OpenShiftScope withContainers(List<String> newContainers) {
     String kept = selectedContainer != null && newContainers.contains(selectedContainer) ? selectedContainer : null;
-    return new OpenShiftScope(workloads, workloadKindOutcomes, selectedWorkload, pods, selectedPod,
+    return new OpenShiftScope(workloads, workloadKindOutcomes, selectedWorkload, pods, podScopeComplete, selectedPod,
         List.copyOf(newContainers), kept);
   }
 
   public OpenShiftScope withSelectedContainer(String containerName) {
-    return new OpenShiftScope(workloads, workloadKindOutcomes, selectedWorkload, pods, selectedPod, containers,
-        containerName);
+    return new OpenShiftScope(workloads, workloadKindOutcomes, selectedWorkload, pods, podScopeComplete, selectedPod,
+        containers, containerName);
   }
 
   /** The cached pod matching {@code podName}, if it is part of the last discovered pod list. */

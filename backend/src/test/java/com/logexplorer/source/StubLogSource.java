@@ -6,6 +6,7 @@ import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceCapabilities;
 import com.logexplorer.core.model.SourceHealth;
+import com.logexplorer.core.model.SourceSearchOutcome;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -31,6 +32,10 @@ public class StubLogSource implements LogSource {
   private Flux<ServiceInfo> services = Flux.empty();
   /** Legacy Remediation Slice 2 — what {@link #describePushDown} reports, for tests exercising query-plan transparency without a real Loki adapter. */
   private java.util.List<String> pushDown = java.util.List.of();
+  /** OS-1C — what {@link #describeScopeWarnings} reports (pre-search). */
+  private java.util.List<String> scopeWarnings = java.util.List.of();
+  /** OS-1C review recovery — what {@link #searchWithOutcome} reports as runtime warnings, for tests exercising the SearchService merge/truncation behavior without a real OpenShift adapter. */
+  private java.util.List<String> runtimeWarnings = java.util.List.of();
 
   /** The most recent {@link FollowRequest} this source was asked to follow with (Phase J). */
   public volatile FollowRequest lastFollowRequest;
@@ -75,9 +80,29 @@ public class StubLogSource implements LogSource {
     return this;
   }
 
+  public StubLogSource withScopeWarnings(java.util.List<String> scopeWarnings) {
+    this.scopeWarnings = scopeWarnings;
+    return this;
+  }
+
+  public StubLogSource withRuntimeWarnings(java.util.List<String> runtimeWarnings) {
+    this.runtimeWarnings = runtimeWarnings;
+    return this;
+  }
+
   @Override
   public java.util.List<String> describePushDown(SearchRequest request) {
     return pushDown;
+  }
+
+  @Override
+  public java.util.List<String> describeScopeWarnings(SearchRequest request) {
+    return scopeWarnings;
+  }
+
+  @Override
+  public Mono<SourceSearchOutcome> searchWithOutcome(SearchRequest request) {
+    return search(request).collectList().map(events -> new SourceSearchOutcome(events, runtimeWarnings));
   }
 
   @Override

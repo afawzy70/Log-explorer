@@ -414,6 +414,55 @@ calibrated against the real sandbox, not evidence-backed finals**:
 **refuse or explicitly truncate with a visible count** — never silently
 sample.
 
+**[EVIDENCE, established by OS-1C, not this assessment]** Implemented as
+two independently-enforced dimensions rather than the "max pods" + "max
+containers per pod" pair proposed above: `maxPods` (distinct pods
+considered, applied before per-pod container expansion) and `maxTargets`
+(the resulting (pod, container) fan-out, applied after). This is a
+deliberate simplification, not an oversight — `maxTargets` bounds the
+real fan-out cost (one HTTP call per target) directly and precisely,
+which a strict per-pod container sub-cap would only bound indirectly and
+less tightly for the actual concern (total concurrent/sequential upstream
+calls). Both caps are single configurable values with no separate
+"hard ceiling," unlike `SearchGuardrailsProperties`' `defaultLimit`/
+`maxLimit` pair — an intentionally simpler model for a source-internal
+bound that only the deployer (not an end-user request) can ever change.
+Truncation is never silent: exceeding either cap is named through
+`LogSource#describeScopeWarnings`, surfaced via the existing `QueryPlan`
+notes channel — see `OS_1C_OPENSHIFT_DIRECT_SEARCH_REPORT.md` §4. The
+"window narrowing instead of cursor pagination" idea above was not
+needed: OS-1C instead self-trims its own result to its internal cap
+before `SearchService` ever sees it, which is what keeps `pagination`
+honestly `false` without inventing any window-narrowing cursor concept —
+see the report's §8.
+
+**[EVIDENCE, established by OS-1C review recovery]** The §10 proposal's
+own "Per-pod byte cap | `limitBytes` set | always set" row (above) named
+the *intent* correctly but the first implementation did not fully deliver
+it: `maxBytesPerTarget` was enforced by truncating an already-fully-
+materialized `String` by character count, not a real streaming byte
+bound. Corrected to true streaming byte-counted consumption (never more
+than `maxBytes` ever held in memory, cancelled on the wire the instant the
+cap is reached) — see `OS_1C_OPENSHIFT_DIRECT_SEARCH_REPORT.md` §21 for
+the full before/after account, and per-target runtime failures (a pod
+403/404/timeout/error) are now also disclosed through the same
+`describeScopeWarnings`/`QueryPlan.notes` channel this section describes,
+closing the "not yet individually named" gap the original OS-1C
+implementation disclosed.
+
+**[EVIDENCE, established by the OS-1C final review recovery]** §21's own
+streaming byte-bound fetch had one remaining gap: cancelling the fetch from
+outside (a per-target timeout, or the overall search itself being
+cancelled) was not bridged to the raw HTTP body's subscriber, so the body
+could keep being consumed after nobody would read the result. Fixed by
+registering the returned `Mono`'s own cancellation against the same
+subscriber the byte cap already controls, with the two causes (the cap's
+own self-cancel vs. an external cancel) tracked explicitly so an aborted
+request can never resurface as a successful result. Backpressure was also
+tightened from unlimited demand to a pull-style `request(1)` — see
+`OS_1C_OPENSHIFT_DIRECT_SEARCH_REPORT.md` §22 for the full account and
+test evidence.
+
 ---
 
 ## 11. Correlation / trace / journey
@@ -777,6 +826,16 @@ is now the authoritative OS-1C contract**: any future OS-1C design that
 consumes OS-1B's scope must treat `PodDiscovery` (the resolved pod set
 plus a `COMPLETE`/`PARTIAL` completeness flag) as given, never re-derive
 "All workloads" pod scope by its own, looser query.
+
+**[EVIDENCE, established by OS-1C, not this assessment]** OS-1C
+implemented direct log search exactly against the "consume, never
+re-derive" contract above: `DirectPodLogProvider` reads
+`OpenShiftSession#scope()` (OS-1B's resolved `PodDiscovery`/pod list plus
+its `podScopeComplete`/`workloadScopeComplete` flags) and never calls any
+`OpenShiftScopeService` discovery method itself. See
+`OS_1C_OPENSHIFT_DIRECT_SEARCH_REPORT.md` §2 for the test evidence. No
+correction to this contract was needed — OS-1C confirmed it rather than
+revising it.
 
 **[PROPOSED]** Highest-risk areas, stated plainly: (1) credential intake
 and its unauthenticated-local-endpoint assumption; (2) multi-pod merge

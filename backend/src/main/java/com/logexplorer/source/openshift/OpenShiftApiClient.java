@@ -6,14 +6,17 @@ import com.logexplorer.core.tls.CompositeX509TrustManager;
 import com.logexplorer.source.openshift.OpenShiftApiException.Kind;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -24,6 +27,10 @@ import java.util.stream.Collectors;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
+import java.util.concurrent.atomic.AtomicReference;
+import org.reactivestreams.Subscription;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
@@ -32,7 +39,10 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
+import reactor.core.publisher.BaseSubscriber;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.MonoSink;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.transport.ProxyProvider;
 
@@ -305,6 +315,355 @@ public class OpenShiftApiClient {
     return List.copyOf(names);
   }
 
+  /**
+   * OS-1C — the Kubernetes/OpenShift pod-log endpoint itself (never {@code
+   * oc logs}, never a shell, never a runtime {@code oc} dependency). The
+   * response body is plain text, one raw log line per {@code \n}-delimited
+   * line — never JSON at the transport level, unlike every other call this
+   * client makes — so this uses its own raw-text read path rather than
+   * {@link #get}, which always expects a JSON body.
+   *
+   * <p>{@code follow} is always {@code false} here — OS-1C is a single
+   * bounded read, never a live stream (that is OS-1E's job, explicitly out
+   * of scope for this slice). {@code timestamps=true} is always requested
+   * so each line arrives prefixed with Kubernetes' own RFC3339Nano receive
+   * timestamp, which becomes this event's {@code sourceTimestamp} — the
+   * same "adapter's own native clock, always known even for a malformed
+   * line" role Docker's frame-receive time and Loki's stream-entry
+   * timestamp already play (see {@link
+   * com.logexplorer.core.model.CanonicalLogEvent#sourceTimestamp()}).
+   *
+   * @param sinceTime pushed down as {@code sinceTime} to reduce upstream
+   *     volume — an optimization only (OS-1C §6); the exact {@code
+   *     request.start()}/{@code end()} bound is still re-applied after
+   *     parsing by {@code core.search.EventFilters}, exactly like Docker's
+   *     own {@code since}/{@code until} push-down already works
+   * @param tailLines an additional hard bound on lines read, independent
+   *     of {@code sinceTime} (OS-1C §5/§7)
+   * @param maxBytes a hard client-side cap on how much of the response
+   *     body is ever read, regardless of how much the upstream would send
+   *     (OS-1C §7 "max bytes per pod/container") — enforced by counting
+   *     actual bytes <b>as they arrive on the wire</b> and stopping/
+   *     cancelling once this many have been read (OS-1C review recovery —
+   *     see {@link #readBounded}; never by first reading the whole body
+   *     into memory and truncating a materialized {@code String} by
+   *     {@code length()} afterward, which the pre-recovery implementation
+   *     did and which is neither a real memory bound — the full body was
+   *     already buffered — nor a real byte bound — {@code String.length()}
+   *     counts UTF-16 chars, not bytes)
+   * @return the bounded body plus whether the byte cap actually stopped a
+   *     larger response short ({@link PodLogFetchResult#byteCapReached()})
+   *     — never hidden from the caller
+   */
+  public Mono<PodLogFetchResult> fetchPodLog(
+      URI server, RawToken token, String caPath, String namespace, String podName, String containerName,
+      Instant sinceTime, int tailLines, long maxBytes, Duration timeout) {
+    WebClient client;
+    try {
+      client = build(server, caPath);
+    } catch (OpenShiftApiException e) {
+      return Mono.error(e);
+    }
+    UriComponentsBuilder uri = UriComponentsBuilder
+        .fromPath("/api/v1/namespaces/" + namespace + "/pods/" + podName + "/log")
+        .queryParam("container", containerName)
+        .queryParam("timestamps", "true")
+        .queryParam("follow", "false")
+        .queryParam("tailLines", tailLines);
+    if (sinceTime != null) {
+      uri.queryParam("sinceTime", sinceTime.toString());
+    }
+    // .retrieve() still inspects the status code and raises
+    // WebClientResponseException for 4xx/5xx BEFORE the body is ever
+    // extracted, exactly as it did for bodyToMono(String.class) - the
+    // error-classification path below is completely unaffected by
+    // switching the success-path body extraction to raw DataBuffers.
+    Flux<DataBuffer> rawBody = client
+        .get()
+        .uri(uri.build().toUriString())
+        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value())
+        .retrieve()
+        .bodyToFlux(DataBuffer.class);
+    return readBounded(rawBody, maxBytes)
+        .timeout(timeout)
+        .onErrorMap(OpenShiftApiClient::classify);
+  }
+
+  /**
+   * OS-1C review recovery — true streaming byte-bounded consumption of a
+   * {@code Flux<DataBuffer>}, counting real encoded bytes as they arrive
+   * and never materializing more than {@code maxBytes} of the upstream
+   * response, regardless of how large it actually is.
+   *
+   * <p>Deliberately hand-rolled with a {@link BaseSubscriber} rather than
+   * {@link DataBufferUtils#join(org.reactivestreams.Publisher, int)} (the
+   * obvious built-in candidate): {@code join}'s own bounded overload
+   * discards everything and raises {@code DataBufferLimitException} the
+   * moment the limit is exceeded — it cannot return the bytes read so far.
+   * OS-1C needs the opposite: keep exactly the first {@code maxBytes}
+   * bytes and report that the cap was hit, never lose the truncated
+   * prefix.
+   *
+   * <p><b>No accidental controlling limit.</b> Spring's default in-memory
+   * codec limit ({@code spring.codec.max-in-memory-size}, 256 KB by
+   * default) only ever applies to strategies that themselves aggregate a
+   * whole body in memory ({@code bodyToMono(String.class)},
+   * {@code bodyToMono(byte[].class)}, an unbounded {@code
+   * DataBufferUtils.join}) — this method never calls any of those; it
+   * consumes the raw {@code Flux<DataBuffer>} directly, so {@code
+   * maxBytes} (this call's own parameter) is the only limit in effect,
+   * whether it is smaller or larger than that default.
+   *
+   * <p><b>Bounded, not unbounded, memory.</b> Every {@link DataBuffer} is
+   * released in a {@code finally} block the instant its bytes are copied
+   * out (success, cap-reached, or error path alike) — nothing is ever
+   * retained beyond the single buffer currently being processed plus the
+   * bounded accumulator, which itself never exceeds {@code maxBytes}.
+   *
+   * <p><b>Real cancellation.</b> The moment accumulation reaches {@code
+   * maxBytes}, {@link BaseSubscriber#cancel()} is called on the upstream
+   * subscription — Reactor Netty propagates this to the underlying
+   * connection, so a pod streaming gigabytes of log never has more than
+   * one in-flight buffer beyond the cap actually read off the wire.
+   *
+   * <p><b>UTF-8 decoding happens exactly once</b>, after the bounded byte
+   * array is complete — never per-chunk (which could split a multi-byte
+   * UTF-8 character across two chunks and corrupt it) — and {@link
+   * #trimIncompleteUtf8Suffix} defensively drops a truncated trailing
+   * multi-byte sequence at the cap boundary before decoding, so a cut-off
+   * response never ends in a garbled replacement character.
+   */
+  static Mono<PodLogFetchResult> readBounded(Flux<DataBuffer> source, long maxBytes) {
+    return Mono.create(sink -> {
+      BoundedBodyCollector collector = new BoundedBodyCollector(maxBytes, sink);
+      // OS-1C final review recovery - bridges cancellation of THIS Mono
+      // (downstream abort, Mono.timeout(), an overall search cancelled) to
+      // the raw body subscription. Without this, the manually-created
+      // subscriber can remain subscribed after the request that owned it
+      // is already gone, letting the HTTP body keep draining for nothing.
+      sink.onCancel(collector::cancelFromDownstream);
+      source.subscribe(collector);
+    });
+  }
+
+  /** Which side triggered {@link BaseSubscriber#cancel()} on {@link BoundedBodyCollector}. */
+  private enum CancelCause {
+    /** Not yet cancelled. */
+    NONE,
+    /** The byte cap was reached - a successful, intentionally bounded result. */
+    INTERNAL_CAP,
+    /** The downstream consumer of {@link #readBounded} cancelled/timed out - never a success. */
+    DOWNSTREAM
+  }
+
+  /**
+   * The {@link BaseSubscriber} behind {@link #readBounded} - a named class
+   * (rather than the original anonymous one) so its cancellation cause can
+   * be tracked deterministically.
+   *
+   * <p>Uses pull-style backpressure ({@code request(1)} at subscribe time
+   * and again only after each buffer is fully processed and released,
+   * never {@code request(Long.MAX_VALUE)} - OS-1C final review recovery
+   * §3) so at most one {@link DataBuffer} is ever in flight from the body
+   * publisher, on top of the bounded accumulator itself.
+   *
+   * <p>Two independent causes can trigger {@link #cancel()}: this
+   * subscriber's own byte-cap logic ({@link CancelCause#INTERNAL_CAP}) and
+   * a cancellation of the {@link Mono} this subscriber backs ({@link
+   * CancelCause#DOWNSTREAM}, bridged via {@link #cancelFromDownstream()}).
+   * They race on different threads (the HTTP client's event loop vs.
+   * whatever thread owns the timeout/cancellation), so the cause is
+   * recorded with a single {@link AtomicReference#compareAndSet} performed
+   * immediately before calling {@code cancel()} - exactly one wins, and
+   * {@link #hookOnCancel()} trusts that recorded cause rather than
+   * re-deriving it, so a downstream cancellation can never be mistaken for
+   * the cap's own "successful bounded result" and resurface a stale {@link
+   * PodLogFetchResult}.
+   */
+  private static final class BoundedBodyCollector extends BaseSubscriber<DataBuffer> {
+    private final long maxBytes;
+    private final MonoSink<PodLogFetchResult> sink;
+    private final ByteArrayOutputStream out = new ByteArrayOutputStream();
+    private final AtomicReference<CancelCause> cause = new AtomicReference<>(CancelCause.NONE);
+    private volatile boolean terminalEmitted = false;
+
+    BoundedBodyCollector(long maxBytes, MonoSink<PodLogFetchResult> sink) {
+      this.maxBytes = maxBytes;
+      this.sink = sink;
+    }
+
+    @Override
+    protected void hookOnSubscribe(Subscription subscription) {
+      request(1);
+    }
+
+    @Override
+    protected void hookOnNext(DataBuffer buffer) {
+      try {
+        if (cause.get() != CancelCause.NONE) {
+          // A buffer that arrived after cancel() was already requested -
+          // Reactive Streams allows a small number of in-flight signals
+          // after cancel(); it is simply discarded, never accumulated.
+          return;
+        }
+        int readable = buffer.readableByteCount();
+        long remaining = maxBytes - out.size();
+        int toCopy = (int) Math.min(readable, remaining);
+        if (toCopy > 0) {
+          byte[] chunk = new byte[toCopy];
+          buffer.read(chunk);
+          // ByteArrayOutputStream#write(byte[]) never actually throws -
+          // the checked IOException it declares (inherited from the
+          // OutputStream contract, not overridden away) is unreachable
+          // for this specific implementation.
+          try {
+            out.write(chunk);
+          } catch (java.io.IOException impossible) {
+            throw new IllegalStateException(impossible);
+          }
+        }
+        if (toCopy < readable) {
+          // Real bytes existed beyond the cap in this exact buffer - the
+          // response is genuinely larger than maxBytes, not merely
+          // exactly maxBytes. Cancel immediately: no further buffers are
+          // pulled from the upstream connection.
+          if (cause.compareAndSet(CancelCause.NONE, CancelCause.INTERNAL_CAP)) {
+            cancel();
+          }
+          return;
+        }
+      } finally {
+        DataBufferUtils.release(buffer);
+      }
+      // Pull-style backpressure (OS-1C final review recovery §3): only ask
+      // for the next buffer once this one is fully processed and released -
+      // never unlimited demand against the body publisher.
+      request(1);
+    }
+
+    @Override
+    protected void hookOnComplete() {
+      emitSuccessOnce();
+    }
+
+    @Override
+    protected void hookOnCancel() {
+      if (cause.get() == CancelCause.INTERNAL_CAP) {
+        // Our own cap-triggered cancel() - still a successful, bounded
+        // result, never an error; the caller asked for "at most maxBytes,"
+        // and that is exactly what was delivered.
+        emitSuccessOnce();
+        return;
+      }
+      // DOWNSTREAM cancel (or, defensively, any cancel this collector did
+      // not itself decide on): the caller of readBounded no longer wants
+      // this result at all. Never synthesize a successful
+      // PodLogFetchResult here - that would silently convert an aborted
+      // request into a truncated-but-"successful" one.
+      terminalEmitted = true;
+    }
+
+    @Override
+    protected void hookOnError(Throwable error) {
+      if (terminalEmitted) {
+        return;
+      }
+      terminalEmitted = true;
+      sink.error(error);
+    }
+
+    private void emitSuccessOnce() {
+      if (terminalEmitted) {
+        return;
+      }
+      terminalEmitted = true;
+      byte[] bytes = trimIncompleteUtf8Suffix(out.toByteArray());
+      sink.success(new PodLogFetchResult(
+          new String(bytes, StandardCharsets.UTF_8), cause.get() == CancelCause.INTERNAL_CAP));
+    }
+
+    /**
+     * Bridges cancellation of the {@link Mono} returned by {@link
+     * #readBounded} (downstream abort, {@code Mono.timeout()}, an overall
+     * search being cancelled) to this subscriber's own upstream
+     * subscription, so the HTTP body is torn down instead of continuing to
+     * drain after nobody will ever read the result.
+     */
+    void cancelFromDownstream() {
+      if (cause.compareAndSet(CancelCause.NONE, CancelCause.DOWNSTREAM)) {
+        cancel();
+      }
+    }
+  }
+
+  /**
+   * OS-1C review recovery — if a byte-bounded cut lands in the middle of a
+   * multi-byte UTF-8 character, drop that trailing incomplete sequence
+   * rather than let {@link String#String(byte[], java.nio.charset.Charset)}
+   * silently substitute a U+FFFD replacement character at the very end of
+   * a truncated log line. Every byte before the cut point is untouched -
+   * this only ever trims the final 1-3 bytes, and only when they are
+   * genuinely an incomplete sequence.
+   *
+   * <p>UTF-8's own self-describing structure makes this decidable by
+   * inspecting only the trailing bytes: a continuation byte has the top
+   * bits {@code 10xxxxxx} (0x80-0xBF); a lead byte declares how many
+   * continuation bytes follow via its own top bits ({@code 110xxxxx} = 1
+   * more, {@code 1110xxxx} = 2 more, {@code 11110xxx} = 3 more). Walking
+   * backward from the end for at most 3 bytes is always enough to find
+   * either a complete sequence or the start of an incomplete one.
+   */
+  static byte[] trimIncompleteUtf8Suffix(byte[] bytes) {
+    if (bytes.length == 0) {
+      return bytes;
+    }
+    int i = bytes.length - 1;
+    int back = 0;
+    // Walk back over continuation bytes (10xxxxxx) only - at most 3, since
+    // no valid UTF-8 sequence is longer than 4 bytes total.
+    while (i >= 0 && back < 3 && (bytes[i] & 0xC0) == 0x80) {
+      i--;
+      back++;
+    }
+    if (i < 0) {
+      // Every byte examined was a continuation byte with no lead byte in
+      // range - the whole tail is malformed/incomplete; safest deterministic
+      // behavior is to drop it rather than guess.
+      return new byte[0];
+    }
+    int lead = bytes[i] & 0xFF;
+    int expectedLength = expectedUtf8SequenceLength(lead);
+    if (expectedLength == 1) {
+      // The byte just before the continuation run is plain ASCII or itself
+      // a continuation byte with no lead in range within our 3-byte
+      // lookback - either way this is not a valid multi-byte lead, so the
+      // continuation bytes found are not a legitimate sequence at all.
+      // Complete as-is; trimIncompleteUtf8Suffix only ever removes a
+      // genuinely truncated *trailing* sequence, never reinterprets
+      // otherwise-valid content.
+      return bytes;
+    }
+    int actualLength = bytes.length - i;
+    return actualLength < expectedLength ? java.util.Arrays.copyOfRange(bytes, 0, i) : bytes;
+  }
+
+  /** 1 for a plain ASCII/continuation byte (not a valid multi-byte lead), otherwise the full sequence length a UTF-8 lead byte declares. */
+  private static int expectedUtf8SequenceLength(int leadByte) {
+    if ((leadByte & 0x80) == 0x00) {
+      return 1; // ASCII
+    }
+    if ((leadByte & 0xE0) == 0xC0) {
+      return 2;
+    }
+    if ((leadByte & 0xF0) == 0xE0) {
+      return 3;
+    }
+    if ((leadByte & 0xF8) == 0xF0) {
+      return 4;
+    }
+    return 1; // not a valid UTF-8 lead byte at all - treat as opaque/complete, nothing to trim
+  }
+
   private Mono<JsonNode> get(URI server, RawToken token, String caPath, String path) {
     WebClient client;
     try {
@@ -374,7 +733,10 @@ public class OpenShiftApiClient {
           error);
     }
     if (error instanceof java.util.concurrent.TimeoutException) {
-      return new OpenShiftApiException(Kind.NETWORK, "The cluster API did not respond in time.", error);
+      // OS-1C review recovery - its own Kind, split out of NETWORK (a
+      // timeout is "something answered too slowly," never "nothing is
+      // listening there" - see Kind.TIMEOUT's own javadoc).
+      return new OpenShiftApiException(Kind.TIMEOUT, "The cluster API did not respond in time.", error);
     }
     return new OpenShiftApiException(Kind.MALFORMED_RESPONSE, "The cluster API call failed.", error);
   }

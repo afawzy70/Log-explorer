@@ -6,6 +6,7 @@ import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceCapabilities;
 import com.logexplorer.core.model.SourceHealth;
+import com.logexplorer.core.model.SourceSearchOutcome;
 import java.util.List;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -70,6 +71,33 @@ public interface LogSource {
   Flux<CanonicalLogEvent> search(SearchRequest request);
 
   /**
+   * OS-1C review recovery — the same historical search as {@link #search},
+   * but also exposes any RUNTIME completeness/warning metadata discovered
+   * while executing this exact invocation (a specific target could not be
+   * read, an internal byte/line/event cap was actually reached while
+   * fetching) — distinct from {@link #describeScopeWarnings}, which can
+   * only ever report what is known <em>before</em> any network call is
+   * made, since {@code api.SearchService} builds the query plan before
+   * calling this method. The metadata is carried entirely by this call's
+   * own return value ({@link SourceSearchOutcome}) — never a shared/
+   * mutable "last search" field on the source instance — so it is safe by
+   * construction for two overlapping concurrent searches on the same
+   * source.
+   *
+   * <p>The default delegates to {@link #search} and reports no runtime
+   * warnings, which is exactly correct for every source that doesn't
+   * override this (Fixture, Docker, Loki): each of those sources' own
+   * {@code search()} already either fully succeeds or fails the whole
+   * reactive chain — there is no partial-target-failure case for them to
+   * report today. Only {@code source.openshift.OpenShiftLogSource}
+   * overrides this, because only OS-1C's own multi-target fan-out can
+   * genuinely have some targets succeed while others fail.
+   */
+  default Mono<SourceSearchOutcome> searchWithOutcome(SearchRequest request) {
+    return search(request).collectList().map(SourceSearchOutcome::of);
+  }
+
+  /**
    * Live tail (IMPLEMENTATION_PLAN.md "Phase J", HANDOVER.md §18) - an
    * unbounded stream of new events from "now" forward. Callers must check
    * {@link SourceCapabilities#liveTail()} first; this default rejects the
@@ -95,6 +123,27 @@ public interface LogSource {
    * have something to show.
    */
   default List<String> describePushDown(SearchRequest request) {
+    return List.of();
+  }
+
+  /**
+   * OS-1C — a human-readable, already-safe (pod/container/namespace
+   * identity only, never a raw response body or credential) account of any
+   * reason THIS search's result might be less than the complete truth:
+   * scope resolved by an earlier slice was itself partial, an internal
+   * fan-out/byte/line cap was reached, or one specific target could not be
+   * read. Surfaced through the existing query-plan {@code notes} channel
+   * ({@code core.query.QueryPlanBuilder}) rather than a new DTO field —
+   * the same "reuse existing transparency, don't invent a new concept"
+   * judgement {@link #describePushDown} already makes for a different
+   * kind of search transparency. The default — nothing to warn about — is
+   * correct for every source that doesn't override this (fixture, Docker,
+   * Loki): {@link com.logexplorer.core.model.ResultCounts#truncated()}
+   * already covers "more matching events existed than the requested
+   * limit" for them; this exists for the OS-1C-specific case where scope
+   * itself may be incomplete independently of how many events came back.
+   */
+  default List<String> describeScopeWarnings(SearchRequest request) {
     return List.of();
   }
 }

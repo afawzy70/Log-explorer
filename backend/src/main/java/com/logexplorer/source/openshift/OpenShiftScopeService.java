@@ -186,7 +186,8 @@ public class OpenShiftScopeService {
 
     return discovery
         .flatMap(result -> {
-          if (!session.updatePods(result.pods(), namespace, selectedWorkload, generation)) {
+          boolean complete = result.status() == PodDiscovery.Status.COMPLETE;
+          if (!session.updatePods(result.pods(), complete, namespace, selectedWorkload, generation)) {
             return Mono.error(new StaleScopeException());
           }
           return Mono.just(result);

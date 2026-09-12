@@ -70,13 +70,18 @@ public class GlobalExceptionHandler {
       // TLS / network / proxy are failures reaching an upstream, not
       // client mistakes - 502 is the honest shape.
       case TLS, NETWORK, PROXY -> HttpStatus.BAD_GATEWAY;
-      // NOT_FOUND (the Projects API itself is genuinely absent) and
+      // NOT_FOUND (the Projects API itself is genuinely absent),
       // MALFORMED_RESPONSE (anything else unexpected, incl. 429/5xx
-      // upstream failures) both describe a real cluster-side condition,
-      // not a mistake by our caller - 502 is honest here too. This only
-      // reaches the client if the namespaces fallback also failed (see
+      // upstream failures), and UPSTREAM_UNAVAILABLE (OS-1C review
+      // recovery: none of a search's resolved pod-log targets could be
+      // read) all describe a real cluster-side condition, not a mistake by
+      // our caller - 502 is honest here too. NOT_FOUND/MALFORMED_RESPONSE
+      // only reach the client if the namespaces fallback also failed (see
       // OpenShiftConnectionService.fallbackToNamespacesIfAppropriate).
-      case NOT_FOUND, MALFORMED_RESPONSE -> HttpStatus.BAD_GATEWAY;
+      case NOT_FOUND, MALFORMED_RESPONSE, UPSTREAM_UNAVAILABLE -> HttpStatus.BAD_GATEWAY;
+      // TIMEOUT (OS-1C review recovery) gets its own, more precise status
+      // than the generic 502 the other upstream-failure kinds share.
+      case TIMEOUT -> HttpStatus.GATEWAY_TIMEOUT;
     };
     ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, e.getMessage());
     problem.setProperty("reason", e.kind().name());

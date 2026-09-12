@@ -541,7 +541,7 @@ class OpenShiftScopeServiceTest {
     scopeService.selectWorkload(workerRef);
     boolean applied = session.updatePods(
         List.of(new PodSummary("payment-api-abc", "Running", "1/1", 0, List.of("application"), apiRef)),
-        NAMESPACE, apiRef, generation);
+        true, NAMESPACE, apiRef, generation);
 
     assertThat(applied).isFalse();
     assertThat(session.scope().pods()).isEmpty();
@@ -567,7 +567,7 @@ class OpenShiftScopeServiceTest {
     assertThat(session.selectProject("accounts", generation)).isTrue();
     boolean applied = session.updatePods(
         List.of(new PodSummary("payment-api-abc", "Running", "1/1", 0, List.of("application"), null)),
-        NAMESPACE, null, generation);
+        true, NAMESPACE, null, generation);
 
     assertThat(applied).isFalse();
     assertThat(session.scope().pods()).isEmpty();
@@ -587,7 +587,7 @@ class OpenShiftScopeServiceTest {
 
     boolean applied = session.updatePods(
         List.of(new PodSummary("payment-api-abc", "Running", "1/1", 0, List.of("application"), null)),
-        NAMESPACE, null, staleGeneration);
+        true, NAMESPACE, null, staleGeneration);
 
     assertThat(applied).isFalse();
   }

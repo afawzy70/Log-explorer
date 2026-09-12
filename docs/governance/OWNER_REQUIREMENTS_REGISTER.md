@@ -417,6 +417,65 @@ seven `false`).
 | OS-1B-26 | **Second defect found and fixed in the same review recovery**: `OpenShiftSession#updatePods` did not check the expected project, only the expected workload - for "All workloads" (`expectedWorkload == null`) a project switch left that value unchanged on both sides, so a stale cross-project pod result could not be detected by the pre-existing guard | `VERIFIED` (fixed) | `OpenShiftSession#updatePods` now takes and checks `expectedProject`; `aStaleAllWorkloadsPodResponseForAnAbandonedProjectIsDiscarded`, `aStaleAllWorkloadsPodResponseAfterReconnectIsDiscarded`; see `OS_1B_OPENSHIFT_SCOPE_DISCOVERY_REPORT.md` §20 |
 | OS-1B-27 | OS-1C consumption contract: OS-1C must consume `PodDiscovery` (pods + `status`) unchanged, must not re-fetch pods with a looser selector, and must not reinterpret `Workload = All` as "all namespace pods" | `APPROVED_PENDING` (documented now, enforced when OS-1C is implemented) | `OS_1B_OPENSHIFT_SCOPE_DISCOVERY_REPORT.md` §20 "OS-1C contract" |
 
+### 12d. OS-1C — direct OpenShift log search (implemented and verified)
+
+OS-1C implements bounded direct log search over the Kubernetes Pod Logs
+API, consuming OS-1B's resolved scope unchanged. Live tail, context view,
+raw LogQL and pagination remain **not** implemented and remain `false`.
+
+| ID | NAME | STATUS | EVIDENCE |
+|---|---|---|---|
+| OS-1C-1 | Direct log search over the Kubernetes Pod Logs API, consuming OS-1B's resolved `PodDiscovery`/scope unchanged - never re-derives "All workloads"/"All pods" itself, never a namespace-wide search | `VERIFIED` | `DirectPodLogProvider#search`/`#resolveTargets`; `OpenShiftLogSource#search` delegates unmodified; class javadoc "Scope is consumed, never rediscovered"; `deselectingWorkloadStillOnlyQueriesWhatOs1bResolvedNeverEveryNamespacePod` |
+| OS-1C-2 | `GET .../pods/{pod}/log` with `timestamps=true`, `follow=false` always (no live tail), `sinceTime` pushed down as an optimization only, `tailLines` as an additional hard bound - no `oc logs`, no shell, no runtime `oc` dependency | `VERIFIED` | `OpenShiftApiClient#fetchPodLog`; `sinceTimeIsPushedDownAsAnOptimizationOnly`; every call goes through `WebClient#get()` only |
+| OS-1C-3 | Explicit bounded fetch model: max pods, max (pod,container) targets, max lines/bytes per target, max events overall, max concurrency, per-target and overall timeouts - every limit a real enforced ceiling, no unlimited default | `VERIFIED` — **`maxBytesPerTarget` specifically was `IMPLEMENTED` but not truthfully `VERIFIED` until the OS-1C review recovery (OS-1C-22 below); this row's own evidence for it was a false positive, corrected here rather than silently left** | `DirectPodLogProperties`; `neverQueriesMoreThanTheConfiguredTargetCap...`, `neverConsidersMoreDistinctPodsThanTheConfiguredPodCap`, `neverReturnsMoreThanMaxEventsOverall...`, `fanOutNeverExceedsTheConfiguredMaxConcurrency`, `oneSlowPodExceedingItsPerTargetTimeout...` |
+| OS-1C-4 | Truncation is never silent: when resolved targets exceed the cap, the gap (resolved vs queried) is named, not dropped, via the existing query-plan `notes` channel | `VERIFIED` | `DirectPodLogProvider#describeScopeWarnings`; `LogSource#describeScopeWarnings` (new default method); `QueryPlanBuilder`'s new `sourceWarnings` overload; `SearchService` wiring; `neverQueriesMoreThanTheConfiguredTargetCap...` |
+| OS-1C-5 | Pod/container target semantics: selected pod+container = one target; pod+Container=All = every runtime container in that pod; Pod=All = every OS-1B-resolved pod's own containers (never assumed identical across replicas) | `VERIFIED` | `DirectPodLogProvider#resolveTargets`; `selectedPodAndSelectedContainerIsExactlyOneTarget`, `selectedPodWithContainerAllFetchesEveryRuntimeContainerInThatPod`, `podAllWithSelectedWorkloadFetchesEveryResolvedPodItsOwnContainers` |
+| OS-1C-6 | `initContainers` remain deferred, never silently merged into search targets | `VERIFIED` | `resolveTargets` reads only `PodSummary#containerNames()`, which OS-1B already excludes init containers from |
+| OS-1C-7 | Canonical parsing pipeline reused exactly - malformed/non-JSON lines become raw fallback events, never dropped; a multiline exception embedded in one JSON object stays one logical event, never stitched from raw lines across pods/containers/streams | `VERIFIED` | `LogLineParser` reused unmodified; `plainTextNonJsonLineBecomesARawFallbackEventNeverDropped`; `multilineExceptionEmbeddedInOneJsonObjectStaysOneLogicalEvent` |
+| OS-1C-8 | Sensitive fields (`cif`/`UserName`/`CustomerId`/`deviceId`/`deviceIp`) carried raw for source-side filter matching only, masked at the one existing boundary - no new masking path | `VERIFIED` | `sensitiveFieldsAreCarriedRawForSourceSideMatchingNeverDroppedByParsing`; `MaskingService` untouched |
+| OS-1C-9 | Structured filters (`EventFilters`) reused unmodified, applied post-fetch; no OpenShift-specific query language, no raw LogQL advertised by this source | `VERIFIED` | `structuredFilterIsAppliedAfterParsingExactlyLikeEveryOtherSource`; `capabilities().rawLogQL() == false` |
+| OS-1C-10 | Deterministic multi-stream merge: `sourceTimestamp` primary key, explicit tie-breakers (namespace, pod, container, per-stream sequence) - result order never depends on Flux/HTTP arrival timing | `VERIFIED` | `DirectPodLogProvider#parseFilterAndMerge`; `mergesMultiplePodsDeterministicallyByTimestampThenNamespacePodContainer`; `resultOrderDoesNotDependOnWhichUpstreamRequestCompletesFirst` (proved against a genuinely concurrent fake server where the chronologically-earlier line's HTTP response arrives last) |
+| OS-1C-11 | NEWEST/OLDEST both operate on the same bounded fetched window - truthful only within it, never a claim of global historical ordering | `VERIFIED` | `newestFirstAndOldestFirstBothOperateOnTheSameBoundedCandidateSet` |
+| OS-1C-12 | No fake pagination: the source self-trims to its own internal event cap before `SearchService` ever sees the list, so `SearchService` can never build a pagination cursor for this source | `VERIFIED` | `DirectPodLogProvider#trimToInternalCap` (javadoc explains the mechanism); `neverReturnsMoreThanMaxEventsOverallSoNoFakePaginationCursorCanEverBeBuilt` |
+| OS-1C-13 | Capability truthfulness: `historicalSearch=true` now truthfully means "bounded direct search over currently-resolved pods," not "indexed history"; `liveTail`/`contextView`/`rawLogQL`/`composeProjectScoping` remain `false` (pagination is not a field of this record - see OS-1C-12 for why it stays honestly absent) | `VERIFIED` | `OpenShiftLogSource#capabilities()`; `openShiftAdvertisesExactlyTheCapabilitiesItCanDeliver` (test renamed and corrected from its OS-1A form - see the OS-1C narrative below) |
+| OS-1C-14 | Health distinguishes CONNECTED-and-search-ready from CONNECTED-but-no-project-selected (both DEGRADED-worthy in different ways) from EXPIRED - never reports "healthy, search capable" while the session is expired | `VERIFIED` | `OpenShiftLogSource#health()`; `healthReflectsConnectionStateWithoutAlarmingAboutTheNormalStartingState` |
+| OS-1C-15 | One pod/container failing (404 disappeared, 403 forbidden, timeout, other error) never fails the whole search; every target forbidden is an explicit forbidden result, never a silently empty one; a 401 on any target aborts the search and expires the session | `VERIFIED` — resilience behavior unchanged; user-*visibility* of these per-target failures was a separate, then-open gap, now closed by OS-1C-24 below | `oneDisappearedPodDoesNotFailTheWholeSearch`, `oneForbiddenTargetIsPartialWhenOthersAreReadable`, `everyTargetForbiddenIsAnExplicitForbiddenResultNeverASilentEmptySearch`, `unauthorizedAbortsTheSearchAndExpiresTheSession`, `oneSlowPodExceedingItsPerTargetTimeoutIsExcludedButOthersStillReturn`, `aMissingContainerIsExcludedLikeAnyOtherFourOhFour` |
+| OS-1C-16 | Immutable scope snapshot: generation, server, token, and the whole `OpenShiftScope` are read exactly once at search start, before any network call - a project/workload change mid-search cannot retroactively alter an in-flight search's targets | `VERIFIED` | `DirectPodLogProvider#search` (everything read inside one `Mono.defer` before any upstream call); class javadoc "Immutable scope snapshot (OS-1C §23)" |
+| OS-1C-17 | Strictly read-only: only `GET` is ever issued against the pod-log endpoint - no `oc exec`, no shell, no runtime `oc` CLI dependency | `VERIFIED` | `OpenShiftApiClient#fetchPodLog` uses `WebClient#get()` exclusively |
+| OS-1C-18 | No new sensitive-data disclosure: errors never surface a raw response body, token, or Authorization header; pod/container/namespace identity may appear, consistent with the existing disclosure policy | `VERIFIED` | `OpenShiftApiClient#classify` (pre-existing OS-1A mechanism, unmodified) never surfaces `cause.getMessage()`; `DirectPodLogProvider` logs nothing |
+| OS-1C-19 | Existing Docker/Fixture/`openshift-loki` sources unaffected | `VERIFIED` | No file under those packages touched; full 850-test backend suite green (`./mvnw test`) |
+| OS-1C-20 | Real Developer Sandbox verification for direct log search | `BLOCKED_CREDENTIALS` | No `OPENSHIFT_API_SERVER`/`OPENSHIFT_TOKEN` supplied this mission; no OS-1C-specific Layer-3 test was written, matching OS-1A/1B's own precedent |
+| OS-1C-21 | `maxPods` (distinct-pod cap, applied before per-pod container expansion) and `maxTargets` (the resulting (pod,container) fan-out cap) are two independently enforced dimensions, not one config field left unused | `VERIFIED` (fixed during this slice - see narrative below) | `DirectPodLogProvider#resolveTargets`/`resolveTargetPlan`; `neverConsidersMoreDistinctPodsThanTheConfiguredPodCap` |
+
+### 12e. OS-1C REVIEW RECOVERY — true byte bounds & runtime partial-result truthfulness
+
+Two evidence-backed defects found in PR #41's reviewed HEAD
+(`37f39f9826cd00095672228ba617b54f1f6b9fbd`) and fixed. Full before/after
+account: `docs/verification/OS_1C_OPENSHIFT_DIRECT_SEARCH_REPORT.md` §21.
+
+| ID | NAME | STATUS | EVIDENCE |
+|---|---|---|---|
+| OS-1C-22 | `maxBytesPerTarget` is a true streaming byte bound - real encoded bytes counted as `DataBuffer`s arrive, never a full-body `bodyToMono(String.class)` read followed by a `String.length()` truncation; upstream subscription cancelled the instant the cap is reached; every `DataBuffer` released (proven via real pooled Netty `refCnt()` reaching 0); Spring's default in-memory codec limit never becomes an accidental controlling limit | `VERIFIED` | `OpenShiftApiClient#readBounded`/`fetchPodLog`; `OpenShiftApiClientByteBoundTest` (20 tests: under/at/over cap, multi-buffer straddling, real-byte-vs-char-count, ~20 MB synthetic source proving no full materialization + real cancellation, pooled-buffer release including the cap-mid-stream case, error-path release, end-to-end against `MockOpenShiftPodLogServer` incl. a real ~5 MB HTTP response bounded to 4 KB) |
+| OS-1C-23 | UTF-8 decoding is safe at the byte-cap boundary: a genuinely truncated multi-byte trailing sequence is dropped (never a garbled U+FFFD left in the output), every byte before the cut is untouched, malformed UTF-8 never throws | `VERIFIED` | `OpenShiftApiClient#trimIncompleteUtf8Suffix`; `aTwoByteCharacterCutAfterOnlyItsLeadByteIsDropped`, `aThreeByteCharacterCutAfterOneOrTwoBytesIsDropped`, `aFourByteEmojiCutAtAnyPointIsDroppedNeverPartiallyDecoded`, `malformedTrailingBytesNeverThrow_deterministicNotCrash` |
+| OS-1C-24 | Per-target runtime failures (not found, forbidden, timeout, upstream error) and per-target caps actually reached (byte cap, line cap possibly reached) are now user-visible, appended into the same `QueryPlan.notes` channel pre-search scope warnings already use, and mark `ResultCounts.truncated=true` | `VERIFIED` — closes the gap OS-1C-15 above and the original report's §13 "known, disclosed gap" left open | `core.model.SourceSearchOutcome`; `LogSource#searchWithOutcome` (new default method); `DirectPodLogProvider#searchWithOutcome`/`buildRuntimeWarnings`; `SearchService#toResult`/`withAppendedNotes`; the full runtime-partial matrix in `DirectPodLogProviderTest` (`oneOkPlusOneNotFoundIsPartialWithATargetNotFoundReason`, `...Forbidden...`, `...Timeout...`, `...ByteCapped...`) and `SearchServiceTest` (`aSourceReportedRuntimeWarningMarksTheResultTruncatedAndAppendsItToQueryPlanNotes`, `preSearchScopeWarningsAndRuntimeWarningsCoexistInTheSameNotesList`) |
+| OS-1C-25 | All-targets-failed (all 404, all timeout, all generic error - not 403, which stays its own `FORBIDDEN` case) is an explicit failure (`OpenShiftApiException(Kind.UPSTREAM_UNAVAILABLE)`), never a silent, successful, complete-looking empty result | `VERIFIED` | New `Kind.UPSTREAM_UNAVAILABLE`; `DirectPodLogProvider#fetchAndMerge`'s generalized `anyOk` check; `everyTargetNotFoundIsAnExplicitFailureNeverASilentCompleteEmptyResult`, `everyTargetTimedOutOrErroredIsAnExplicitFailureNeverASilentCompleteEmptyResult` |
+| OS-1C-26 | A per-target timeout is classified distinctly from a generic network/upstream failure | `VERIFIED` | New `Kind.TIMEOUT` (split out of `Kind.NETWORK`); `TargetOutcome.TIMEOUT` |
+| OS-1C-27 | Internal `maxEventsOverall` safety-cap trimming is disclosed as `OVERALL_EVENT_CAP` - but only when it, not the caller's own smaller requested `limit`, is what actually controlled the trim | `VERIFIED` | `DirectPodLogProvider#trimToInternalCap` (`TrimResult#safetyCapReached`); `internalOverallEventCapIsExposedAsARuntimeWarningWhenItActuallyControlsTrimming`, `theCallersOwnSmallerRequestedLimitTrimmingIsNeverFlaggedAsOverallEventCap` |
+| OS-1C-28 | Runtime metadata is request-scoped, never a shared/mutable side channel - two overlapping concurrent searches never leak one's warnings into the other's result | `VERIFIED` — executable proof, not merely architectural | `concurrentSearchesOnTheSameProviderInstanceNeverCrossContaminateOutcomes` (provider level, real `Mono.zip` concurrency); `overlappingConcurrentSearchesOnDifferentSourcesNeverLeakOneSourcesRuntimeWarningsIntoTheOthers` (`SearchService` level) |
+| OS-1C-29 | Frontend renders OS-1C's new runtime-warning notes and truncation signal via the existing generic `QueryPlanDisclosure`/counts-summary UI - zero new components, zero OpenShift-specific visual clutter | `VERIFIED` | Real rendered-browser Playwright check (stubbed OS-1C-shaped `/api/v1/logs/search` response) against the real dev app - see the OS_1C report §21 "Frontend" subsection for the captured output |
+| OS-1C-30 | A byte-capped truncation never surfaces its own artificial trailing partial line as a misleading "malformed" event | `VERIFIED` — self-caught defect during this recovery's own test-writing, fixed before merge | `DirectPodLogProvider#fetchTarget` (drops the trailing split line when `byteCapReached` and the body doesn't end in `\n`); `oneOkPlusOneByteCappedTargetIsPartialWithABytesCapReachedReason`, `aByteCappedTargetIsCancelledWhileOtherTargetsContinueNormally` |
+
+### 12f. OS-1C FINAL REVIEW RECOVERY — cancellation bridge & PR hygiene
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| OS-1C-31 | A cancellation of `OpenShiftApiClient#readBounded`'s own `Mono` (downstream abort, `Mono.timeout()`, an overall search cancelled) is bridged to the raw HTTP body's `BaseSubscriber`, so the body subscription is torn down rather than continuing to drain after nobody will read the result | `VERIFIED` | `OpenShiftApiClient#readBounded` (`MonoSink#onCancel(collector::cancelFromDownstream)`); `downstreamCancellationAfterTheFirstChunkCancelsTheUnderlyingBodySubscription`, `cancellingTheOverallSearchCancelsAnInFlightSlowPodLogBodySubscription` |
+| OS-1C-32 | A downstream/external cancellation is never converted into a successful `PodLogFetchResult` - only the subscriber's own byte-cap self-cancel is a success | `VERIFIED` | `BoundedBodyCollector.CancelCause` (`INTERNAL_CAP` vs `DOWNSTREAM`, set via `AtomicReference#compareAndSet` before either cancel path calls `cancel()`); `downstreamCancellationNeverEmitsASuccessfulResultAfterward`, `internalByteCapCancellationAndDownstreamCancellationRemainDistinguishable` |
+| OS-1C-33 | A per-target timeout cancels the underlying body subscription rather than merely giving up waiting locally | `VERIFIED` | `aTimeoutOperatorCancelsTheUnderlyingBodySubscriptionInsteadOfHanging` (unit, `doOnCancel` probe), `endToEnd_aTimeoutAgainstARealSlowServerFailsQuicklyRatherThanWaitingForTheFullDelay` (real HTTP, 3s fixture vs. 150ms timeout, completes in well under 1s) |
+| OS-1C-34 | No `DataBuffer` is leaked on either cancellation path (downstream cancel, timeout) | `VERIFIED` — real pooled Netty `refCnt()` proof, not merely "release() was called" | `noDataBufferLeakOnDownstreamCancellation`, `noDataBufferLeakWhenATimeoutCancelsTheBody` |
+| OS-1C-35 | Backpressure against the raw body publisher is pull-style (`request(1)` at subscribe, `request(1)` again only after each buffer is processed and released) rather than unlimited (`request(Long.MAX_VALUE)`) | `VERIFIED` — all 20 pre-existing + 8 new byte-bound tests pass unchanged under this strategy | `OpenShiftApiClient.BoundedBodyCollector#hookOnSubscribe`/`hookOnNext` |
+| OS-1C-36 | Unrelated historical evidence PNGs unintentionally modified by the OS-1C review recovery commit are restored byte-identical to their pre-recovery content, never regenerated/recompressed | `VERIFIED` | 188 files under `docs/verification/{UX_R1,UX_R3,UX_R4,UX_R5,UX_R6}_EVIDENCE/`, `legacy-slice8/`, `m/`, `ui-gap-closure/`, `ui-parity/`, `OS_1A_EVIDENCE/` restored via `git checkout 37f39f9 -- <paths>`; verified with an empty `git diff 37f39f9 -- <paths>` |
+
 ---
 
 ## 13. Out of Current Scope
@@ -606,6 +665,65 @@ already-registered REL-1 addendum, which remains untouched and
 either status. OS-1C, REL-1 and Phase M remain
 `NOT_STARTED`/`TRACKED_NOT_STARTED`; PR #40 remains unmerged pending this
 recovery's own review.
+
+**OS-1C pass (`OS_1C_OPENSHIFT_DIRECT_SEARCH`).** PR #40 was confirmed
+merged (`4fc57bafbd9162de2fb630170be92e124d0a0ced`) with post-main CI and
+Windows Desktop both green *before* this branch was cut (§0 of
+`OS_1C_OPENSHIFT_DIRECT_SEARCH_REPORT.md`). Twenty-one new, separately-
+tested requirements were added (§12d, OS-1C-1 through OS-1C-21) covering
+bounded direct pod-log search, deterministic multi-pod merge, truthful
+truncation/sorting/pagination-absence, and capability/health honesty. One
+real gap was found and fixed *during* implementation, before any test was
+written against the buggy state: `DirectPodLogProperties#maxPods` was
+defined but never enforced anywhere - fixed by capping distinct pods
+before per-pod container expansion, independently of the existing
+`maxTargets` fan-out cap (OS-1C-21). A LERUX-1 diagnosis of the existing
+Search UI found **zero frontend changes required** - no code anywhere
+gates Search on `capabilities.historicalSearch`, and the generic
+`QueryPlan.notes`/`SourceHealth.warnings`/`counts.truncated` rendering
+paths already pick up OS-1C's new disclosures with no source-specific
+frontend branch to write; the one stale E2E assertion this uncovered
+(`os-1a-openshift-connection.spec.ts` asserting `historicalSearch=false`)
+was corrected, not deleted, and re-verified green. One known, disclosed
+limitation was carried forward rather than silently left implicit: a
+specific target's own runtime failure (one pod 403s/404s/times out) is
+not yet individually named in `describeScopeWarnings`, only the
+proactively-knowable scope/cap conditions are (see the report's §13).
+`REAL_OPENSHIFT_1A`/`REAL_OPENSHIFT_1B`/`REAL_OPENSHIFT_1C` all remain
+`BLOCKED_CREDENTIALS` - no credentials were supplied, and no skipped test
+was converted to `PASS`. OS-1D, OS-1E, OS-1F, OS-1G, REL-1 and Phase M all
+remain `NOT_STARTED`/`TRACKED_NOT_STARTED` - this slice implemented
+bounded direct search only, per its own explicit no-scope-creep list
+(§46 of the mission).
+
+**OS-1C REVIEW RECOVERY pass (§12e above).** The one known, disclosed
+limitation this section previously carried forward — "a specific target's
+own runtime failure... is not yet individually named" — is now `VERIFIED`
+resolved (OS-1C-24). A second, independently evidence-backed defect (the
+`maxBytesPerTarget` cap was never a true streaming byte bound - OS-1C-22)
+was found and fixed in the same recovery pass, not previously tracked as
+its own row anywhere before this pass added it. Both are now closed with
+real test/rendered-browser evidence, not merely re-labeled. `REL_1` (local
+reproducible desktop packaging) remains confirmed `APPROVED_PENDING`,
+untouched. `Kind.TIMEOUT`/`Kind.UPSTREAM_UNAVAILABLE` are genuinely new
+`OpenShiftApiException` categories this pass added — both are additive
+(no existing `Kind` value's meaning changed) and are reflected in
+`GlobalExceptionHandler`'s own exhaustive status-code mapping.
+
+**OS-1C FINAL REVIEW RECOVERY pass (§12f above).** A second review round on
+the same PR found a real, previously-untracked gap in §21's own byte-bound
+work: downstream cancellation of `readBounded`'s `Mono` was never bridged
+to the underlying `BaseSubscriber`, so a timeout or an aborted overall
+search could leave the raw HTTP body subscription still being consumed.
+Fixed and closed as OS-1C-31 through OS-1C-35, with executable cancellation
+tests (not merely a claim that the composition "should" propagate
+cancellation). A second, unrelated issue - 188 historical evidence PNGs
+unintentionally re-saved by the §21 commit - was found and restored
+byte-identical to their pre-recovery content (OS-1C-36); this was a
+repository-hygiene defect in how that commit was assembled, not a defect
+in OS-1C's own design or test coverage. No existing OS-1C requirement's
+status changed as a result of this pass; none of §12a-§12e's `VERIFIED`
+rows were reopened.
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0

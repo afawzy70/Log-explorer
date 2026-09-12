@@ -40,6 +40,17 @@ public final class QueryPlanBuilder {
   }
 
   public static QueryPlan build(SearchRequest request, List<String> sourcePushDown) {
+    return build(request, sourcePushDown, List.of());
+  }
+
+  /**
+   * @param sourceWarnings OS-1C — a source's own truthful account of why
+   *     its result might be incomplete independently of event count (see
+   *     {@code LogSource#describeScopeWarnings}); appended to {@code
+   *     notes} verbatim, after the generic push-down/post-filter notes.
+   *     Empty for every source that doesn't have this concern.
+   */
+  public static QueryPlan build(SearchRequest request, List<String> sourcePushDown, List<String> sourceWarnings) {
     boolean rawLogQlMode = notBlank(request.rawLogQl());
     String resolvedQuery = rawLogQlMode
         ? "(raw LogQL query — content not displayed)"
@@ -47,7 +58,10 @@ public final class QueryPlanBuilder {
 
     List<String> pushedDown = sourcePushDown == null ? List.of() : List.copyOf(sourcePushDown);
     List<String> postFilter = buildPostFilterConditions(request, rawLogQlMode);
-    List<String> notes = buildNotes(rawLogQlMode, pushedDown, postFilter);
+    List<String> notes = new ArrayList<>(buildNotes(rawLogQlMode, pushedDown, postFilter));
+    if (sourceWarnings != null) {
+      notes.addAll(sourceWarnings);
+    }
 
     return new QueryPlan(resolvedQuery, rawLogQlMode, pushedDown, postFilter, notes);
   }
