@@ -651,3 +651,169 @@ AUTHORIZATION_SNAPSHOT == EXECUTION_SNAPSHOT
 | `REAL_OPENSHIFT_1D` | `BLOCKED_CREDENTIALS`, unchanged |
 
 No test was skipped, weakened, or deleted to reach green.
+
+## 16. OS-1D FINAL SNAPSHOT ATOMICITY RECOVERY
+
+A fourth review pass on PR #42 (reviewed HEAD `c1d5a0ab7208fc9e9665cba5d4029c64f2d6000e`)
+found that §15's own fix, while correct as far as it went, did not go far
+enough: it threaded the *already-captured* `generation` value correctly,
+but that value — and every other connection-sensitive field
+(`server`/`token`/`certificateAuthorityPath`/`selectedProject`/`scope`)
+— was still obtained through **several independent `OpenShiftSession`
+getter calls**, each its own atomic `AtomicReference#get()`. Nothing
+prevented a reconnect from landing *between* two of those getter calls.
+
+### The defect
+
+```
+String namespace = requireSelectedProject();  // current.get() #1 (x2 inside)
+long generation = session.generation();        // current.get() #2
+URI server = session.server();                 // current.get() #3
+var token = session.token();                   // current.get() #4
+var caPath = session.certificateAuthorityPath();// current.get() #5
+OpenShiftScope scope = session.scope();         // current.get() #6
+```
+
+Six (really seven, counting `requireSelectedProject`'s own two internal
+reads) independent reads of the same `AtomicReference<Snapshot>`. A
+reconnect landing between, say, read #2 and read #3 would mean this one
+operation's `generation` belongs to Connection A while its `server`/
+`token` belong to Connection B — exactly the "hybrid A/B state" the
+mission's own failure scenario describes. §14/§15's authorization fixes
+were both still correct in isolation (the proof really was checked
+against *a* captured generation value, and the fetch really did use *a*
+captured server/token) — but "captured" did not yet mean "captured
+together, from one atomic read."
+
+### The fix — a genuine one-read operation snapshot
+
+**`ConnectionOperationSnapshot`** (new, package-private record, same file
+package as `OpenShiftSession` and every consumer): `state`, `generation`,
+`server`, `token`, `certificateAuthorityPath`, `selectedProject`, `scope`
+— exactly the fields an authenticated OpenShift operation needs.
+
+**`OpenShiftSession#operationSnapshot()`** (new, package-private, same
+narrow visibility discipline as the pre-existing `token()` accessor):
+calls `current.get()` **exactly once** and projects every
+`ConnectionOperationSnapshot` field from that single `Snapshot` value.
+This is not a coding convention callers have to remember — it is the only
+way to obtain a `ConnectionOperationSnapshot` at all, so "one atomic read
+per operation" is now structurally guaranteed rather than merely
+disciplined.
+
+Every call site that was previously reading connection state through
+several independent getters now calls `operationSnapshot()` once and
+projects fields from the result:
+
+| Class | Method | Before | After |
+|---|---|---|---|
+| `DirectPodLogProvider` | `searchWithOutcome` | 6 independent reads (`requireSelectedProject`'s 2 + generation/server/token/caPath/scope) | 1 `operationSnapshot()` read |
+| `DirectPodLogProvider` | `describeScopeWarnings` | 5 independent reads (`isConnected`/`selectedProject`×2/`generation`/`scope`) | 1 `operationSnapshot()` read |
+| `OpenShiftScopeService` | `discoverWorkloads` | 5 independent reads | 1 `operationSnapshot()` read |
+| `OpenShiftScopeService` | `discoverPods` (+ `discoverAllWorkloadsPods`) | 7 independent reads (adds a separate `session.scope()` read inside the "All workloads" helper) | 1 `operationSnapshot()` read, `scope` threaded as a parameter into `discoverAllWorkloadsPods` rather than re-read |
+| `OpenShiftConnectionService` | `refreshProjects` | 5 independent reads | 1 `operationSnapshot()` read |
+
+`requireSelectedProject()`-style helpers in `DirectPodLogProvider` and
+`OpenShiftScopeService` were rewritten to *validate* an
+already-`operationSnapshot()`-captured value rather than perform their
+own independent live reads.
+
+### Intentionally unchanged: the generation *guard*
+
+`searchWithOutcome`/`discoverWorkloads`/`discoverPods`/`refreshProjects`
+each still end with:
+
+```java
+.onErrorMap(OpenShiftApiException.class, e -> {
+  if (e.kind() == Kind.UNAUTHORIZED && session.generation() == generation) {
+    session.markExpired();
+  }
+  return e;
+});
+```
+
+`session.generation()` here is a **deliberate live read**, compared
+against the operation's own captured `generation` — this is the
+generation *guard* mechanism itself (mission §9's own "document any
+intentionally-safe remaining independent reads" carve-out), not a second
+snapshot field feeding the operation's authorization or execution. Its
+only job is deciding whether to expire the *current* live session; it
+never influences which server/token/scope this operation authorized
+against or executed against. Left unchanged, and called out explicitly
+here rather than silently left unexplained.
+
+Also intentionally unchanged, for the same reason (not a multi-field
+capture for one authenticated operation): `session.selectWorkload(ref,
+session.generation())`-style calls in `OpenShiftScopeService` (a single
+`generation()` read used immediately as a CAS-style guard argument to a
+mutator, in one expression) and `OpenShiftLogSource#health()` (a display-
+only health badge, not an authorization or cluster-access decision —
+explicitly out of scope per the mission's own "if security relevant"
+qualifier).
+
+### Race tests added
+
+| Test | Mission ref | Proves |
+|---|---|---|
+| `ConnectionOperationSnapshotTest` (new, 9 tests) | §11 | `operationSnapshot()` reflects every field of the connected session; remains unchanged after a later reconnect/disconnect (an immutable value, not a live view); every field of one snapshot provably originates from the same underlying read; `toString()` never contains the raw token; both the type and its token accessor are confined to the package (via reflection on the modifiers, not merely by convention) |
+| `anOperationStartedAfterAReconnectFullyAdoptsTheNewConnectionsServerNamespaceAndScope` (new, `DirectPodLogProviderTest`) | §10.B, positive case | A real search that starts after a reconnect completes against exactly the new connection's server (never the old one) |
+| `inFlight_aProofPathContextOperationCompletesAgainstItsCapturedConnectionEvenWhenTheSessionReconnectsMidFlight` (§15, re-verified) | §10.A/D | Still holds under the new one-read mechanism |
+| `inFlight_theCurrentScopePathAlsoCompletesAgainstItsCapturedConnectionEvenWhenTheSessionReconnectsMidFlight` (§15, re-verified) | §10.F | Still holds |
+| `g_aProofFromAnOldConnectionGenerationIsRejectedAfterReconnect` (§14, re-verified) | §10.E | Still holds |
+| `aProofNamingADifferentGenerationThanTheOperationsOwnCapturedSnapshotIsRejected` (§15, re-verified) | §10.C | Still holds |
+
+Mission §10.C ("impossible to observe generation=A + server=B within one
+operation") is proven most directly by
+`ConnectionOperationSnapshotTest#everyFieldOriginatesFromTheSameUnderlyingRead_neverAMixOfTwoConnections`
+and, structurally, by `operationSnapshot()`'s own implementation: there is
+no code path left anywhere in the OpenShift source package that reads
+`generation` and `server` (or any other pair of connection-sensitive
+fields) through two separate `OpenShiftSession` calls for one logical
+operation — verified by the audit in the next subsection, not merely
+asserted.
+
+### Audit of remaining `OpenShiftSession` multi-field reads (mission §9)
+
+| Location | Pattern | Verdict |
+|---|---|---|
+| `DirectPodLogProvider#searchWithOutcome`/`describeScopeWarnings` | Was multi-get | **Fixed** — 1 `operationSnapshot()` read each |
+| `OpenShiftScopeService#discoverWorkloads`/`discoverPods` | Was multi-get | **Fixed** — 1 `operationSnapshot()` read each |
+| `OpenShiftConnectionService#refreshProjects` | Was multi-get | **Fixed** — 1 `operationSnapshot()` read |
+| `*`'s `onErrorMap` generation guard (4 call sites) | `session.generation() == capturedGeneration` | **Intentionally unchanged** — the guard mechanism itself, not operation state |
+| `OpenShiftScopeService#selectWorkload`/`selectPod`/`selectContainer` | `session.selectXxx(value, session.generation())` | **Intentionally unchanged** — one live read used immediately as a single CAS-guard argument in one expression, not combined with any other independently-read field |
+| `OpenShiftScopeService#discoverContainers` | `session.scope().selectedPod()` then `session.scope().findPod(...)` | **Intentionally unchanged** — no cluster call, no authorization decision; purely reads already-cached local pod data (out of scope per mission §9's own "authenticated API target/authorization" criterion) |
+| `OpenShiftLogSource#health()` | `session.state()`/`session.selectedProject()`/`session.serverDisplay()` | **Intentionally unchanged** — a display-only health badge, not security-relevant (mission §9's own "if security relevant" qualifier) |
+
+No other class in `source.openshift` calls `session.server()`, `session.token()`,
+or `session.certificateAuthorityPath()` at all (verified by search) —
+`DirectPodLogProvider`, `OpenShiftScopeService`, and
+`OpenShiftConnectionService` were the complete set of authenticated-call
+sites needing this fix.
+
+### Documentation/history correction
+
+§14 and §15 above are left exactly as written — their own fixes were
+real and are not undone or reopened. This section names the deeper defect
+those fixes still had (the "captured" values were captured through
+several reads, not one) and records the final correction:
+
+```
+ONE_LOGICAL_OPENSHIFT_OPERATION = ONE_ATOMIC_SESSION_SNAPSHOT
+AUTHORIZATION_SNAPSHOT = EXECUTION_SNAPSHOT
+```
+
+### Validation
+
+| Check | Result |
+|---|---|
+| `./mvnw test -Dtest=ConnectionOperationSnapshotTest` | PASS — 9/9 |
+| `./mvnw test -Dtest=DirectPodLogProviderTest` (3 consecutive runs) | PASS — 74/74 every run |
+| `./mvnw test -Dtest='com.logexplorer.source.openshift.**'` (2 consecutive runs) | PASS — 315/315 every run |
+| `./mvnw test` (full backend suite) | PASS — 952 tests, 0 failures, 0 errors |
+| `npm run test` (full frontend unit suite) | PASS — no frontend file changed this pass |
+| `npm run typecheck` | PASS |
+| `npm run build` | PASS, unchanged bundle |
+| Full Playwright E2E | see final mission response |
+| `REAL_OPENSHIFT_1D` | `BLOCKED_CREDENTIALS`, unchanged |
+
+No test was skipped, weakened, or deleted to reach green.

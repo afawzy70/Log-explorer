@@ -561,6 +561,30 @@ second mock cluster, landing after an operation's own snapshot was
 captured, never causes that operation to touch the new connection. See
 `OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §15.
 
+**[EVIDENCE, established by the OS-1D final snapshot atomicity recovery —
+CORRECTS the paragraph immediately above]** "The same immutable operation
+snapshot... captured once" was not yet accurate: `generation`/`server`/
+`token`/`caPath`/`scope` were each obtained through their own independent
+`OpenShiftSession` getter call — five (more, counting the project-
+selection check) separate atomic reads of the session's internal state,
+not one. A reconnect landing between any two of those reads could still
+produce an operation whose `generation` belonged to one connection and
+whose `server`/`token` belonged to another. Corrected with a new
+`OpenShiftSession#operationSnapshot()`, which reads the session's
+internal `AtomicReference` exactly once and projects every field from
+that single value into a new package-private `ConnectionOperationSnapshot`
+— the only way to obtain one at all, making "one atomic read per
+operation" structural rather than a discipline callers have to remember.
+Applied to every class in `source.openshift` making an authenticated
+cluster call from multiple session fields (`DirectPodLogProvider`,
+`OpenShiftScopeService`, `OpenShiftConnectionService` — confirmed the
+complete set via search). See
+`OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §16 for the full account,
+including the audited table of remaining independent session reads that
+were deliberately left unchanged (the generation guard itself, single-
+expression CAS-guard reads, and the display-only health badge) and why
+each is safe.
+
 ---
 
 ## 13. Loki's role after first-class OpenShift

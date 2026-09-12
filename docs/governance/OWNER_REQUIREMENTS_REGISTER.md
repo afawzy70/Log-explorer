@@ -562,6 +562,34 @@ rows were reopened; §14's evidence gains the correction above, not a
 rewrite. `TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`, untouched.
 `REL-1` remains confirmed `APPROVED_PENDING`, untouched.
 
+### 12j. OS-1D FINAL SNAPSHOT ATOMICITY RECOVERY
+
+See `docs/verification/OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §16
+for the full account, including the correction of §12i's own claim that
+threading the captured `generation` value was sufficient — the value
+itself, and every other connection-sensitive field, was still obtained
+through several independent `OpenShiftSession` getter calls rather than
+one atomic read.
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| OS-1D-31 | Every authenticated OpenShift operation (search, context authorization, workload/pod/container discovery, project refresh) captures its connection-sensitive state via exactly one atomic `OpenShiftSession` read, never several independent getter calls | `VERIFIED` | New `OpenShiftSession#operationSnapshot()` (single `current.get()`), consumed by `DirectPodLogProvider#searchWithOutcome`/`describeScopeWarnings`, `OpenShiftScopeService#discoverWorkloads`/`discoverPods`, `OpenShiftConnectionService#refreshProjects` |
+| OS-1D-32 | The returned operation snapshot is immutable and does not expose the raw token outside the minimum required package boundary | `VERIFIED` | `ConnectionOperationSnapshot` (package-private record, package-private `token()` accessor — verified via reflection on the type/method modifiers, not merely by convention); `ConnectionOperationSnapshotTest` |
+| OS-1D-33 | It is structurally impossible for one operation to observe connection-sensitive fields from two different connections (e.g. `generation=A` paired with `server=B`) | `VERIFIED` | `ConnectionOperationSnapshotTest#everyFieldOriginatesFromTheSameUnderlyingRead_neverAMixOfTwoConnections`; structural proof — `operationSnapshot()` is the only way to obtain a `ConnectionOperationSnapshot`, and it performs exactly one `current.get()` |
+| OS-1D-34 | An operation snapshot remains unchanged after a later reconnect or disconnect — it is a captured value, never a live view | `VERIFIED` | `ConnectionOperationSnapshotTest#remainsUnchangedAfterALaterReconnect...`/`...ALaterDisconnect` |
+| OS-1D-35 | An operation started fresh after a reconnect fully adopts the new connection (server, namespace, scope) — not merely "the old proof is rejected" | `VERIFIED` | `anOperationStartedAfterAReconnectFullyAdoptsTheNewConnectionsServerNamespaceAndScope` (real search against an independent second mock cluster) |
+| OS-1D-36 | `describeScopeWarnings` and every workload/pod/container discovery method (`OpenShiftScopeService`) use the same one-atomic-read discipline as search/context authorization | `VERIFIED` | `DirectPodLogProvider#describeScopeWarnings`; `OpenShiftScopeService#discoverWorkloads`/`discoverPods` (with `scope` threaded as a parameter into `discoverAllWorkloadsPods`, never re-read there) |
+| OS-1D-37 | Intentionally-safe remaining independent `OpenShiftSession` reads (the generation guard, single-expression CAS-guard reads, local-cache-only reads, the health badge) are documented, not silently left unexplained | `VERIFIED` | Report §16 "Audit of remaining `OpenShiftSession` multi-field reads" — full table with verdicts |
+
+**OS-1D FINAL SNAPSHOT ATOMICITY RECOVERY pass.** No `ContextTargetProofCodec`
+design, HMAC format, or field-binding rule changed. No OS-1C search bound,
+correlation/trace/journey behavior, or pagination invariant changed. None
+of OS-1D-1 through OS-1D-30's `VERIFIED` rows were reopened — §14/§15's
+own fixes remain correct and are not undone; this pass closes the deeper
+"captured through one atomic read, not several" gap those fixes still
+had. `TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`, untouched.
+`REL-1` remains confirmed `APPROVED_PENDING`, untouched.
+
 ---
 
 ## 13. Out of Current Scope
@@ -865,6 +893,34 @@ never causes that operation to touch the new connection). No
 `ContextTargetProofCodec` design, HMAC format, or field-binding rule
 changed. `TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`, untouched.
 `REL_1` remains confirmed `APPROVED_PENDING`, untouched.
+
+**OS-1D FINAL SNAPSHOT ATOMICITY RECOVERY pass (§12j above).** Reconciled
+against `docs/verification/OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md`
+§16. The deepest layer of this same class of defect: §12i correctly
+threaded the *value* of `generation` through authorization, but that
+value - and `server`/`token`/`caPath`/`scope` alongside it - was still
+obtained through several independent `OpenShiftSession` getter calls
+(each its own atomic read), not one atomic read of the session as a
+whole. A reconnect landing between two of those getter calls could still
+produce a hybrid pre-/post-reconnect operation state. Fixed with a new
+`OpenShiftSession#operationSnapshot()` (one `current.get()`, projected
+into a new package-private `ConnectionOperationSnapshot` record) and
+applied to all three classes in `source.openshift` that make
+authenticated cluster calls from multiple session fields:
+`DirectPodLogProvider` (`searchWithOutcome`, `describeScopeWarnings`),
+`OpenShiftScopeService` (`discoverWorkloads`, `discoverPods`), and
+`OpenShiftConnectionService` (`refreshProjects`) - confirmed to be the
+complete set via a repository-wide search, not assumed. 9 new
+session-level unit tests plus 1 new integration-level test close this;
+the pre-existing §14/§15 race tests were re-verified passing unchanged
+under the new mechanism (3 consecutive full-suite runs of both
+`DirectPodLogProviderTest` and the whole `source.openshift` package, no
+change in outcome). Intentionally-unchanged remaining independent reads
+(the generation guard, single-expression CAS-guard reads, local-cache-
+only reads, the display-only health badge) are documented explicitly,
+not silently left unexplained. `TEST-INFRA-1` remains
+`APPROVED_PENDING_HARDENING`, untouched. `REL_1` remains confirmed
+`APPROVED_PENDING`, untouched.
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0

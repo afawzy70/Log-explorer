@@ -1129,6 +1129,33 @@ class DirectPodLogProviderTest {
     assertThat(server.requestCount()).isZero();
   }
 
+  @Test
+  void anOperationStartedAfterAReconnectFullyAdoptsTheNewConnectionsServerNamespaceAndScope() throws Exception {
+    // Mission (snapshot atomicity recovery) §10.B, positive case: once a
+    // reconnect has happened BEFORE an operation's own atomic snapshot
+    // read, every field of that operation - not merely "the old proof is
+    // rejected" - genuinely becomes the new connection's own. Proven by
+    // actually completing a real search against Connection B and
+    // asserting it used exactly B's server (never A's).
+    try (MockOpenShiftPodLogServer serverB = new MockOpenShiftPodLogServer("other-namespace")) {
+      OcLoginCommand reconnectToB = new OcLoginCommand(URI.create(serverB.baseUrl()), TOKEN, null);
+      long generationB = session.connect(
+          reconnectToB, "Other", "developer", List.of("other-namespace"), ProjectDiscovery.Api.PROJECTS, null);
+      assertThat(session.selectProject("other-namespace", generationB)).isTrue();
+      assertThat(session.updatePods(List.of(pod("pod-b", List.of("app"))), true, "other-namespace", null, generationB))
+          .isTrue();
+      serverB.setFixture("pod-b", "app",
+          Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "from-connection-B"))));
+
+      List<CanonicalLogEvent> events =
+          provider.search(baseRequest().pod("pod-b").containerName("app").build()).collectList().block();
+
+      assertThat(events).extracting(CanonicalLogEvent::message).containsExactly("from-connection-B");
+      assertThat(serverB.requestCount()).isEqualTo(1);
+      assertThat(server.requestCount()).isZero(); // Connection A's own server was never touched
+    }
+  }
+
   // ------------------------------------------------------------ OS-1D: correlation / trace / journey search
 
   @Test

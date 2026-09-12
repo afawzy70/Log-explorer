@@ -178,13 +178,19 @@ public class OpenShiftConnectionService {
    * rather than defending whatever mode was recorded at connect time.
    */
   public Mono<ProjectDiscovery> refreshProjects() {
-    if (!session.isConnected()) {
+    // OS-1D final snapshot atomicity recovery - one atomic session read
+    // for this whole operation, never several independent isConnected()/
+    // generation()/server()/token()/certificateAuthorityPath() calls that
+    // a reconnect landing between them could turn into a hybrid of two
+    // different connections. See ConnectionOperationSnapshot's own javadoc.
+    ConnectionOperationSnapshot connection = session.operationSnapshot();
+    if (!connection.isConnected()) {
       return Mono.error(new IllegalStateException("Not connected to OpenShift."));
     }
-    long generation = session.generation();
-    var server = session.server();
-    var token = session.token();
-    var caPath = session.certificateAuthorityPath();
+    long generation = connection.generation();
+    var server = connection.server();
+    var token = connection.token();
+    var caPath = connection.certificateAuthorityPath();
 
     return discoverProjectsOrNamespaces(server, token, caPath)
         .flatMap(discovery -> {

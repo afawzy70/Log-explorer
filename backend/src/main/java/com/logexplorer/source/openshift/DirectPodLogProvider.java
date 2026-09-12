@@ -55,18 +55,28 @@ import reactor.core.publisher.Mono;
  * same "consume, don't guess" discipline OS-1B itself established for
  * "All workloads" is preserved one layer up.
  *
- * <h2>Immutable scope snapshot (OS-1C §23)</h2>
+ * <h2>Immutable scope snapshot (OS-1C §23, atomicity corrected — OS-1D
+ * final review recovery)</h2>
  *
- * <p>{@link #search} reads {@link OpenShiftSession#generation()}, the
- * selected project, discovery mode, and the whole {@link OpenShiftScope}
- * exactly once, synchronously, before issuing a single upstream call —
- * every target fetched by one search call belongs to that one snapshot.
- * A project/workload switch that happens after a search has started has
- * no effect on the pods/containers that search already resolved (OS-1C
- * §22 "do not silently attach new pods"). Protecting the *frontend's*
- * active search state from a late-arriving stale response reuses the
- * existing generic search request/abort machinery (established since
- * UX-R3) — this class adds no new mechanism for that, per OS-1C §23's own
+ * <p>{@link #search} reads the selected project, generation, discovery
+ * mode, and the whole {@link OpenShiftScope} exactly once, synchronously,
+ * before issuing a single upstream call — every target fetched by one
+ * search call belongs to that one snapshot. <b>That one read is now
+ * genuinely atomic</b>: {@link #searchWithOutcome} calls {@link
+ * OpenShiftSession#operationSnapshot()} exactly once and projects every
+ * field (generation, server, token, CA path, selected project, scope)
+ * from that same {@link ConnectionOperationSnapshot} — the original
+ * implementation captured these through several independent {@code
+ * OpenShiftSession} getter calls, each its own atomic read, which a
+ * reconnect landing between two of them could turn into a hybrid of two
+ * different connections. A project/workload switch (or reconnect) that
+ * happens after a search has started has no effect on the pods/
+ * containers, server, or token that search already resolved and is
+ * executing against (OS-1C §22 "do not silently attach new pods").
+ * Protecting the *frontend's* active search state from a late-arriving
+ * stale response reuses the existing generic search request/abort
+ * machinery (established since UX-R3) — this class adds no new mechanism
+ * for that, per OS-1C §23's own
  * "reuse existing search request/race protections."
  *
  * <h2>Runtime warnings — RESOLVED (OS-1C review recovery)</h2>
@@ -137,12 +147,22 @@ public class DirectPodLogProvider {
    */
   public Mono<SourceSearchOutcome> searchWithOutcome(SearchRequest request) {
     return Mono.defer(() -> {
-      String namespace = requireSelectedProject();
-      long generation = session.generation();
-      URI server = session.server();
-      var token = session.token();
-      var caPath = session.certificateAuthorityPath();
-      OpenShiftScope scope = session.scope();
+      // OS-1D final snapshot atomicity recovery - exactly ONE atomic
+      // session read for this whole operation. Every field this method
+      // (and everything it calls: resolveTargetPlan, authorizeNarrowContextTarget,
+      // fetchAndMerge, the final onErrorMap generation guard) uses is
+      // projected from this SAME ConnectionOperationSnapshot - never
+      // re-read individually, so a reconnect landing anywhere during this
+      // method's execution cannot produce a hybrid pre-/post-reconnect
+      // operation state (see ConnectionOperationSnapshot's own javadoc).
+      ConnectionOperationSnapshot connection = session.operationSnapshot();
+      requireConnectedWithSelectedProject(connection);
+      long generation = connection.generation();
+      URI server = connection.server();
+      var token = connection.token();
+      var caPath = connection.certificateAuthorityPath();
+      String namespace = connection.selectedProject();
+      OpenShiftScope scope = connection.scope();
 
       TargetPlan plan = resolveTargetPlan(scope, namespace, request, generation);
       Mono<SourceSearchOutcome> result = plan.queried().isEmpty()
@@ -152,6 +172,13 @@ public class DirectPodLogProvider {
       return result
           .timeout(properties.getOverallTimeout())
           .onErrorMap(OpenShiftApiException.class, e -> {
+            // Deliberately a LIVE read here, compared against this
+            // operation's own captured `generation` - this is the
+            // generation GUARD itself (mission §9's own "intentionally
+            // safe" carve-out), not a second snapshot field feeding this
+            // operation's execution: it only ever decides whether to
+            // expire the CURRENT live session, never what this operation
+            // authorized against or executed against.
             if (e.kind() == Kind.UNAUTHORIZED && session.generation() == generation) {
               session.markExpired();
             }
@@ -276,12 +303,16 @@ public class DirectPodLogProvider {
    * invocation (mission §6/§9 "AUTHORIZATION_SNAPSHOT == EXECUTION_SNAPSHOT").
    */
   public List<String> describeScopeWarnings(SearchRequest request) {
-    if (!session.isConnected() || session.selectedProject() == null) {
+    // OS-1D final snapshot atomicity recovery - one atomic read, exactly
+    // like searchWithOutcome, rather than isConnected()/selectedProject()/
+    // generation()/scope() as separate live reads.
+    ConnectionOperationSnapshot connection = session.operationSnapshot();
+    if (!connection.isConnected() || connection.selectedProject() == null) {
       return List.of();
     }
-    long generation = session.generation();
-    String namespace = session.selectedProject();
-    OpenShiftScope scope = session.scope();
+    long generation = connection.generation();
+    String namespace = connection.selectedProject();
+    OpenShiftScope scope = connection.scope();
     List<String> warnings = new ArrayList<>();
     if (!scope.workloadScopeComplete()) {
       warnings.add("Workload scope may be incomplete: one or more supported workload kinds could not be listed, "
@@ -690,14 +721,21 @@ public class DirectPodLogProvider {
     }
   }
 
-  private String requireSelectedProject() {
-    if (!session.isConnected()) {
+  /**
+   * OS-1D final snapshot atomicity recovery - validates connection state
+   * from the operation's own already-captured {@link ConnectionOperationSnapshot},
+   * never by re-reading {@link #session} live. Replaces the previous
+   * {@code requireSelectedProject()}, which independently called {@code
+   * session.isConnected()} then {@code session.selectedProject()} - two
+   * more separate live reads that could each observe a different
+   * connection generation than the rest of the operation.
+   */
+  private static void requireConnectedWithSelectedProject(ConnectionOperationSnapshot connection) {
+    if (!connection.isConnected()) {
       throw new IllegalStateException("Not connected to OpenShift.");
     }
-    String project = session.selectedProject();
-    if (project == null) {
+    if (connection.selectedProject() == null) {
       throw new IllegalStateException("No project/namespace selected.");
     }
-    return project;
   }
 }
