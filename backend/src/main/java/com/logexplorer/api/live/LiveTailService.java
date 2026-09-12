@@ -100,32 +100,58 @@ public class LiveTailService {
         // waste a live socket for a session that can never produce
         // another event. `terminalCloseSignal` fires exactly ONCE, a
         // bounded `terminalGrace` after the first terminal status is
-        // observed (long enough for that final status to actually reach
-        // the browser), and `takeUntilOther` below completes the WHOLE
-        // merged flux at that point - the status heartbeat included, so
-        // the frontend's very last "status" event is guaranteed to carry
-        // the terminal truth. `Sinks.Empty` (not a plain `Mono.delay`)
-        // deliberately guarantees at-most-once firing even under
-        // concurrent status emissions, without a separate guard flag.
+        // observed, and `takeUntilOther` below completes the WHOLE merged
+        // flux at that point - the status heartbeat included.
         Duration terminalGrace = Duration.ofMillis(
             Math.min(2 * properties.getHeartbeatInterval().toMillis(), Duration.ofSeconds(10).toMillis()));
         Sinks.Empty<Void> terminalCloseSignal = Sinks.empty();
-        AtomicBoolean terminalTimerStarted = new AtomicBoolean(false);
+        AtomicBoolean terminalEmitted = new AtomicBoolean(false);
 
-        // Subscribed alongside logEvents/status (via the merge below) so
-        // its lifecycle - cancellation on client disconnect/Stop included
-        // - is the SAME lifecycle as the rest of this SSE connection,
-        // never a separately-forgotten subscription. Emits no SSE event
-        // of its own; it only updates latestStatus as a side effect and
-        // arms the terminal-close timer (once) when appropriate.
+        // OS-1E final terminal-status-delivery fix — the periodic
+        // heartbeat below is NOT sufficient on its own to guarantee the
+        // browser ever learns a terminal status before this connection
+        // closes: with the DEFAULT properties, `heartbeatInterval` is 15s
+        // while `terminalGrace` is `min(2*15s, 10s) = 10s`, so the SSE
+        // connection can close a full 5 seconds before the next
+        // heartbeat would even have fired. The invariant this fixes is
+        // `TERMINAL_STATUS_DELIVERED_BEFORE_SSE_CLOSE = ALWAYS`: the
+        // first time a terminal status is observed, this now emits ONE
+        // immediate "status" SSE event carrying that exact terminal
+        // snapshot (never waiting for the next heartbeat tick), and only
+        // THEN starts the grace timer - guaranteeing the browser has the
+        // terminal truth strictly before the connection can close.
+        // Subsequent status emissions (terminal or not) never re-emit -
+        // one immediate terminal emission is sufficient, avoiding a noisy
+        // SSE stream. Non-terminal statuses are still never emitted
+        // immediately; they continue to reach the browser only via the
+        // periodic heartbeat below, unchanged.
+        //
+        // The grace timer (`Mono.delay(terminalGrace)...`) is
+        // deliberately NOT a detached `Mono.delay(...).subscribe(...)`
+        // (a fire-and-forget subscription outside this Flux's own
+        // lifecycle, which would keep running even after the client
+        // disconnects or the connection is cancelled). It is instead
+        // returned as part of the very `Flux` this `statusTracker`
+        // produces, which is itself only ever subscribed to as one arm
+        // of the `Flux.merge` below - so it shares that merge's exact
+        // subscription lifecycle and is automatically, unconditionally
+        // disposed the moment that subscription is cancelled for ANY
+        // reason: client disconnect, explicit Stop (observed here as the
+        // same HTTP-connection cancellation), or the outer
+        // `connectionTimeout`. No orphan timer.
         Flux<ServerSentEvent<Object>> statusTracker = result.status()
             .doOnNext(latestStatus::set)
-            .doOnNext(status -> {
-              if (status.state().isTerminal() && terminalTimerStarted.compareAndSet(false, true)) {
-                Mono.delay(terminalGrace).subscribe(tick -> terminalCloseSignal.tryEmitEmpty());
+            .flatMap(status -> {
+              if (status.state().isTerminal() && terminalEmitted.compareAndSet(false, true)) {
+                Mono<ServerSentEvent<Object>> immediateTerminalStatus =
+                    Mono.just(statusEvent(droppedCount.get(), status));
+                Mono<ServerSentEvent<Object>> graceThenClose = Mono.delay(terminalGrace)
+                    .doOnNext(tick -> terminalCloseSignal.tryEmitEmpty())
+                    .then(Mono.<ServerSentEvent<Object>>empty());
+                return Flux.concat(immediateTerminalStatus, graceThenClose);
               }
-            })
-            .flatMap(s -> Mono.<ServerSentEvent<Object>>empty());
+              return Mono.<ServerSentEvent<Object>>empty();
+            });
 
         // A real bug found via this phase's own testing (a slow/limited
         // downstream demand scenario, exactly what a genuinely slow SSE

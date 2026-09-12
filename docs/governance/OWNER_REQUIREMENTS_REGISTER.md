@@ -744,6 +744,41 @@ untouched. `REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`, consistent with every
 prior OS-1x slice — this pass neither touched nor could convert that
 status. `UNTRACKED_OWNER_REQUIREMENTS=0`.
 
+### 12n. OS-1E FINAL TERMINAL STATUS DELIVERY FIX — guaranteeing terminal-state delivery before SSE close
+
+An independent review of §12m's own terminal-SSE grace-close found one
+remaining contract defect: the periodic heartbeat alone could not
+guarantee the browser ever learned a terminal source state before the
+connection closed. See `docs/verification/OS_1E_OPENSHIFT_LIVE_REPORT.md`
+§15 for the full before/after account.
+
+| # | Finding | Status |
+|---|---|---|
+| 1 | With the DEFAULT properties (`heartbeatInterval=15s`), `terminalGrace = min(2×15s, 10s) = 10s` is strictly LESS than the heartbeat interval — the SSE connection could close up to 5 seconds before the next periodic heartbeat would ever have carried the terminal status. `LiveTailService`'s `statusTracker` only updated an in-memory `latestStatus` reference and emitted no SSE event of its own, so the browser's last-known state at the moment `onerror` ran could still be a stale non-terminal one, incorrectly triggering the generic bounded reconnect against a session that will never resume | `RESOLVED` |
+| 2 | The terminal grace timer (`Mono.delay(terminalGrace).subscribe(...)`) was a detached, fire-and-forget subscription with its OWN lifecycle, independent of the SSE connection's own cancellation | `RESOLVED` (folded into the same reactive chain as the rest of the connection) |
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| OS-1E-33 | The first time a terminal `LiveSourceStatus` (`STALE`/`EXPIRED`/`NO_ACTIVE_TARGETS`) is observed, `LiveTailService` emits ONE immediate `"status"` SSE event carrying that exact terminal snapshot — never waiting for the next periodic heartbeat tick — before starting the (unchanged) `terminalGrace` timer. Required ordering guaranteed: terminal snapshot observed → terminal status SSE emitted → grace timer starts/runs → SSE closes after grace. Non-terminal statuses are unaffected — still delivered only via the periodic heartbeat, never flooding the client with one SSE event per status mutation | `VERIFIED` | `LiveTailService#follow` (`statusTracker`'s `flatMap` branch, CAS-guarded by `terminalEmitted`); `LiveTailServiceTest#terminalStatusA_staleIsDeliveredImmediatelyNotOnTheNextHeartbeat`, `#terminalStatusB_expiredIsDeliveredImmediatelyNotOnTheNextHeartbeat`, `#terminalStatusC_noActiveTargetsIsDeliveredImmediatelyNotOnTheNextHeartbeat` — all three run against the REAL default `heartbeatInterval` (15s), proving the exact numeric relationship (`15s > 10s` grace) the defect depended on |
+| OS-1E-34 | The terminal grace timer is part of the SAME reactive lifecycle as the rest of the SSE connection (never a detached `Mono.delay(...).subscribe(...)`), so it is automatically, unconditionally disposed on client disconnect, explicit Stop, or `connectionTimeout` — no orphan timer | `VERIFIED` | `LiveTailService#follow` (`Flux.concat(immediateTerminalStatus, graceThenClose)` returned as part of `statusTracker`'s own `Flux`, subscribed only as one arm of the top-level `Flux.merge`); `LiveTailServiceTest#terminalStatusE_cancellationDuringGraceCancelsTheTerminalTimerNoOrphanWork` (disposes mid-grace, asserts the underlying status source itself observes `cancel()` — Reactor's own cancellation-propagation contract) |
+
+**OS-1E FINAL TERMINAL STATUS DELIVERY FIX pass.** 2 new rows (OS-1E-33,
+OS-1E-34). §12m's own OS-1E-31 (terminal-SSE grace-close) and OS-1E-32
+(frontend terminal-reconnect suppression) are neither reopened nor
+silently rewritten — both mechanisms remain correct and unchanged; this
+is a narrow, additional correction to WHEN the terminal status reaches
+the browser, not a redesign of either mechanism.
+`OpenShiftLiveTailProvider` state semantics, reconnect semantics, and
+decoder semantics are all explicitly untouched by this pass, per mission
+scope. No frontend production code changed — `useLiveTail.ts`'s
+terminal-reconnect-suppression logic was already correct; it simply never
+had the terminal status it needed, in time, until now; the existing
+`useLiveTail.test.ts` terminal-suppression tests (§12m) re-ran unchanged
+as sufficient proof. `TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`,
+untouched. `REL-1` (§7, §7b, §7c) remains confirmed `APPROVED_PENDING`,
+untouched. `REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`, consistent with every
+prior OS-1x slice. `UNTRACKED_OWNER_REQUIREMENTS=0`.
+
 ---
 
 ## 13. Out of Current Scope
@@ -1182,6 +1217,32 @@ design touched; no OS-1B/OS-1C/OS-1D/§12l `VERIFIED` row reopened (only
 OS-1E-19's evidence annotated in place). `TEST-INFRA-1` remains
 `APPROVED_PENDING_HARDENING`, untouched. `REL_1` (§7, §7b, §7c) remains
 confirmed `APPROVED_PENDING`, untouched. `REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`.
+
+**OS-1E FINAL TERMINAL STATUS DELIVERY FIX pass (§12n above).**
+Reconciled against `docs/verification/OS_1E_OPENSHIFT_LIVE_REPORT.md`'s
+own §15. An independent review of §12m's own terminal-SSE grace-close
+found the periodic heartbeat alone could not guarantee terminal-state
+delivery before SSE close: with the DEFAULT properties
+(`heartbeatInterval=15s`), `terminalGrace = min(2×15s, 10s) = 10s` is
+strictly less than the heartbeat interval, so the connection could close
+up to 5 seconds before the next heartbeat would ever have carried the
+terminal status — `LiveTailService`'s `statusTracker` only updated an
+in-memory reference and emitted no SSE event of its own. **Fix:** the
+first time a terminal status is observed, `statusTracker` now emits ONE
+immediate `"status"` SSE event carrying that exact terminal snapshot
+before starting the grace timer, closed as OS-1E-33. The grace timer
+itself was also a detached `Mono.delay(...).subscribe(...)` with its own
+lifecycle, independent of the SSE connection's own cancellation — **fix:**
+folded into `statusTracker`'s own `Flux`, subscribed only as one arm of
+the top-level merge, so it is now automatically disposed on client
+disconnect/Stop/`connectionTimeout`, closed as OS-1E-34. Both fixes are
+narrow and additional — §12m's own terminal-SSE grace-close and frontend
+terminal-reconnect-suppression mechanisms are unchanged and correct; no
+`OpenShiftLiveTailProvider` state/reconnect/decoder semantics touched
+(explicitly out of scope for this pass); no frontend production code
+changed. `TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`, untouched.
+`REL_1` (§7, §7b, §7c) remains confirmed `APPROVED_PENDING`, untouched.
+`REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`, unchanged.
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0
