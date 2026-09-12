@@ -8,12 +8,16 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.NettyDataBufferFactory;
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -312,6 +316,132 @@ class OpenShiftApiClientByteBoundTest {
     assertThat(nettyRefCount(buffer)).isZero();
   }
 
+  // ------------------------------------------------------------ downstream cancellation bridge (OS-1C final review recovery)
+
+  /**
+   * A source that emits one real buffer and then never terminates on its
+   * own - simulates a still-streaming HTTP body, so any termination
+   * observed in these tests can only have come from cancellation, never
+   * from the source completing/erroring by itself.
+   */
+  private Flux<DataBuffer> oneChunkThenNeverTerminates(DataBuffer buffer) {
+    return Flux.concat(Flux.just(buffer), Flux.never());
+  }
+
+  @Test
+  void downstreamCancellationAfterTheFirstChunkCancelsTheUnderlyingBodySubscription() {
+    // Requirement A (OS-1C final review recovery §4): subscriber receives
+    // the first body chunk, downstream cancels before completion, and the
+    // underlying source subscription is actually cancelled - not merely
+    // abandoned while still technically subscribed.
+    AtomicBoolean sourceCancelled = new AtomicBoolean(false);
+    DataBuffer buffer = pooled("first real chunk of a still-streaming body");
+    Flux<DataBuffer> source = oneChunkThenNeverTerminates(buffer).doOnCancel(() -> sourceCancelled.set(true));
+
+    Disposable subscription = OpenShiftApiClient.readBounded(source, 10_000).subscribe();
+    subscription.dispose(); // downstream cancellation, before the source ever completes
+
+    assertThat(sourceCancelled).as("the raw body subscription must be cancelled, not left dangling").isTrue();
+  }
+
+  @Test
+  void downstreamCancellationNeverEmitsASuccessfulResultAfterward() {
+    // Requirement B: an aborted request must never be silently converted
+    // into a successful (even if truncated-looking) PodLogFetchResult.
+    DataBuffer buffer = pooled("content that would otherwise complete successfully");
+    Flux<DataBuffer> source = oneChunkThenNeverTerminates(buffer);
+    AtomicBoolean anySignalReceived = new AtomicBoolean(false);
+
+    Disposable subscription =
+        OpenShiftApiClient.readBounded(source, 10_000)
+            .subscribe(result -> anySignalReceived.set(true), error -> anySignalReceived.set(true));
+    subscription.dispose();
+
+    assertThat(anySignalReceived).as("no success and no error may be emitted after a downstream cancel").isFalse();
+  }
+
+  @Test
+  void aTimeoutOperatorCancelsTheUnderlyingBodySubscriptionInsteadOfHanging() {
+    // Requirement C, at the unit level - matches production composition
+    // exactly (OpenShiftApiClient#fetchPodLog does
+    // readBounded(...).timeout(timeout)). The source never emits or
+    // completes; if the timeout did not actually cancel it, this test
+    // would hang until the StepVerifier.verify(Duration) budget is
+    // exhausted rather than completing quickly with a TimeoutException.
+    AtomicBoolean sourceCancelled = new AtomicBoolean(false);
+    Flux<DataBuffer> source = Flux.<DataBuffer>never().doOnCancel(() -> sourceCancelled.set(true));
+
+    StepVerifier.create(OpenShiftApiClient.readBounded(source, 10_000).timeout(Duration.ofMillis(100)))
+        .expectError(TimeoutException.class)
+        .verify(Duration.ofSeconds(2));
+
+    assertThat(sourceCancelled).as("timeout must cancel the underlying body, not just give up waiting").isTrue();
+  }
+
+  @Test
+  void noDataBufferLeakWhenATimeoutCancelsTheBody() {
+    // Requirement H.
+    DataBuffer buffer = pooled("chunk delivered before the timeout fires");
+    Flux<DataBuffer> source = oneChunkThenNeverTerminates(buffer);
+
+    StepVerifier.create(OpenShiftApiClient.readBounded(source, 10_000).timeout(Duration.ofMillis(100)))
+        .expectError(TimeoutException.class)
+        .verify(Duration.ofSeconds(2));
+
+    assertThat(nettyRefCount(buffer)).isZero();
+  }
+
+  @Test
+  void byteCapInternalCancellationStillReturnsASuccessfulBoundedResult() {
+    // Requirement E, stated explicitly against the new named collector
+    // (the underlying behavior is already exercised by
+    // responseLargerThanMaxBytesStopsAccumulationAtExactlyTheCap - this
+    // test exists to name the requirement directly and pair with the
+    // "downstream cancel never succeeds" test below for requirement F).
+    String body = "w".repeat(200);
+    StepVerifier.create(OpenShiftApiClient.readBounded(Flux.just(pooled(body)), 32))
+        .assertNext(r -> {
+          assertThat(r.body()).hasSize(32);
+          assertThat(r.byteCapReached()).isTrue();
+        })
+        .verifyComplete();
+  }
+
+  @Test
+  void internalByteCapCancellationAndDownstreamCancellationRemainDistinguishable() {
+    // Requirement F: an internal cap-cancel (above) succeeds with
+    // byteCapReached=true; a downstream cancel arriving first - even for a
+    // response that would otherwise have exceeded the cap - must never be
+    // reported as a (capped or uncapped) success. Proves the two causes
+    // are not conflated into "any cancel = successful truncation".
+    DataBuffer buffer = pooled("small chunk, nowhere near the cap"); // well under maxBytes below
+    Flux<DataBuffer> source = oneChunkThenNeverTerminates(buffer);
+    AtomicReference<PodLogFetchResult> captured = new AtomicReference<>();
+    AtomicBoolean anySignalReceived = new AtomicBoolean(false);
+
+    Disposable subscription = OpenShiftApiClient.readBounded(source, 10_000)
+        .subscribe(r -> {
+          captured.set(r);
+          anySignalReceived.set(true);
+        }, e -> anySignalReceived.set(true));
+    subscription.dispose();
+
+    assertThat(anySignalReceived).as("a downstream cancel must never surface a result, capped or not").isFalse();
+    assertThat(captured.get()).isNull();
+  }
+
+  @Test
+  void noDataBufferLeakOnDownstreamCancellation() {
+    // Requirement G.
+    DataBuffer buffer = pooled("chunk delivered before the caller aborted the request");
+    Flux<DataBuffer> source = oneChunkThenNeverTerminates(buffer);
+
+    Disposable subscription = OpenShiftApiClient.readBounded(source, 10_000).subscribe();
+    subscription.dispose();
+
+    assertThat(nettyRefCount(buffer)).isZero();
+  }
+
   // ------------------------------------------------------------ end-to-end (real HTTP, real MockOpenShiftPodLogServer)
 
   private MockOpenShiftPodLogServer server;
@@ -378,5 +508,34 @@ class OpenShiftApiClientByteBoundTest {
     assertThat(result.body()).hasSize(4096);
     assertThat(result.byteCapReached()).isTrue();
     assertThat(elapsed).isLessThan(Duration.ofSeconds(10)); // bounded, not "read 5 MB then truncate"
+  }
+
+  @Test
+  void endToEnd_aTimeoutAgainstARealSlowServerFailsQuicklyRatherThanWaitingForTheFullDelay() {
+    // Requirement C at the full HTTP layer: the fixture's own server-side
+    // delay (3s) is far larger than the client timeout (150ms). If the
+    // timeout did not actually cancel the underlying connection/body
+    // subscription, this test would still complete in ~150ms from the
+    // caller's point of view (Mono.timeout() always unsubscribes locally
+    // regardless), so this alone would not fully prove cancellation - the
+    // real proof is the unit-level
+    // aTimeoutOperatorCancelsTheUnderlyingBodySubscriptionInsteadOfHanging
+    // test above, observing doOnCancel directly. This test adds the
+    // end-to-end confirmation that the real WebClient/Netty path also
+    // never blocks past the configured timeout for a genuinely slow real
+    // HTTP server.
+    String body = "2026-09-12T10:00:00.000000000Z slow response\n";
+    server.setFixture("pod-a", "app", MockOpenShiftPodLogServer.Fixture.ok(body, 3000));
+
+    Instant startedAt = Instant.now();
+    org.assertj.core.api.Assertions.assertThatThrownBy(() -> client
+            .fetchPodLog(java.net.URI.create(server.baseUrl()), TOKEN, null, "payments", "pod-a", "app", null, 2000,
+                1_000_000, Duration.ofMillis(150))
+            .block())
+        .isInstanceOf(OpenShiftApiException.class)
+        .satisfies(e -> assertThat(((OpenShiftApiException) e).kind()).isEqualTo(OpenShiftApiException.Kind.TIMEOUT));
+    Duration elapsed = Duration.between(startedAt, Instant.now());
+
+    assertThat(elapsed).isLessThan(Duration.ofSeconds(1)); // nowhere near the fixture's 3s delay
   }
 }

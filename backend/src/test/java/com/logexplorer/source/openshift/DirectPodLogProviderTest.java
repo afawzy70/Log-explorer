@@ -639,6 +639,31 @@ class DirectPodLogProviderTest {
         .verifyComplete();
   }
 
+  @Test
+  void cancellingTheOverallSearchCancelsAnInFlightSlowPodLogBodySubscription() {
+    // OS-1C final review recovery §4 requirement D - the same downstream
+    // cancellation bridge unit-tested directly against
+    // OpenShiftApiClient#readBounded must also work transitively through
+    // this provider's own Flux composition (flatMap/collectList/timeout):
+    // cancelling the overall search must not leave an in-flight, slow
+    // pod-log HTTP body still being drained. Proven the same way as the
+    // per-target-timeout test above - a fixture far slower (3s) than how
+    // long this test is allowed to run (well under 1s) - if cancellation
+    // were not actually propagated all the way down to the raw body
+    // subscription, this test would hang for the full 3s fixture delay.
+    seedPods(List.of(pod("slow-pod", List.of("app"))), true);
+    server.setFixture("slow-pod", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", jsonLine("payments", "INFO", "too slow to matter")), 3000));
+
+    Instant startedAt = Instant.now();
+    StepVerifier.create(provider.search(baseRequest().build()))
+        .thenAwait(Duration.ofMillis(50))
+        .thenCancel()
+        .verify(Duration.ofSeconds(1));
+    Duration elapsed = Duration.between(startedAt, Instant.now());
+
+    assertThat(elapsed).isLessThan(Duration.ofSeconds(1)); // nowhere near the fixture's 3s delay
+  }
+
   // ------------------------------------------------------------ scope completeness / warnings
 
   @Test

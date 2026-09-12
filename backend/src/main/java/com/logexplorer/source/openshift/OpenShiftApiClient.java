@@ -27,6 +27,7 @@ import java.util.stream.Collectors;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
+import java.util.concurrent.atomic.AtomicReference;
 import org.reactivestreams.Subscription;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
@@ -41,6 +42,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 import reactor.core.publisher.BaseSubscriber;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.MonoSink;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.transport.ProxyProvider;
 
@@ -432,76 +434,166 @@ public class OpenShiftApiClient {
    * response never ends in a garbled replacement character.
    */
   static Mono<PodLogFetchResult> readBounded(Flux<DataBuffer> source, long maxBytes) {
-    return Mono.create(sink -> source.subscribe(new BaseSubscriber<DataBuffer>() {
-      private final ByteArrayOutputStream out = new ByteArrayOutputStream();
-      private boolean capped = false;
+    return Mono.create(sink -> {
+      BoundedBodyCollector collector = new BoundedBodyCollector(maxBytes, sink);
+      // OS-1C final review recovery - bridges cancellation of THIS Mono
+      // (downstream abort, Mono.timeout(), an overall search cancelled) to
+      // the raw body subscription. Without this, the manually-created
+      // subscriber can remain subscribed after the request that owned it
+      // is already gone, letting the HTTP body keep draining for nothing.
+      sink.onCancel(collector::cancelFromDownstream);
+      source.subscribe(collector);
+    });
+  }
 
-      @Override
-      protected void hookOnSubscribe(Subscription subscription) {
-        request(Long.MAX_VALUE);
-      }
+  /** Which side triggered {@link BaseSubscriber#cancel()} on {@link BoundedBodyCollector}. */
+  private enum CancelCause {
+    /** Not yet cancelled. */
+    NONE,
+    /** The byte cap was reached - a successful, intentionally bounded result. */
+    INTERNAL_CAP,
+    /** The downstream consumer of {@link #readBounded} cancelled/timed out - never a success. */
+    DOWNSTREAM
+  }
 
-      @Override
-      protected void hookOnNext(DataBuffer buffer) {
-        try {
-          if (capped) {
-            // A buffer that arrived after cancel() was already requested -
-            // Reactive Streams allows a small number of in-flight signals
-            // after cancel(); it is simply discarded, never accumulated.
-            return;
+  /**
+   * The {@link BaseSubscriber} behind {@link #readBounded} - a named class
+   * (rather than the original anonymous one) so its cancellation cause can
+   * be tracked deterministically.
+   *
+   * <p>Uses pull-style backpressure ({@code request(1)} at subscribe time
+   * and again only after each buffer is fully processed and released,
+   * never {@code request(Long.MAX_VALUE)} - OS-1C final review recovery
+   * §3) so at most one {@link DataBuffer} is ever in flight from the body
+   * publisher, on top of the bounded accumulator itself.
+   *
+   * <p>Two independent causes can trigger {@link #cancel()}: this
+   * subscriber's own byte-cap logic ({@link CancelCause#INTERNAL_CAP}) and
+   * a cancellation of the {@link Mono} this subscriber backs ({@link
+   * CancelCause#DOWNSTREAM}, bridged via {@link #cancelFromDownstream()}).
+   * They race on different threads (the HTTP client's event loop vs.
+   * whatever thread owns the timeout/cancellation), so the cause is
+   * recorded with a single {@link AtomicReference#compareAndSet} performed
+   * immediately before calling {@code cancel()} - exactly one wins, and
+   * {@link #hookOnCancel()} trusts that recorded cause rather than
+   * re-deriving it, so a downstream cancellation can never be mistaken for
+   * the cap's own "successful bounded result" and resurface a stale {@link
+   * PodLogFetchResult}.
+   */
+  private static final class BoundedBodyCollector extends BaseSubscriber<DataBuffer> {
+    private final long maxBytes;
+    private final MonoSink<PodLogFetchResult> sink;
+    private final ByteArrayOutputStream out = new ByteArrayOutputStream();
+    private final AtomicReference<CancelCause> cause = new AtomicReference<>(CancelCause.NONE);
+    private volatile boolean terminalEmitted = false;
+
+    BoundedBodyCollector(long maxBytes, MonoSink<PodLogFetchResult> sink) {
+      this.maxBytes = maxBytes;
+      this.sink = sink;
+    }
+
+    @Override
+    protected void hookOnSubscribe(Subscription subscription) {
+      request(1);
+    }
+
+    @Override
+    protected void hookOnNext(DataBuffer buffer) {
+      try {
+        if (cause.get() != CancelCause.NONE) {
+          // A buffer that arrived after cancel() was already requested -
+          // Reactive Streams allows a small number of in-flight signals
+          // after cancel(); it is simply discarded, never accumulated.
+          return;
+        }
+        int readable = buffer.readableByteCount();
+        long remaining = maxBytes - out.size();
+        int toCopy = (int) Math.min(readable, remaining);
+        if (toCopy > 0) {
+          byte[] chunk = new byte[toCopy];
+          buffer.read(chunk);
+          // ByteArrayOutputStream#write(byte[]) never actually throws -
+          // the checked IOException it declares (inherited from the
+          // OutputStream contract, not overridden away) is unreachable
+          // for this specific implementation.
+          try {
+            out.write(chunk);
+          } catch (java.io.IOException impossible) {
+            throw new IllegalStateException(impossible);
           }
-          int readable = buffer.readableByteCount();
-          long remaining = maxBytes - out.size();
-          int toCopy = (int) Math.min(readable, remaining);
-          if (toCopy > 0) {
-            byte[] chunk = new byte[toCopy];
-            buffer.read(chunk);
-            // ByteArrayOutputStream#write(byte[]) never actually throws -
-            // the checked IOException it declares (inherited from the
-            // OutputStream contract, not overridden away) is unreachable
-            // for this specific implementation.
-            try {
-              out.write(chunk);
-            } catch (java.io.IOException impossible) {
-              throw new IllegalStateException(impossible);
-            }
-          }
-          if (toCopy < readable) {
-            // Real bytes existed beyond the cap in this exact buffer - the
-            // response is genuinely larger than maxBytes, not merely
-            // exactly maxBytes. Cancel immediately: no further buffers are
-            // pulled from the upstream connection.
-            capped = true;
+        }
+        if (toCopy < readable) {
+          // Real bytes existed beyond the cap in this exact buffer - the
+          // response is genuinely larger than maxBytes, not merely
+          // exactly maxBytes. Cancel immediately: no further buffers are
+          // pulled from the upstream connection.
+          if (cause.compareAndSet(CancelCause.NONE, CancelCause.INTERNAL_CAP)) {
             cancel();
           }
-        } finally {
-          DataBufferUtils.release(buffer);
+          return;
         }
+      } finally {
+        DataBufferUtils.release(buffer);
       }
+      // Pull-style backpressure (OS-1C final review recovery §3): only ask
+      // for the next buffer once this one is fully processed and released -
+      // never unlimited demand against the body publisher.
+      request(1);
+    }
 
-      @Override
-      protected void hookOnComplete() {
-        sink.success(buildResult());
-      }
+    @Override
+    protected void hookOnComplete() {
+      emitSuccessOnce();
+    }
 
-      @Override
-      protected void hookOnCancel() {
+    @Override
+    protected void hookOnCancel() {
+      if (cause.get() == CancelCause.INTERNAL_CAP) {
         // Our own cap-triggered cancel() - still a successful, bounded
         // result, never an error; the caller asked for "at most maxBytes,"
         // and that is exactly what was delivered.
-        sink.success(buildResult());
+        emitSuccessOnce();
+        return;
       }
+      // DOWNSTREAM cancel (or, defensively, any cancel this collector did
+      // not itself decide on): the caller of readBounded no longer wants
+      // this result at all. Never synthesize a successful
+      // PodLogFetchResult here - that would silently convert an aborted
+      // request into a truncated-but-"successful" one.
+      terminalEmitted = true;
+    }
 
-      @Override
-      protected void hookOnError(Throwable error) {
-        sink.error(error);
+    @Override
+    protected void hookOnError(Throwable error) {
+      if (terminalEmitted) {
+        return;
       }
+      terminalEmitted = true;
+      sink.error(error);
+    }
 
-      private PodLogFetchResult buildResult() {
-        byte[] bytes = trimIncompleteUtf8Suffix(out.toByteArray());
-        return new PodLogFetchResult(new String(bytes, StandardCharsets.UTF_8), capped);
+    private void emitSuccessOnce() {
+      if (terminalEmitted) {
+        return;
       }
-    }));
+      terminalEmitted = true;
+      byte[] bytes = trimIncompleteUtf8Suffix(out.toByteArray());
+      sink.success(new PodLogFetchResult(
+          new String(bytes, StandardCharsets.UTF_8), cause.get() == CancelCause.INTERNAL_CAP));
+    }
+
+    /**
+     * Bridges cancellation of the {@link Mono} returned by {@link
+     * #readBounded} (downstream abort, {@code Mono.timeout()}, an overall
+     * search being cancelled) to this subscriber's own upstream
+     * subscription, so the HTTP body is torn down instead of continuing to
+     * drain after nobody will ever read the result.
+     */
+    void cancelFromDownstream() {
+      if (cause.compareAndSet(CancelCause.NONE, CancelCause.DOWNSTREAM)) {
+        cancel();
+      }
+    }
   }
 
   /**

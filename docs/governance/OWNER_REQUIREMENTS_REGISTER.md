@@ -465,6 +465,17 @@ account: `docs/verification/OS_1C_OPENSHIFT_DIRECT_SEARCH_REPORT.md` §21.
 | OS-1C-29 | Frontend renders OS-1C's new runtime-warning notes and truncation signal via the existing generic `QueryPlanDisclosure`/counts-summary UI - zero new components, zero OpenShift-specific visual clutter | `VERIFIED` | Real rendered-browser Playwright check (stubbed OS-1C-shaped `/api/v1/logs/search` response) against the real dev app - see the OS_1C report §21 "Frontend" subsection for the captured output |
 | OS-1C-30 | A byte-capped truncation never surfaces its own artificial trailing partial line as a misleading "malformed" event | `VERIFIED` — self-caught defect during this recovery's own test-writing, fixed before merge | `DirectPodLogProvider#fetchTarget` (drops the trailing split line when `byteCapReached` and the body doesn't end in `\n`); `oneOkPlusOneByteCappedTargetIsPartialWithABytesCapReachedReason`, `aByteCappedTargetIsCancelledWhileOtherTargetsContinueNormally` |
 
+### 12f. OS-1C FINAL REVIEW RECOVERY — cancellation bridge & PR hygiene
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| OS-1C-31 | A cancellation of `OpenShiftApiClient#readBounded`'s own `Mono` (downstream abort, `Mono.timeout()`, an overall search cancelled) is bridged to the raw HTTP body's `BaseSubscriber`, so the body subscription is torn down rather than continuing to drain after nobody will read the result | `VERIFIED` | `OpenShiftApiClient#readBounded` (`MonoSink#onCancel(collector::cancelFromDownstream)`); `downstreamCancellationAfterTheFirstChunkCancelsTheUnderlyingBodySubscription`, `cancellingTheOverallSearchCancelsAnInFlightSlowPodLogBodySubscription` |
+| OS-1C-32 | A downstream/external cancellation is never converted into a successful `PodLogFetchResult` - only the subscriber's own byte-cap self-cancel is a success | `VERIFIED` | `BoundedBodyCollector.CancelCause` (`INTERNAL_CAP` vs `DOWNSTREAM`, set via `AtomicReference#compareAndSet` before either cancel path calls `cancel()`); `downstreamCancellationNeverEmitsASuccessfulResultAfterward`, `internalByteCapCancellationAndDownstreamCancellationRemainDistinguishable` |
+| OS-1C-33 | A per-target timeout cancels the underlying body subscription rather than merely giving up waiting locally | `VERIFIED` | `aTimeoutOperatorCancelsTheUnderlyingBodySubscriptionInsteadOfHanging` (unit, `doOnCancel` probe), `endToEnd_aTimeoutAgainstARealSlowServerFailsQuicklyRatherThanWaitingForTheFullDelay` (real HTTP, 3s fixture vs. 150ms timeout, completes in well under 1s) |
+| OS-1C-34 | No `DataBuffer` is leaked on either cancellation path (downstream cancel, timeout) | `VERIFIED` — real pooled Netty `refCnt()` proof, not merely "release() was called" | `noDataBufferLeakOnDownstreamCancellation`, `noDataBufferLeakWhenATimeoutCancelsTheBody` |
+| OS-1C-35 | Backpressure against the raw body publisher is pull-style (`request(1)` at subscribe, `request(1)` again only after each buffer is processed and released) rather than unlimited (`request(Long.MAX_VALUE)`) | `VERIFIED` — all 20 pre-existing + 8 new byte-bound tests pass unchanged under this strategy | `OpenShiftApiClient.BoundedBodyCollector#hookOnSubscribe`/`hookOnNext` |
+| OS-1C-36 | Unrelated historical evidence PNGs unintentionally modified by the OS-1C review recovery commit are restored byte-identical to their pre-recovery content, never regenerated/recompressed | `VERIFIED` | 188 files under `docs/verification/{UX_R1,UX_R3,UX_R4,UX_R5,UX_R6}_EVIDENCE/`, `legacy-slice8/`, `m/`, `ui-gap-closure/`, `ui-parity/`, `OS_1A_EVIDENCE/` restored via `git checkout 37f39f9 -- <paths>`; verified with an empty `git diff 37f39f9 -- <paths>` |
+
 ---
 
 ## 13. Out of Current Scope
@@ -698,6 +709,21 @@ untouched. `Kind.TIMEOUT`/`Kind.UPSTREAM_UNAVAILABLE` are genuinely new
 `OpenShiftApiException` categories this pass added — both are additive
 (no existing `Kind` value's meaning changed) and are reflected in
 `GlobalExceptionHandler`'s own exhaustive status-code mapping.
+
+**OS-1C FINAL REVIEW RECOVERY pass (§12f above).** A second review round on
+the same PR found a real, previously-untracked gap in §21's own byte-bound
+work: downstream cancellation of `readBounded`'s `Mono` was never bridged
+to the underlying `BaseSubscriber`, so a timeout or an aborted overall
+search could leave the raw HTTP body subscription still being consumed.
+Fixed and closed as OS-1C-31 through OS-1C-35, with executable cancellation
+tests (not merely a claim that the composition "should" propagate
+cancellation). A second, unrelated issue - 188 historical evidence PNGs
+unintentionally re-saved by the §21 commit - was found and restored
+byte-identical to their pre-recovery content (OS-1C-36); this was a
+repository-hygiene defect in how that commit was assembled, not a defect
+in OS-1C's own design or test coverage. No existing OS-1C requirement's
+status changed as a result of this pass; none of §12a-§12e's `VERIFIED`
+rows were reopened.
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0

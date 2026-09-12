@@ -450,6 +450,19 @@ the full before/after account, and per-target runtime failures (a pod
 closing the "not yet individually named" gap the original OS-1C
 implementation disclosed.
 
+**[EVIDENCE, established by the OS-1C final review recovery]** §21's own
+streaming byte-bound fetch had one remaining gap: cancelling the fetch from
+outside (a per-target timeout, or the overall search itself being
+cancelled) was not bridged to the raw HTTP body's subscriber, so the body
+could keep being consumed after nobody would read the result. Fixed by
+registering the returned `Mono`'s own cancellation against the same
+subscriber the byte cap already controls, with the two causes (the cap's
+own self-cancel vs. an external cancel) tracked explicitly so an aborted
+request can never resurface as a successful result. Backpressure was also
+tightened from unlimited demand to a pull-style `request(1)` — see
+`OS_1C_OPENSHIFT_DIRECT_SEARCH_REPORT.md` §22 for the full account and
+test evidence.
+
 ---
 
 ## 11. Correlation / trace / journey

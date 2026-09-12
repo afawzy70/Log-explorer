@@ -843,3 +843,131 @@ pre-existing test whose own premise the fix intentionally changed
 (`deselectingWorkloadStillOnlyQueriesWhatOs1bResolvedNeverEveryNamespacePod`)
 was updated deliberately, with its real invariant (request count) kept
 intact, exactly as CLAUDE.md §3 requires.
+
+## 22. OS-1C FINAL REVIEW RECOVERY — cancellation bridge & PR hygiene
+
+A second review pass on PR #41 (reviewed HEAD `4d818243033147267f4c8fa97ffb491203bba28d`)
+found two further issues, both fixed without touching §21's byte-bound or
+runtime-partial-result design.
+
+### Defect A (this recovery) — downstream cancellation was not bridged to the raw body subscription
+
+**Before.** `OpenShiftApiClient#readBounded` subscribed its `BaseSubscriber`
+directly inside `Mono.create(sink -> source.subscribe(...))`, with no link
+from the returned `Mono`'s own cancellation back to that subscriber. Two
+cases existed but only one was handled:
+
+- the subscriber's own byte-cap `cancel()` — handled correctly, a
+  successful bounded result;
+- the **caller** of `readBounded` cancelling — because `Mono.timeout()`
+  gave up waiting, or the overall search (`DirectPodLogProvider`'s
+  `flatMap`/`collectList`/`timeout` chain) was itself cancelled — was
+  **not** bridged to the subscriber at all. The manually-created
+  `BaseSubscriber` could remain subscribed to the raw HTTP body Flux after
+  the request that owned it was already gone, continuing to consume
+  network/memory for a result nobody would ever read.
+
+**After.** `readBounded` now registers `sink.onCancel(collector::cancelFromDownstream)`
+on the `MonoSink` before subscribing — Reactor's own documented hook for
+"the downstream subscriber of this `Mono.create` cancelled." That callback
+calls `cancel()` on the same `BaseSubscriber` instance the byte cap already
+used, so a downstream cancellation now deterministically tears down the
+raw HTTP body subscription (and, via Reactor Netty, the underlying
+connection) instead of continuing to drain it.
+
+**The two causes are tracked explicitly, not conflated.** `hookOnCancel()`
+previously *always* treated a cancel as "successful bounded result." That
+is only true for the byte-cap's own self-cancel. A `CancelCause` enum
+(`NONE`/`INTERNAL_CAP`/`DOWNSTREAM`), set via a single
+`AtomicReference.compareAndSet` immediately before either cancel path
+calls `cancel()`, records which one actually happened — the two causes can
+race on different threads (the HTTP client's event loop for the cap, an
+arbitrary timeout/cancellation-owning thread for downstream), so the
+compare-and-set is what makes exactly one of them win. `hookOnCancel()`
+now emits a successful `PodLogFetchResult` (with `byteCapReached=true`)
+**only** when the cause is `INTERNAL_CAP`; a `DOWNSTREAM` cause emits
+nothing at all — no success, no error — matching how a genuinely aborted
+request should behave: the caller who cancelled is not waiting for a
+result any more.
+
+### Backpressure — pull-style, not unlimited demand
+
+**Before.** `hookOnSubscribe` issued `request(Long.MAX_VALUE)` — unlimited
+demand against the body publisher, which lets the upstream push as many
+buffers as it wants regardless of how quickly (or whether) this subscriber
+is still interested.
+
+**After.** `hookOnSubscribe` issues `request(1)`, and `hookOnNext` issues
+another `request(1)` only after the current buffer has been fully copied
+into the bounded accumulator and released — never when the byte cap was
+just reached (the very next line is `cancel()`, not `request(1)`) and
+never when a downstream cancel has already landed (checked at the top of
+`hookOnNext` before doing any work). This bounds in-flight buffering to at
+most one `DataBuffer` beyond the accumulator itself, and means a
+cancellation (either cause) takes effect essentially immediately rather
+than after some number of already-requested buffers drain.
+
+### Cancellation tests added
+
+| File | New tests | Proves |
+|---|---|---|
+| `OpenShiftApiClientByteBoundTest.java` (+8) | `downstreamCancellationAfterTheFirstChunkCancelsTheUnderlyingBodySubscription` (A), `downstreamCancellationNeverEmitsASuccessfulResultAfterward` (B), `aTimeoutOperatorCancelsTheUnderlyingBodySubscriptionInsteadOfHanging` (C, unit), `noDataBufferLeakWhenATimeoutCancelsTheBody` (H), `byteCapInternalCancellationStillReturnsASuccessfulBoundedResult` (E), `internalByteCapCancellationAndDownstreamCancellationRemainDistinguishable` (F), `noDataBufferLeakOnDownstreamCancellation` (G), `endToEnd_aTimeoutAgainstARealSlowServerFailsQuicklyRatherThanWaitingForTheFullDelay` (C, end-to-end, real HTTP) | Downstream cancellation reaches the raw body subscription; a cancelled request never resurfaces a result; a per-target timeout cancels the body instead of hanging; no `DataBuffer` leaks on either cancel path; the two cancel causes stay behaviorally distinct |
+| `DirectPodLogProviderTest.java` (+1) | `cancellingTheOverallSearchCancelsAnInFlightSlowPodLogBodySubscription` (D) | Cancelling the whole search (not just a single `readBounded` call in isolation) propagates transitively through `DirectPodLogProvider`'s `flatMap`/`collectList` composition down to an in-flight pod-log body — a 3 s-slow fixture is abandoned in well under 1 s once the search is cancelled |
+
+Requirement I ("another concurrent target can still complete normally when
+one target is cancelled by its own byte cap") was already covered by
+`aByteCappedTargetIsCancelledWhileOtherTargetsContinueNormally`, added in
+§21 and unaffected by this recovery — re-verified passing unchanged.
+
+The pre-existing 20 byte-bound tests and the pre-existing 15 runtime-partial
+tests were **not weakened** to make room for the pull-style backpressure
+change — all pass unchanged against the new `request(1)`/`request(1)`
+pattern, including the ones proving no full materialization of a 20 MB
+synthetic source and pooled-buffer `refCnt()` release.
+
+### Defect B (this recovery) — unrelated historical evidence PNGs
+
+The §21 recovery commit (`4d818243033147267f4c8fa97ffb491203bba28d`)
+unintentionally re-saved 188 historical screenshot evidence files under
+`docs/verification/{UX_R1,UX_R3,UX_R4,UX_R5,UX_R6}_EVIDENCE/`,
+`legacy-slice8/`, `m/`, `ui-gap-closure/`, `ui-parity/`, and `OS_1A_EVIDENCE/`
+with re-encoded/re-compressed bytes — no visual content changed, but the
+PR diff grew from ~22 changed files to 217. Root cause: an editor/tool step
+touched those files as a side effect while this recovery's own new evidence
+was being organized; none of them were ever intentionally viewed or edited
+as part of OS-1C.
+
+**Fix.** Every one of the 188 files was restored to be byte-identical to
+its content at `37f39f9` (the commit immediately before the §21 recovery,
+i.e. before any unintended modification) — verified via an empty
+`git diff` against that commit for the full file list, never
+regenerated/recompressed/re-saved. This is a real repository-hygiene
+correction, not a claim about what the screenshots show — their historical
+evidentiary content is exactly what it always was.
+
+### Validation (this recovery)
+
+| Check | Result |
+|---|---|
+| `./mvnw test -Dtest=OpenShiftApiClientByteBoundTest,DirectPodLogProviderTest` | PASS — 72 tests (28 + 44), 0 failures, 0 errors |
+| `./mvnw test -Dtest='com.logexplorer.source.openshift.**'` | PASS — 276 tests, 0 failures, 0 errors (run 3× to rule out the pre-existing, unrelated `OpenShiftScopeServiceTest` flake described below) |
+| `./mvnw test` (full backend suite) | PASS — 898 tests, 0 failures, 0 errors |
+| `npm run test` (full frontend unit suite) | PASS — 751 tests, unchanged |
+| `npm run typecheck` | PASS |
+| `npm run build` | PASS, unchanged bundle |
+| Full Playwright E2E | see final mission response |
+| PR hygiene (`git diff --stat main...HEAD`, `--name-status`) | 188 unrelated PNGs restored to base content; every remaining changed file classified `OS_1C_IMPLEMENTATION`/`OS_1C_TEST`/`OS_1C_DOCUMENTATION` |
+
+**Pre-existing, unrelated flake observed and ruled out.** One run of the
+full OpenShift test package showed
+`OpenShiftScopeServiceTest.a401OnAnyKindAbortsTheWholeDiscoveryAndExpiresTheSession`
+failing with a `reactor.core.Exceptions$CompositeException` instead of the
+expected `OpenShiftApiException` — a known Reactor behavior where
+multiple inner `flatMap` sources failing at nearly the same wall-clock
+instant get combined into one composite error rather than surfacing a
+single cause. This test exercises `OpenShiftApiClient#fetchWorkloads`
+(the unmodified `get()`/JSON path), not `fetchPodLog`/`readBounded`, and
+passed cleanly in isolation (3/3 runs) and in 3 further full-package runs
+(276/276 each time) — a pre-existing timing-sensitive flake in test
+infrastructure unrelated to this recovery, not a regression it introduced.
+Not fixed here (out of scope for this mission; worth a follow-up ticket).
