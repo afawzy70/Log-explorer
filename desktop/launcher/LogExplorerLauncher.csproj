@@ -37,18 +37,34 @@
     <Product>Log Explorer</Product>
     <Company>Log Explorer</Company>
     <AssemblyTitle>Log Explorer</AssemblyTitle>
+    <!-- Windows CI toolchain hardening (platform/windows-dotnet-nuget-
+         restore-hardening) — a clean checkout must resolve the exact
+         same dependency graph on every restore. `RestorePackagesWithLockFile`
+         makes NuGet write/consume `packages.lock.json` (committed
+         alongside this project) and, combined with the restore command's
+         locked mode flag in CI (see .github/workflows/windows-desktop.yml),
+         turns any drift between this file's dependencies and the
+         committed lock file into an immediate, loud restore failure
+         instead of a silent re-resolution against whatever NuGet.org
+         happens to serve that day. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- A floating minor-version wildcard, not a hand-pinned exact patch
-         number: this project is authored/committed from a Linux sandbox
-         with no NuGet connectivity to verify an exact currently-published
-         WebView2 SDK patch version against, so pinning one risked a
-         silently-stale or simply nonexistent version breaking `dotnet
-         restore` on the Windows CI runner that actually builds this
-         project. "1.0.*" always resolves to the latest published 1.0.x
-         release at build time. -->
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.*" />
+    <!-- Windows CI toolchain hardening — no wildcard package versions in
+         the release/desktop path (mission requirement). Floating
+         versions ("1.0.*") make `dotnet restore` a live, non-reproducible
+         network query against whatever NuGet.org happens to be serving
+         as "latest 1.0.x" at build time; combined with a NuGet lock file
+         (RestorePackagesWithLockFile above), a floating reference would
+         also make the lock file itself meaningless (it would just keep
+         re-locking to a different concrete version on every regeneration).
+         1.0.4191.47 is the actual latest published, listed, stable (non-
+         prerelease) release verified directly against the NuGet v3 API
+         (api.nuget.org/v3-flatcontainer/microsoft.web.webview2/index.json,
+         published 2026-08-28) at the time this hardening was authored —
+         never guessed. -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
   </ItemGroup>
 
   <ItemGroup>
