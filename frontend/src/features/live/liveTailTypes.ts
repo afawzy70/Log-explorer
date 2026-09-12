@@ -15,21 +15,39 @@ export type LiveConnectionState =
   | 'failed';
 
 /**
- * OS-1E review recovery — the source's own CURRENT per-target runtime
- * truth, mirrored from backend `LiveSourceStatus`. `'RUNNING'` is the
- * value every source without a per-target concept (Docker/Fixture/Loki)
- * always reports - never any other value - so a component can safely
- * treat any other state as "this source has something specific to say."
- * See `LiveSourceStatus`'s own backend javadoc for the exact derivation
- * rule and what each state means.
+ * OS-1E — the source's own CURRENT per-target runtime truth, mirrored
+ * from backend `LiveSourceStatus`. `'RUNNING'` is the value every source
+ * without a per-target concept (Docker/Fixture/Loki) always reports -
+ * never any other value - so a component can safely treat any other
+ * state as "this source has something specific to say." See
+ * `LiveSourceStatus`'s own backend javadoc for the exact derivation rule
+ * and what each state means.
+ *
+ * `'CONNECTING'` (OS-1E final implementation) means at least one resolved
+ * target has neither proven itself active nor ever failed this outage -
+ * distinct from the source having zero targets or every target already
+ * being permanently stopped (`'NO_ACTIVE_TARGETS'`).
  */
-export type LiveSourceState = 'RUNNING' | 'DEGRADED' | 'RECONNECTING' | 'NO_ACTIVE_TARGETS' | 'EXPIRED' | 'STALE';
+export type LiveSourceState = 'RUNNING' | 'CONNECTING' | 'DEGRADED' | 'RECONNECTING' | 'NO_ACTIVE_TARGETS' | 'EXPIRED' | 'STALE';
+
+/**
+ * OS-1E final implementation — a state from which this Live session can
+ * never recover on its own: no future target activity is possible
+ * without an explicit new Start (Restart). Mirrors backend {@code
+ * LiveSourceStatus.State#isTerminal()} exactly - drives both the
+ * backend's terminal-SSE grace-close and this hook's own suppression of
+ * the generic automatic `EventSource` reconnect (see `useLiveTail.ts`'s
+ * `onerror` handler) - the two ends of the same truth.
+ */
+export function isTerminalSourceState(state: LiveSourceState): boolean {
+  return state === 'NO_ACTIVE_TARGETS' || state === 'EXPIRED' || state === 'STALE';
+}
 
 /**
  * The "status" SSE event's payload - mirrors backend
  * `LiveTailService.StatusPayload` (IMPLEMENTATION_PLAN.md "Phase J").
  *
- * OS-1E review recovery — `liveSourceState`/`resolvedTargets`/
+ * OS-1E — `liveSourceState`/`resolvedTargets`/`connectingTargets`/
  * `activeTargets`/`reconnectingTargets`/`stoppedTargets`/`warnings`
  * replace the original single-warning-string design, which could only
  * ever report the single most recently changed target's own warning
@@ -45,6 +63,7 @@ export interface LiveStatusPayload {
   serverTime: string;
   liveSourceState: LiveSourceState;
   resolvedTargets: number;
+  connectingTargets: number;
   activeTargets: number;
   reconnectingTargets: number;
   stoppedTargets: number;
@@ -55,6 +74,7 @@ export interface LiveStatusPayload {
 export interface LiveSourceStatusView {
   state: LiveSourceState;
   resolvedTargets: number;
+  connectingTargets: number;
   activeTargets: number;
   reconnectingTargets: number;
   stoppedTargets: number;
@@ -65,6 +85,7 @@ export interface LiveSourceStatusView {
 export const NOMINAL_SOURCE_STATUS: LiveSourceStatusView = {
   state: 'RUNNING',
   resolvedTargets: 0,
+  connectingTargets: 0,
   activeTargets: 0,
   reconnectingTargets: 0,
   stoppedTargets: 0,

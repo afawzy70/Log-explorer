@@ -9,6 +9,7 @@ import {
   RECONNECT_MAX_ATTEMPTS,
   RECONNECT_MAX_DELAY_MS,
   VISIBLE_CAP,
+  isTerminalSourceState,
 } from './liveTailTypes';
 
 interface StartArgs {
@@ -104,6 +105,15 @@ export function useLiveTail() {
    * VALUES here, not on which source is selected.
    */
   const [sourceStatus, setSourceStatus] = useState<LiveSourceStatusView>(NOMINAL_SOURCE_STATUS);
+  /**
+   * OS-1E final implementation (mission §20) — mirrors `sourceStatus`
+   * synchronously, read inside `onerror` (an async EventSource callback
+   * whose closure would otherwise only ever see the `sourceStatus` value
+   * from whichever render created it, not the latest one - the exact
+   * "suitable for async handlers" requirement a plain state read cannot
+   * satisfy). Updated in the SAME place `setSourceStatus` is, always.
+   */
+  const sourceStatusRef = useRef<LiveSourceStatusView>(NOMINAL_SOURCE_STATUS);
 
   const sessionRef = useRef(0);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -231,14 +241,17 @@ export function useLiveTail() {
         try {
           const status = JSON.parse(e.data) as LiveStatusPayload;
           setServerDroppedCount(status.droppedCount);
-          setSourceStatus({
+          const nextStatus: LiveSourceStatusView = {
             state: status.liveSourceState ?? 'RUNNING',
             resolvedTargets: status.resolvedTargets ?? 0,
+            connectingTargets: status.connectingTargets ?? 0,
             activeTargets: status.activeTargets ?? 0,
             reconnectingTargets: status.reconnectingTargets ?? 0,
             stoppedTargets: status.stoppedTargets ?? 0,
             warnings: status.warnings ?? [],
-          });
+          };
+          sourceStatusRef.current = nextStatus;
+          setSourceStatus(nextStatus);
         } catch {
           // a malformed heartbeat/status tick is never fatal - just skip it
         }
@@ -249,6 +262,30 @@ export function useLiveTail() {
           return;
         }
         closeEventSource();
+        // OS-1E final implementation (mission §18/§20) — a terminal
+        // source state (NO_ACTIVE_TARGETS/EXPIRED/STALE) means this
+        // session can never recover on its own: the backend's own
+        // terminal-SSE grace-close is exactly what triggers this
+        // `onerror` (the SSE protocol has no server-initiated "close
+        // without retry" signal, so a deliberate close is indistinguishable
+        // from a real drop at this API surface). Scheduling the normal
+        // generic reconnect here would either waste cycles retrying into
+        // an unchanged dead scope/expired token (EXPIRED/NO_ACTIVE_TARGETS)
+        // or silently re-resolve into a DIFFERENT, newer scope
+        // (NO_ACTIVE_TARGETS) - both wrong. Transition straight to the
+        // same terminal, restart-required outcome `stop()` already uses
+        // (currently displayed events remain available, no reconnect
+        // timer is ever armed) instead.
+        if (isTerminalSourceState(sourceStatusRef.current.state)) {
+          sessionRef.current += 1; // mirrors stop()'s own guard - invalidates any in-flight callback/timer
+          clearReconnectTimer();
+          clearFlushInterval();
+          queueRef.current = [];
+          isPausedRef.current = false;
+          setReconnectAttempt(0);
+          setConnectionState('stopped');
+          return;
+        }
         setReconnectAttempt((prevAttempt) => {
           const nextAttempt = prevAttempt + 1;
           if (nextAttempt > RECONNECT_MAX_ATTEMPTS) {
@@ -272,7 +309,7 @@ export function useLiveTail() {
         });
       };
     },
-    [closeEventSource, clearReconnectTimer],
+    [closeEventSource, clearReconnectTimer, clearFlushInterval],
   );
 
   const start = useCallback(
@@ -302,6 +339,7 @@ export function useLiveTail() {
       setReconnectCount(0);
       setFollowNewestState(true);
       setUnseenCount(0);
+      sourceStatusRef.current = NOMINAL_SOURCE_STATUS;
       setSourceStatus(NOMINAL_SOURCE_STATUS);
       setConnectionState('connecting');
 
@@ -386,6 +424,7 @@ export function useLiveTail() {
     setReconnectCount(0);
     setFollowNewestState(true);
     setUnseenCount(0);
+    sourceStatusRef.current = NOMINAL_SOURCE_STATUS;
     setSourceStatus(NOMINAL_SOURCE_STATUS);
   }, [closeEventSource, clearReconnectTimer, clearFlushInterval]);
 

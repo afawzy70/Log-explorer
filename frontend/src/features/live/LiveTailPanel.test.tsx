@@ -283,6 +283,30 @@ describe('LiveTailPanel', () => {
     expect(screen.queryByText(/no active streams/i)).not.toBeInTheDocument();
   });
 
+  // ------------------------------------------------------------ OS-1E final implementation: CONNECTING and terminal-stopped truthfulness
+
+  it('OS-1E final implementation: a healthy transport with source state CONNECTING never reads as plain LIVE (mission §11/§15)', () => {
+    renderPanel('live', { sourceStatus: status({ state: 'CONNECTING', resolvedTargets: 10, connectingTargets: 10 }) });
+    const badge = screen.getAllByRole('status')[0];
+    expect(badge.textContent).toMatch(/connecting/i);
+    expect(badge.textContent?.toLowerCase()).not.toBe('live');
+  });
+
+  it('OS-1E final implementation: a "stopped" transport caused by a terminal source state still shows the specific terminal reason (mission §18/§20)', () => {
+    // useLiveTail.ts's own onerror handler transitions straight to
+    // 'stopped' for a terminal source state (never arming the generic
+    // reconnect) while leaving sourceStatus untouched - the badge must
+    // keep showing the SPECIFIC reason, not revert to a generic "STOPPED".
+    renderPanel('stopped', { sourceStatus: status({ state: 'EXPIRED', resolvedTargets: 1 }) });
+    expect(screen.getByText(/session expired/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^stopped$/i)).not.toBeInTheDocument();
+  });
+
+  it('OS-1E final implementation: an ordinary user-initiated Stop (sourceStatus still RUNNING/DEGRADED/CONNECTING) shows the plain STOPPED badge, unaffected', () => {
+    renderPanel('stopped', { sourceStatus: status({ state: 'RUNNING', resolvedTargets: 1, activeTargets: 1 }) });
+    expect(screen.getByText(/^stopped$/i)).toBeInTheDocument();
+  });
+
   it('clicking "Back to search results" calls live.exit', async () => {
     const user = userEvent.setup();
     const { live } = renderPanel('live');

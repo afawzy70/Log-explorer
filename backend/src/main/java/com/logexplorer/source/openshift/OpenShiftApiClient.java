@@ -410,6 +410,28 @@ public class OpenShiftApiClient {
    * OpenShiftLiveTailProvider}'s own javadoc for the full reconnect/
    * recovery contract this enables).
    *
+   * <p><b>OS-1E final implementation — CONNECTING vs. ACTIVE evidence.</b>
+   * Uses {@code exchangeToFlux} rather than {@code .retrieve().bodyToFlux(...)}
+   * specifically so the caller can observe "the cluster accepted this
+   * follow request" (a real {@code 2xx} response) as a distinct, earlier
+   * signal than "the first log line arrived." A quiet pod is still a
+   * genuinely, successfully connected live stream — requiring a log line
+   * as proof of connection would misreport every idle-but-healthy target
+   * as still "connecting" forever. {@code onEstablished} runs exactly
+   * once, synchronously, the moment a {@code 2xx} status is observed,
+   * before the body is ever subscribed to; a non-{@code 2xx} status is
+   * turned into the exact same {@link OpenShiftApiException} classification
+   * {@code .retrieve()} would have produced, via {@code
+   * ClientResponse#createException()}, so no behavior changes for any
+   * existing 401/403/404/timeout/network/TLS test.
+   *
+   * <p>{@code onPartialDroppedByError} is invoked (at most once per call)
+   * only when the stream ends in a transport-level {@code onError} AND
+   * the line decoder was mid-way through an unterminated physical line at
+   * that moment — see {@link #decodeLines}'s own javadoc for the full
+   * clean-EOF-vs-error-vs-cancellation partial-line contract (mission
+   * §12/§26).
+   *
    * <p>Never materializes the response body — {@link #decodeLines} is a
    * genuinely streaming line decoder (see its own javadoc), so a pod that
    * never stops logging never grows this method's own memory use. The
@@ -422,7 +444,7 @@ public class OpenShiftApiClient {
    */
   public Flux<DecodedLine> followPodLog(
       URI server, RawToken token, String caPath, String namespace, String podName, String containerName,
-      int tailLines, int maxLineBytes) {
+      int tailLines, int maxLineBytes, Runnable onEstablished, Runnable onPartialDroppedByError) {
     WebClient client;
     try {
       client = build(server, caPath);
@@ -435,24 +457,47 @@ public class OpenShiftApiClient {
         .queryParam("timestamps", "true")
         .queryParam("follow", "true")
         .queryParam("tailLines", tailLines);
-    Flux<DataBuffer> rawBody = client
+    return client
         .get()
         .uri(uri.build().toUriString())
         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value())
-        .retrieve()
-        .bodyToFlux(DataBuffer.class);
-    return decodeLines(rawBody, maxLineBytes).onErrorMap(OpenShiftApiClient::classify);
+        .exchangeToFlux(response -> {
+          if (response.statusCode().is2xxSuccessful()) {
+            // The one, real, evidence-backed "this target is genuinely
+            // ACTIVE" signal (mission §2) - response accepted, headers
+            // received, streaming begins now. Runs before the body is
+            // ever subscribed to, so it fires exactly once regardless of
+            // how much (or how little, including zero) data follows.
+            onEstablished.run();
+            return decodeLines(response.bodyToFlux(DataBuffer.class), maxLineBytes, onPartialDroppedByError);
+          }
+          // Never .retrieve()'s own default handling here (exchangeToFlux
+          // applies none) - reproduces the identical WebClientResponseException
+          // .retrieve() would have thrown, so classify() below classifies
+          // every non-2xx status (401/403/404/etc.) exactly as before.
+          return response.createException().flatMapMany(Flux::error);
+        })
+        .onErrorMap(OpenShiftApiClient::classify);
   }
 
   /**
-   * OS-1E — one decoded logical line. {@code truncated} is {@code true}
-   * only for the single event produced when a PHYSICAL upstream line
-   * exceeded {@code maxLineBytes} before a real {@code \n} was ever seen
-   * (OS-1E review recovery — see {@link LiveLineDecoder}'s own javadoc
-   * for why this is always exactly one event per physical line, never
-   * more).
+   * OS-1E — one decoded logical line.
+   *
+   * @param truncated {@code true} only for the single event produced
+   *     when a PHYSICAL upstream line exceeded {@code maxLineBytes}
+   *     before a real {@code \n} was ever seen (OS-1E review recovery —
+   *     see {@link LiveLineDecoder}'s own javadoc for why this is always
+   *     exactly one event per physical line, never more)
+   * @param unterminated {@code true} only for the single, final event a
+   *     target's stream may produce when it ends (cleanly) with a
+   *     buffered fragment that never received its own terminating
+   *     {@code \n} (OS-1E final implementation — mission §12/§13/§26).
+   *     Never {@code true} at the same time as {@code truncated} — an
+   *     already-truncated physical line's remainder is discarded, not
+   *     buffered, so there is nothing left to flush as unterminated for
+   *     that same line.
    */
-  record DecodedLine(String content, boolean truncated) {
+  record DecodedLine(String content, boolean truncated, boolean unterminated) {
   }
 
   /**
@@ -479,10 +524,35 @@ public class OpenShiftApiClient {
    * {@code request(1)}, a downstream cancel bridged via {@code
    * FluxSink#onCancel} to the upstream subscription, every {@link
    * DataBuffer} released in a {@code finally} block regardless of path.
+   *
+   * <h2>OS-1E final implementation — partial-final-line contract (mission
+   * §12/§13/§26)</h2>
+   *
+   * <p>Three distinct ways a stream's final physical line can be left
+   * without its own terminating {@code \n}, each handled differently,
+   * truthfully:
+   *
+   * <ul>
+   *   <li><b>Clean EOF</b> (the upstream {@code Flux<DataBuffer>}
+   *   completes normally, e.g. the container restarted) — any buffered,
+   *   not-yet-terminated fragment is flushed as exactly ONE final {@link
+   *   DecodedLine} with {@code unterminated=true}, never silently
+   *   dropped, never pretended to have had a real newline.</li>
+   *   <li><b>Transport error</b> — a buffered fragment at the moment of
+   *   error is discarded (never emitted as if it were a complete line),
+   *   and {@code onPartialDroppedByError} is invoked exactly once so the
+   *   caller can surface a bounded, truthful warning — this is real,
+   *   unrecoverable data loss the user did not cause.</li>
+   *   <li><b>Downstream cancellation</b> (Stop / browser disconnect) — a
+   *   buffered fragment is silently discarded, {@code
+   *   onPartialDroppedByError} is deliberately NOT invoked: an
+   *   intentional stop losing its own last, not-yet-terminated fragment
+   *   is expected, not a truthfulness concern worth warning about.</li>
+   * </ul>
    */
-  static Flux<DecodedLine> decodeLines(Flux<DataBuffer> source, int maxLineBytes) {
+  static Flux<DecodedLine> decodeLines(Flux<DataBuffer> source, int maxLineBytes, Runnable onPartialDroppedByError) {
     return Flux.create(sink -> {
-      LineDecodingSubscriber subscriber = new LineDecodingSubscriber(maxLineBytes, sink);
+      LineDecodingSubscriber subscriber = new LineDecodingSubscriber(maxLineBytes, sink, onPartialDroppedByError);
       sink.onCancel(subscriber::cancelFromDownstream);
       source.subscribe(subscriber);
     });
@@ -492,11 +562,13 @@ public class OpenShiftApiClient {
   private static final class LineDecodingSubscriber extends BaseSubscriber<DataBuffer> {
     private final FluxSink<DecodedLine> sink;
     private final LiveLineDecoder decoder;
+    private final Runnable onPartialDroppedByError;
     private final AtomicReference<Boolean> downstreamCancelled = new AtomicReference<>(Boolean.FALSE);
 
-    LineDecodingSubscriber(int maxLineBytes, FluxSink<DecodedLine> sink) {
+    LineDecodingSubscriber(int maxLineBytes, FluxSink<DecodedLine> sink, Runnable onPartialDroppedByError) {
       this.sink = sink;
       this.decoder = new LiveLineDecoder(maxLineBytes);
+      this.onPartialDroppedByError = onPartialDroppedByError;
     }
 
     @Override
@@ -526,6 +598,10 @@ public class OpenShiftApiClient {
 
     @Override
     protected void hookOnComplete() {
+      // Clean EOF - mission §12/§26-A: flush any buffered-but-unterminated
+      // fragment as exactly one final, truthfully-marked event, never
+      // silently discarded.
+      decoder.flushPartial().ifPresent(sink::next);
       sink.complete();
     }
 
@@ -535,10 +611,22 @@ public class OpenShiftApiClient {
       // simply never delivering another signal - nothing more to emit
       // either way, and the downstream FluxSink is already being (or has
       // already been) cancelled/disposed by whatever triggered this.
+      //
+      // Mission §12/§26-C: an explicit Stop/browser disconnect legitimately
+      // loses any not-yet-terminated buffered fragment - expected, not a
+      // truthfulness concern. Deliberately does NOT flush, does NOT call
+      // onPartialDroppedByError - silent by design, unlike hookOnError.
     }
 
     @Override
     protected void hookOnError(Throwable error) {
+      // Mission §12/§26-B: a genuine transport failure with a buffered
+      // fragment is real, unrecoverable loss the user did not cause -
+      // never re-emitted as if it were a complete line, but truthfully
+      // counted so the runtime status can say so.
+      if (decoder.hasPartialContent()) {
+        onPartialDroppedByError.run();
+      }
       sink.error(error);
     }
 
@@ -574,6 +662,22 @@ public class OpenShiftApiClient {
    * point decoding of the next physical line resumes normally. Memory
    * stays bounded (discarded bytes are never buffered at all) without
    * ever fabricating a second or third event for one real line.
+   *
+   * <h2>OS-1E final implementation — exact truncation boundary</h2>
+   *
+   * <p>The prior check fired on {@code buffer.size() >= maxLineBytes}
+   * evaluated <em>after</em> writing each content byte — so a physical
+   * line whose content was exactly {@code maxLineBytes} bytes, followed
+   * immediately by a real {@code \n}, was misreported {@code
+   * truncated=true} even though every byte was genuinely captured and
+   * nothing was ever lost. Fixed by checking {@code buffer.size() ==
+   * maxLineBytes} <em>before</em> writing an incoming content byte: a
+   * {@code \n} is always handled first (so a line landing exactly at the
+   * cap, terminated correctly, never reaches the overflow check at all),
+   * and only a content byte arriving once the buffer is already exactly
+   * full is genuine, provable overflow — evidence something was actually
+   * discarded, which is the only condition {@code truncated=true} may
+   * ever mean.
    */
   static final class LiveLineDecoder {
     private final int maxLineBytes;
@@ -602,25 +706,54 @@ public class OpenShiftApiClient {
           continue;
         }
         if (b == '\n') {
-          lines.add(new DecodedLine(finishLine(), false));
+          // A real terminator always wins, regardless of how full the
+          // buffer currently is (including exactly maxLineBytes) - this
+          // ordering is exactly what makes the exact-length case above
+          // correctly untruncated.
+          lines.add(new DecodedLine(finishLine(), false, false));
+        } else if (buffer.size() == maxLineBytes) {
+          // Safety valve (mission §11 "bounded maximum logical line
+          // size") - this content byte is the proof of genuine overflow:
+          // the buffer was already exactly full and a real \n was not
+          // the next byte. Flush exactly what was captured (never more
+          // than maxLineBytes) as ONE truncated event, discard THIS byte
+          // (never written into the buffer) and everything else until
+          // the real terminator - a long line can never become several
+          // fake ones. trimIncompleteUtf8Suffix below still applies, so
+          // the truncated content is never garbled, only shorter than
+          // the real line.
+          lines.add(new DecodedLine(finishLine(), true, false));
+          discardingOverlong = true;
         } else {
           buffer.write(b);
-          if (buffer.size() >= maxLineBytes) {
-            // Safety valve (mission §11 "bounded maximum logical line
-            // size") - a pod emitting one very long line with no newline
-            // at all must never grow this decoder's memory without
-            // bound. Exactly one event for this physical line -
-            // discardingOverlong swallows the remainder until the real
-            // terminator, so a long line can never become several fake
-            // ones. trimIncompleteUtf8Suffix below still applies, so the
-            // truncated content is never garbled, only shorter than the
-            // real line.
-            lines.add(new DecodedLine(finishLine(), true));
-            discardingOverlong = true;
-          }
         }
       }
       return lines;
+    }
+
+    /** {@code true} once {@link #onChunk} has buffered at least one not-yet-terminated content byte for the current physical line. */
+    boolean hasPartialContent() {
+      return buffer.size() > 0;
+    }
+
+    /**
+     * OS-1E final implementation (mission §12/§13/§26-A) — call exactly
+     * once, only on a genuinely clean upstream completion: if a fragment
+     * is currently buffered (the stream ended before its own {@code \n}
+     * ever arrived), returns it as one final {@link DecodedLine} marked
+     * {@code unterminated=true} — truthfully surfacing that this content
+     * was never confirmed as a complete physical line, never silently
+     * dropping it and never pretending a newline was observed. Empty if
+     * nothing was buffered (the stream ended exactly on a line boundary,
+     * or mid-{@link #discardingOverlong} — that physical line already
+     * produced its one {@code truncated=true} event and has nothing
+     * further to report).
+     */
+    Optional<DecodedLine> flushPartial() {
+      if (!hasPartialContent()) {
+        return Optional.empty();
+      }
+      return Optional.of(new DecodedLine(finishLine(), false, true));
     }
 
     private String finishLine() {

@@ -520,3 +520,203 @@ Frontend:
 
 No `frontend/e2e/*.spec.ts` changes were needed this pass — the existing
 capability pin from the original implementation pass required no update.
+
+## 14. OS-1E FINAL IMPLEMENTATION — approved live contract (exchangeToFlux establishment, exact long-line boundary, partial-final-line contract, CONNECTING state, terminal-SSE grace-close)
+
+A separate, owner-authorized text-only design-closure pass treated §13's
+own implementation as INPUT, not authority, and found it still contained
+one real defect the review-recovery pass had not caught, plus five
+genuine design gaps. This section records the resulting FINAL
+implementation, executed exactly per the approved contract (no redesign
+during implementation). None of the six items touch
+`ContextTargetProofCodec`/`ConnectionOperationSnapshot`/`resolveTargetPlan`,
+and none reopen any OS-1B/OS-1C/OS-1D/§13 `VERIFIED` requirement.
+
+### 14.1 Findings and fixes
+
+**1. A target was marked `ACTIVE` at `followTarget()` entry, before any
+HTTP response.** The review-recovery pass (§13) correctly bounded connect
+admission by `maxConcurrency`, but a target was still flagged `ACTIVE` the
+moment `followTarget()` began, not when the upstream actually established
+a connection. A target queued behind `maxConcurrency` admission (waiting
+for a permit) could therefore be displayed as active before it had even
+attempted to connect — the worked example that surfaced this:
+`resolvedTargets=10, maxConcurrency=2` could show `activeTargets=10,
+state=RUNNING`. **Fix:** `OpenShiftApiClient#followPodLog` now uses
+WebClient `exchangeToFlux` instead of `.retrieve().bodyToFlux(...)`. An
+HTTP `2xx` response invokes a caller-supplied `onEstablished` callback
+exactly once, before the response body is ever subscribed to; a non-2xx
+response routes through `response.createException().flatMapMany(Flux::error)`,
+reproducing `.retrieve()`'s own exception behavior exactly (all existing
+`classify()`-based `OpenShiftApiException.Kind` mapping — 401/403/404/TLS/
+network/timeout — is unchanged). `followTarget` now marks the target
+`CONNECTING` at entry and only transitions it to `ACTIVE` via
+`onEstablished`. Tests: `OpenShiftLiveTailProviderTest` CONNECT-1 through
+CONNECT-6 (`connect1_targetIsConnectingNotActiveUntilEstablished` ..
+`connect6_permitTimeoutReleasesConcurrencyCapacityButNeverMarksActive`).
+
+**2. A physical line of exactly `maxLineBytes` bytes followed by a real
+newline was falsely reported truncated.** `LiveLineDecoder#onChunk` wrote
+each incoming byte to the buffer first, then checked `buffer.size() >=
+maxLineBytes` — so a line of exactly `maxLineBytes` content bytes reached
+the overflow branch one byte before its own terminating newline could
+ever be seen. **Fix:** the check is now pre-write and newline-first: `if
+(b == '\n') { emit untruncated }`, `else if (buffer.size() ==
+maxLineBytes) { emit truncated; enter discardingOverlong }`, `else {
+buffer.write(b) }` — a newline is always checked before the overflow
+branch, so a line of exactly `maxLineBytes` bytes followed by a real
+newline never reaches the overflow branch at all. Tests:
+`OpenShiftApiClientLiveStreamTest#lineBoundary1_exactlyMaxLineBytesFollowedByNewlineIsNotTruncated`,
+`#lineBoundary2_oneByteOverMaxLineBytesIsTruncatedAtExactlyMaxLineBytes`,
+`#lineBoundary3_...` (the pre-existing overlong-line tests from §13 were
+re-verified passing unchanged against the new logic).
+
+**3. No final-partial-line flush existed for any termination cause.** A
+clean EOF, an error, or an explicit Stop/cancellation with a
+buffered-but-unterminated trailing fragment all silently discarded that
+fragment — no code path ever flushed it. **Fix:** three distinct, tested
+outcomes for three distinct termination causes: (a) clean EOF —
+`LineDecodingSubscriber#hookOnComplete` calls the new pure
+`LiveLineDecoder#flushPartial()` and emits exactly one final `DecodedLine`
+marked `unterminated=true`, surfaced as a bounded `UNTERMINATED_LIVE_LINE`
+count; (b) error/transport-failure — `hookOnError` discards the fragment
+silently but invokes the new `onPartialDroppedByError` callback exactly
+once if content was buffered, surfaced as a bounded `PARTIAL_LINE_DROPPED`
+count; (c) explicit Stop/cancellation — `hookOnCancel` silently discards
+with no warning at all, deliberately never invoking
+`onPartialDroppedByError` (a user-initiated Stop is not a data-loss
+condition worth warning about). `DecodedLine` gained a third field:
+`record DecodedLine(String content, boolean truncated, boolean
+unterminated)`. Tests: `OpenShiftApiClientLiveStreamTest`
+(`flushPartial_*` pure-decoder tests; `partialLineA_*` through
+`partialLineD_*` reactive tests covering clean EOF, error, and
+cancellation); `OpenShiftLiveTailProviderTest#unterminatedFinalLineBecomesAnEventAndReachesRuntimeStatusAsABoundedCount`,
+`#partialLineDroppedByErrorReachesRuntimeStatusAsABoundedCount`.
+
+**4. No `connectingTargets` count/state existed in `LiveSourceStatus`.**
+§13's `LiveSourceStatus` tracked resolved/active/reconnecting/stopped
+counts, but a target admitted-but-not-yet-established had no distinct
+representation, and the very first status snapshot of a session (before
+any target had even started its first connect attempt) could read as
+all-zero counts, which the derivation formula would misread as
+`NO_ACTIVE_TARGETS`. **Fix:** `LiveSourceStatus.State` gains `CONNECTING`;
+`LiveSourceStatus` gains a `connectingTargets` count satisfying the
+invariant `resolvedTargets = connectingTargets + activeTargets +
+reconnectingTargets + stoppedTargets` for every snapshot. Session state is
+derived by exact priority `STALE > EXPIRED > RUNNING > CONNECTING >
+DEGRADED > RECONNECTING > NO_ACTIVE_TARGETS` — one documented, tested
+completion of a genuine gap in the literal owner formula (some targets
+still connecting, some already permanently stopped, none active/
+reconnecting → `CONNECTING`, not `NO_ACTIVE_TARGETS`; this closes the gap
+without changing any owner-specified worked example's outcome).
+`SessionRuntimeState`'s constructor now takes the full target list and
+seeds every target's phase to `CONNECTING` synchronously before the
+session's first status push, closing the false-initial-`NO_ACTIVE_TARGETS`
+reading. Tests: `OpenShiftLiveTailProviderTest` state-derivation matrix
+(incl. `stateConnecting_evenWithSomeAlreadyPermanentlyStopped_untilTheOutcomeIsFullyKnown`)
+and initial-snapshot tests.
+
+**5. Establishment becoming its own signal risked conflating
+`STREAM_ACTIVE` with `OUTAGE_RECOVERY_BUDGET_RESET`.** Once a `2xx`
+response alone could mark a target `ACTIVE`, there was a risk that the
+same signal would also be used to reset the bounded reconnect-attempt
+budget — which would be wrong, since establishment proves nothing about
+whether real data actually resumed flowing. **Fix:** explicitly separated
+— `receivedRealDataThisAttempt` (the sole input to `budgetBasis`, §13's
+own `REAL_RECOVERY` mechanism) is set only by `.doOnNext` on the decoded
+line stream, never by the `onEstablished` callback. A reconnect attempt
+that establishes a `2xx` connection but never receives a line (e.g. an
+idle pod) still counts fully against `maxReconnectAttempts` on its next
+failure. Test:
+`OpenShiftLiveTailProviderTest#establishmentAloneWithoutGenuineDataDoesNotResetTheReconnectBudget`
+(a dedicated regression proving establishment-only attempts still exhaust
+the budget deterministically).
+
+**6. A terminal SSE session had no bounded grace-close, and the
+frontend's generic `EventSource` auto-reconnect could not distinguish a
+deliberate terminal close from an ordinary transport failure.** A session
+that reached `NO_ACTIVE_TARGETS`/`EXPIRED`/`STALE` correctly stopped
+producing new log/status events, but the SSE connection itself rode the
+full `connectionTimeout` on the wire — and if the server ever did close
+it, the browser's `EventSource` API gives no way to distinguish that from
+a network blip, so the frontend's existing bounded generic reconnect logic
+could keep trying to reconnect to a session that will never resume.
+**Fix (backend, generic — `LiveTailService`, not OpenShift-specific):** a
+new `LiveSourceStatus.State#isTerminal()` method; a bounded, one-shot,
+CAS-guarded grace-close timer (`terminalGrace = min(2×heartbeatInterval,
+10s)`) starts the first time a terminal state is observed in the status
+stream, firing a `Sinks.Empty<Void> terminalCloseSignal` that
+`Flux.merge(logEvents, statusTracker, status).takeUntilOther(...)`
+consumes to close the *entire* SSE response (heartbeat included); an
+explicit Stop may still close immediately, unaffected. **Fix (frontend —
+`useLiveTail.ts`):** a new `sourceStatusRef` mirrors `sourceStatus` state
+synchronously (read inside the async `onerror` EventSource callback to
+avoid a stale-closure read); `onerror` now checks
+`isTerminalSourceState(sourceStatusRef.current.state)` (exported from
+`liveTailTypes.ts`) *before* the existing generic bounded-reconnect logic
+— if terminal, it transitions straight to `'stopped'` (events retained, no
+reconnect timer armed) instead of scheduling a reconnect; ordinary
+non-terminal transport failures are entirely unaffected and continue to
+use the existing bounded generic reconnect. `LiveTailPanel.tsx`'s
+`sourceStatusBadge` guard is widened to include `connectionState ===
+'stopped'` so the specific terminal reason (SESSION EXPIRED / SCOPE
+CHANGED — RESTART LIVE / NO ACTIVE STREAMS) stays visible after this new
+path fires, while an ordinary user-initiated Stop (source state still
+RUNNING/DEGRADED/CONNECTING/RECONNECTING) is unaffected and still shows
+the plain "STOPPED" label; a new `CONNECTING` badge case was also added.
+Docker/Fixture (always NOMINAL/RUNNING, never terminal) are unaffected by
+construction. Tests: `useLiveTail.test.ts` (new terminal-suppresses-
+reconnect describe block, 5 tests, incl. one using
+`MockEventSource.instances.length` before/after `vi.advanceTimersByTime`
+to prove no new `EventSource` is created after a terminal stop — the
+initial `.url`-comparison approach was rejected during authoring because a
+new `EventSource` would carry an identical URL and the comparison would
+trivially pass regardless); `LiveTailPanel.test.tsx` (3 new tests: the
+CONNECTING badge, terminal-reason-preserved-after-stop, ordinary-Stop-
+unaffected).
+
+### 14.2 Validation (final implementation pass)
+
+| Check | Result |
+|---|---|
+| Backend compile (`./mvnw -q -o clean compile`) | `PASS` |
+| Backend full test suite (`./mvnw -q -o clean test`) | `PASS` — exit 0, 0 `ERROR]` matches |
+| `OpenShiftLiveTailProviderTest` + `OpenShiftApiClientLiveStreamTest` (targeted) | `PASS` — 69/69 (41 + 28), `Tests run: 69, Failures: 0, Errors: 0, Skipped: 0` |
+| Frontend typecheck (`npm run typecheck`) | `PASS` |
+| Frontend production build (`npm run build`) | `PASS` |
+| `useLiveTail.test.ts` + `LiveTailPanel.test.tsx` (targeted) | `PASS` — 92/92 |
+| Frontend full unit suite (`npx vitest run`) | `PASS` — 782/782, 67/67 test files |
+| Playwright — full suite | `PASS` — 287/287 |
+| `TEST-INFRA-1` PNG restoration after the full E2E run | `PASS` — `git checkout --` applied to every touched historical PNG under `docs/verification/`; empty PNG diff confirmed afterward |
+| `git status --porcelain` (unrelated-change audit) | `PASS` — exactly the 13 OS-1E-final-implementation files (6 backend main/test, 5 frontend main/test, 2 docs), no unrelated diff, no binary diff |
+
+### 14.3 Files changed (final implementation pass, in addition to §10/§11/§13.3)
+
+Backend:
+- `backend/src/main/java/com/logexplorer/source/openshift/OpenShiftApiClient.java` (`exchangeToFlux`; `DecodedLine` gains `unterminated`; `LiveLineDecoder` pre-write overflow reorder; `hasPartialContent`/`flushPartial`; `LineDecodingSubscriber` gains `onPartialDroppedByError` and distinct `hookOnComplete`/`hookOnError`/`hookOnCancel` semantics)
+- `backend/src/main/java/com/logexplorer/core/model/LiveSourceStatus.java` (`connectingTargets`; `State.CONNECTING`; `State#isTerminal()`)
+- `backend/src/main/java/com/logexplorer/source/openshift/OpenShiftLiveTailProvider.java` (rewritten: `markConnecting`/`onEstablished` wiring, `gatedFollow`'s permit-timeout never calls `onEstablished`, `receivedRealDataThisAttempt` driven only by `.doOnNext`, `SessionRuntimeState` seeds `CONNECTING` phases from the full target list, widened `snapshot()` derivation formula, `incrementUnterminated`/`incrementPartialDropped`, `appendBoundedCount` helper)
+- `backend/src/main/java/com/logexplorer/api/live/LiveTailService.java` (`StatusPayload` gains `connectingTargets`; terminal-SSE grace-close: `terminalGrace`, `terminalCloseSignal`, `terminalTimerStarted`, `takeUntilOther`)
+- Rewritten tests: `OpenShiftApiClientLiveStreamTest` (69 total with `OpenShiftLiveTailProviderTest` — new line-boundary and partial-line tests), `OpenShiftLiveTailProviderTest` (41 tests: `ScriptedAttempt` harness, CONNECT-1..6, state-derivation matrix, budget-separation regression)
+
+Frontend:
+- `frontend/src/features/live/liveTailTypes.ts` (`LiveSourceState` gains `'CONNECTING'`; new `isTerminalSourceState`; `connectingTargets` field)
+- `frontend/src/features/live/useLiveTail.ts` (`sourceStatusRef`; terminal-state check inside `onerror` before the generic reconnect path)
+- `frontend/src/features/live/LiveTailPanel.tsx` (badge guard widened to `'stopped'`; new `CONNECTING` case)
+- Updated tests: `useLiveTail.test.ts` (terminal-reconnect-suppression describe block), `LiveTailPanel.test.tsx` (CONNECTING + terminal-reason tests)
+
+Documentation:
+- `docs/governance/OWNER_REQUIREMENTS_REGISTER.md` (new `### 12m.` section, OS-1E-23..32, new §14 narrative paragraph)
+- `docs/architecture/OPENSHIFT_DIRECT_LOGGING_ARCHITECTURE_ASSESSMENT.md` (new `[EVIDENCE, established by the OS-1E FINAL IMPLEMENTATION]` note in §20)
+
+No `frontend/e2e/*.spec.ts` changes were needed this pass — the existing
+capability pin required no update, and the full E2E suite passed
+unchanged (287/287).
+
+**Stacked-PR CI note.** PR #43's base is `os/1d-openshift-context-correlation`,
+not `main`; `.github/workflows/ci.yml` only triggers on `pull_request`/
+`push` to `main`, so PR #43 structurally never receives automatic CI. All
+validation above was performed and is reported locally. This establishes
+`IMPLEMENTATION_COMPLETE`, not `MERGE_AUTHORIZED` — merge authorization
+remains an explicit owner decision, unchanged from every prior OS-1x
+slice's own stacked-PR posture.

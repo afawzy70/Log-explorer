@@ -681,7 +681,7 @@ section for the full before/after account.
 | OS-1E-16 | A physical overlong line produces at most ONE `CanonicalLogEvent` (marked truncated), never several fake ones; every further byte of that same physical line is discarded (never buffered, never emitted) until the real terminating `\n` | `VERIFIED` | `OpenShiftApiClient.DecodedLine`/`LiveLineDecoder` (`discardingOverlong` mode); `OpenShiftApiClientLiveStreamTest` (5 dedicated overlong-line tests, incl. a 200,000-byte physical line and a UTF-8-boundary truncation case) |
 | OS-1E-17 | Overlong-line truncation is surfaced to the live runtime status as one bounded, growing COUNT ("N overlong lines truncated"), never one new warning string per occurrence | `VERIFIED` | `OpenShiftLiveTailProvider.SessionRuntimeState#incrementOverlong`; `OpenShiftLiveTailProviderTest#overlongLineTruncationReachesRuntimeStatusAsABoundedCount` |
 | OS-1E-18 | Connect/reconnect ADMISSION is genuinely bounded by `DirectPodLogProperties#maxConcurrency` — distinct from `maxTargets` (the active-stream bound) — via a non-blocking per-session permit gate, releasing on first data/error/completion or a bounded timeout; deliberately not `flatMap(..., maxConcurrency)`, which would starve every target past the first `maxConcurrency` (each stream is intentionally infinite) | `VERIFIED` | `OpenShiftLiveTailProvider#gatedFollow`/`acquirePermit`; `OpenShiftLiveTailProviderTest` (`connectAttemptConcurrencyIsBoundedByMaxConcurrency_neverAllTargetsAtOnce`, `allAuthorizedTargetsEventuallyBecomeActive_oneLongLivedStreamDoesNotStarveOthers`, `cancellationReleasesAPendingConnectPermit_queuedTargetIsNeverStrandedForever`, `aFailedConnectReleasesItsPermitForTheNextQueuedTarget`) |
-| OS-1E-19 | A new request/session-scoped `LiveSourceStatus` (state + resolved/active/reconnecting/stopped target counts + CURRENT warnings, never a delta) replaces the original single-warning channel; the correct state (`RUNNING`/`DEGRADED`/`RECONNECTING`/`NO_ACTIVE_TARGETS`/`EXPIRED`/`STALE`) is derived from live counts, never inferred from warning text | `VERIFIED` | New `core.model.LiveSourceStatus`; `OpenShiftLiveTailProvider.SessionRuntimeState`; `OpenShiftLiveTailProviderTest` (`statusRunning_*`, `statusDegraded_*`, `statusReconnecting_*`, `statusNoActiveTargets_*`, `statusExpired_*`, `statusRetainsEveryCurrentlyStoppedTargetsTruth_*`) |
+| OS-1E-19 | A new request/session-scoped `LiveSourceStatus` (state + resolved/active/reconnecting/stopped target counts + CURRENT warnings, never a delta) replaces the original single-warning channel; the correct state (`RUNNING`/`DEGRADED`/`RECONNECTING`/`NO_ACTIVE_TARGETS`/`EXPIRED`/`STALE`) is derived from live counts, never inferred from warning text | `VERIFIED`, **extended by OS-1E-23 below** | New `core.model.LiveSourceStatus`; `OpenShiftLiveTailProvider.SessionRuntimeState`; `OpenShiftLiveTailProviderTest` (`statusRunning_*`, `statusDegraded_*`, `statusReconnecting_*`, `statusNoActiveTargets_*`, `statusExpired_*`, `statusRetainsEveryCurrentlyStoppedTargetsTruth_*`) — the state enum and count set are widened by the final implementation pass (a `CONNECTING` state/count), the underlying "full current snapshot, never a delta" design is unchanged |
 | OS-1E-20 | Zero active AND zero reconnecting targets is never displayed as plain LIVE in the rendered frontend, even though the SSE heartbeat legitimately keeps the connection open to deliver that truth | `VERIFIED` (real rendered-browser + component evidence) | `LiveTailPanel.tsx#sourceStatusBadge` (badge override for `NO_ACTIVE_TARGETS`/`EXPIRED`/`STALE` while `connectionState` is `'live'`/`'paused'`); `LiveTailPanel.test.tsx` (5 dedicated override tests); DEGRADED still reads LIVE with an appended active/resolved count, never hidden |
 | OS-1E-21 | A generation change (reconnect) during a running live session marks that OLD session `STALE` and terminates its own target streams via a bounded, in-memory-only periodic check (never a cluster/Watch call) — it never migrates onto the new connection's credentials | `VERIFIED` | `OpenShiftLiveTailProvider#detectStaleness`/`startSession`'s `takeUntilOther(staleSignal)`; `OpenShiftLiveTailProviderTest#generationChangeMarksTheOldSessionStaleAndStopsIt_neverMigratesCredentials` |
 | OS-1E-22 | A scope change (project/workload/pod/container) during an immutable live-target snapshot is surfaced as `STALE`/`SCOPE_CHANGED_RESTART_LIVE`, never silently displayed as if it reflected the newly-selected scope | `VERIFIED` | `OpenShiftLiveTailProvider#detectStaleness`; `OpenShiftLiveTailProviderTest#scopeChangeWhileImmutableSnapshotActiveIsSurfacedAsStale` |
@@ -698,6 +698,51 @@ full backend/frontend/E2E validation. `REL-1` (§7, §7b, §7c) remains
 confirmed `APPROVED_PENDING`, untouched. `REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`,
 consistent with every prior OS-1x slice — this recovery neither touched
 nor could convert that status.
+
+### 12m. OS-1E FINAL IMPLEMENTATION — approved live contract (exchangeToFlux establishment, exact long-line boundary, partial-final-line contract, CONNECTING state, terminal-SSE grace-close)
+
+A separate, owner-authorized design-closure pass (text-only, no code) re-
+examined §12l's own implementation as INPUT rather than authority, and
+found it still contained one real defect the review-recovery pass had not
+caught, plus several genuine design gaps. This section records the
+resulting FINAL implementation. See
+`docs/verification/OS_1E_OPENSHIFT_LIVE_REPORT.md`'s own §14 for the full
+before/after account and worked examples.
+
+| # | Finding | Status |
+|---|---|---|
+| 1 | A target was marked `ACTIVE` at `followTarget()` entry — before any HTTP response, before any log line — so a target still queued behind `maxConcurrency` admission could be displayed as active; `resolvedTargets=10, maxConcurrency=2` could show `activeTargets=10, RUNNING` | `RESOLVED` |
+| 2 | A physical line of exactly `maxLineBytes` bytes followed by a real newline was falsely reported `truncated=true` — the original overflow check ran on the post-write buffer size, one byte too late | `RESOLVED` |
+| 3 | A clean EOF (or an error, or an explicit Stop) with a buffered-but-unterminated trailing fragment silently dropped that fragment — no flush of a final partial line existed at all, for any termination cause | `RESOLVED` |
+| 4 | No `connectingTargets` count/state existed — a target waiting for admission had no distinct representation in `LiveSourceStatus`, collapsing into either "not yet counted" or the pre-existing `ACTIVE` defect (finding 1) | `RESOLVED` |
+| 5 | `STREAM_ACTIVE` (HTTP `2xx` established) and `OUTAGE_RECOVERY_BUDGET_RESET` (a genuine post-reconnect data event) were at risk of being conflated once establishment became its own distinct signal — establishment alone must never reset the bounded reconnect budget | `RESOLVED` (explicit separation, not merely preserved) |
+| 6 | A terminal SSE session (`NO_ACTIVE_TARGETS`/`EXPIRED`/`STALE`) rode the full `connectionTimeout` on the wire, and the frontend's generic `EventSource` auto-reconnect had no way to distinguish a deliberate terminal server-close from an ordinary transport failure, risking an infinite reconnect loop against a session that will never resume | `RESOLVED` |
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| OS-1E-23 | `OpenShiftApiClient#followPodLog` uses WebClient `exchangeToFlux`; an HTTP `2xx` response invokes a caller-supplied `onEstablished` callback exactly once, independent of any log line arriving; non-2xx routes through `response.createException().flatMapMany(Flux::error)` preserving all existing `classify()`-based exception mapping unchanged | `VERIFIED` | `OpenShiftApiClient#followPodLog`; `OpenShiftApiClientLiveStreamTest` (establishment-callback tests); `OpenShiftLiveTailProviderTest` CONNECT-1..6 |
+| OS-1E-24 | A target is marked `CONNECTING` at `followTarget()` entry and only transitions to `ACTIVE` via the `onEstablished` callback (HTTP `2xx`) — never at entry, never on a bare connect-permit timeout | `VERIFIED` | `OpenShiftLiveTailProvider#followTarget`/`SessionRuntimeState#markConnecting`/`markActive`; `OpenShiftLiveTailProviderTest#connect1_targetIsConnectingNotActiveUntilEstablished` .. `#connect6_permitTimeoutReleasesConcurrencyCapacityButNeverMarksActive` |
+| OS-1E-25 | `LiveSourceStatus` gains a `connectingTargets` count and a `CONNECTING` state; the invariant `resolvedTargets = connectingTargets + activeTargets + reconnectingTargets + stoppedTargets` holds for every snapshot; session state is derived by exact priority `STALE > EXPIRED > RUNNING > CONNECTING > DEGRADED > RECONNECTING > NO_ACTIVE_TARGETS`, with a documented, tested completion for the one gap in the literal owner formula (some targets connecting, some already permanently stopped, none active/reconnecting → `CONNECTING`, not `NO_ACTIVE_TARGETS`) | `VERIFIED` | `core.model.LiveSourceStatus` (`State.CONNECTING`, `connectingTargets`); `OpenShiftLiveTailProvider.SessionRuntimeState#snapshot`; `OpenShiftLiveTailProviderTest` (state-derivation tests incl. `stateConnecting_evenWithSomeAlreadyPermanentlyStopped_untilTheOutcomeIsFullyKnown`) |
+| OS-1E-26 | Every resolved target's phase is seeded to `CONNECTING` synchronously before the session's first status push, so the very first snapshot never falsely reads as `NO_ACTIVE_TARGETS` before any connect attempt has even started | `VERIFIED` | `OpenShiftLiveTailProvider.SessionRuntimeState` constructor (seeds phases from the full target list); `OpenShiftLiveTailProviderTest` initial-snapshot tests |
+| OS-1E-27 | `maxConcurrency` bounds simultaneous connect/reconnect OPEN attempts only (a permit is released on `2xx` establishment, on any terminating signal, or on a bounded `connectPermitTimeout`); a permit-timeout release never marks a target `ACTIVE` and never fabricates establishment | `VERIFIED` | `OpenShiftLiveTailProvider#gatedFollow` (`releasePermitOnce`, timeout path never calls `onEstablished`); `OpenShiftLiveTailProviderTest#connect6_permitTimeoutReleasesConcurrencyCapacityButNeverMarksActive` |
+| OS-1E-28 | `STREAM_ACTIVE` (HTTP `2xx` establishment) is explicitly separated from `OUTAGE_RECOVERY_BUDGET_RESET` (a genuine post-reconnect `DecodedLine`, driven by `.doOnNext`, never by `onEstablished`) — establishment alone, without any real data, does not reset the bounded reconnect budget, since `tailLines=0` on every reconnect makes any real data provably non-replayed | `VERIFIED` | `OpenShiftLiveTailProvider#followTarget`/`budgetBasis` (`receivedRealDataThisAttempt` set only by `.doOnNext`); `OpenShiftLiveTailProviderTest#establishmentAloneWithoutGenuineDataDoesNotResetTheReconnectBudget` |
+| OS-1E-29 | A physical line whose content is exactly `maxLineBytes` bytes followed by a real newline is reported untruncated; a physical line whose content exceeds `maxLineBytes` produces exactly one truncated event bounded at `maxLineBytes` bytes (UTF-8-safe), discarding every further byte of that same physical line until the real terminating newline | `VERIFIED` | `OpenShiftApiClient.LiveLineDecoder#onChunk` (pre-write overflow check reordered: newline checked before the `buffer.size() == maxLineBytes` branch); `OpenShiftApiClientLiveStreamTest#lineBoundary1_exactlyMaxLineBytesFollowedByNewlineIsNotTruncated`, `#lineBoundary2_*`, `#lineBoundary3_*` (plus pre-existing overlong-line tests re-verified) |
+| OS-1E-30 | A clean EOF with a buffered, unterminated trailing fragment emits exactly one final `DecodedLine` marked `unterminated=true` (bounded `UNTERMINATED_LIVE_LINE` count); an error/transport-failure with a buffered fragment discards it silently, never emitting it as a complete event (bounded `PARTIAL_LINE_DROPPED` count); an explicit Stop/cancellation with a buffered fragment silently discards it with no warning at all — three distinct, tested outcomes for three distinct termination causes | `VERIFIED` | `OpenShiftApiClient.LiveLineDecoder#hasPartialContent`/`flushPartial`; `LineDecodingSubscriber#hookOnComplete`/`hookOnError`/`hookOnCancel`; `OpenShiftApiClientLiveStreamTest` (`flushPartial_*` pure-decoder tests, `partialLineA_*`..`partialLineD_*` reactive tests); `OpenShiftLiveTailProviderTest#unterminatedFinalLineBecomesAnEventAndReachesRuntimeStatusAsABoundedCount`, `#partialLineDroppedByErrorReachesRuntimeStatusAsABoundedCount` |
+| OS-1E-31 | A terminal source state (`NO_ACTIVE_TARGETS`/`EXPIRED`/`STALE`) triggers a bounded, one-shot, server-side SSE grace-close (`terminalGrace = min(2×heartbeatInterval, 10s)`) instead of riding the full `connectionTimeout`; an explicit Stop may still close immediately | `VERIFIED` | `LiveTailService` (`LiveSourceStatus.State#isTerminal()`, CAS-guarded `terminalTimerStarted`, `Sinks.Empty<Void> terminalCloseSignal`, `Flux.merge(...).takeUntilOther(terminalCloseSignal.asMono())`) — generic, not OpenShift-specific |
+| OS-1E-32 | The frontend never performs the generic automatic `EventSource` reconnect when the most-recently-received source state is terminal; instead it transitions to a stopped/restart-required UI state, retaining visible events, while ordinary non-terminal transport failures continue to use the existing bounded generic reconnect unchanged; the terminal-caused stop preserves its specific badge reason (never reverting to a generic "STOPPED" label), and Docker/Fixture (always non-terminal) are unaffected | `VERIFIED` (real rendered-component test evidence) | `useLiveTail.ts` (`sourceStatusRef`, `isTerminalSourceState` check inside `onerror` before the generic reconnect path); `liveTailTypes.ts#isTerminalSourceState`; `LiveTailPanel.tsx#sourceStatusBadge` (guard widened to include `connectionState === 'stopped'`, new `CONNECTING` case); `useLiveTail.test.ts` (terminal-suppresses-reconnect describe block, 5 tests incl. `MockEventSource.instances.length` proof of no new EventSource); `LiveTailPanel.test.tsx` (CONNECTING badge + terminal-reason-preserved/ordinary-Stop-unaffected tests) |
+
+**OS-1E FINAL IMPLEMENTATION pass.** 10 new rows (OS-1E-23 through
+OS-1E-32); OS-1E-19's evidence annotated in place to point at this
+section's widened state/count model, its underlying requirement
+unchanged. No `ContextTargetProofCodec`/`ConnectionOperationSnapshot`/
+`resolveTargetPlan` design touched. No historical search, context, or
+correlation behavior changed. `TEST-INFRA-1` remains
+`APPROVED_PENDING_HARDENING`, untouched — re-confirmed via the same
+PNG-restoration mitigation after this pass's own full backend/frontend/E2E
+validation. `REL-1` (§7, §7b, §7c) remains confirmed `APPROVED_PENDING`,
+untouched. `REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`, consistent with every
+prior OS-1x slice — this pass neither touched nor could convert that
+status. `UNTRACKED_OWNER_REQUIREMENTS=0`.
 
 ---
 
@@ -1087,6 +1132,56 @@ check that terminates the old session's own target streams and reports
 design touched; no OS-1B/OS-1C/OS-1D `VERIFIED` row reopened. `TEST-INFRA-1`
 remains `APPROVED_PENDING_HARDENING`, untouched. `REL_1` (§7, §7b, §7c)
 remains confirmed `APPROVED_PENDING`, untouched. `REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`.
+
+**OS-1E FINAL IMPLEMENTATION pass (§12m above).** Reconciled against
+`docs/verification/OS_1E_OPENSHIFT_LIVE_REPORT.md`'s own §14. A separate,
+text-only design-closure pass (no code) treated §12l's own implementation
+as input, not authority, and found one real defect the review-recovery
+pass had not caught, plus five genuine design gaps, all closed as
+OS-1E-23 through OS-1E-32: (1) a target was marked `ACTIVE` at
+`followTarget()` entry, before any HTTP response — fixed by switching
+`OpenShiftApiClient#followPodLog` to WebClient `exchangeToFlux`, so an
+HTTP `2xx` response (not connection-attempt start, not the first log
+line) is the sole evidence of establishment, via a caller-supplied
+`onEstablished` callback invoked exactly once; (2) a physical line of
+exactly `maxLineBytes` bytes followed by a real newline was falsely
+truncated — fixed by reordering `LiveLineDecoder`'s overflow check so the
+newline is always checked before the `buffer.size() == maxLineBytes`
+branch; (3) no final-partial-line flush existed for any termination cause
+— fixed with three distinct, tested outcomes: clean EOF flushes one
+`unterminated=true` event (bounded `UNTERMINATED_LIVE_LINE` count), an
+error discards the fragment silently (bounded `PARTIAL_LINE_DROPPED`
+count), and an explicit Stop/cancellation discards it with no warning at
+all; (4) no `connectingTargets` count/state existed — fixed by adding
+`LiveSourceStatus.State.CONNECTING` and a `connectingTargets` count
+satisfying `resolvedTargets = connecting + active + reconnecting +
+stopped` for every snapshot, derived by exact priority `STALE > EXPIRED >
+RUNNING > CONNECTING > DEGRADED > RECONNECTING > NO_ACTIVE_TARGETS`, with
+one documented, tested completion of a genuine gap in the literal owner
+formula; every resolved target's phase is now seeded to `CONNECTING`
+before the session's first status push, closing a false initial
+`NO_ACTIVE_TARGETS` reading; (5) becoming a distinct establishment signal
+created a risk of conflating `STREAM_ACTIVE` with
+`OUTAGE_RECOVERY_BUDGET_RESET` — resolved by an explicit separation: only
+a genuine post-reconnect `DecodedLine` (via `.doOnNext`, never via
+`onEstablished`) resets the bounded reconnect budget, since `tailLines=0`
+on every reconnect makes such data provably non-replayed; (6) a terminal
+SSE session rode the full `connectionTimeout` and the frontend's generic
+`EventSource` auto-reconnect could not distinguish a deliberate terminal
+server-close from an ordinary transport failure — fixed with a generic,
+bounded, one-shot server-side grace-close (`min(2×heartbeatInterval,
+10s)`) via `LiveSourceStatus.State#isTerminal()`, and a frontend
+`sourceStatusRef` consulted inside `onerror` to suppress the generic
+reconnect specifically (and only) when the last-known source state was
+terminal, transitioning instead to a stopped/restart-required UI state
+that retains visible events and preserves the specific terminal badge
+reason. `maxConcurrency`'s permit-release-on-timeout path is unchanged in
+effect but now explicitly never calls `onEstablished`. No
+`ContextTargetProofCodec`/`ConnectionOperationSnapshot`/`resolveTargetPlan`
+design touched; no OS-1B/OS-1C/OS-1D/§12l `VERIFIED` row reopened (only
+OS-1E-19's evidence annotated in place). `TEST-INFRA-1` remains
+`APPROVED_PENDING_HARDENING`, untouched. `REL_1` (§7, §7b, §7c) remains
+confirmed `APPROVED_PENDING`, untouched. `REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`.
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0

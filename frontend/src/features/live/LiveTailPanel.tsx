@@ -266,23 +266,35 @@ function liveBadgeText(state: LiveTailHandle['connectionState']): string {
 }
 
 /**
- * OS-1E review recovery (mission §11/§14) — overrides the plain
- * transport-level badge ONLY while the transport itself reads as healthy
- * (`'live'`/`'paused'`) but the SOURCE's own per-target truth says
- * otherwise. Returns `null` for `RUNNING`/`DEGRADED` (DEGRADED still
- * shows "LIVE", with the active/resolved count appended separately - the
+ * OS-1E final implementation (mission §11/§14/§15/§18/§20) — overrides
+ * the plain transport-level badge while the transport itself reads as
+ * healthy (`'live'`/`'paused'`) but the SOURCE's own per-target truth
+ * says otherwise, AND while `'stopped'` if that stop was caused by a
+ * terminal source state rather than an ordinary user Stop (`useLiveTail.ts`'s
+ * own `onerror` handler transitions to `'stopped'` for a terminal source
+ * state — this keeps that terminal reason visible afterward, rather than
+ * silently reverting to a generic "STOPPED" once the transport closes).
+ * A `'stopped'` caused by a normal, healthy Stop is unaffected: {@code
+ * sourceStatus.state} in that case is whatever it last legitimately was
+ * (RUNNING/DEGRADED/CONNECTING/RECONNECTING), none of which this switch
+ * matches, so the plain "STOPPED" label renders exactly as before.
+ *
+ * <p>Returns `null` for `RUNNING`/`DEGRADED` (DEGRADED still shows
+ * "LIVE", with the active/resolved count appended separately - the
  * session genuinely IS still live, just not complete) and for every
- * connectionState the transport itself already renders distinctly
- * (`connecting`/`reconnecting`/`stopped`/`failed`/`idle`).
+ * `connectionState` the transport itself already renders distinctly
+ * (`connecting`/`reconnecting`/`failed`/`idle`).
  */
 function sourceStatusBadge(
   connectionState: LiveTailHandle['connectionState'],
   sourceStatus: LiveTailHandle['sourceStatus'],
 ): { text: string; tone: string } | null {
-  if (connectionState !== 'live' && connectionState !== 'paused') {
+  if (connectionState !== 'live' && connectionState !== 'paused' && connectionState !== 'stopped') {
     return null;
   }
   switch (sourceStatus.state) {
+    case 'CONNECTING':
+      return { text: 'CONNECTING', tone: styles.toneConnecting };
     case 'NO_ACTIVE_TARGETS':
       return { text: 'NO ACTIVE STREAMS', tone: styles.toneFailed };
     case 'EXPIRED':
