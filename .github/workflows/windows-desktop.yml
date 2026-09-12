@@ -151,7 +151,14 @@ jobs:
       # `dotnet publish`, so a restore failure is diagnosable on its own
       # step (never masked by, or confused with, a publish-time failure),
       # and `publish --no-restore` below can never silently perform its
-      # own second, different dependency resolution.
+      # own second, different dependency resolution. Restore is invoked
+      # with the SAME `-r win-x64` RuntimeIdentifier as the publish step
+      # below - a real defect this bootstrap pass's own first CI run
+      # caught: restoring without `-r win-x64` produces a
+      # `project.assets.json` with no RID-specific target at all, so the
+      # later `publish --no-restore -r win-x64` fails with
+      # `NETSDK1047: ... doesn't have a target for 'net8.0-windows/win-x64'`
+      # even though restore itself succeeded cleanly.
       #
       # BOOTSTRAP NOTE (platform/windows-dotnet-nuget-restore-hardening,
       # first pass): `desktop/launcher/packages.lock.json` does not exist
@@ -197,7 +204,7 @@ jobs:
           while ($attempt -lt $maxAttempts) {
             $attempt++
             Write-Host "---- dotnet restore attempt $attempt/$maxAttempts ----"
-            $output = & dotnet restore LogExplorerLauncher.csproj --verbosity diagnostic 2>&1
+            $output = & dotnet restore LogExplorerLauncher.csproj -r win-x64 --verbosity diagnostic 2>&1
             $exitCode = $LASTEXITCODE
             $output | ForEach-Object { Write-Host $_ }
             if ($exitCode -eq 0) { break }
