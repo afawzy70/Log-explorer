@@ -1,6 +1,8 @@
 package com.logexplorer.source.openshift;
 
 import com.logexplorer.core.model.CanonicalLogEvent;
+import com.logexplorer.core.model.FollowRequest;
+import com.logexplorer.core.model.LiveFollowResult;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceCapabilities;
@@ -45,10 +47,13 @@ public class OpenShiftLogSource implements LogSource {
 
   private final OpenShiftSession session;
   private final DirectPodLogProvider directPodLogProvider;
+  private final OpenShiftLiveTailProvider liveTailProvider;
 
-  public OpenShiftLogSource(OpenShiftSession session, DirectPodLogProvider directPodLogProvider) {
+  public OpenShiftLogSource(
+      OpenShiftSession session, DirectPodLogProvider directPodLogProvider, OpenShiftLiveTailProvider liveTailProvider) {
     this.session = session;
     this.directPodLogProvider = directPodLogProvider;
+    this.liveTailProvider = liveTailProvider;
   }
 
   @Override
@@ -71,17 +76,22 @@ public class OpenShiftLogSource implements LogSource {
     // reusing the identical generic /api/v1/logs/context endpoint and
     // ContextResult/gap/truncation UI every other source already uses -
     // no OpenShift-only contract, tested end to end (see the OS-1D
-    // verification report). liveTail remains OS-1E's job; rawLogQL is
-    // Loki-only and this is not Loki; serviceDiscovery/composeProjectScoping
-    // are Docker-shaped concepts this source expresses through its own
-    // OS-1B scope endpoints instead, not this seven-boolean record;
-    // queryStatistics was never implemented for any source. Pagination is
-    // not a field of this record (see api.dto.SearchResponseDto's own
-    // "pagination" reporting, which is derived from whether a result
-    // actually carries a nextCursor - OS-1C's own DirectPodLogProvider
-    // never produces one, so that stays honestly false without this
-    // source needing to say so twice).
-    return new SourceCapabilities(true, false, false, false, false, true, false);
+    // verification report). liveTail is now also true (OS-1E):
+    // OpenShiftLiveTailProvider reuses this exact same OS-1B scope /
+    // OS-1C bounded-fan-out / OS-1D atomic-snapshot foundation for a
+    // genuinely streaming, bounded-reconnect follow=true tail over the
+    // existing generic Live architecture - flipped only after its own
+    // full implementation and test matrix passed (see the OS-1E
+    // verification report). rawLogQL is Loki-only and this is not Loki;
+    // serviceDiscovery/composeProjectScoping are Docker-shaped concepts
+    // this source expresses through its own OS-1B scope endpoints instead,
+    // not this seven-boolean record; queryStatistics was never implemented
+    // for any source. Pagination is not a field of this record (see
+    // api.dto.SearchResponseDto's own "pagination" reporting, which is
+    // derived from whether a result actually carries a nextCursor - OS-1C's
+    // own DirectPodLogProvider never produces one, so that stays honestly
+    // false without this source needing to say so twice).
+    return new SourceCapabilities(true, true, false, false, false, true, false);
   }
 
   /**
@@ -147,5 +157,33 @@ public class OpenShiftLogSource implements LogSource {
   @Override
   public List<String> describeScopeWarnings(SearchRequest request) {
     return directPodLogProvider.describeScopeWarnings(request);
+  }
+
+  /**
+   * OS-1E — direct {@code follow=true} live tail over the current OS-1B
+   * scope, delegating to {@link OpenShiftLiveTailProvider}. {@code
+   * request}'s {@code services}/{@code composeProject} fields are
+   * deliberately ignored, exactly like {@link #search} ignores every
+   * {@code SearchRequest} field but the narrow-context pair — this source
+   * always reads live target identity from {@link OpenShiftSession#scope()}
+   * itself (mission §5), never from caller-supplied fields.
+   */
+  @Override
+  public Flux<CanonicalLogEvent> follow(FollowRequest request) {
+    return liveTailProvider.follow().events();
+  }
+
+  /**
+   * OS-1E — the one OpenShift-specific override of {@link
+   * #followWithWarnings}: only this source's live tail can genuinely have
+   * a per-target partial-failure/reconnect/cap truth to report (mission
+   * §28/§29). Built from exactly one {@link OpenShiftLiveTailProvider#follow()}
+   * call so the returned events and warnings correlate to the same live
+   * session (see {@link LiveFollowResult}'s own javadoc) — never two
+   * independent calls that would each start their own cluster streams.
+   */
+  @Override
+  public Mono<LiveFollowResult> followWithWarnings(FollowRequest request) {
+    return Mono.fromSupplier(liveTailProvider::follow);
   }
 }

@@ -14,10 +14,22 @@ export type LiveConnectionState =
   | 'stopped'
   | 'failed';
 
-/** The "status" SSE event's payload - mirrors backend `LiveTailService.StatusPayload` (IMPLEMENTATION_PLAN.md "Phase J"). */
+/**
+ * The "status" SSE event's payload - mirrors backend
+ * `LiveTailService.StatusPayload` (IMPLEMENTATION_PLAN.md "Phase J").
+ *
+ * `warnings` (OS-1E) is the truthful partial-live-state disclosure
+ * channel - never fabricated, always exactly what the source's own
+ * `liveWarnings()` reported since the last heartbeat tick (a target hit a
+ * permission/not-found wall, gave up reconnecting, or the resolved target
+ * set was capped). Always present as an array (possibly empty) for every
+ * source, per the backend's own `StatusPayload` contract - never
+ * undefined, so callers never need an extra null-check.
+ */
 export interface LiveStatusPayload {
   droppedCount: number;
   serverTime: string;
+  warnings: string[];
 }
 
 /**

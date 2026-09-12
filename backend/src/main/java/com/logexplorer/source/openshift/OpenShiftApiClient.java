@@ -18,6 +18,7 @@ import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -41,6 +42,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import org.springframework.web.util.UriComponentsBuilder;
 import reactor.core.publisher.BaseSubscriber;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.FluxSink;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.MonoSink;
 import reactor.netty.http.client.HttpClient;
@@ -390,6 +392,199 @@ public class OpenShiftApiClient {
   }
 
   /**
+   * OS-1E — the same read-only Kubernetes pod-log endpoint {@link
+   * #fetchPodLog} uses, but with {@code follow=true}: an unbounded stream
+   * of raw log lines, one per {@code \n}-delimited line, as they arrive.
+   * {@code tailLines} here is always {@code initialTailLines} — small and
+   * bounded (mission §14) — never {@code maxLinesPerTarget}, which is a
+   * bounded-search concept that does not apply to a stream with no upper
+   * line count at all.
+   *
+   * <p>Never materializes the response body — {@link #decodeLines} is a
+   * genuinely streaming line decoder (see its own javadoc), so a pod that
+   * never stops logging never grows this method's own memory use. The
+   * returned {@link Flux} completes only if the upstream connection ends
+   * on its own (e.g. the container restarted) and errors on any transport
+   * failure — the caller ({@code OpenShiftLiveTailProvider}) owns the
+   * decision of whether/how to reconnect a specific target, exactly the
+   * same "adapter reports the truth, the orchestrator decides" split
+   * {@link #fetchPodLog} already has with {@code DirectPodLogProvider}.
+   */
+  public Flux<String> followPodLog(
+      URI server, RawToken token, String caPath, String namespace, String podName, String containerName,
+      int initialTailLines, int maxLineBytes) {
+    WebClient client;
+    try {
+      client = build(server, caPath);
+    } catch (OpenShiftApiException e) {
+      return Flux.error(e);
+    }
+    UriComponentsBuilder uri = UriComponentsBuilder
+        .fromPath("/api/v1/namespaces/" + namespace + "/pods/" + podName + "/log")
+        .queryParam("container", containerName)
+        .queryParam("timestamps", "true")
+        .queryParam("follow", "true")
+        .queryParam("tailLines", initialTailLines);
+    Flux<DataBuffer> rawBody = client
+        .get()
+        .uri(uri.build().toUriString())
+        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value())
+        .retrieve()
+        .bodyToFlux(DataBuffer.class);
+    return decodeLines(rawBody, maxLineBytes).onErrorMap(OpenShiftApiClient::classify);
+  }
+
+  /**
+   * OS-1E — a genuinely streaming, bounded-memory line decoder for an
+   * unbounded {@code Flux<DataBuffer>}: emits each {@code \n}-delimited
+   * line as soon as it is complete, never accumulates more than one
+   * logical line's worth of buffered bytes (capped at {@code
+   * maxLineBytes} — see {@link LiveLineDecoder}), and never materializes
+   * the whole (infinite) body.
+   *
+   * <p>Splitting on the raw byte {@code 0x0A} is always UTF-8-safe
+   * without any special-casing: every byte of a valid UTF-8 multi-byte
+   * sequence's continuation bytes has its high bit set ({@code 0x80}-
+   * {@code 0xBF}), so {@code 0x0A} can never appear as part of one — a
+   * newline byte is never "inside" a character. Only a genuinely
+   * truncated line (the {@code maxLineBytes} safety valve firing before a
+   * {@code \n} was ever seen) can end mid-character, which {@link
+   * LiveLineDecoder} handles by reusing {@link #trimIncompleteUtf8Suffix}
+   * — the exact same defensively-safe trim {@link #readBounded} already
+   * uses for its own truncation boundary.
+   *
+   * <p>Cancellation/backpressure follow the identical bridge {@link
+   * #readBounded} already established (OS-1C review recovery): pull-style
+   * {@code request(1)}, a downstream cancel bridged via {@code
+   * FluxSink#onCancel} to the upstream subscription, every {@link
+   * DataBuffer} released in a {@code finally} block regardless of path.
+   */
+  static Flux<String> decodeLines(Flux<DataBuffer> source, int maxLineBytes) {
+    return Flux.create(sink -> {
+      LineDecodingSubscriber subscriber = new LineDecodingSubscriber(maxLineBytes, sink);
+      sink.onCancel(subscriber::cancelFromDownstream);
+      source.subscribe(subscriber);
+    });
+  }
+
+  /** The {@link BaseSubscriber} behind {@link #decodeLines}. */
+  private static final class LineDecodingSubscriber extends BaseSubscriber<DataBuffer> {
+    private final FluxSink<String> sink;
+    private final LiveLineDecoder decoder;
+    private final AtomicReference<Boolean> downstreamCancelled = new AtomicReference<>(Boolean.FALSE);
+
+    LineDecodingSubscriber(int maxLineBytes, FluxSink<String> sink) {
+      this.sink = sink;
+      this.decoder = new LiveLineDecoder(maxLineBytes);
+    }
+
+    @Override
+    protected void hookOnSubscribe(Subscription subscription) {
+      request(1);
+    }
+
+    @Override
+    protected void hookOnNext(DataBuffer buffer) {
+      try {
+        if (Boolean.TRUE.equals(downstreamCancelled.get())) {
+          return;
+        }
+        int readable = buffer.readableByteCount();
+        byte[] chunk = new byte[readable];
+        buffer.read(chunk);
+        for (String line : decoder.onChunk(chunk)) {
+          sink.next(line);
+        }
+      } finally {
+        DataBufferUtils.release(buffer);
+      }
+      if (!Boolean.TRUE.equals(downstreamCancelled.get())) {
+        request(1);
+      }
+    }
+
+    @Override
+    protected void hookOnComplete() {
+      sink.complete();
+    }
+
+    @Override
+    protected void hookOnCancel() {
+      // Either our own downstream-bridged cancel, or the subscription
+      // simply never delivering another signal - nothing more to emit
+      // either way, and the downstream FluxSink is already being (or has
+      // already been) cancelled/disposed by whatever triggered this.
+    }
+
+    @Override
+    protected void hookOnError(Throwable error) {
+      sink.error(error);
+    }
+
+    void cancelFromDownstream() {
+      if (downstreamCancelled.compareAndSet(Boolean.FALSE, Boolean.TRUE)) {
+        cancel();
+      }
+    }
+  }
+
+  /**
+   * OS-1E — the pure, non-reactive line-splitting state machine behind
+   * {@link #decodeLines}: append bytes, get back every complete line
+   * found so far, and the trailing incomplete fragment (if any) stays
+   * buffered for the next chunk. Kept entirely separate from the
+   * reactive/subscription plumbing so it can be unit-tested directly with
+   * plain byte arrays, independent of any real or fake HTTP transport.
+   */
+  static final class LiveLineDecoder {
+    private final int maxLineBytes;
+    private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+
+    LiveLineDecoder(int maxLineBytes) {
+      this.maxLineBytes = maxLineBytes;
+    }
+
+    /**
+     * @return every complete line newly found in {@code chunk}, in order;
+     *     empty if {@code chunk} contained no newline and did not push
+     *     the buffered fragment over {@code maxLineBytes}
+     */
+    List<String> onChunk(byte[] chunk) {
+      List<String> lines = new ArrayList<>();
+      for (byte b : chunk) {
+        if (b == '\n') {
+          lines.add(finishLine());
+        } else {
+          buffer.write(b);
+          if (buffer.size() >= maxLineBytes) {
+            // Safety valve (mission §11 "bounded maximum logical line
+            // size") - a pod emitting one very long line with no newline
+            // at all must never grow this decoder's memory without bound.
+            // The emitted "line" is genuinely incomplete (no upstream
+            // newline was ever seen) - trimIncompleteUtf8Suffix below
+            // still applies, so it is never garbled, only truncated.
+            lines.add(finishLine());
+          }
+        }
+      }
+      return lines;
+    }
+
+    private String finishLine() {
+      byte[] bytes = buffer.toByteArray();
+      buffer.reset();
+      int len = bytes.length;
+      // Defensive CRLF handling (mission §12) - a trailing \r belongs to
+      // the line terminator, never the content.
+      if (len > 0 && bytes[len - 1] == '\r') {
+        len--;
+      }
+      byte[] safe = trimIncompleteUtf8Suffix(Arrays.copyOfRange(bytes, 0, len));
+      return new String(safe, StandardCharsets.UTF_8);
+    }
+  }
+
+  /**
    * OS-1C review recovery — true streaming byte-bounded consumption of a
    * {@code Flux<DataBuffer>}, counting real encoded bytes as they arrive
    * and never materializing more than {@code maxBytes} of the upstream
@@ -644,7 +839,7 @@ public class OpenShiftApiClient {
       return bytes;
     }
     int actualLength = bytes.length - i;
-    return actualLength < expectedLength ? java.util.Arrays.copyOfRange(bytes, 0, i) : bytes;
+    return actualLength < expectedLength ? Arrays.copyOfRange(bytes, 0, i) : bytes;
   }
 
   /** 1 for a plain ASCII/continuation byte (not a valid multi-byte lead), otherwise the full sequence length a UTF-8 lead byte declares. */

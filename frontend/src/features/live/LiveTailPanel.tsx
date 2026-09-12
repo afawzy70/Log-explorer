@@ -168,6 +168,17 @@ export function LiveTailPanel({ live, sourceDisplayName, onStart }: LiveTailPane
         </div>
       ) : null}
 
+      {live.sourceWarnings.length > 0 ? (
+        <ul className={styles.sourceWarnings} role="status">
+          {live.sourceWarnings.map((warning, index) => (
+            // eslint-disable-next-line react/no-array-index-key
+            <li key={index} className={styles.sourceWarningsItem}>
+              {warning}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
       <div className={styles.filterRow}>
         <SeverityFilter selected={filterLevels} onChange={setFilterLevels} />
         <label className={styles.textFilterLabel}>

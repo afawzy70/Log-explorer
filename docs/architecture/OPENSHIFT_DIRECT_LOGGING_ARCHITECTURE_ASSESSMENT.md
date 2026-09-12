@@ -355,6 +355,16 @@ and `tailLines`**. Everything else is post-filtering and must not be
 claimed. **[FACT]** The existing default returns an empty list precisely
 so that a source cannot accidentally over-claim.
 
+**[EVIDENCE, established by OS-1E]** "Live tail | SUPPORTED" above is now
+implemented exactly as proposed, over `follow=true` with no `oc logs -f`/
+shell/exec dependency, and with one addition the original assessment did
+not anticipate needing: a genuinely streaming `Flux<DataBuffer>` line
+decoder (never `bodyToMono(String.class)`), since the byte-bounded
+*historical* fetch OS-1C built cannot be reused unmodified for a
+potentially-infinite stream. Reuses OS-1C's own hardened
+`BaseSubscriber`/cancellation-bridge/pull-backpressure pattern rather than
+inventing a second one. See `OS_1E_OPENSHIFT_LIVE_REPORT.md` §3.
+
 ---
 
 ## 10. Ordering, pagination and bounded fan-out
@@ -928,6 +938,25 @@ and its unauthenticated-local-endpoint assumption; (2) multi-pod merge
 ordering and pagination truthfulness; (3) Live stream lifecycle across
 pod churn; (4) enterprise proxy behaviour (§17), which is an unverified
 assumption that could surprise the estimate.
+
+**[EVIDENCE, established by OS-1E, not this assessment]** The OS-1E row
+above ("multi-pod follow, buffering, reconnect, Stop/Pause/Resume, memory
+bounds") is now implemented, executed as a stacked continuation on PR
+#42's approved HEAD while that PR remained externally blocked on the
+Windows Desktop CI gate (`OWNER_REQUIREMENTS_REGISTER.md` §7c). One
+correction to this section's own risk framing: "(3) Live stream lifecycle
+across pod churn" turned out to require **no new lifecycle machinery at
+all** — the existing generic `useLiveTail.ts` reconnect/state-machine
+hook (bounded exponential backoff, session-id race guard, terminal
+`'failed'` state) already handles a backend `Flux` error identically
+regardless of source, so a backend-side per-target reconnect classifier
+(§3 of `OS_1E_OPENSHIFT_LIVE_REPORT.md`) was sufficient; no parallel
+frontend Live state model was built. "Pod-watch auto-attach of new pods"
+remains **[FUTURE]**, explicitly deferred exactly as this table already
+proposed — a resolved live-target set is an immutable snapshot for the
+life of one session, never silently re-resolved. `REAL_OPENSHIFT_1E =
+BLOCKED_CREDENTIALS`, the same honest gap every prior OS-1x slice has
+carried.
 
 ---
 
