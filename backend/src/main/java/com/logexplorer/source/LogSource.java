@@ -2,6 +2,8 @@ package com.logexplorer.source;
 
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.FollowRequest;
+import com.logexplorer.core.model.LiveFollowResult;
+import com.logexplorer.core.model.LiveSourceStatus;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceCapabilities;
@@ -106,6 +108,28 @@ public interface LogSource {
    */
   default Flux<CanonicalLogEvent> follow(FollowRequest request) {
     return Flux.error(new UnsupportedOperationException("Live tail is not supported by source " + id()));
+  }
+
+  /**
+   * OS-1E — the same live tail as {@link #follow}, plus a correlated
+   * {@link LiveFollowResult#status()} channel truthfully surfacing the
+   * CURRENT partial-live-state condition of THIS live session (which
+   * targets are active/reconnecting/permanently stopped, and why) — the
+   * same "runtime truth belongs to this call's own return value, never a
+   * shared field" discipline {@link #searchWithOutcome} already
+   * established for search, extended to an ongoing stream. See {@link
+   * LiveFollowResult}'s own javadoc for why both parts must come from one
+   * correlated construction, and {@link LiveSourceStatus}'s own javadoc
+   * for why every emission is a full current snapshot, never an
+   * append-only history.
+   *
+   * <p>The default wraps {@link #follow} with a constant {@link
+   * LiveSourceStatus#NOMINAL} — correct for every source with no
+   * partial-live-state concept (Docker, Fixture, Loki). Only {@code
+   * source.openshift.OpenShiftLogSource} overrides this.
+   */
+  default Mono<LiveFollowResult> followWithStatus(FollowRequest request) {
+    return Mono.just(new LiveFollowResult(follow(request), Flux.just(LiveSourceStatus.NOMINAL)));
   }
 
   /**

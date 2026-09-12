@@ -118,6 +118,31 @@
   font-size: var(--font-size-sm);
 }
 
+/**
+ * OS-1E — the source's own truthful partial-live-state disclosure list
+ * (a target stopped, or the target set was capped). Reuses the exact
+ * same warning tone `SourceHealthBadge.module.css`'s own `.warningsList`
+ * already established for source-reported warnings elsewhere in the app
+ * (`--color-severity-warn`) rather than inventing a second visual
+ * language for "the source is telling you something is incomplete."
+ */
+.sourceWarnings {
+  margin: 0 0 var(--space-3) 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-sm);
+  list-style: none;
+}
+
+.sourceWarningsItem {
+  color: var(--color-severity-warn);
+  font-size: var(--font-size-sm);
+}
+
+.sourceWarningsItem + .sourceWarningsItem {
+  margin-top: var(--space-1);
+}
+
 .filterRow {
   display: flex;
   flex-wrap: wrap;

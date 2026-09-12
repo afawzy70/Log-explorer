@@ -14,11 +14,83 @@ export type LiveConnectionState =
   | 'stopped'
   | 'failed';
 
-/** The "status" SSE event's payload - mirrors backend `LiveTailService.StatusPayload` (IMPLEMENTATION_PLAN.md "Phase J"). */
+/**
+ * OS-1E — the source's own CURRENT per-target runtime truth, mirrored
+ * from backend `LiveSourceStatus`. `'RUNNING'` is the value every source
+ * without a per-target concept (Docker/Fixture/Loki) always reports -
+ * never any other value - so a component can safely treat any other
+ * state as "this source has something specific to say." See
+ * `LiveSourceStatus`'s own backend javadoc for the exact derivation rule
+ * and what each state means.
+ *
+ * `'CONNECTING'` (OS-1E final implementation) means at least one resolved
+ * target has neither proven itself active nor ever failed this outage -
+ * distinct from the source having zero targets or every target already
+ * being permanently stopped (`'NO_ACTIVE_TARGETS'`).
+ */
+export type LiveSourceState = 'RUNNING' | 'CONNECTING' | 'DEGRADED' | 'RECONNECTING' | 'NO_ACTIVE_TARGETS' | 'EXPIRED' | 'STALE';
+
+/**
+ * OS-1E final implementation — a state from which this Live session can
+ * never recover on its own: no future target activity is possible
+ * without an explicit new Start (Restart). Mirrors backend {@code
+ * LiveSourceStatus.State#isTerminal()} exactly - drives both the
+ * backend's terminal-SSE grace-close and this hook's own suppression of
+ * the generic automatic `EventSource` reconnect (see `useLiveTail.ts`'s
+ * `onerror` handler) - the two ends of the same truth.
+ */
+export function isTerminalSourceState(state: LiveSourceState): boolean {
+  return state === 'NO_ACTIVE_TARGETS' || state === 'EXPIRED' || state === 'STALE';
+}
+
+/**
+ * The "status" SSE event's payload - mirrors backend
+ * `LiveTailService.StatusPayload` (IMPLEMENTATION_PLAN.md "Phase J").
+ *
+ * OS-1E — `liveSourceState`/`resolvedTargets`/`connectingTargets`/
+ * `activeTargets`/`reconnectingTargets`/`stoppedTargets`/`warnings`
+ * replace the original single-warning-string design, which could only
+ * ever report the single most recently changed target's own warning
+ * (target A stopped, then target B also stopped - the old channel
+ * reported only B). Every one of these fields is a full CURRENT snapshot
+ * on every "status" tick, never a delta - always present (never
+ * undefined) for every source, so a component never needs a null-check
+ * to render them; `liveSourceState: 'RUNNING'`/all counts `0`/
+ * `warnings: []` for every source with no per-target concept.
+ */
 export interface LiveStatusPayload {
   droppedCount: number;
   serverTime: string;
+  liveSourceState: LiveSourceState;
+  resolvedTargets: number;
+  connectingTargets: number;
+  activeTargets: number;
+  reconnectingTargets: number;
+  stoppedTargets: number;
+  warnings: string[];
 }
+
+/** The subset of {@link LiveStatusPayload} `useLiveTail.ts` tracks as its own `sourceStatus` state - the same fields, without the per-tick `droppedCount`/`serverTime` (already tracked separately). */
+export interface LiveSourceStatusView {
+  state: LiveSourceState;
+  resolvedTargets: number;
+  connectingTargets: number;
+  activeTargets: number;
+  reconnectingTargets: number;
+  stoppedTargets: number;
+  warnings: string[];
+}
+
+/** Mirrors backend `LiveSourceStatus.NOMINAL` - the default for every source with no per-target concept. */
+export const NOMINAL_SOURCE_STATUS: LiveSourceStatusView = {
+  state: 'RUNNING',
+  resolvedTargets: 0,
+  connectingTargets: 0,
+  activeTargets: 0,
+  reconnectingTargets: 0,
+  stoppedTargets: 0,
+  warnings: [],
+};
 
 /**
  * Event retention limit (Legacy Remediation Slice 5 - "Define and

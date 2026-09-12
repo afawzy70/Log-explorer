@@ -2,6 +2,8 @@ package com.logexplorer.source;
 
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.FollowRequest;
+import com.logexplorer.core.model.LiveFollowResult;
+import com.logexplorer.core.model.LiveSourceStatus;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceCapabilities;
@@ -28,6 +30,8 @@ public class StubLogSource implements LogSource {
 
   private Flux<CanonicalLogEvent> searchFlux = Flux.empty();
   private Flux<CanonicalLogEvent> followFlux = Flux.empty();
+  /** OS-1E final terminal-status-delivery fix — lets tests script a {@link LiveSourceStatus} sequence (e.g. RUNNING then a terminal state) without a real OpenShift adapter. */
+  private Flux<LiveSourceStatus> statusFlux = Flux.just(LiveSourceStatus.NOMINAL);
   private Mono<SourceHealth> health = Mono.just(new SourceHealth(SourceHealth.Status.UP, "ok", Instant.now()));
   private Flux<ServiceInfo> services = Flux.empty();
   /** Legacy Remediation Slice 2 — what {@link #describePushDown} reports, for tests exercising query-plan transparency without a real Loki adapter. */
@@ -72,6 +76,11 @@ public class StubLogSource implements LogSource {
 
   public StubLogSource withFollowFlux(Flux<CanonicalLogEvent> flux) {
     this.followFlux = flux;
+    return this;
+  }
+
+  public StubLogSource withStatusFlux(Flux<LiveSourceStatus> statusFlux) {
+    this.statusFlux = statusFlux;
     return this;
   }
 
@@ -141,5 +150,10 @@ public class StubLogSource implements LogSource {
   public Flux<CanonicalLogEvent> follow(FollowRequest request) {
     lastFollowRequest = request;
     return followFlux.doOnCancel(() -> cancelled.set(true));
+  }
+
+  @Override
+  public Mono<LiveFollowResult> followWithStatus(FollowRequest request) {
+    return Mono.just(new LiveFollowResult(follow(request), statusFlux));
   }
 }

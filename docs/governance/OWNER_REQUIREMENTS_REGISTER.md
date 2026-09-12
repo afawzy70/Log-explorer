@@ -272,6 +272,39 @@ below during OS-1B or any slice before REL-1 itself.
 | EVIDENCE | None — genuinely not implemented. `desktop/` currently builds only through the existing Slice 9 CI-driven path (`jlink`/`jpackage`/Inno Setup inside `.github/workflows/windows-desktop.yml`), which is exactly the "packaging logic duplicated inside workflow YAML" pattern this new requirement says must eventually be replaced by repository-owned scripts the CI merely calls |
 | NOTES / CONFLICTS | This addendum does not change or weaken §7's existing REL-1 row (GitHub Releases as the end-user distribution surface, versioned installers, SHA-256 checksums, etc.) — it adds the *local, credential-free, CI-independent* reproducibility requirement on top of it, and requires the eventual CI implementation to route through the same local scripts rather than reimplementing packaging twice. `LOCAL_WINDOWS_PACKAGING_STATUS=APPROVED_PENDING_REL_1`, `LOCAL_MACOS_PACKAGING_STATUS=APPROVED_PENDING_REL_1`, `CI_REUSE_LOCAL_PACKAGING_SCRIPTS_REQUIREMENT=TRACKED`, `BUILD_DESKTOP_DOCUMENTATION_REQUIREMENT=TRACKED`. |
 
+### 7c. REL-1 addendum — Reproducible Windows .NET / NuGet Toolchain (registered during OS-1E, blocking evidence from OS-1D's own Windows Desktop gate)
+
+Registered per the OS-1E mission's own explicit instruction: **record
+now, do not implement now.** Background: during OS-1D's final merge gate,
+PR #42's Windows Desktop CI job failed six consecutive times (one
+original run plus five reruns spread across roughly 20+ minutes) with an
+**identical** generic NuGet restore infrastructure error
+(`NuGet.targets(198,5): error MSB4181: The "RestoreTask" task returned
+false but did not log an error.`) at `dotnet publish -r win-x64
+--self-contained true` for `desktop/launcher/LogExplorerLauncher.csproj`.
+Confirmed, not assumed, to be an external CI/toolchain issue rather than a
+code defect: zero `desktop/**` files were changed by the commit under
+test; the immediately-preceding commit on the same branch passed the
+identical workflow; Backend/Frontend/E2E remained green throughout.
+Reported and tracked as `WINDOWS_DESKTOP_GATE=BLOCKED_EXTERNAL_CI` —
+explicitly not force-retried indefinitely, not "fixed" by touching
+`csproj`/workflow/package versions merely to force a green run, and not
+converted to `PASS`.
+
+| Field | Value |
+|---|---|
+| ID | REL-1 (addendum) |
+| NAME | Reproducible Windows .NET / NuGet Toolchain |
+| STATUS | `APPROVED_PENDING` — tracked, **not started**, not implemented |
+| CATEGORY | CI / build infrastructure |
+| OWNER_INTENT | The Windows Desktop build's .NET/NuGet toolchain must be pinned and its restore step deterministic, so a transient upstream NuGet infrastructure hiccup cannot repeatedly block an otherwise-approved, otherwise-green PR merge the way it blocked PR #42. |
+| REQUIRED_FUTURE_BEHAVIOR | A pinned .NET SDK version (`global.json` or an equivalent repository-owned pin) rather than "whatever the CI runner image currently ships"; a deterministic/locked NuGet restore (a lock file or an equivalent reproducibility mechanism) rather than a live, unlocked resolve against the NuGet feed on every run; one unified CI/local toolchain contract, so a developer's local build and CI resolve the exact same dependency graph; bounded, diagnosable retry behavior for a genuinely transient restore failure (distinct from silently retrying forever or from a raw unexplained `MSB4181`). |
+| EXPECTED_FUTURE_DESIGN_DIRECTION | Integrates with, rather than duplicates, §7b's own Local Reproducible Desktop Packaging requirement — the same "one repository-owned entry point, CI calls it too" discipline extended to the .NET/NuGet layer specifically. |
+| TARGET_SLICE_OR_PHASE | REL-1 |
+| ACCEPTANCE_CRITERIA | Deferred to REL-1's own implementation mission — this row exists to guarantee the requirement is never silently lost between now and then |
+| EVIDENCE | `WINDOWS_DESKTOP_GATE=BLOCKED_EXTERNAL_CI` evidence gathered during the "OS-1D Final Windows Gate & Merge" mission (workflow run id, failed step, exact restore error text, confirmed unchanged PR #42 HEAD/tree across every rerun) — the failure this addendum exists to make structurally less likely to recur, not proof the addendum has been implemented |
+| NOTES / CONFLICTS | Does not change or weaken §7b's existing addendum — this is a narrower, .NET/NuGet-specific companion to it, surfaced by a real incident rather than proposed speculatively. Not implemented in OS-1D, OS-1E, or any slice before REL-1 itself. |
+
 ---
 
 ## 8. Desktop Branding
@@ -589,6 +622,162 @@ own fixes remain correct and are not undone; this pass closes the deeper
 "captured through one atomic read, not several" gap those fixes still
 had. `TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`, untouched.
 `REL-1` remains confirmed `APPROVED_PENDING`, untouched.
+
+### 12k. OS-1E — OpenShift Live Tail
+
+Stacked on PR #42's approved HEAD while that PR remained externally
+blocked on the Windows Desktop CI gate (§7c). See
+`docs/verification/OS_1E_OPENSHIFT_LIVE_REPORT.md` for the full account.
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| OS-1E-1 | Direct `follow=true` Kubernetes/OpenShift pod-log streaming — no `oc logs -f`, no shell, no exec/attach/port-forward, no runtime `oc` dependency | `VERIFIED` | `OpenShiftApiClient#followPodLog`; `bodyToFlux(DataBuffer.class)`, never `bodyToMono` |
+| OS-1E-2 | A genuinely streaming, bounded-memory line decoder — never materializes the unbounded body, releases every `DataBuffer`, bridges downstream cancellation to the upstream subscription | `VERIFIED` | `OpenShiftApiClient#decodeLines`/`LineDecodingSubscriber`/`LiveLineDecoder`; `OpenShiftApiClientLiveStreamTest` (15 tests, incl. real pooled-buffer ref-count release proof and real cancellation propagation) |
+| OS-1E-3 | `\n`-delimited line framing is UTF-8-safe across arbitrary chunk boundaries, with a bounded max-line-size safety valve that trims rather than garbles | `VERIFIED` | `LiveLineDecoder`; chunk-boundary-inside-a-UTF-8-character and forced-cutoff-at-a-character-boundary tests |
+| OS-1E-4 | Live targets are resolved through the exact same OS-1B/OS-1C scope logic search already uses (Selected Pod+Container / Pod+Container=All / Pod=All+Workload / Pod=All+Workload=All), bounded by the same `maxPods`/`maxTargets` — never a second, parallel notion of scope | `VERIFIED` | `DirectPodLogProvider#resolveTargets` widened to package-private, reused directly by `OpenShiftLiveTailProvider`; `OpenShiftLiveTailProviderTest` (target-cap and multi-target-merge tests) |
+| OS-1E-5 | The live-session start captures connection state via exactly one atomic `OpenShiftSession#operationSnapshot()` read, reusing OS-1D's own mechanism rather than re-implementing it | `VERIFIED` | `OpenShiftLiveTailProvider#follow`/`startSession` |
+| OS-1E-6 | Per-target bounded reconnect, classified by failure kind (401 permanent + generation-guarded session expiry; 403/404 permanent; transient bounded exponential backoff) — one target's failure never stops another | `VERIFIED` | `OpenShiftLiveTailProvider#reconnectOrStop`; `OpenShiftLiveTailProviderTest` (generation-isolation, 403/404-zero-reconnect, transient-recovers, transient-gives-up-after-max-attempts tests) |
+| OS-1E-7 | A zero-target or all-targets-permanently-stopped session completes the event stream truthfully rather than hanging in a silent "quiet LIVE" | `VERIFIED` | `OpenShiftLiveTailProviderTest#zeroResolvedTargetsCompletesTheStreamAndWarnsRatherThanHanging` |
+| OS-1E-8 | New replicas from a rolling deployment are not auto-attached to a running live session (`LIVE_TARGET_SNAPSHOT=IMMUTABLE`) — Kubernetes Watch-based re-resolution is explicitly deferred, not introduced casually | `VERIFIED` (as a deliberate, documented non-behavior) | `OpenShiftLiveTailProvider#boundedTargets` resolved once at session start, never re-resolved; report §7 |
+| OS-1E-9 | Truthful partial-live-state disclosure (target stopped, target cap reached) reaches the existing generic Live status surface — never fabricated, never a new OpenShift-only side channel | `VERIFIED`, **superseded by OS-1E-18 below** | Original evidence named `LogSource#followWithWarnings`/`StatusPayload.warnings` (a single-latest-warning channel) — replaced by `followWithStatus`/`LiveSourceStatus` in the review recovery pass; the underlying REQUIREMENT (truthful disclosure through the existing generic surface) remains `VERIFIED`, its enforcement mechanism does not |
+| OS-1E-10 | Filtering/masking fully reused from the existing canonical pipeline — server-side only, no raw protected value ever reaches the browser via the live path | `VERIFIED` | `LiveTailService#follow` masks every event via the same `EventMapper` every endpoint uses, unchanged by this slice |
+| OS-1E-11 | The existing generic Live architecture (`LiveTailController`/`LiveTailService`/`LiveTailGuard`/`useLiveTail`/`LiveTailPanel`) is reused end to end — no parallel OpenShift-specific Live product, no `OpenShiftLiveTailPanel` | `VERIFIED` | §2 of the OS-1E report; the review recovery pass's own frontend change is still purely additive (`sourceStatus` replacing `sourceWarnings`) — no new Live state machine, no OpenShift-specific panel |
+| OS-1E-12 | `liveTail` capability flips `true` only after full implementation and the full test matrix passed | `VERIFIED` | `OpenShiftLogSource#capabilities()`; `OpenShiftSecurityBoundariesTest`; real running-backend `/api/v1/sources` check; `os-1a-openshift-connection.spec.ts` real-browser pin |
+| OS-1E-13 | Real OpenShift cluster verification | `BLOCKED_CREDENTIALS` | Consistent with every prior OS-1x slice's own honest status; no cluster behavior fabricated |
+
+**OS-1E pass.** No `ContextTargetProofCodec`/`ConnectionOperationSnapshot`/
+`resolveTargetPlan` design changed — both reused exactly as OS-1D left
+them. No historical search, context, or correlation behavior changed.
+One new deferred requirement registered per this slice's own mission:
+`REL-1` addendum, "Reproducible Windows .NET / NuGet Toolchain" (§7c),
+`APPROVED_PENDING`, **not implemented**. `TEST-INFRA-1` remains
+`APPROVED_PENDING_HARDENING`, untouched — re-confirmed via the same
+PNG-restoration mitigation after this slice's own full E2E run.
+`REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`, consistent with every prior
+OS-1x slice.
+
+### 12l. OS-1E REVIEW RECOVERY — live stream truthfulness, bounded reconnect, long-line integrity & active-stream state
+
+An independent review of the §12k implementation found six real defects
+before OS-1E could be approved. None reopen OS-1B/OS-1C/OS-1D's own
+already-`VERIFIED` rows, and none touch `ContextTargetProofCodec`/
+`ConnectionOperationSnapshot`/`resolveTargetPlan`. See
+`docs/verification/OS_1E_OPENSHIFT_LIVE_REPORT.md`'s own review-recovery
+section for the full before/after account.
+
+| # | Finding | Status |
+|---|---|---|
+| 1 | Reconnect retry budget could be reset forever by replayed initial-tail rows — every reconnect reused `initialTailLines` (not `0`), so a pod with existing historical lines could make `receivedAnyEvent` true on every attempt, resetting the budget indefinitely and defeating `maxReconnectAttempts` as a real bound | `RESOLVED` |
+| 2 | Oversized physical lines were fragmented into multiple synthetic events — the original `LiveLineDecoder` emitted a new "line" every time `maxLineBytes` was reached even mid-physical-line, so one real 200 KB log line could become several fake `CanonicalLogEvent`s | `RESOLVED` |
+| 3 | `maxConcurrency` was claimed but not actually enforced in the live connect/reconnect path — `OpenShiftLiveTailProvider` used a plain `Flux.merge` over every target with no admission bound at all | `RESOLVED` |
+| 4 | Zero-active targets could leave the generic SSE transport connection open (the heartbeat keeps it alive by design) and therefore visually remain labeled plain LIVE, with no distinct frontend truth | `RESOLVED` |
+| 5 | Per-target warning state retained only the single most-recently-emitted warning instead of the complete CURRENT state — target A stopping then target B also stopping reported only B | `RESOLVED` |
+| 6 | Connection generation changes and scope (project/workload/pod/container) changes during an immutable live-target snapshot were not surfaced as stale/restart-required — the old session correctly never migrated credentials, but also never actively terminated or flagged itself | `RESOLVED` |
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| OS-1E-14 | A target's very first connection uses the configured `initialTailLines`; every reconnect uses `tailLines=0` (the `kubectl logs -f --tail=0` idiom) — a reconnect can never replay history | `VERIFIED` | `OpenShiftApiClient#followPodLog` (`tailLines` now a genuine per-call parameter); `OpenShiftLiveTailProvider#followTarget`; `OpenShiftLiveTailProviderTest#reconnectA_initialTailUsesConfiguredValueEveryReconnectUsesZero` |
+| OS-1E-15 | `REAL_RECOVERY` is explicitly defined as "a reconnect attempt (`tailLines=0`) delivers at least one genuine event" — historical initial-tail data can never reset the reconnect budget, and retry exhaustion remains genuinely deterministic and bounded even when historical data was present | `VERIFIED` | `OpenShiftLiveTailProvider#budgetBasis`; `OpenShiftLiveTailProviderTest#reconnectB_historicalTailEventCannotResetTheReconnectBudget`, `#reconnectC_persistentFailureAfterHistoricalDataStillReachesRetryExhaustion`, `#reconnectD_aGenuinePostReconnectEventResetsTheBudget`, `#reconnectE_retryExhaustionIsExactlyDeterministic`, `#reconnectF_stopDuringReconnectBackoffCancelsTheRetry` |
+| OS-1E-16 | A physical overlong line produces at most ONE `CanonicalLogEvent` (marked truncated), never several fake ones; every further byte of that same physical line is discarded (never buffered, never emitted) until the real terminating `\n` | `VERIFIED` | `OpenShiftApiClient.DecodedLine`/`LiveLineDecoder` (`discardingOverlong` mode); `OpenShiftApiClientLiveStreamTest` (5 dedicated overlong-line tests, incl. a 200,000-byte physical line and a UTF-8-boundary truncation case) |
+| OS-1E-17 | Overlong-line truncation is surfaced to the live runtime status as one bounded, growing COUNT ("N overlong lines truncated"), never one new warning string per occurrence | `VERIFIED` | `OpenShiftLiveTailProvider.SessionRuntimeState#incrementOverlong`; `OpenShiftLiveTailProviderTest#overlongLineTruncationReachesRuntimeStatusAsABoundedCount` |
+| OS-1E-18 | Connect/reconnect ADMISSION is genuinely bounded by `DirectPodLogProperties#maxConcurrency` — distinct from `maxTargets` (the active-stream bound) — via a non-blocking per-session permit gate, releasing on first data/error/completion or a bounded timeout; deliberately not `flatMap(..., maxConcurrency)`, which would starve every target past the first `maxConcurrency` (each stream is intentionally infinite) | `VERIFIED` | `OpenShiftLiveTailProvider#gatedFollow`/`acquirePermit`; `OpenShiftLiveTailProviderTest` (`connectAttemptConcurrencyIsBoundedByMaxConcurrency_neverAllTargetsAtOnce`, `allAuthorizedTargetsEventuallyBecomeActive_oneLongLivedStreamDoesNotStarveOthers`, `cancellationReleasesAPendingConnectPermit_queuedTargetIsNeverStrandedForever`, `aFailedConnectReleasesItsPermitForTheNextQueuedTarget`) |
+| OS-1E-19 | A new request/session-scoped `LiveSourceStatus` (state + resolved/active/reconnecting/stopped target counts + CURRENT warnings, never a delta) replaces the original single-warning channel; the correct state (`RUNNING`/`DEGRADED`/`RECONNECTING`/`NO_ACTIVE_TARGETS`/`EXPIRED`/`STALE`) is derived from live counts, never inferred from warning text | `VERIFIED`, **extended by OS-1E-23 below** | New `core.model.LiveSourceStatus`; `OpenShiftLiveTailProvider.SessionRuntimeState`; `OpenShiftLiveTailProviderTest` (`statusRunning_*`, `statusDegraded_*`, `statusReconnecting_*`, `statusNoActiveTargets_*`, `statusExpired_*`, `statusRetainsEveryCurrentlyStoppedTargetsTruth_*`) — the state enum and count set are widened by the final implementation pass (a `CONNECTING` state/count), the underlying "full current snapshot, never a delta" design is unchanged |
+| OS-1E-20 | Zero active AND zero reconnecting targets is never displayed as plain LIVE in the rendered frontend, even though the SSE heartbeat legitimately keeps the connection open to deliver that truth | `VERIFIED` (real rendered-browser + component evidence) | `LiveTailPanel.tsx#sourceStatusBadge` (badge override for `NO_ACTIVE_TARGETS`/`EXPIRED`/`STALE` while `connectionState` is `'live'`/`'paused'`); `LiveTailPanel.test.tsx` (5 dedicated override tests); DEGRADED still reads LIVE with an appended active/resolved count, never hidden |
+| OS-1E-21 | A generation change (reconnect) during a running live session marks that OLD session `STALE` and terminates its own target streams via a bounded, in-memory-only periodic check (never a cluster/Watch call) — it never migrates onto the new connection's credentials | `VERIFIED` | `OpenShiftLiveTailProvider#detectStaleness`/`startSession`'s `takeUntilOther(staleSignal)`; `OpenShiftLiveTailProviderTest#generationChangeMarksTheOldSessionStaleAndStopsIt_neverMigratesCredentials` |
+| OS-1E-22 | A scope change (project/workload/pod/container) during an immutable live-target snapshot is surfaced as `STALE`/`SCOPE_CHANGED_RESTART_LIVE`, never silently displayed as if it reflected the newly-selected scope | `VERIFIED` | `OpenShiftLiveTailProvider#detectStaleness`; `OpenShiftLiveTailProviderTest#scopeChangeWhileImmutableSnapshotActiveIsSurfacedAsStale` |
+
+**OS-1E REVIEW RECOVERY pass.** 22 new/superseded rows total (OS-1E-14
+through OS-1E-22 new; OS-1E-9/OS-1E-11's evidence corrected in place,
+their underlying requirement unchanged). No `ContextTargetProofCodec`/
+`ConnectionOperationSnapshot`/`resolveTargetPlan` design touched. No
+historical search, context, or correlation behavior changed — this
+recovery is scoped entirely to the live-tail-specific defects above.
+`TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`, untouched — re-
+confirmed via the same PNG-restoration mitigation after this pass's own
+full backend/frontend/E2E validation. `REL-1` (§7, §7b, §7c) remains
+confirmed `APPROVED_PENDING`, untouched. `REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`,
+consistent with every prior OS-1x slice — this recovery neither touched
+nor could convert that status.
+
+### 12m. OS-1E FINAL IMPLEMENTATION — approved live contract (exchangeToFlux establishment, exact long-line boundary, partial-final-line contract, CONNECTING state, terminal-SSE grace-close)
+
+A separate, owner-authorized design-closure pass (text-only, no code) re-
+examined §12l's own implementation as INPUT rather than authority, and
+found it still contained one real defect the review-recovery pass had not
+caught, plus several genuine design gaps. This section records the
+resulting FINAL implementation. See
+`docs/verification/OS_1E_OPENSHIFT_LIVE_REPORT.md`'s own §14 for the full
+before/after account and worked examples.
+
+| # | Finding | Status |
+|---|---|---|
+| 1 | A target was marked `ACTIVE` at `followTarget()` entry — before any HTTP response, before any log line — so a target still queued behind `maxConcurrency` admission could be displayed as active; `resolvedTargets=10, maxConcurrency=2` could show `activeTargets=10, RUNNING` | `RESOLVED` |
+| 2 | A physical line of exactly `maxLineBytes` bytes followed by a real newline was falsely reported `truncated=true` — the original overflow check ran on the post-write buffer size, one byte too late | `RESOLVED` |
+| 3 | A clean EOF (or an error, or an explicit Stop) with a buffered-but-unterminated trailing fragment silently dropped that fragment — no flush of a final partial line existed at all, for any termination cause | `RESOLVED` |
+| 4 | No `connectingTargets` count/state existed — a target waiting for admission had no distinct representation in `LiveSourceStatus`, collapsing into either "not yet counted" or the pre-existing `ACTIVE` defect (finding 1) | `RESOLVED` |
+| 5 | `STREAM_ACTIVE` (HTTP `2xx` established) and `OUTAGE_RECOVERY_BUDGET_RESET` (a genuine post-reconnect data event) were at risk of being conflated once establishment became its own distinct signal — establishment alone must never reset the bounded reconnect budget | `RESOLVED` (explicit separation, not merely preserved) |
+| 6 | A terminal SSE session (`NO_ACTIVE_TARGETS`/`EXPIRED`/`STALE`) rode the full `connectionTimeout` on the wire, and the frontend's generic `EventSource` auto-reconnect had no way to distinguish a deliberate terminal server-close from an ordinary transport failure, risking an infinite reconnect loop against a session that will never resume | `RESOLVED` |
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| OS-1E-23 | `OpenShiftApiClient#followPodLog` uses WebClient `exchangeToFlux`; an HTTP `2xx` response invokes a caller-supplied `onEstablished` callback exactly once, independent of any log line arriving; non-2xx routes through `response.createException().flatMapMany(Flux::error)` preserving all existing `classify()`-based exception mapping unchanged | `VERIFIED` | `OpenShiftApiClient#followPodLog`; `OpenShiftApiClientLiveStreamTest` (establishment-callback tests); `OpenShiftLiveTailProviderTest` CONNECT-1..6 |
+| OS-1E-24 | A target is marked `CONNECTING` at `followTarget()` entry and only transitions to `ACTIVE` via the `onEstablished` callback (HTTP `2xx`) — never at entry, never on a bare connect-permit timeout | `VERIFIED` | `OpenShiftLiveTailProvider#followTarget`/`SessionRuntimeState#markConnecting`/`markActive`; `OpenShiftLiveTailProviderTest#connect1_targetIsConnectingNotActiveUntilEstablished` .. `#connect6_permitTimeoutReleasesConcurrencyCapacityButNeverMarksActive` |
+| OS-1E-25 | `LiveSourceStatus` gains a `connectingTargets` count and a `CONNECTING` state; the invariant `resolvedTargets = connectingTargets + activeTargets + reconnectingTargets + stoppedTargets` holds for every snapshot; session state is derived by exact priority `STALE > EXPIRED > RUNNING > CONNECTING > DEGRADED > RECONNECTING > NO_ACTIVE_TARGETS`, with a documented, tested completion for the one gap in the literal owner formula (some targets connecting, some already permanently stopped, none active/reconnecting → `CONNECTING`, not `NO_ACTIVE_TARGETS`) | `VERIFIED` | `core.model.LiveSourceStatus` (`State.CONNECTING`, `connectingTargets`); `OpenShiftLiveTailProvider.SessionRuntimeState#snapshot`; `OpenShiftLiveTailProviderTest` (state-derivation tests incl. `stateConnecting_evenWithSomeAlreadyPermanentlyStopped_untilTheOutcomeIsFullyKnown`) |
+| OS-1E-26 | Every resolved target's phase is seeded to `CONNECTING` synchronously before the session's first status push, so the very first snapshot never falsely reads as `NO_ACTIVE_TARGETS` before any connect attempt has even started | `VERIFIED` | `OpenShiftLiveTailProvider.SessionRuntimeState` constructor (seeds phases from the full target list); `OpenShiftLiveTailProviderTest` initial-snapshot tests |
+| OS-1E-27 | `maxConcurrency` bounds simultaneous connect/reconnect OPEN attempts only (a permit is released on `2xx` establishment, on any terminating signal, or on a bounded `connectPermitTimeout`); a permit-timeout release never marks a target `ACTIVE` and never fabricates establishment | `VERIFIED` | `OpenShiftLiveTailProvider#gatedFollow` (`releasePermitOnce`, timeout path never calls `onEstablished`); `OpenShiftLiveTailProviderTest#connect6_permitTimeoutReleasesConcurrencyCapacityButNeverMarksActive` |
+| OS-1E-28 | `STREAM_ACTIVE` (HTTP `2xx` establishment) is explicitly separated from `OUTAGE_RECOVERY_BUDGET_RESET` (a genuine post-reconnect `DecodedLine`, driven by `.doOnNext`, never by `onEstablished`) — establishment alone, without any real data, does not reset the bounded reconnect budget, since `tailLines=0` on every reconnect makes any real data provably non-replayed | `VERIFIED` | `OpenShiftLiveTailProvider#followTarget`/`budgetBasis` (`receivedRealDataThisAttempt` set only by `.doOnNext`); `OpenShiftLiveTailProviderTest#establishmentAloneWithoutGenuineDataDoesNotResetTheReconnectBudget` |
+| OS-1E-29 | A physical line whose content is exactly `maxLineBytes` bytes followed by a real newline is reported untruncated; a physical line whose content exceeds `maxLineBytes` produces exactly one truncated event bounded at `maxLineBytes` bytes (UTF-8-safe), discarding every further byte of that same physical line until the real terminating newline | `VERIFIED` | `OpenShiftApiClient.LiveLineDecoder#onChunk` (pre-write overflow check reordered: newline checked before the `buffer.size() == maxLineBytes` branch); `OpenShiftApiClientLiveStreamTest#lineBoundary1_exactlyMaxLineBytesFollowedByNewlineIsNotTruncated`, `#lineBoundary2_*`, `#lineBoundary3_*` (plus pre-existing overlong-line tests re-verified) |
+| OS-1E-30 | A clean EOF with a buffered, unterminated trailing fragment emits exactly one final `DecodedLine` marked `unterminated=true` (bounded `UNTERMINATED_LIVE_LINE` count); an error/transport-failure with a buffered fragment discards it silently, never emitting it as a complete event (bounded `PARTIAL_LINE_DROPPED` count); an explicit Stop/cancellation with a buffered fragment silently discards it with no warning at all — three distinct, tested outcomes for three distinct termination causes | `VERIFIED` | `OpenShiftApiClient.LiveLineDecoder#hasPartialContent`/`flushPartial`; `LineDecodingSubscriber#hookOnComplete`/`hookOnError`/`hookOnCancel`; `OpenShiftApiClientLiveStreamTest` (`flushPartial_*` pure-decoder tests, `partialLineA_*`..`partialLineD_*` reactive tests); `OpenShiftLiveTailProviderTest#unterminatedFinalLineBecomesAnEventAndReachesRuntimeStatusAsABoundedCount`, `#partialLineDroppedByErrorReachesRuntimeStatusAsABoundedCount` |
+| OS-1E-31 | A terminal source state (`NO_ACTIVE_TARGETS`/`EXPIRED`/`STALE`) triggers a bounded, one-shot, server-side SSE grace-close (`terminalGrace = min(2×heartbeatInterval, 10s)`) instead of riding the full `connectionTimeout`; an explicit Stop may still close immediately | `VERIFIED` | `LiveTailService` (`LiveSourceStatus.State#isTerminal()`, CAS-guarded `terminalTimerStarted`, `Sinks.Empty<Void> terminalCloseSignal`, `Flux.merge(...).takeUntilOther(terminalCloseSignal.asMono())`) — generic, not OpenShift-specific |
+| OS-1E-32 | The frontend never performs the generic automatic `EventSource` reconnect when the most-recently-received source state is terminal; instead it transitions to a stopped/restart-required UI state, retaining visible events, while ordinary non-terminal transport failures continue to use the existing bounded generic reconnect unchanged; the terminal-caused stop preserves its specific badge reason (never reverting to a generic "STOPPED" label), and Docker/Fixture (always non-terminal) are unaffected | `VERIFIED` (real rendered-component test evidence) | `useLiveTail.ts` (`sourceStatusRef`, `isTerminalSourceState` check inside `onerror` before the generic reconnect path); `liveTailTypes.ts#isTerminalSourceState`; `LiveTailPanel.tsx#sourceStatusBadge` (guard widened to include `connectionState === 'stopped'`, new `CONNECTING` case); `useLiveTail.test.ts` (terminal-suppresses-reconnect describe block, 5 tests incl. `MockEventSource.instances.length` proof of no new EventSource); `LiveTailPanel.test.tsx` (CONNECTING badge + terminal-reason-preserved/ordinary-Stop-unaffected tests) |
+
+**OS-1E FINAL IMPLEMENTATION pass.** 10 new rows (OS-1E-23 through
+OS-1E-32); OS-1E-19's evidence annotated in place to point at this
+section's widened state/count model, its underlying requirement
+unchanged. No `ContextTargetProofCodec`/`ConnectionOperationSnapshot`/
+`resolveTargetPlan` design touched. No historical search, context, or
+correlation behavior changed. `TEST-INFRA-1` remains
+`APPROVED_PENDING_HARDENING`, untouched — re-confirmed via the same
+PNG-restoration mitigation after this pass's own full backend/frontend/E2E
+validation. `REL-1` (§7, §7b, §7c) remains confirmed `APPROVED_PENDING`,
+untouched. `REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`, consistent with every
+prior OS-1x slice — this pass neither touched nor could convert that
+status. `UNTRACKED_OWNER_REQUIREMENTS=0`.
+
+### 12n. OS-1E FINAL TERMINAL STATUS DELIVERY FIX — guaranteeing terminal-state delivery before SSE close
+
+An independent review of §12m's own terminal-SSE grace-close found one
+remaining contract defect: the periodic heartbeat alone could not
+guarantee the browser ever learned a terminal source state before the
+connection closed. See `docs/verification/OS_1E_OPENSHIFT_LIVE_REPORT.md`
+§15 for the full before/after account.
+
+| # | Finding | Status |
+|---|---|---|
+| 1 | With the DEFAULT properties (`heartbeatInterval=15s`), `terminalGrace = min(2×15s, 10s) = 10s` is strictly LESS than the heartbeat interval — the SSE connection could close up to 5 seconds before the next periodic heartbeat would ever have carried the terminal status. `LiveTailService`'s `statusTracker` only updated an in-memory `latestStatus` reference and emitted no SSE event of its own, so the browser's last-known state at the moment `onerror` ran could still be a stale non-terminal one, incorrectly triggering the generic bounded reconnect against a session that will never resume | `RESOLVED` |
+| 2 | The terminal grace timer (`Mono.delay(terminalGrace).subscribe(...)`) was a detached, fire-and-forget subscription with its OWN lifecycle, independent of the SSE connection's own cancellation | `RESOLVED` (folded into the same reactive chain as the rest of the connection) |
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| OS-1E-33 | The first time a terminal `LiveSourceStatus` (`STALE`/`EXPIRED`/`NO_ACTIVE_TARGETS`) is observed, `LiveTailService` emits ONE immediate `"status"` SSE event carrying that exact terminal snapshot — never waiting for the next periodic heartbeat tick — before starting the (unchanged) `terminalGrace` timer. Required ordering guaranteed: terminal snapshot observed → terminal status SSE emitted → grace timer starts/runs → SSE closes after grace. Non-terminal statuses are unaffected — still delivered only via the periodic heartbeat, never flooding the client with one SSE event per status mutation | `VERIFIED` | `LiveTailService#follow` (`statusTracker`'s `flatMap` branch, CAS-guarded by `terminalEmitted`); `LiveTailServiceTest#terminalStatusA_staleIsDeliveredImmediatelyNotOnTheNextHeartbeat`, `#terminalStatusB_expiredIsDeliveredImmediatelyNotOnTheNextHeartbeat`, `#terminalStatusC_noActiveTargetsIsDeliveredImmediatelyNotOnTheNextHeartbeat` — all three run against the REAL default `heartbeatInterval` (15s), proving the exact numeric relationship (`15s > 10s` grace) the defect depended on |
+| OS-1E-34 | The terminal grace timer is part of the SAME reactive lifecycle as the rest of the SSE connection (never a detached `Mono.delay(...).subscribe(...)`), so it is automatically, unconditionally disposed on client disconnect, explicit Stop, or `connectionTimeout` — no orphan timer | `VERIFIED` | `LiveTailService#follow` (`Flux.concat(immediateTerminalStatus, graceThenClose)` returned as part of `statusTracker`'s own `Flux`, subscribed only as one arm of the top-level `Flux.merge`); `LiveTailServiceTest#terminalStatusE_cancellationDuringGraceCancelsTheTerminalTimerNoOrphanWork` (disposes mid-grace, asserts the underlying status source itself observes `cancel()` — Reactor's own cancellation-propagation contract) |
+
+**OS-1E FINAL TERMINAL STATUS DELIVERY FIX pass.** 2 new rows (OS-1E-33,
+OS-1E-34). §12m's own OS-1E-31 (terminal-SSE grace-close) and OS-1E-32
+(frontend terminal-reconnect suppression) are neither reopened nor
+silently rewritten — both mechanisms remain correct and unchanged; this
+is a narrow, additional correction to WHEN the terminal status reaches
+the browser, not a redesign of either mechanism.
+`OpenShiftLiveTailProvider` state semantics, reconnect semantics, and
+decoder semantics are all explicitly untouched by this pass, per mission
+scope. No frontend production code changed — `useLiveTail.ts`'s
+terminal-reconnect-suppression logic was already correct; it simply never
+had the terminal status it needed, in time, until now; the existing
+`useLiveTail.test.ts` terminal-suppression tests (§12m) re-ran unchanged
+as sufficient proof. `TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`,
+untouched. `REL-1` (§7, §7b, §7c) remains confirmed `APPROVED_PENDING`,
+untouched. `REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`, consistent with every
+prior OS-1x slice. `UNTRACKED_OWNER_REQUIREMENTS=0`.
 
 ---
 
@@ -921,6 +1110,139 @@ only reads, the display-only health badge) are documented explicitly,
 not silently left unexplained. `TEST-INFRA-1` remains
 `APPROVED_PENDING_HARDENING`, untouched. `REL_1` remains confirmed
 `APPROVED_PENDING`, untouched.
+
+**OS-1E pass (§12k above).** Reconciled against
+`docs/verification/OS_1E_OPENSHIFT_LIVE_REPORT.md`. Executed as a stacked
+continuation on PR #42's approved HEAD while that PR remained externally
+blocked on the Windows Desktop CI gate — zero commits on
+`os/1d-openshift-context-correlation`, zero changes to PR #42's own diff.
+Confirmed the entire existing generic Live architecture (transport,
+reconnect, lifecycle, masking, buffering) needed no redesign — OS-1E's
+real new work is a genuinely streaming `follow=true` line decoder reusing
+OS-1C's own hardened cancellation-bridge pattern, and a multi-target
+orchestration layer reusing OS-1B's scope resolution and OS-1D's atomic
+snapshot verbatim. A new, previously-untracked requirement surfaced and
+was registered (not implemented), per this slice's own mission: `REL-1`
+addendum "Reproducible Windows .NET / NuGet Toolchain" (§7c), tracking the
+real, observed PR #42 Windows Desktop CI infrastructure failure so a
+transient NuGet restore issue cannot silently block a future merge the
+same way again. `liveTail` flips `true` only after full implementation
+and its full test matrix passed. `TEST-INFRA-1` remains
+`APPROVED_PENDING_HARDENING`, untouched. `REL_1`'s existing rows (§7, §7b)
+remain confirmed `APPROVED_PENDING`, untouched — this pass adds §7c
+alongside them, not in place of them. `REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`.
+
+**OS-1E REVIEW RECOVERY pass (§12l above).** Reconciled against
+`docs/verification/OS_1E_OPENSHIFT_LIVE_REPORT.md`'s own review-recovery
+section. An independent review of §12k's own implementation found six
+real defects, all closed as OS-1E-14 through OS-1E-22: (1) the reconnect
+budget could be reset forever by replayed historical initial-tail data,
+because every reconnect wrongly reused the configured `initialTailLines`
+instead of `tailLines=0` — fixed by making `tailLines` a genuine per-
+attempt parameter and defining `REAL_RECOVERY` explicitly as "a reconnect
+delivered a genuine, non-replayable event"; (2) one physical overlong log
+line could fragment into several fake `CanonicalLogEvent`s — fixed by a
+`DecodedLine(content, truncated)` shape and a decoder `discardingOverlong`
+mode guaranteeing at most one event per physical line; (3) `maxConcurrency`
+was claimed reused from `DirectPodLogProperties` but never actually
+enforced for live connect/reconnect — fixed with a non-blocking, per-
+session connect-admission permit gate, deliberately distinct from
+`maxTargets` and deliberately not `flatMap(..., maxConcurrency)` (which
+would starve every target past the first `maxConcurrency`, since each
+stream is intentionally infinite); (4) a session with zero active targets
+could remain visually labeled plain LIVE, since the generic SSE heartbeat
+correctly keeps the transport connection open — fixed with a frontend
+badge override driven by the new backend-reported `LiveSourceStatus.state`,
+never by inferring health from warning text; (5) the original single-slot
+warnings channel reported only the most-recently-changed target, silently
+losing an earlier still-true condition — fixed by a new request-scoped
+`LiveSourceStatus` (state + live target counts + CURRENT warnings) pushed
+as a full snapshot on every change; (6) a connection-generation change or
+a scope (project/workload/pod/container) change during an already-running
+immutable live-target snapshot was never actively surfaced — fixed with a
+bounded, in-memory-only (never a cluster/Watch call) periodic staleness
+check that terminates the old session's own target streams and reports
+`STALE`, never migrating it onto new credentials or a new scope. No
+`ContextTargetProofCodec`/`ConnectionOperationSnapshot`/`resolveTargetPlan`
+design touched; no OS-1B/OS-1C/OS-1D `VERIFIED` row reopened. `TEST-INFRA-1`
+remains `APPROVED_PENDING_HARDENING`, untouched. `REL_1` (§7, §7b, §7c)
+remains confirmed `APPROVED_PENDING`, untouched. `REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`.
+
+**OS-1E FINAL IMPLEMENTATION pass (§12m above).** Reconciled against
+`docs/verification/OS_1E_OPENSHIFT_LIVE_REPORT.md`'s own §14. A separate,
+text-only design-closure pass (no code) treated §12l's own implementation
+as input, not authority, and found one real defect the review-recovery
+pass had not caught, plus five genuine design gaps, all closed as
+OS-1E-23 through OS-1E-32: (1) a target was marked `ACTIVE` at
+`followTarget()` entry, before any HTTP response — fixed by switching
+`OpenShiftApiClient#followPodLog` to WebClient `exchangeToFlux`, so an
+HTTP `2xx` response (not connection-attempt start, not the first log
+line) is the sole evidence of establishment, via a caller-supplied
+`onEstablished` callback invoked exactly once; (2) a physical line of
+exactly `maxLineBytes` bytes followed by a real newline was falsely
+truncated — fixed by reordering `LiveLineDecoder`'s overflow check so the
+newline is always checked before the `buffer.size() == maxLineBytes`
+branch; (3) no final-partial-line flush existed for any termination cause
+— fixed with three distinct, tested outcomes: clean EOF flushes one
+`unterminated=true` event (bounded `UNTERMINATED_LIVE_LINE` count), an
+error discards the fragment silently (bounded `PARTIAL_LINE_DROPPED`
+count), and an explicit Stop/cancellation discards it with no warning at
+all; (4) no `connectingTargets` count/state existed — fixed by adding
+`LiveSourceStatus.State.CONNECTING` and a `connectingTargets` count
+satisfying `resolvedTargets = connecting + active + reconnecting +
+stopped` for every snapshot, derived by exact priority `STALE > EXPIRED >
+RUNNING > CONNECTING > DEGRADED > RECONNECTING > NO_ACTIVE_TARGETS`, with
+one documented, tested completion of a genuine gap in the literal owner
+formula; every resolved target's phase is now seeded to `CONNECTING`
+before the session's first status push, closing a false initial
+`NO_ACTIVE_TARGETS` reading; (5) becoming a distinct establishment signal
+created a risk of conflating `STREAM_ACTIVE` with
+`OUTAGE_RECOVERY_BUDGET_RESET` — resolved by an explicit separation: only
+a genuine post-reconnect `DecodedLine` (via `.doOnNext`, never via
+`onEstablished`) resets the bounded reconnect budget, since `tailLines=0`
+on every reconnect makes such data provably non-replayed; (6) a terminal
+SSE session rode the full `connectionTimeout` and the frontend's generic
+`EventSource` auto-reconnect could not distinguish a deliberate terminal
+server-close from an ordinary transport failure — fixed with a generic,
+bounded, one-shot server-side grace-close (`min(2×heartbeatInterval,
+10s)`) via `LiveSourceStatus.State#isTerminal()`, and a frontend
+`sourceStatusRef` consulted inside `onerror` to suppress the generic
+reconnect specifically (and only) when the last-known source state was
+terminal, transitioning instead to a stopped/restart-required UI state
+that retains visible events and preserves the specific terminal badge
+reason. `maxConcurrency`'s permit-release-on-timeout path is unchanged in
+effect but now explicitly never calls `onEstablished`. No
+`ContextTargetProofCodec`/`ConnectionOperationSnapshot`/`resolveTargetPlan`
+design touched; no OS-1B/OS-1C/OS-1D/§12l `VERIFIED` row reopened (only
+OS-1E-19's evidence annotated in place). `TEST-INFRA-1` remains
+`APPROVED_PENDING_HARDENING`, untouched. `REL_1` (§7, §7b, §7c) remains
+confirmed `APPROVED_PENDING`, untouched. `REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`.
+
+**OS-1E FINAL TERMINAL STATUS DELIVERY FIX pass (§12n above).**
+Reconciled against `docs/verification/OS_1E_OPENSHIFT_LIVE_REPORT.md`'s
+own §15. An independent review of §12m's own terminal-SSE grace-close
+found the periodic heartbeat alone could not guarantee terminal-state
+delivery before SSE close: with the DEFAULT properties
+(`heartbeatInterval=15s`), `terminalGrace = min(2×15s, 10s) = 10s` is
+strictly less than the heartbeat interval, so the connection could close
+up to 5 seconds before the next heartbeat would ever have carried the
+terminal status — `LiveTailService`'s `statusTracker` only updated an
+in-memory reference and emitted no SSE event of its own. **Fix:** the
+first time a terminal status is observed, `statusTracker` now emits ONE
+immediate `"status"` SSE event carrying that exact terminal snapshot
+before starting the grace timer, closed as OS-1E-33. The grace timer
+itself was also a detached `Mono.delay(...).subscribe(...)` with its own
+lifecycle, independent of the SSE connection's own cancellation — **fix:**
+folded into `statusTracker`'s own `Flux`, subscribed only as one arm of
+the top-level merge, so it is now automatically disposed on client
+disconnect/Stop/`connectionTimeout`, closed as OS-1E-34. Both fixes are
+narrow and additional — §12m's own terminal-SSE grace-close and frontend
+terminal-reconnect-suppression mechanisms are unchanged and correct; no
+`OpenShiftLiveTailProvider` state/reconnect/decoder semantics touched
+(explicitly out of scope for this pass); no frontend production code
+changed. `TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`, untouched.
+`REL_1` (§7, §7b, §7c) remains confirmed `APPROVED_PENDING`, untouched.
+`REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`, unchanged.
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0

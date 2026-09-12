@@ -12,6 +12,7 @@ import com.logexplorer.core.guard.TooManyConcurrentLiveTailsException;
 import com.logexplorer.core.mask.MaskingService;
 import com.logexplorer.core.mask.TextRedactor;
 import com.logexplorer.core.model.CanonicalLogEvent;
+import com.logexplorer.core.model.LiveSourceStatus;
 import com.logexplorer.core.model.RawSensitiveFields;
 import com.logexplorer.core.model.SourceCapabilities;
 import com.logexplorer.source.LogSourceRegistry;
@@ -342,5 +343,113 @@ class LiveTailServiceTest {
     } finally {
       holder.dispose();
     }
+  }
+
+  /**
+   * OS-1E final terminal-status-delivery fix — a real review defect: with
+   * the DEFAULT properties, {@code heartbeatInterval} is 15s while
+   * {@code terminalGrace} is {@code min(2*15s, 10s) = 10s}, so the SSE
+   * connection could close a full 5 seconds before the next periodic
+   * heartbeat would even have fired, leaving the browser believing the
+   * last-known source state was still non-terminal at the moment
+   * {@code onerror} runs. These tests use the REAL default
+   * {@code heartbeatInterval} (never overridden) specifically so the
+   * defect's own exact numeric relationship (15s &gt; 10s) is what's
+   * actually verified, not a scaled-down stand-in.
+   */
+  private LiveTailProperties defaultHeartbeatProperties() {
+    LiveTailProperties properties = new LiveTailProperties(); // real defaults: heartbeatInterval=15s
+    properties.setConnectionTimeout(Duration.ofMinutes(10));
+    return properties;
+  }
+
+  private LiveSourceStatus running() {
+    return new LiveSourceStatus(LiveSourceStatus.State.RUNNING, 1, 0, 1, 0, 0, List.of());
+  }
+
+  private void terminalStatusIsDeliveredImmediatelyBeforeClose(LiveSourceStatus.State terminalState) {
+    LiveTailProperties properties = defaultHeartbeatProperties();
+    assertThat(properties.getHeartbeatInterval()).isEqualTo(Duration.ofSeconds(15));
+    Duration terminalGrace = Duration.ofMillis(
+        Math.min(2 * properties.getHeartbeatInterval().toMillis(), Duration.ofSeconds(10).toMillis()));
+    assertThat(terminalGrace).isEqualTo(Duration.ofSeconds(10));
+    assertThat(properties.getHeartbeatInterval()).isGreaterThan(terminalGrace); // the exact race condition this fix closes
+
+    StubLogSource stub = new StubLogSource("live-source", "Live Source", LIVE_CAPABLE);
+    LiveSourceStatus terminal = new LiveSourceStatus(terminalState, 1, 0, 0, 0, 1, List.of("terminal-reason"));
+    stub.withFollowFlux(Flux.never());
+    stub.withStatusFlux(Flux.just(running(), terminal));
+    LiveTailService service = newService(stub, properties);
+
+    // D: the terminal status SSE event arrives well before the next
+    // heartbeat tick (t=15s) COULD have fired, and the connection
+    // completes only after terminalGrace (t=10s) — never earlier, never
+    // waiting for the 15s heartbeat.
+    StepVerifier.withVirtualTime(() -> service.follow("live-source", List.of()))
+        .expectSubscription()
+        .assertNext(sse -> {
+          assertThat(sse.event()).isEqualTo("status");
+          LiveTailService.StatusPayload payload = (LiveTailService.StatusPayload) sse.data();
+          assertThat(payload.liveSourceState()).isEqualTo(terminalState.name());
+        })
+        .expectNoEvent(terminalGrace.minusMillis(200))
+        .thenAwait(Duration.ofMillis(200))
+        .verifyComplete();
+  }
+
+  @Test
+  void terminalStatusA_staleIsDeliveredImmediatelyNotOnTheNextHeartbeat() {
+    terminalStatusIsDeliveredImmediatelyBeforeClose(LiveSourceStatus.State.STALE);
+  }
+
+  @Test
+  void terminalStatusB_expiredIsDeliveredImmediatelyNotOnTheNextHeartbeat() {
+    terminalStatusIsDeliveredImmediatelyBeforeClose(LiveSourceStatus.State.EXPIRED);
+  }
+
+  @Test
+  void terminalStatusC_noActiveTargetsIsDeliveredImmediatelyNotOnTheNextHeartbeat() {
+    terminalStatusIsDeliveredImmediatelyBeforeClose(LiveSourceStatus.State.NO_ACTIVE_TARGETS);
+  }
+
+  @Test
+  void terminalStatusE_cancellationDuringGraceCancelsTheTerminalTimerNoOrphanWork() {
+    // The grace timer must be part of the SAME reactive lifecycle as the
+    // rest of this SSE connection - never a detached
+    // `Mono.delay(...).subscribe(...)` that survives cancellation on its
+    // own. Proven here the standard way Reactor's own contract guarantees
+    // it: cancelling the downstream subscription propagates `cancel()` to
+    // every still-active upstream Publisher, including whichever inner
+    // publisher is currently live inside the `flatMap` that hosts the
+    // grace timer - so the STATUS source itself must observe a cancel.
+    LiveTailProperties properties = defaultProperties();
+    properties.setHeartbeatInterval(Duration.ofSeconds(3)); // terminalGrace = min(6s, 10s) = 6s - long enough to dispose mid-grace deterministically
+
+    StubLogSource stub = new StubLogSource("live-source", "Live Source", LIVE_CAPABLE);
+    LiveSourceStatus stale = new LiveSourceStatus(LiveSourceStatus.State.STALE, 1, 0, 0, 0, 1, List.of("scope-changed"));
+    java.util.concurrent.atomic.AtomicBoolean statusSourceCancelled = new java.util.concurrent.atomic.AtomicBoolean(false);
+    stub.withFollowFlux(Flux.never());
+    stub.withStatusFlux(Flux.just(stale).doOnCancel(() -> statusSourceCancelled.set(true)));
+    LiveTailService service = newService(stub, properties);
+
+    FixedDemandSubscriber subscriber = new FixedDemandSubscriber(10);
+    service.follow("live-source", List.of()).subscribe(subscriber);
+
+    waitUntil(() -> subscriber.received.stream().anyMatch(sse -> "status".equals(sse.event())), Duration.ofSeconds(2));
+    // Still well inside the 6s grace window - cancel now.
+    subscriber.subscription.cancel();
+
+    waitUntil(statusSourceCancelled::get, Duration.ofSeconds(1));
+
+    // Wait past what the (now-cancelled) grace timer would have needed to
+    // fire - no crash, and (since the subscriber itself is cancelled) no
+    // further delivery is possible; nothing throws from an orphan timer
+    // still trying to touch a torn-down connection.
+    try {
+      Thread.sleep(500);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+    assertThat(subscriber.received).hasSize(1);
   }
 }

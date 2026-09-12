@@ -171,9 +171,12 @@ class OpenShiftSecurityBoundariesTest {
   private static OpenShiftLogSource logSource(OpenShiftSession session) {
     OpenShiftApiClient client = new OpenShiftApiClient(Map.of());
     DirectPodLogProperties properties = new DirectPodLogProperties();
+    LogLineParser parser = new LogLineParser(new ObjectMapper());
     DirectPodLogProvider provider = new DirectPodLogProvider(
-        client, session, new LogLineParser(new ObjectMapper()), properties, new ContextTargetProofCodec(new ObjectMapper()));
-    return new OpenShiftLogSource(session, provider);
+        client, session, parser, properties, new ContextTargetProofCodec(new ObjectMapper()));
+    OpenShiftLiveTailProvider liveTailProvider = new OpenShiftLiveTailProvider(
+        client, session, parser, provider, properties, new com.logexplorer.config.OpenShiftLiveProperties());
+    return new OpenShiftLogSource(session, provider, liveTailProvider);
   }
 
   /**
@@ -194,9 +197,16 @@ class OpenShiftSecurityBoundariesTest {
    * DirectPodLogProvider#resolveTargetPlan}'s own javadoc), reusing the
    * same generic {@code /api/v1/logs/context} endpoint every other source
    * already uses, tested end to end. {@code contextView=true} is now the
-   * truthful value. {@code liveTail}/{@code rawLogQL}/{@code
-   * serviceDiscovery}/{@code composeProjectScoping} remain unchanged and
-   * still correctly {@code false} — OS-1E/Loki/Docker-shaped territory.
+   * truthful value. {@code rawLogQL}/{@code serviceDiscovery}/{@code
+   * composeProjectScoping} remain unchanged and still correctly {@code
+   * false} — Loki/Docker-shaped territory.
+   *
+   * <p><b>CORRECTED (OS-1E)</b> — {@code liveTail} was {@code false} here
+   * because direct {@code follow=true} live tail had not been implemented
+   * yet. OS-1E implements it ({@link OpenShiftLiveTailProvider}, reusing
+   * the existing generic Live architecture end to end), flipped only after
+   * its own full implementation and test matrix passed (see the OS-1E
+   * verification report). {@code liveTail=true} is now the truthful value.
    */
   @Test
   void openShiftAdvertisesExactlyTheCapabilitiesItCanDeliver() {
@@ -204,7 +214,7 @@ class OpenShiftSecurityBoundariesTest {
     var capabilities = source.capabilities();
 
     assertThat(capabilities.historicalSearch()).isTrue();
-    assertThat(capabilities.liveTail()).isFalse();
+    assertThat(capabilities.liveTail()).isTrue();
     assertThat(capabilities.contextView()).isTrue();
     assertThat(capabilities.rawLogQL()).isFalse();
     assertThat(capabilities.serviceDiscovery()).isFalse();
