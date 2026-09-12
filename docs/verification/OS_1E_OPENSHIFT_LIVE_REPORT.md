@@ -304,7 +304,7 @@ every E2E run, verified via an empty diff — and **not** fixed
 opportunistically here, per the standing registered decision
 (`APPROVED_PENDING_HARDENING`, unchanged).
 
-## 9. Validation
+## 9. Validation (original OS-1E implementation pass)
 
 | Check | Result |
 |---|---|
@@ -315,17 +315,10 @@ opportunistically here, per the standing registered decision
 | Frontend unit suite (`npx vitest run`) | `PASS` — 767/767, incl. 7 new OS-1E tests in `useLiveTail.test.ts`/`LiveTailPanel.test.tsx` |
 | Real running backend (`SPRING_PROFILES_ACTIVE=dev`) `/api/v1/sources` | `PASS` — confirmed `openshift.capabilities.liveTail == true` from a live, freshly-rebuilt process, not merely from source |
 | Playwright — `os-1a-openshift-connection.spec.ts` + `phase-j-live-tail.spec.ts` (targeted, real browser) | `PASS` — 24/24, incl. the updated capability pin |
-| Playwright — full suite | See §9a |
+| Playwright — full suite | `PASS` — 287/287 |
 | `TEST-INFRA-1` PNG restoration after every E2E run | `PASS` — verified empty PNG diff after each run |
 
-### 9a. Full Playwright E2E suite
-
-Full-suite result recorded once the background run completes; see the
-final mission response for the authoritative PASS/FAIL count and any
-findings, plus confirmation that `TEST-INFRA-1`'s PNG-restoration
-mitigation was applied afterward.
-
-## 10. Files changed (backend)
+## 10. Files changed (backend, original implementation pass)
 
 - `backend/src/main/java/com/logexplorer/config/OpenShiftLiveProperties.java` (new)
 - `backend/src/main/java/com/logexplorer/core/model/LiveFollowResult.java` (new)
@@ -338,7 +331,7 @@ mitigation was applied afterward.
 - New tests: `OpenShiftApiClientLiveStreamTest`, `OpenShiftLiveTailProviderTest`
 - Updated tests: `OpenShiftSecurityBoundariesTest` (capability pin + constructor)
 
-## 11. Files changed (frontend)
+## 11. Files changed (frontend, original implementation pass)
 
 - `frontend/src/features/live/liveTailTypes.ts` (`LiveStatusPayload.warnings`)
 - `frontend/src/features/live/useLiveTail.ts` (`sourceWarnings` state)
@@ -352,3 +345,178 @@ See `docs/governance/OWNER_REQUIREMENTS_REGISTER.md` §7c for the new
 `REL-1`-scoped, `APPROVED_PENDING` "Reproducible Windows .NET / NuGet
 Toolchain" row, registered per this slice's own mission but explicitly
 **not implemented** here.
+
+---
+
+## 13. OS-1E REVIEW RECOVERY — live stream truthfulness, bounded reconnect, long-line integrity & active-stream state
+
+An independent review of the implementation above (§1-12) found six real
+defects that had to be corrected before OS-1E could be approved. None of
+them touch `ContextTargetProofCodec`/`ConnectionOperationSnapshot`/
+`resolveTargetPlan` (OS-1D's own mechanisms, reused verbatim), and none
+reopen any OS-1B/OS-1C/OS-1D `VERIFIED` requirement.
+
+### 13.1 Findings and fixes
+
+**1. Reconnect budget could be reset forever by replayed initial-tail
+rows.** The original `followTarget` called `client.followPodLog(...)`
+with `liveProperties.getInitialTailLines()` on *every* attempt, including
+every reconnect. If a target's pod already had historical log lines,
+Kubernetes' `tailLines=N` would keep returning the same N lines on every
+reconnect, `receivedAnyEvent` would be `true` every time, and the bounded
+reconnect budget would reset to 0 on every single reconnect — making
+`maxReconnectAttempts` not a real bound at all, and duplicating the same
+historical line(s) into the event stream on every reconnect besides.
+**Fix:** `tailLines` is now a genuine per-call parameter — `attempt == 0`
+uses the configured `initialTailLines`; every `attempt > 0` uses
+`tailLines=0`, the well-established `kubectl logs -f --tail=0` idiom
+("follow new lines only, replay nothing"). Because a reconnect can now
+never replay history, **any event received during a reconnect attempt is
+definitionally genuine, non-replayed data** — this is `OpenShiftLiveTailProvider`'s
+own explicit `REAL_RECOVERY` definition (`budgetBasis`), and it is the
+*only* thing the reconnect budget resets on. An attempt-0 historical event
+never resets anything (there is no budget to reset at attempt 0 in the
+first place). Tests: `reconnectA`-`reconnectF` in
+`OpenShiftLiveTailProviderTest` (initial-tail-vs-reconnect tailLines
+values, historical-data-cannot-reset-budget, persistent-failure-still-
+exhausts, genuine-recovery-does-reset, exhaustion-is-deterministic,
+Stop-during-backoff-cancels-the-retry).
+
+**2. One oversized physical line could fragment into several fake
+events.** The original `LiveLineDecoder` called `finishLine()` every time
+`maxLineBytes` was reached, even mid-physical-line, then kept
+accumulating the *same* physical line's remaining bytes into a fresh
+buffer — one real 200 KB line with a 64 KB cap could become three
+synthetic `CanonicalLogEvent`s, none of which the upstream ever actually
+sent as separate lines. **Fix:** `LiveLineDecoder` now returns
+`DecodedLine(content, truncated)`, and once the cap is hit before a real
+`\n`, it emits exactly ONE `DecodedLine` (`truncated=true`, content safely
+UTF-8-trimmed) and enters a `discardingOverlong` mode that discards
+(never buffers, never emits) every further byte of that same physical
+line until the real terminating `\n` arrives — guaranteeing at most one
+event per physical line, always. Tests: `OpenShiftApiClientLiveStreamTest`
+gained 3 new dedicated tests (`aPhysicalOverlongLineProducesExactlyOneEventNeverMultipleFakeOnes`
+with a 200,000-byte line, `overlongLineDiscardsEveryFurtherByteOfThatPhysicalLineUntilTheRealNewline`,
+`afterOverlongDiscardTheNextRealPhysicalLineParsesNormally`), plus the
+existing UTF-8-boundary test was corrected to the new semantics
+(`utf8SafeAtOverlongTruncationBoundary_noReplacementCharacterNoFakeContinuationEvent`).
+The truncation is also now surfaced to the live runtime status as one
+bounded, growing count ("N overlong log lines truncated") rather than a
+new warning string per occurrence — `SessionRuntimeState#incrementOverlong`;
+`OpenShiftLiveTailProviderTest#overlongLineTruncationReachesRuntimeStatusAsABoundedCount`.
+
+**3. `maxConcurrency` was claimed reused but never actually enforced for
+live connect/reconnect.** The original `OpenShiftLiveTailProvider` built
+one `Flux` per target and merged them with plain `Flux.merge` — no
+admission bound of any kind. The mission and the original report's own
+`MAXPODS_MAXTARGETS_MAXCONCURRENCY_REUSED_FROM=DirectPodLogProperties`
+claim was therefore false for the `maxConcurrency` third. **Fix:** a
+non-blocking, per-session connect-admission permit gate
+(`gatedFollow`/`acquirePermit`), deliberately distinct from `maxTargets`
+(the active-stream cap): up to `maxConcurrency` targets may simultaneously
+be in the "opening a connection" phase; a target's permit releases on its
+first data/error/completion signal, or after
+`OpenShiftLiveProperties#getConnectPermitTimeout()` elapses, whichever is
+first (so a connection that is genuinely established but simply idle
+never starves a later target). Deliberately **not**
+`flatMap(..., maxConcurrency)`: that operator only releases a concurrency
+slot when its inner sequence *terminates*, and a healthy live stream is
+intentionally infinite — the first `maxConcurrency` targets would run
+forever and every later target would never start. Implemented as a
+non-blocking bounded poll (`Mono.defer` + `retryWhen`) rather than a
+blocking `Semaphore.acquire()` on a worker thread, specifically to avoid
+hand-rolling interrupt-vs-cancellation correctness around a raw blocking
+call. Tests: 4 new dedicated concurrency tests in
+`OpenShiftLiveTailProviderTest` proving the bound holds with 5 targets
+and `maxConcurrency=2`, that one long-lived active stream never starves
+later targets, that cancellation while queued does not strand a permit,
+and that a failed (permanently-stopped) connect releases its permit for
+the next queued target.
+
+**4. A zero-active-target session could remain visually labeled plain
+LIVE.** The backend already completed the event `Flux` correctly once
+every target permanently stopped, and `LiveTailService`'s own heartbeat
+correctly kept the SSE transport connection open to deliver that truth
+(this part of the design was already right, and is preserved) — but the
+*frontend* had no distinct representation for "the transport is healthy
+but the source has nothing active," so the badge kept reading "LIVE".
+**Fix:** a new backend `core.model.LiveSourceStatus` (state +
+resolved/active/reconnecting/stopped counts + current warnings) is pushed
+to the frontend via extended `StatusPayload` fields; `LiveTailPanel.tsx`'s
+new `sourceStatusBadge` overrides the badge to "NO ACTIVE STREAMS" /
+"SESSION EXPIRED" / "SCOPE CHANGED — RESTART LIVE" whenever
+`connectionState` reads `'live'`/`'paused'` but the source's own state is
+`NO_ACTIVE_TARGETS`/`EXPIRED`/`STALE`; `DEGRADED` still reads "LIVE", with
+an appended `N/M active` count — the session genuinely *is* still live,
+just incomplete. Tests: 5 new dedicated override tests in
+`LiveTailPanel.test.tsx`.
+
+**5. Per-target warning state retained only the single most-recently-
+emitted warning.** The original design used
+`Sinks.many().multicast().onBackpressureBuffer()` emitting a bare
+`List<String>` each time — target A stopping, then target B also
+stopping, meant the channel's latest value contained only B's warning;
+A's still-true condition was silently lost from any *new* read of the
+channel (though not from ones already delivered). **Fix:** the channel
+now carries `LiveSourceStatus` — a full CURRENT snapshot recomputed from
+a live `SessionRuntimeState` (a bounded `ConcurrentHashMap<targetKey,
+TargetPhase>` plus stop reasons, overlong count, expired/stale flags) on
+every mutating event, so the *latest* emission always reflects every
+target's current phase, never only whichever one most recently changed.
+Tests: `statusRetainsEveryCurrentlyStoppedTargetsTruth_notOnlyTheLastOneToFail`
+plus the full `statusRunning_*`/`statusDegraded_*`/`statusReconnecting_*`/
+`statusNoActiveTargets_*`/`statusExpired_*` matrix in
+`OpenShiftLiveTailProviderTest`.
+
+**6. Connection-generation and scope changes during an immutable live
+snapshot were not actively surfaced.** The "old session never migrates
+onto new credentials" invariant held throughout (this was never a
+security gap) — but there was also no mechanism that noticed a
+generation or scope change and did anything about it; an old, healthy
+HTTP stream would just keep running against data that no longer reflected
+the user's current connection/selection. **Fix:** a bounded, in-memory-
+only periodic check (`OpenShiftLiveProperties#getStalenessCheckInterval()`,
+reading only already-captured `OpenShiftSession` state — never a
+cluster/Watch call) detects either condition and marks the session
+`STALE`, which `takeUntilOther(staleSignal)` uses to terminate every
+target stream. Tests:
+`generationChangeMarksTheOldSessionStaleAndStopsIt_neverMigratesCredentials`,
+`scopeChangeWhileImmutableSnapshotActiveIsSurfacedAsStale`.
+
+### 13.2 Validation (review recovery pass)
+
+| Check | Result |
+|---|---|
+| Backend compile (`./mvnw -q -o clean compile`) | `PASS` |
+| Backend full test suite (`./mvnw -q -o clean test`) | `PASS` — exit 0, 0 failures/errors, run 3 times consecutively with no flakiness (incl. the new timing-sensitive concurrency/staleness tests) |
+| `OpenShiftLiveTailProviderTest` alone | `PASS` — 31/31, run 3 times consecutively |
+| `OpenShiftApiClientLiveStreamTest` alone | `PASS` — all decoder/streaming tests green under the new `DecodedLine` shape |
+| Frontend typecheck (`npm run typecheck`) | `PASS` |
+| Frontend production build (`npm run build`) | `PASS` |
+| Frontend unit suite (`npx vitest run`) | `PASS` — 773/773 |
+| Real running backend (`SPRING_PROFILES_ACTIVE=dev`, freshly rebuilt) `/api/v1/sources` | `PASS` — confirmed `openshift.capabilities.liveTail == true` from the reworked code |
+| Playwright — `os-1a-openshift-connection.spec.ts` + `phase-j-live-tail.spec.ts` (targeted, real browser) | `PASS` — 24/24, no regression from the recovery pass |
+| Playwright — full suite | `PASS` — 287/287 |
+| `TEST-INFRA-1` PNG restoration after every E2E run | `PASS` — verified empty PNG diff after each of the two full-suite runs this session |
+
+### 13.3 Files changed (review recovery pass, in addition to §10/§11)
+
+Backend:
+- `backend/src/main/java/com/logexplorer/core/model/LiveSourceStatus.java` (new)
+- `backend/src/main/java/com/logexplorer/core/model/LiveFollowResult.java` (`warnings: Flux<List<String>>` → `status: Flux<LiveSourceStatus>`)
+- `backend/src/main/java/com/logexplorer/source/LogSource.java` (`followWithWarnings` → `followWithStatus`)
+- `backend/src/main/java/com/logexplorer/source/openshift/OpenShiftApiClient.java` (`DecodedLine`; `LiveLineDecoder`'s `discardingOverlong` mode; `followPodLog`'s `tailLines` now a real per-call parameter)
+- `backend/src/main/java/com/logexplorer/source/openshift/OpenShiftLiveTailProvider.java` (rewritten: tailLines-per-attempt, `budgetBasis`, `gatedFollow`/`acquirePermit`, `SessionRuntimeState`, staleness monitor)
+- `backend/src/main/java/com/logexplorer/source/openshift/OpenShiftLogSource.java` (`followWithStatus` override)
+- `backend/src/main/java/com/logexplorer/api/live/LiveTailService.java` (`followWithStatus` wiring; `StatusPayload` gained `liveSourceState`/`resolvedTargets`/`activeTargets`/`reconnectingTargets`/`stoppedTargets`)
+- `backend/src/main/java/com/logexplorer/config/OpenShiftLiveProperties.java` (`connectPermitTimeout`, `stalenessCheckInterval`)
+- Rewritten tests: `OpenShiftApiClientLiveStreamTest` (DecodedLine shape, corrected overlong-line semantics), `OpenShiftLiveTailProviderTest` (31 tests, largely new)
+
+Frontend:
+- `frontend/src/features/live/liveTailTypes.ts` (`LiveSourceState`, `LiveSourceStatusView`, `NOMINAL_SOURCE_STATUS`; `LiveStatusPayload` extended)
+- `frontend/src/features/live/useLiveTail.ts` (`sourceWarnings` → `sourceStatus`)
+- `frontend/src/features/live/LiveTailPanel.tsx` (`sourceStatusBadge` override; DEGRADED active/resolved count)
+- Updated tests: `useLiveTail.test.ts`, `LiveTailPanel.test.tsx` (5 new override tests), `useLiveKeyboardShortcuts.test.ts` (mock handle field)
+
+No `frontend/e2e/*.spec.ts` changes were needed this pass — the existing
+capability pin from the original implementation pass required no update.

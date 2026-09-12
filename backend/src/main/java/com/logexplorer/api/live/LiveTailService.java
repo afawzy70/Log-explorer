@@ -6,6 +6,7 @@ import com.logexplorer.core.guard.GuardrailViolationException;
 import com.logexplorer.core.guard.GuardrailViolationException.Reason;
 import com.logexplorer.core.guard.LiveTailGuard;
 import com.logexplorer.core.model.FollowRequest;
+import com.logexplorer.core.model.LiveSourceStatus;
 import com.logexplorer.source.LogSource;
 import com.logexplorer.source.LogSourceRegistry;
 import java.time.Instant;
@@ -61,16 +62,17 @@ public class LiveTailService {
       }
 
       FollowRequest request = new FollowRequest(sourceId, services, composeProject);
-      return source.followWithWarnings(request).flatMapMany(result -> {
+      return source.followWithStatus(request).flatMapMany(result -> {
         AtomicLong droppedCount = new AtomicLong();
-        // OS-1E — the most recent truthful partial-live-state disclosure
-        // from this exact session's own warnings() channel (mission §28/
-        // §29). Sampled once per heartbeat, never once per event — a
-        // namespace with several reconnecting targets must not flood the
-        // client with one status event per transient condition. Empty for
-        // every source but OpenShift, whose default `warnings()` is
-        // `Flux.empty()` and therefore never updates this reference at all.
-        AtomicReference<List<String>> latestWarnings = new AtomicReference<>(List.of());
+        // OS-1E review recovery — the most recent CURRENT snapshot from
+        // this exact session's own status() channel (mission §13: a full
+        // current snapshot on every emission, never a delta), sampled
+        // once per heartbeat, never once per event — a namespace with
+        // several reconnecting targets must not flood the client with
+        // one status event per transient condition. `LiveSourceStatus.NOMINAL`
+        // for every source but OpenShift, whose default status() never
+        // changes it.
+        AtomicReference<LiveSourceStatus> latestStatus = new AtomicReference<>(LiveSourceStatus.NOMINAL);
 
         Flux<ServerSentEvent<Object>> logEvents = result.events()
             // "Bounded buffers; backpressure with a dropped-count notice"
@@ -91,10 +93,10 @@ public class LiveTailService {
         // its lifecycle - cancellation on client disconnect/Stop included
         // - is the SAME lifecycle as the rest of this SSE connection,
         // never a separately-forgotten subscription. Emits no SSE event
-        // of its own; it only updates latestWarnings as a side effect.
-        Flux<ServerSentEvent<Object>> warningsTracker = result.warnings()
-            .doOnNext(latestWarnings::set)
-            .flatMap(w -> Mono.<ServerSentEvent<Object>>empty());
+        // of its own; it only updates latestStatus as a side effect.
+        Flux<ServerSentEvent<Object>> statusTracker = result.status()
+            .doOnNext(latestStatus::set)
+            .flatMap(s -> Mono.<ServerSentEvent<Object>>empty());
 
         // A real bug found via this phase's own testing (a slow/limited
         // downstream demand scenario, exactly what a genuinely slow SSE
@@ -105,13 +107,18 @@ public class LiveTailService {
         // kill the *entire* connection, log events included, over nothing
         // more than a missed heartbeat. `onBackpressureLatest()` is exactly
         // right for this payload's own semantics too: only the most recent
-        // dropped-count/warnings/timestamp is ever meaningful, so silently
+        // dropped-count/status/timestamp is ever meaningful, so silently
         // superseding a stale pending tick with a fresher one loses nothing.
+        // Deliberately outlives `logEvents` completing (OS-1E review
+        // recovery mission §14): a zero-active-target OpenShift session
+        // still needs this heartbeat to deliver the final truthful status
+        // to the frontend, even though no more "log" events will ever
+        // arrive - `logEvents` completing does not end this merged flux.
         Flux<ServerSentEvent<Object>> status = Flux.interval(properties.getHeartbeatInterval())
             .onBackpressureLatest()
-            .map(tick -> statusEvent(droppedCount.get(), latestWarnings.get()));
+            .map(tick -> statusEvent(droppedCount.get(), latestStatus.get()));
 
-        return guard.guard(Flux.merge(logEvents, warningsTracker, status))
+        return guard.guard(Flux.merge(logEvents, statusTracker, status))
             .take(properties.getConnectionTimeout());
       });
     });
@@ -121,20 +128,27 @@ public class LiveTailService {
     return ServerSentEvent.<Object>builder(dto).event("log").build();
   }
 
-  private ServerSentEvent<Object> statusEvent(long droppedCount, List<String> warnings) {
-    return ServerSentEvent.<Object>builder(new StatusPayload(droppedCount, Instant.now(), warnings))
+  private ServerSentEvent<Object> statusEvent(long droppedCount, LiveSourceStatus liveSourceStatus) {
+    return ServerSentEvent.<Object>builder(new StatusPayload(
+            droppedCount, Instant.now(), liveSourceStatus.state().name(), liveSourceStatus.resolvedTargets(),
+            liveSourceStatus.activeTargets(), liveSourceStatus.reconnectingTargets(),
+            liveSourceStatus.stoppedTargets(), liveSourceStatus.warnings()))
         .event("status")
         .build();
   }
 
   /**
    * The periodic "status" event's payload - also this stream's heartbeat
-   * (HANDOVER.md §18.4 "heartbeat"). {@code warnings} (OS-1E) is always
-   * {@code []} for every source that doesn't override {@link
-   * LogSource#followWithWarnings} - never {@code null}, so the frontend
-   * never needs a null-check to render it.
+   * (HANDOVER.md §18.4 "heartbeat"). OS-1E review recovery — the fields
+   * from {@code liveSourceState} onward mirror {@link LiveSourceStatus}
+   * (flattened rather than nested, so the frontend DTO stays a plain
+   * object) and are always present (never {@code null}) for every
+   * source, since {@link LogSource#followWithStatus}'s default reports
+   * {@link LiveSourceStatus#NOMINAL} rather than omitting the channel.
    */
-  public record StatusPayload(long droppedCount, Instant serverTime, List<String> warnings) {
+  public record StatusPayload(
+      long droppedCount, Instant serverTime, String liveSourceState, int resolvedTargets, int activeTargets,
+      int reconnectingTargets, int stoppedTargets, List<String> warnings) {
     public StatusPayload {
       warnings = warnings == null ? List.of() : List.copyOf(warnings);
     }

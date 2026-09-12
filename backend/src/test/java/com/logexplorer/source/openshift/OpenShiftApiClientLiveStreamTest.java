@@ -26,6 +26,17 @@ import reactor.test.StepVerifier;
  *   against synthetic {@code Flux<DataBuffer>} sources, proving real
  *   pooled-buffer release and real cancellation propagation.</li>
  * </ol>
+ *
+ * <p><b>OS-1E review recovery (mission §5/§6/§7/§26)</b> — the overlong-
+ * line tests below replace the original ones, which locked in the wrong
+ * semantic: the original decoder emitted a NEW synthetic line every time
+ * {@code maxLineBytes} was reached, so one real physical line larger than
+ * the cap became several fake {@code CanonicalLogEvent}s. The corrected
+ * decoder returns {@link OpenShiftApiClient.DecodedLine} (content +
+ * {@code truncated} flag) and produces EXACTLY ONE {@code DecodedLine}
+ * per physical upstream line, discarding (never buffering, never
+ * emitting) every further byte of that same physical line until the real
+ * terminating {@code \n} arrives.
  */
 class OpenShiftApiClientLiveStreamTest {
 
@@ -36,35 +47,38 @@ class OpenShiftApiClientLiveStreamTest {
   @Test
   void oneCompleteLineInOneChunkIsEmittedImmediately() {
     OpenShiftApiClient.LiveLineDecoder decoder = new OpenShiftApiClient.LiveLineDecoder(1024);
-    List<String> lines = decoder.onChunk(bytes("2026-09-12T10:00:00.000000000Z hello world\n"));
-    assertThat(lines).containsExactly("2026-09-12T10:00:00.000000000Z hello world");
+    List<OpenShiftApiClient.DecodedLine> lines = decoder.onChunk(bytes("2026-09-12T10:00:00.000000000Z hello world\n"));
+    assertThat(lines).hasSize(1);
+    assertThat(lines.get(0).content()).isEqualTo("2026-09-12T10:00:00.000000000Z hello world");
+    assertThat(lines.get(0).truncated()).isFalse();
   }
 
   @Test
   void multipleLinesInOneChunkAreAllEmittedInOrder() {
     OpenShiftApiClient.LiveLineDecoder decoder = new OpenShiftApiClient.LiveLineDecoder(1024);
-    List<String> lines = decoder.onChunk(bytes("line-one\nline-two\nline-three\n"));
-    assertThat(lines).containsExactly("line-one", "line-two", "line-three");
+    List<OpenShiftApiClient.DecodedLine> lines = decoder.onChunk(bytes("line-one\nline-two\nline-three\n"));
+    assertThat(contents(lines)).containsExactly("line-one", "line-two", "line-three");
+    assertThat(lines).allMatch(l -> !l.truncated());
   }
 
   @Test
   void aLineSplitAcrossManyChunksIsReassembledCorrectly() {
     OpenShiftApiClient.LiveLineDecoder decoder = new OpenShiftApiClient.LiveLineDecoder(1024);
-    List<String> all = new ArrayList<>();
+    List<OpenShiftApiClient.DecodedLine> all = new ArrayList<>();
     all.addAll(decoder.onChunk(bytes("{\"mes")));
     all.addAll(decoder.onChunk(bytes("sage\":\"x")));
     all.addAll(decoder.onChunk(bytes("\"}\n")));
-    assertThat(all).containsExactly("{\"message\":\"x\"}");
+    assertThat(contents(all)).containsExactly("{\"message\":\"x\"}");
   }
 
   @Test
   void aChunkBoundaryInsideAJsonFieldNeverProducesAPrematureOrSplitLine() {
     // Mission §12's own worked example.
     OpenShiftApiClient.LiveLineDecoder decoder = new OpenShiftApiClient.LiveLineDecoder(1024);
-    List<String> first = decoder.onChunk(bytes("2026... {\"mes"));
-    List<String> second = decoder.onChunk(bytes("sage\":\"x\"}\n2026..."));
+    List<OpenShiftApiClient.DecodedLine> first = decoder.onChunk(bytes("2026... {\"mes"));
+    List<OpenShiftApiClient.DecodedLine> second = decoder.onChunk(bytes("sage\":\"x\"}\n2026..."));
     assertThat(first).isEmpty(); // no newline seen yet - nothing emitted prematurely
-    assertThat(second).containsExactly("2026... {\"message\":\"x\"}");
+    assertThat(contents(second)).containsExactly("2026... {\"message\":\"x\"}");
   }
 
   @Test
@@ -78,18 +92,18 @@ class OpenShiftApiClientLiveStreamTest {
     byte[] secondChunk = java.util.Arrays.copyOfRange(full, charStart + 1, full.length);
 
     OpenShiftApiClient.LiveLineDecoder decoder = new OpenShiftApiClient.LiveLineDecoder(1024);
-    List<String> all = new ArrayList<>();
+    List<OpenShiftApiClient.DecodedLine> all = new ArrayList<>();
     all.addAll(decoder.onChunk(firstChunk));
     all.addAll(decoder.onChunk(secondChunk));
 
-    assertThat(all).containsExactly("prefix-中-suffix");
+    assertThat(contents(all)).containsExactly("prefix-中-suffix");
   }
 
   @Test
   void carriageReturnLineFeedIsHandledDefensively_crStrippedFromContent() {
     OpenShiftApiClient.LiveLineDecoder decoder = new OpenShiftApiClient.LiveLineDecoder(1024);
-    List<String> lines = decoder.onChunk(bytes("line-with-crlf\r\nanother\r\n"));
-    assertThat(lines).containsExactly("line-with-crlf", "another");
+    List<OpenShiftApiClient.DecodedLine> lines = decoder.onChunk(bytes("line-with-crlf\r\nanother\r\n"));
+    assertThat(contents(lines)).containsExactly("line-with-crlf", "another");
   }
 
   @Test
@@ -97,48 +111,81 @@ class OpenShiftApiClientLiveStreamTest {
     // The decoder's own job is purely line-framing - content validity is
     // a downstream (LogLineParser) concern, never this class's.
     OpenShiftApiClient.LiveLineDecoder decoder = new OpenShiftApiClient.LiveLineDecoder(1024);
-    List<String> lines = decoder.onChunk(bytes("not json at all { unbalanced\n"));
-    assertThat(lines).containsExactly("not json at all { unbalanced");
-  }
-
-  @Test
-  void aLineExceedingTheMaxBoundIsForciblyEmittedRatherThanGrowingUnbounded() {
-    OpenShiftApiClient.LiveLineDecoder decoder = new OpenShiftApiClient.LiveLineDecoder(16);
-    // 40 bytes, no newline anywhere - the safety valve must fire well
-    // before this ever reaches 40 buffered bytes.
-    List<String> lines = new ArrayList<>(decoder.onChunk(bytes("y".repeat(40))));
-    for (String line : lines) {
-      assertThat(line.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(16);
-    }
-    // Anything short of a full 16-byte forced fragment legitimately stays
-    // buffered inside the decoder awaiting more data or a newline - flush
-    // it explicitly to prove it, rather than lost.
-    lines.addAll(decoder.onChunk(bytes("\n")));
-    assertThat(lines).isNotEmpty();
-    // Nothing was silently dropped - every forcibly-emitted fragment is real content.
-    assertThat(String.join("", lines)).hasSize(40);
-  }
-
-  @Test
-  void aLineExceedingTheMaxBoundAtAMultiByteCharacterBoundaryIsTrimmedNeverGarbled() {
-    // A run of complete 3-byte "中" characters, capped just short of a
-    // whole number of characters - the forced cut must trim the
-    // incomplete trailing character rather than emit a garbled one.
-    OpenShiftApiClient.LiveLineDecoder decoder = new OpenShiftApiClient.LiveLineDecoder(7); // 2 chars (6 bytes) + 1 stray byte of a 3rd
-    byte[] fourChars = "中中中中".getBytes(StandardCharsets.UTF_8); // 12 bytes, no newline
-    List<String> lines = decoder.onChunk(fourChars);
-    assertThat(lines).isNotEmpty();
-    // Every emitted fragment must be valid, complete UTF-8 - never a
-    // replacement character or a decode exception.
-    for (String line : lines) {
-      assertThat(line).doesNotContain("�");
-    }
+    List<OpenShiftApiClient.DecodedLine> lines = decoder.onChunk(bytes("not json at all { unbalanced\n"));
+    assertThat(contents(lines)).containsExactly("not json at all { unbalanced");
   }
 
   @Test
   void emptyChunkProducesNoLinesAndDoesNotThrow() {
     OpenShiftApiClient.LiveLineDecoder decoder = new OpenShiftApiClient.LiveLineDecoder(1024);
     assertThat(decoder.onChunk(new byte[0])).isEmpty();
+  }
+
+  // ------------------------------------------------------------ overlong physical line (OS-1E review recovery, mission §5/§6/§7/§26)
+
+  @Test
+  void aPhysicalOverlongLineProducesExactlyOneEventNeverMultipleFakeOnes() {
+    // A 200,000-byte physical line (well over any realistic maxLineBytes),
+    // terminated by exactly one real newline - mission §26's own worked
+    // example. Must become AT MOST ONE DecodedLine, never several.
+    OpenShiftApiClient.LiveLineDecoder decoder = new OpenShiftApiClient.LiveLineDecoder(65_536);
+    byte[] hugeLine = "y".repeat(200_000).getBytes(StandardCharsets.UTF_8);
+    List<OpenShiftApiClient.DecodedLine> lines = new ArrayList<>(decoder.onChunk(hugeLine));
+    lines.addAll(decoder.onChunk(bytes("\n")));
+
+    assertThat(lines).hasSize(1);
+    assertThat(lines.get(0).truncated()).isTrue();
+    assertThat(lines.get(0).content().getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(65_536);
+  }
+
+  @Test
+  void overlongLineDiscardsEveryFurtherByteOfThatPhysicalLineUntilTheRealNewline() {
+    OpenShiftApiClient.LiveLineDecoder decoder = new OpenShiftApiClient.LiveLineDecoder(16);
+    // 40 bytes with no newline - crosses the cap once (at byte 16) and
+    // must emit exactly ONE truncated DecodedLine, discarding bytes
+    // 17-40 entirely (never a second/third fragment).
+    List<OpenShiftApiClient.DecodedLine> lines = new ArrayList<>(decoder.onChunk(bytes("y".repeat(40))));
+    assertThat(lines).hasSize(1);
+    assertThat(lines.get(0).truncated()).isTrue();
+
+    // The real terminator for THIS physical line arrives in a later
+    // chunk - must exit discard mode without emitting a second event for
+    // the discarded remainder.
+    List<OpenShiftApiClient.DecodedLine> afterNewline = decoder.onChunk(bytes("\n"));
+    assertThat(afterNewline).isEmpty();
+  }
+
+  @Test
+  void afterOverlongDiscardTheNextRealPhysicalLineParsesNormally() {
+    OpenShiftApiClient.LiveLineDecoder decoder = new OpenShiftApiClient.LiveLineDecoder(16);
+    List<OpenShiftApiClient.DecodedLine> all = new ArrayList<>();
+    all.addAll(decoder.onChunk(bytes("y".repeat(40)))); // overlong, 1 truncated event
+    all.addAll(decoder.onChunk(bytes("\n"))); // real terminator for the overlong line - no event
+    all.addAll(decoder.onChunk(bytes("next-real-line\n"))); // a normal, short, complete line
+
+    assertThat(all).hasSize(2);
+    assertThat(all.get(0).truncated()).isTrue();
+    assertThat(all.get(1).truncated()).isFalse();
+    assertThat(all.get(1).content()).isEqualTo("next-real-line");
+  }
+
+  @Test
+  void utf8SafeAtOverlongTruncationBoundary_noReplacementCharacterNoFakeContinuationEvent() {
+    // A run of complete 3-byte "中" characters, capped just short of a
+    // whole number of characters - the forced cut must trim the
+    // incomplete trailing character rather than emit a garbled one, and
+    // must never emit a second event for the discarded remainder.
+    OpenShiftApiClient.LiveLineDecoder decoder = new OpenShiftApiClient.LiveLineDecoder(7); // 2 chars (6 bytes) + 1 stray byte of a 3rd
+    byte[] fourChars = "中中中中".getBytes(StandardCharsets.UTF_8); // 12 bytes, no newline
+    List<OpenShiftApiClient.DecodedLine> lines = new ArrayList<>(decoder.onChunk(fourChars));
+    lines.addAll(decoder.onChunk(bytes("\n")));
+
+    assertThat(lines).hasSize(1);
+    assertThat(lines.get(0).content()).doesNotContain("�");
+  }
+
+  private static List<String> contents(List<OpenShiftApiClient.DecodedLine> lines) {
+    return lines.stream().map(OpenShiftApiClient.DecodedLine::content).toList();
   }
 
   private static byte[] bytes(String s) {
@@ -162,7 +209,7 @@ class OpenShiftApiClientLiveStreamTest {
   @Test
   void decodeLinesEmitsEveryLineFromAFiniteSourceAndCompletes() {
     Flux<DataBuffer> source = Flux.just(pooled("first\nsecond\nthird\n"));
-    StepVerifier.create(OpenShiftApiClient.decodeLines(source, 1024))
+    StepVerifier.create(OpenShiftApiClient.decodeLines(source, 1024).map(OpenShiftApiClient.DecodedLine::content))
         .expectNext("first", "second", "third")
         .verifyComplete();
   }
@@ -231,7 +278,7 @@ class OpenShiftApiClientLiveStreamTest {
     RuntimeException upstreamFailure = new RuntimeException("connection reset");
     Flux<DataBuffer> source = Flux.concat(Flux.just(buffer), Flux.error(upstreamFailure));
 
-    StepVerifier.create(OpenShiftApiClient.decodeLines(source, 1024))
+    StepVerifier.create(OpenShiftApiClient.decodeLines(source, 1024).map(OpenShiftApiClient.DecodedLine::content))
         .expectNext("partial-before-failure")
         .expectErrorMatches(e -> e == upstreamFailure)
         .verify(Duration.ofSeconds(2));

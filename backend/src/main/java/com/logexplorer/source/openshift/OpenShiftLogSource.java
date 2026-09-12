@@ -175,15 +175,15 @@ public class OpenShiftLogSource implements LogSource {
 
   /**
    * OS-1E — the one OpenShift-specific override of {@link
-   * #followWithWarnings}: only this source's live tail can genuinely have
-   * a per-target partial-failure/reconnect/cap truth to report (mission
-   * §28/§29). Built from exactly one {@link OpenShiftLiveTailProvider#follow()}
-   * call so the returned events and warnings correlate to the same live
+   * #followWithStatus}: only this source's live tail can genuinely have a
+   * per-target active/reconnecting/stopped truth to report (mission
+   * §12/§28/§29). Built from exactly one {@link OpenShiftLiveTailProvider#follow()}
+   * call so the returned events and status correlate to the same live
    * session (see {@link LiveFollowResult}'s own javadoc) — never two
    * independent calls that would each start their own cluster streams.
    */
   @Override
-  public Mono<LiveFollowResult> followWithWarnings(FollowRequest request) {
+  public Mono<LiveFollowResult> followWithStatus(FollowRequest request) {
     return Mono.fromSupplier(liveTailProvider::follow);
   }
 }

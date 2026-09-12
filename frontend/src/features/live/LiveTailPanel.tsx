@@ -46,6 +46,11 @@ export function LiveTailPanel({ live, sourceDisplayName, onStart }: LiveTailPane
   const { connectionState } = live;
   const isActive = connectionState === 'live' || connectionState === 'paused' || connectionState === 'connecting' || connectionState === 'reconnecting';
   const canStart = connectionState === 'idle' || connectionState === 'stopped';
+  // OS-1E review recovery (mission §11/§14) - the SSE transport can be
+  // perfectly healthy (connectionState === 'live') while the SOURCE's own
+  // targets are all down; this override is what stops that case from
+  // ever reading as a plain, healthy "LIVE".
+  const sourceOverride = sourceStatusBadge(connectionState, live.sourceStatus);
 
   const [filterLevels, setFilterLevels] = useState<string[]>(ALL_SEVERITY_LEVEL_IDS);
   const [filterText, setFilterText] = useState('');
@@ -100,13 +105,22 @@ export function LiveTailPanel({ live, sourceDisplayName, onStart }: LiveTailPane
          * be in - CONNECTING/LIVE/PAUSED/RECONNECTING/STOPPED at minimum,
          * plus this app's own FAILED terminal state.
          */}
-        <span className={[styles.liveBadge, liveBadgeToneClass(connectionState)].join(' ')} role="status">
+        <span
+          className={[styles.liveBadge, sourceOverride ? sourceOverride.tone : liveBadgeToneClass(connectionState)].join(' ')}
+          role="status"
+        >
           <span
-            className={[styles.liveDot, connectionState === 'live' ? styles.liveDotActive : ''].join(' ')}
+            className={[
+              styles.liveDot,
+              connectionState === 'live' && !sourceOverride ? styles.liveDotActive : '',
+            ].join(' ')}
             aria-hidden="true"
           />
-          {liveBadgeText(connectionState)}
+          {sourceOverride ? sourceOverride.text : liveBadgeText(connectionState)}
           {connectionState === 'reconnecting' ? ` (attempt ${live.reconnectAttempt})` : ''}
+          {!sourceOverride && live.sourceStatus.state === 'DEGRADED'
+            ? ` (${live.sourceStatus.activeTargets}/${live.sourceStatus.resolvedTargets} active)`
+            : ''}
         </span>
         <h1 className={styles.title}>{sourceDisplayName}</h1>
         <div className={styles.controls}>
@@ -168,9 +182,9 @@ export function LiveTailPanel({ live, sourceDisplayName, onStart }: LiveTailPane
         </div>
       ) : null}
 
-      {live.sourceWarnings.length > 0 ? (
+      {live.sourceStatus.warnings.length > 0 ? (
         <ul className={styles.sourceWarnings} role="status">
-          {live.sourceWarnings.map((warning, index) => (
+          {live.sourceStatus.warnings.map((warning, index) => (
             // eslint-disable-next-line react/no-array-index-key
             <li key={index} className={styles.sourceWarningsItem}>
               {warning}
@@ -248,6 +262,37 @@ function liveBadgeText(state: LiveTailHandle['connectionState']): string {
       return 'STOPPED';
     case 'failed':
       return 'CONNECTION FAILED';
+  }
+}
+
+/**
+ * OS-1E review recovery (mission §11/§14) — overrides the plain
+ * transport-level badge ONLY while the transport itself reads as healthy
+ * (`'live'`/`'paused'`) but the SOURCE's own per-target truth says
+ * otherwise. Returns `null` for `RUNNING`/`DEGRADED` (DEGRADED still
+ * shows "LIVE", with the active/resolved count appended separately - the
+ * session genuinely IS still live, just not complete) and for every
+ * connectionState the transport itself already renders distinctly
+ * (`connecting`/`reconnecting`/`stopped`/`failed`/`idle`).
+ */
+function sourceStatusBadge(
+  connectionState: LiveTailHandle['connectionState'],
+  sourceStatus: LiveTailHandle['sourceStatus'],
+): { text: string; tone: string } | null {
+  if (connectionState !== 'live' && connectionState !== 'paused') {
+    return null;
+  }
+  switch (sourceStatus.state) {
+    case 'NO_ACTIVE_TARGETS':
+      return { text: 'NO ACTIVE STREAMS', tone: styles.toneFailed };
+    case 'EXPIRED':
+      return { text: 'SESSION EXPIRED', tone: styles.toneFailed };
+    case 'STALE':
+      return { text: 'SCOPE CHANGED — RESTART LIVE', tone: styles.toneFailed };
+    case 'RECONNECTING':
+      return { text: 'RECONNECTING', tone: styles.toneConnecting };
+    default:
+      return null;
   }
 }
 
