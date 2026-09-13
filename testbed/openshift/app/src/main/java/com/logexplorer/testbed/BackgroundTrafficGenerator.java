@@ -42,7 +42,7 @@ class BackgroundTrafficGenerator {
           "ERR_TIMEOUT", "background-task", null,
           Map.of("latencyMs", String.valueOf(1500 + ThreadLocalRandom.current().nextInt(3500))));
     } else if (roll < 10) {
-      // A rare, genuine background error, distinct from the explicit /test/payment-error scenario.
+      // A rare, genuine background error, distinct from the explicit /test/order-error scenario.
       log.emit("ERROR", "Background task failed unexpectedly", correlationId, traceId, null, "ERR_UPSTREAM_5XX",
           "background-task", null, null);
     } else {
@@ -52,16 +52,16 @@ class BackgroundTrafficGenerator {
 
   private String backgroundMessage() {
     return switch (identity.serviceRole) {
-      case "GATEWAY" -> "Health check probe served";
-      case "CUSTOMERS" -> "Refreshed customer profile cache entry";
-      case "ACCOUNTS" -> "Reconciled account balance snapshot";
-      case "PAYMENTS" -> "Polled payment gateway status";
-      case "TRANSFERS" -> "Checked pending transfer queue";
-      case "BENEFICIARIES" -> "Synced beneficiary directory entry";
-      case "NOTIFICATIONS" -> "Drained notification delivery queue";
-      case "FRAUD" -> "Updated fraud model risk cache";
-      case "AUDIT" -> "Flushed audit log buffer";
-      case "STATEMENTS" -> "Rotated statement generation batch";
+      case "EDGE" -> "Health check probe served";
+      case "PROFILE" -> "Refreshed profile cache entry";
+      case "CATALOG" -> "Reconciled catalog snapshot";
+      case "ORDERS" -> "Polled order processing status";
+      case "WORKFLOW" -> "Checked pending workflow queue";
+      case "DIRECTORY" -> "Synced directory entry";
+      case "MESSAGE" -> "Drained message delivery queue";
+      case "RULES" -> "Updated rules evaluation cache";
+      case "ACTIVITY" -> "Flushed activity log buffer";
+      case "REPORT" -> "Rotated report generation batch";
       default -> "Background heartbeat";
     };
   }

@@ -13,16 +13,21 @@ only by `SERVICE_NAME`/`SERVICE_ROLE` environment variables:
 
 | Service | Role |
 |---|---|
-| `gateway-service` | GATEWAY (2 replicas, + a metrics sidecar container) |
-| `customer-service` | CUSTOMERS (2 replicas) |
-| `account-service` | ACCOUNTS |
-| `payment-service` | PAYMENTS (2 replicas, used for the rolling-update test) |
-| `transfer-service` | TRANSFERS |
-| `beneficiary-service` | BENEFICIARIES |
-| `notification-service` | NOTIFICATIONS |
-| `fraud-service` | FRAUD |
-| `audit-service` | AUDIT |
-| `statement-service` | STATEMENTS |
+| `logexp-test-edge` | EDGE (2 replicas, + a metrics sidecar container) |
+| `logexp-test-profile` | PROFILE (2 replicas) |
+| `logexp-test-catalog` | CATALOG |
+| `logexp-test-orders` | ORDERS (2 replicas, used for the rolling-update test) |
+| `logexp-test-workflow` | WORKFLOW |
+| `logexp-test-directory` | DIRECTORY |
+| `logexp-test-message` | MESSAGE |
+| `logexp-test-rules` | RULES |
+| `logexp-test-activity` | ACTIVITY |
+| `logexp-test-report` | REPORT |
+
+Every name is the generic `logexp-test-<noun>` pattern (deliberately not
+a banking/business-domain name) — used identically as the OpenShift
+Deployment/Service/Route resource name AND the in-app `SERVICE_NAME`
+identity (the `application` field in every generated log line).
 
 Each pod continuously emits structured JSON logs to stdout (captured by
 OpenShift/`oc logs` automatically), in the exact field shape the real
@@ -67,13 +72,13 @@ testbed/openshift/
   manifests/
     services.yaml                     - the 10 services + roles + replicas + sizing
     deployment-template.yaml          - rendered once per service (envsubst)
-    gateway-with-sidecar-template.yaml- gateway-service's own variant (+ sidecar, + Route)
+    edge-with-sidecar-template.yaml   - logexp-test-edge's own variant (+ sidecar, + Route)
   scripts/
     connect-check.sh                  - verify credential, print safe metadata only
     build-and-push.sh                 - builds the image via an OpenShift binary BuildConfig
     deploy.sh                         - renders + applies every service
     generate-traffic.sh               - drives the deterministic /test/* scenarios
-    rolling-update-demo.sh            - mission §11 rolling-update test (payment-service)
+    rolling-update-demo.sh            - mission §11 rolling-update test (logexp-test-orders)
     cleanup.sh                        - removes ONLY label-selected testbed resources
 ```
 
@@ -99,7 +104,7 @@ eval "$(./scripts/build-and-push.sh | tee /dev/stderr | grep TESTBED_IMAGE)"
 # 5. Generate deterministic investigation scenarios:
 ./scripts/generate-traffic.sh all
 
-# 6. (optional) Exercise the rolling-update test on payment-service:
+# 6. (optional) Exercise the rolling-update test on logexp-test-orders:
 ./scripts/rolling-update-demo.sh
 
 # 7. When done, clean up ONLY what this testbed created:
@@ -115,7 +120,7 @@ real, running testbed.
 
 Tuned for Red Hat Developer Sandbox's limited quota (mission §5):
 ~12 pods total (10 services, 3 of which run 2 replicas, plus one extra
-sidecar container on `gateway-service`), each requesting `15m`
+sidecar container on `logexp-test-edge`), each requesting `15m`
 CPU / `80Mi` memory, limited to `150m` / `160Mi`. Adjust
 `manifests/services.yaml`'s `resources:` block if your actual quota
 (printed by `connect-check.sh`) needs it smaller.

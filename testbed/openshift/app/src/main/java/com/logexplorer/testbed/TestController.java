@@ -18,7 +18,9 @@ import org.springframework.web.client.RestClient;
  * scenarios (mission §7/§8), each returning immediately with a
  * `correlationId` the caller can then search/correlate on in the real
  * Log Explorer UI. All bounded - {@link #burst} is the only
- * higher-volume endpoint and is capped.
+ * higher-volume endpoint and is capped. Every scenario/message here is
+ * deliberately generic test terminology, never a banking/business-domain
+ * name.
  */
 @RestController
 @RequestMapping("/test")
@@ -49,16 +51,16 @@ class TestController {
    * Internal chain-forwarding hop - never called directly by an
    * investigator, only by the previous service in {@link
    * ServiceIdentity#JOURNEY_CHAIN}. `outcome=NOT_FOUND` implements
-   * mission §7.C (customer-not-found) by having `customer-service` log a
-   * WARN and terminate the chain early rather than forwarding it.
+   * mission §7.C (profile-not-found) by having `logexp-test-profile` log
+   * a WARN and terminate the chain early rather than forwarding it.
    */
   @PostMapping("/journey-step")
   ResponseEntity<Void> journeyStep(
       @RequestParam String correlationId, @RequestParam String traceId, @RequestParam String journeyId,
       @RequestParam(defaultValue = "OK") String outcome) {
-    if ("customer-service".equals(identity.serviceName) && "NOT_FOUND".equals(outcome)) {
-      log.emit("WARN", "Customer lookup returned no match for the requested identifier", correlationId, traceId,
-          journeyId, "ERR_VALIDATION", "lookup-customer", null, null);
+    if ("logexp-test-profile".equals(identity.serviceName) && "NOT_FOUND".equals(outcome)) {
+      log.emit("WARN", "Profile lookup returned no match for the requested identifier", correlationId, traceId,
+          journeyId, "ERR_VALIDATION", "lookup-profile", null, null);
       return ResponseEntity.ok().build(); // chain terminates here - a real "not found" ends the request
     }
     log.emit("INFO", stepMessage(), correlationId, traceId, journeyId, "ERR_NONE", stepName(), null, null);
@@ -70,44 +72,44 @@ class TestController {
     return ResponseEntity.ok().build();
   }
 
-  /** Mission §7.C - a customer-not-found flow, entered fresh (not via the general journey entry point). */
-  @PostMapping("/customer-not-found")
-  ResponseEntity<Map<String, String>> customerNotFound() {
+  /** Mission §7.C - a profile-not-found flow, entered fresh (not via the general journey entry point). */
+  @PostMapping("/profile-not-found")
+  ResponseEntity<Map<String, String>> profileNotFound() {
     String correlationId = "corr-" + UUID.randomUUID();
     String traceId = "trace-" + UUID.randomUUID();
     String journeyId = "journey-" + UUID.randomUUID();
-    log.emit("INFO", "Gateway accepted customer lookup request", correlationId, traceId, journeyId, "ERR_NONE",
+    log.emit("INFO", "Edge accepted profile lookup request", correlationId, traceId, journeyId, "ERR_NONE",
         "route-request", null, null);
-    forward("customer-service", correlationId, traceId, journeyId, "NOT_FOUND");
+    forward("logexp-test-profile", correlationId, traceId, journeyId, "NOT_FOUND");
     return ResponseEntity.ok(Map.of("correlationId", correlationId));
   }
 
-  /** Mission §7.B - a failed payment: `payment-service` emits `ERROR_CODE=PAYMENT_001` with a real multiline exception, then still notifies the customer of the failure (a realistic failure still produces a downstream side effect). */
-  @PostMapping("/payment-error")
-  ResponseEntity<Map<String, String>> paymentError() {
+  /** Mission §7.B - a failed order: `logexp-test-orders` emits `ERROR_CODE=ORDER_001` with a real multiline exception, then still sends a delivery message (a realistic failure still produces a downstream side effect). */
+  @PostMapping("/order-error")
+  ResponseEntity<Map<String, String>> orderError() {
     String correlationId = "corr-" + UUID.randomUUID();
     String traceId = "trace-" + UUID.randomUUID();
     String journeyId = "journey-" + UUID.randomUUID();
     String exception = String.join("\n",
-        "java.lang.IllegalStateException: testbed upstream payment authorization failure",
-        "\tat com.logexplorer.testbed.paymentservice.App.authorize(App.java:"
+        "java.lang.IllegalStateException: testbed upstream order processing failure",
+        "\tat com.logexplorer.testbed.logexptestorders.App.processOrder(App.java:"
             + (40 + ThreadLocalRandom.current().nextInt(60)) + ")",
-        "Caused by: java.util.concurrent.TimeoutException: testbed authorizer timeout after 3000ms",
+        "Caused by: java.util.concurrent.TimeoutException: testbed processor timeout after 3000ms",
         "\t... 8 more");
-    log.emit("ERROR", "Payment authorization failed for the requested transfer", correlationId, traceId, journeyId,
-        "PAYMENT_001", "authorize-payment", exception, null);
-    forward("notification-service", correlationId, traceId, journeyId, "PAYMENT_FAILED");
+    log.emit("ERROR", "Order processing failed for the requested transaction", correlationId, traceId, journeyId,
+        "ORDER_001", "process-order", exception, null);
+    forward("logexp-test-message", correlationId, traceId, journeyId, "ORDER_FAILED");
     return ResponseEntity.ok(Map.of("correlationId", correlationId));
   }
 
-  /** Mission §7.D - a fraud warning, independent of the main journey chain. */
-  @PostMapping("/fraud-warning")
-  ResponseEntity<Map<String, String>> fraudWarning() {
+  /** Mission §7.D - a rules/policy warning, independent of the main journey chain. */
+  @PostMapping("/rules-warning")
+  ResponseEntity<Map<String, String>> rulesWarning() {
     String correlationId = "corr-" + UUID.randomUUID();
     String traceId = "trace-" + UUID.randomUUID();
-    log.emit("WARN", "Transaction flagged for manual fraud review - velocity threshold exceeded", correlationId,
-        traceId, null, "ERR_VALIDATION", "fraud-screen", null,
-        Map.of("fraudScore", String.valueOf(70 + ThreadLocalRandom.current().nextInt(30))));
+    log.emit("WARN", "Transaction flagged for manual rules review - velocity threshold exceeded", correlationId,
+        traceId, null, "ERR_VALIDATION", "evaluate-rules", null,
+        Map.of("policyScore", String.valueOf(70 + ThreadLocalRandom.current().nextInt(30))));
     return ResponseEntity.ok(Map.of("correlationId", correlationId));
   }
 
@@ -168,32 +170,32 @@ class TestController {
 
   private String stepMessage() {
     return switch (identity.serviceRole) {
-      case "GATEWAY" -> "Routed request to downstream service";
-      case "CUSTOMERS" -> "Loaded customer profile";
-      case "ACCOUNTS" -> "Loaded account summary";
-      case "PAYMENTS" -> "Processed payment authorization";
-      case "TRANSFERS" -> "Executed funds transfer";
-      case "BENEFICIARIES" -> "Validated beneficiary details";
-      case "NOTIFICATIONS" -> "Dispatched customer notification";
-      case "FRAUD" -> "Completed fraud screening";
-      case "AUDIT" -> "Recorded audit trail entry";
-      case "STATEMENTS" -> "Generated statement extract";
+      case "EDGE" -> "Routed request to downstream service";
+      case "PROFILE" -> "Loaded profile record";
+      case "CATALOG" -> "Loaded catalog record";
+      case "ORDERS" -> "Processed order transaction";
+      case "WORKFLOW" -> "Executed workflow step";
+      case "DIRECTORY" -> "Validated directory entry";
+      case "MESSAGE" -> "Dispatched message delivery";
+      case "RULES" -> "Completed rules evaluation";
+      case "ACTIVITY" -> "Recorded activity trail entry";
+      case "REPORT" -> "Generated report extract";
       default -> "Handled request";
     };
   }
 
   private String stepName() {
     return switch (identity.serviceRole) {
-      case "GATEWAY" -> "route-request";
-      case "CUSTOMERS" -> "load-customer";
-      case "ACCOUNTS" -> "load-account";
-      case "PAYMENTS" -> "authorize-payment";
-      case "TRANSFERS" -> "execute-transfer";
-      case "BENEFICIARIES" -> "validate-beneficiary";
-      case "NOTIFICATIONS" -> "notify-customer";
-      case "FRAUD" -> "fraud-screen";
-      case "AUDIT" -> "record-audit";
-      case "STATEMENTS" -> "generate-statement";
+      case "EDGE" -> "route-request";
+      case "PROFILE" -> "load-profile";
+      case "CATALOG" -> "load-catalog";
+      case "ORDERS" -> "process-order";
+      case "WORKFLOW" -> "execute-workflow";
+      case "DIRECTORY" -> "validate-directory";
+      case "MESSAGE" -> "deliver-message";
+      case "RULES" -> "evaluate-rules";
+      case "ACTIVITY" -> "record-activity";
+      case "REPORT" -> "generate-report";
       default -> "process-request";
     };
   }

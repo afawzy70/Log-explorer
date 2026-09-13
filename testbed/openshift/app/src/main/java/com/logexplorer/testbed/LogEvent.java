@@ -55,7 +55,7 @@ final class LogEvent {
     mdc.put("eventId", "testbed-event-" + pad(i));
     mdc.put("x-journey-trace-id", journeyId != null ? journeyId : "testbed-journey-" + pad(i / 7));
     mdc.put("stepName", stepName != null ? stepName : "process-request");
-    mdc.put("UIIdentifier", pick("screen.transfer.confirm", "screen.login", "screen.dashboard", "screen.support.ticket"));
+    mdc.put("UIIdentifier", pick("screen.workflow.confirm", "screen.login", "screen.dashboard", "screen.support.ticket"));
     mdc.put("ERROR_CODE", errorCode != null ? errorCode : "ERR_NONE");
     mdc.put("devicePlatformType", pick("ANDROID", "IOS", "WEB"));
     mdc.put("language", pick("en", "ar"));

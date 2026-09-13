@@ -51,17 +51,33 @@ spec:
             limits:
               cpu: "${CPU_LIMIT}"
               memory: "${MEMORY_LIMIT}"
+          # A real-Sandbox finding (not present when this was only tested
+          # locally): at the mission's own lightweight cpu request (~15-25m),
+          # a shared Sandbox node's CFS CPU throttling can make Spring Boot
+          # startup take 45-60s+ - far longer than a typical unthrottled
+          # boot. Without a startupProbe, the liveness probe's own
+          # initialDelaySeconds/periodSeconds/failureThreshold window can
+          # elapse BEFORE the app is actually ready, and kubelet kills a
+          # container that was about to succeed - an observed
+          # CrashLoopBackOff, not a hypothetical one. The startupProbe
+          # absorbs that slow-boot window (up to 150s) and defers
+          # readiness/liveness checking until it succeeds, per the
+          # standard Kubernetes pattern for slow-starting JVM workloads.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /healthz
               port: 8080
-            initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /healthz
               port: 8080
-            initialDelaySeconds: 15
             periodSeconds: 20
 ---
 apiVersion: v1

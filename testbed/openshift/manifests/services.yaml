@@ -1,44 +1,50 @@
-# OS-1F real-Sandbox testbed - the ten logical microservices, their
-# OpenShift-visible SERVICE_ROLE identity, and their replica count.
+# OS-1F real-Sandbox testbed - the ten logically distinct test services,
+# their OpenShift-visible SERVICE_ROLE identity, and their replica count.
 # scripts/deploy.sh reads this file and renders/applies
-# deployment-template.yaml once per entry (gateway-service is the one
-# exception - it uses gateway-with-sidecar-template.yaml instead, per
+# deployment-template.yaml once per entry (logexp-test-edge is the one
+# exception - it uses edge-with-sidecar-template.yaml instead, per
 # mission §10's multi-container test).
 #
+# Every name here uses the generic "logexp-test-<noun>" pattern
+# (deliberately not a banking-domain name) - both the OpenShift
+# Deployment/Service/Route resource name AND the in-app SERVICE_NAME
+# identity (the `application` field in every generated log line), so
+# nothing about this test infrastructure implies a real business system.
+#
 # Replica counts follow mission §5 exactly: most services = 1 replica;
-# gateway-service, payment-service, customer-service = 2, "enough
+# logexp-test-edge, logexp-test-orders, logexp-test-profile = 2, "enough
 # multi-pod behavior without wasting the Sandbox quota."
 services:
-  - name: gateway-service
-    role: GATEWAY
+  - name: logexp-test-edge
+    role: EDGE
     replicas: 2
     sidecar: true
-  - name: customer-service
-    role: CUSTOMERS
+  - name: logexp-test-profile
+    role: PROFILE
     replicas: 2
-  - name: account-service
-    role: ACCOUNTS
+  - name: logexp-test-catalog
+    role: CATALOG
     replicas: 1
-  - name: payment-service
-    role: PAYMENTS
+  - name: logexp-test-orders
+    role: ORDERS
     replicas: 2
-  - name: transfer-service
-    role: TRANSFERS
+  - name: logexp-test-workflow
+    role: WORKFLOW
     replicas: 1
-  - name: beneficiary-service
-    role: BENEFICIARIES
+  - name: logexp-test-directory
+    role: DIRECTORY
     replicas: 1
-  - name: notification-service
-    role: NOTIFICATIONS
+  - name: logexp-test-message
+    role: MESSAGE
     replicas: 1
-  - name: fraud-service
-    role: FRAUD
+  - name: logexp-test-rules
+    role: RULES
     replicas: 1
-  - name: audit-service
-    role: AUDIT
+  - name: logexp-test-activity
+    role: ACTIVITY
     replicas: 1
-  - name: statement-service
-    role: STATEMENTS
+  - name: logexp-test-report
+    role: REPORT
     replicas: 1
 
 # Resource sizing (mission §5) - tuned down further by deploy.sh if the

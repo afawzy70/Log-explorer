@@ -43,7 +43,7 @@ while read -r SERVICE_NAME SERVICE_ROLE REPLICAS SIDECAR; do
   export SERVICE_NAME SERVICE_ROLE REPLICAS
   if [ "${SIDECAR}" = "1" ]; then
     echo "Applying ${SERVICE_NAME} (with metrics sidecar) ..."
-    envsubst < "${MANIFESTS_DIR}/gateway-with-sidecar-template.yaml" | oc apply -f -
+    envsubst < "${MANIFESTS_DIR}/edge-with-sidecar-template.yaml" | oc apply -f -
   else
     echo "Applying ${SERVICE_NAME} ..."
     envsubst < "${MANIFESTS_DIR}/deployment-template.yaml" | oc apply -f -
