@@ -32,6 +32,29 @@ $launcherExe = Join-Path $InstallDir 'LogExplorerLauncher.exe'
 if (-not (Test-Path $launcherExe)) { Fail "installed launcher not found at $launcherExe" }
 Write-Host "Installed at $InstallDir"
 
+Step 'Verify product/version/publisher metadata (v0.1.0 release branding requirement)'
+$expectedPublisher = 'Ahmed Fawzy elrifaye'
+# Inno Setup writes per-user uninstall info under HKCU with an "_is1"
+# suffix appended to the [Setup] AppId - this IS the real Add/Remove
+# Programs / Installed Apps entry a user sees, not a simulation of it.
+$uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{9F1B7C3E-4C7B-4F2C-9C1E-2A7B7D9C4B10}_is1'
+if (-not (Test-Path $uninstallKey)) { Fail "uninstall registry key not found at $uninstallKey - Add/Remove Programs entry was not created" }
+$uninstallInfo = Get-ItemProperty -Path $uninstallKey
+Write-Host "Add/Remove Programs DisplayName: $($uninstallInfo.DisplayName)"
+Write-Host "Add/Remove Programs Publisher:   $($uninstallInfo.Publisher)"
+Write-Host "Add/Remove Programs DisplayVersion: $($uninstallInfo.DisplayVersion)"
+if ($uninstallInfo.DisplayName -ne 'Log Explorer') { Fail "Add/Remove Programs DisplayName is '$($uninstallInfo.DisplayName)', expected 'Log Explorer'" }
+if ($uninstallInfo.Publisher -ne $expectedPublisher) { Fail "Add/Remove Programs Publisher is '$($uninstallInfo.Publisher)', expected '$expectedPublisher'" }
+
+$launcherVersionInfo = (Get-Item $launcherExe).VersionInfo
+Write-Host "Launcher executable CompanyName:    $($launcherVersionInfo.CompanyName)"
+Write-Host "Launcher executable ProductName:    $($launcherVersionInfo.ProductName)"
+Write-Host "Launcher executable FileDescription: $($launcherVersionInfo.FileDescription)"
+Write-Host "Launcher executable ProductVersion:  $($launcherVersionInfo.ProductVersion)"
+if ($launcherVersionInfo.CompanyName -ne $expectedPublisher) { Fail "launcher executable CompanyName is '$($launcherVersionInfo.CompanyName)', expected '$expectedPublisher'" }
+if ($launcherVersionInfo.ProductName -ne 'Log Explorer') { Fail "launcher executable ProductName is '$($launcherVersionInfo.ProductName)', expected 'Log Explorer'" }
+Write-Host 'Product/version/publisher metadata verified'
+
 Step 'Launch the real installed application'
 $launcherProc = Start-Process -FilePath $launcherExe -PassThru
 Start-Sleep -Seconds 2
