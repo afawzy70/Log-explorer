@@ -120,7 +120,7 @@ Persisted verbatim from the UX-R3 mission message, before implementation began, 
 |---|---|---|---|---|---|
 | DEC-A | Add "Last 30 minutes" to relative time presets, using the same moving-relative recompute semantics UX-R2 established (`recomputeRelativeRange`); never convert a Custom absolute range into a moving one. | `VERIFIED` | UX-R3 | `frontend/src/shared/time/presets.ts` (`30m` entry added) — the mechanism is fully generic over this table by id/durationMs, confirmed by direct source read this session, so no other code change was needed; `useSearchState.test.ts`'s dedicated "UX-R3 §15" describe block; live evidence `AFTER-F-*.png`. | Same decision as UX-20 below; this row is the mission's own canonical phrasing, UX-20 is kept as the earlier-surfaced tracking row and cross-referenced rather than duplicated. |
 | DEC-B | Live mode must visibly communicate state — at minimum CONNECTING, LIVE, PAUSED, RECONNECTING, STOPPED where the real runtime state machine supports them; never invent states the state machine doesn't have; the user must never have to guess whether they're looking at historical Search or a live stream. | `VERIFIED` | UX-R3 | `frontend/src/features/live/LiveTailPanel.tsx` — the state badge itself now carries distinct text+tone per state (previously always read "LIVE" regardless of state; friction found via real rendered evidence, `docs/verification/UX_R3_EVIDENCE/BEFORE-K-live-paused.png`); `LiveTailPanel.test.tsx`'s 6-state badge-distinctness regression test; live evidence `AFTER-G/H/I/J-*.png`. | Same decision as UX-14 below; superseding UX-14's `OPEN_UNDECIDED` status now that the owner has explicitly decided it (this mission), not merely flagged a gap. |
-| DEC-C | An obvious, direct, keyboard-accessible way to exit Live and return to Search, no page refresh, preserving investigation state where safe/meaningful. | `IN_PROGRESS` | UX-R3 | The pre-existing "← Back to search results" button (`live.exit`) already satisfies most of this; UX-R3's own addition is the Compose-project-switch case (`App.tsx`'s new `previousComposeProjectRef` effect calls `live.exit()`, mirroring the pre-existing source-change effect) — verified via `frontend/src/app/App.liveComposeProjectSwitch.test.tsx`. Keyboard-accessibility re-verification against real rendered evidence pending. | Same decision as item 5 ("Live to Search") below. |
+| DEC-C | An obvious, direct, keyboard-accessible way to exit Live and return to Search, no page refresh, preserving investigation state where safe/meaningful. | `VERIFIED` | UX-R3 → keyboard gap closed by Final Functional Closure | The pre-existing "← Back to search results" button (`live.exit`) already satisfies most of this; UX-R3's own addition is the Compose-project-switch case (`App.tsx`'s new `previousComposeProjectRef` effect calls `live.exit()`, mirroring the pre-existing source-change effect) — verified via `frontend/src/app/App.liveComposeProjectSwitch.test.tsx`. Keyboard-accessibility re-verification against real rendered evidence — the one thing this row itself named as still pending — closed by Final Functional Closure: `frontend/e2e/phase-j-live-tail.spec.ts`'s new real-browser `.focus()`+`Enter` test. | Same decision as item 5 ("Live to Search") below. |
 | DEC-D | UX-R3 through UX-R6 must use the project skill at `.claude/skills/log-explorer-professional-ux-reviewer/SKILL.md` (protocol LERUX-1); must not silently accept "Unknown skill" forever — UX-R3 must diagnose the discovery/activation problem. | `VERIFIED` (diagnosis); manual-fallback in effect for the rest of UX-R3 | UX-R3 | Diagnosed via a fresh (non-fork) `claude-code-guide` agent this session: Claude Code indexes `.claude/skills/*` exactly once, at session/process startup — there is no mid-session rescan. A skill added to the repo (even committed to `main`) after the current session started can never become discoverable within that same continuously-running session. Confirmed via `/skill-doctor` (the skill loads correctly in a *freshly started* session) and Claude Code's own "Startup Performance" documentation ("Skills are indexed once at session start"). No trust/permission gate and no missing-frontmatter issue was found. | `UX_SKILL_REGISTERED=YES` (file exists, correct frontmatter) / `UX_SKILL_DISCOVERABLE=YES in a fresh session, NO in this one` / `UX_SKILL_LOADED=NO this session` / `BLOCKER=session-lifetime skill-indexing cache, proven not a repo/config defect` / `MANUAL_FALLBACK_USED=YES` — SKILL.md read directly and LERUX-1 followed manually for all of UX-R3's design decisions in this document and in `docs/verification/UX_R3_COMPOSE_LIVE_PROFESSIONAL_UX_REPORT.md`. |
 | DEC-E | The current NEW implementation is not automatically a finished UX baseline; OLD screenshots remain a capability/workflow/density *reference*, never a design ceiling; CURRENT NEW UI is not accepted merely because it works — from UX-R3 onward the goal is a modern professional investigation workstation, improving UX wherever evidence shows friction. | `ACKNOWLEDGED` (standing evaluation posture, not a single deliverable) | UX-R3 onward | This session's own BEFORE evidence capture (`docs/verification/UX_R3_EVIDENCE/BEFORE-*.png`) and the resulting Live-badge redesign are the first concrete application of this posture — friction was found by looking at real rendered UI, not assumed absent because the code "already worked." | `ACKNOWLEDGED` is not one of the register's eight formal statuses (§ "Status vocabulary") because this decision is a standing evaluation lens like PF-1, not a single closeable requirement — tracked here for completeness per the mission's explicit instruction to persist it, not to force it into a status it doesn't fit. |
 | DEC-F | Reconfirm the four investigation questions (WHO/WHAT/WHY/WHERE) as top-level Product Foundation; never fabricate WHY. | `VERIFIED` (unchanged from PF-1) | Standing | See PF-1 above; WHERE specifically must materially improve in this slice (§20 of the mission) via the active-scope trail in `Shell.tsx` — `frontend/src/app/Shell.test.tsx`. | No new decision — the mission restates PF-1 verbatim as part of this slice's own decision set. |
@@ -204,12 +204,12 @@ UX-27/UX-28) and were added above.
 
 | Field | Value |
 |---|---|
-| STATUS | `IN_PROGRESS` |
+| STATUS | `VERIFIED` |
 | CATEGORY | UX/functional, must be verified in an early UX slice, not silently deferred to Phase M |
 | OWNER_DECISION | Required workflow: Search → Start Live → Live mode → Stop/Exit Live/Back to Search → normal Search workspace, with: a clear visible way to exit Live; no page refresh required; the actual live stream genuinely stops (no stale events can keep arriving); previous Search state preserved where practical (source, selected Compose project, filters, time range, table preferences, previous results where safe); keyboard accessible; browser/E2E verified. |
-| TARGET_SLICE_OR_PHASE | UX-R3 (see DEC-C above) |
+| TARGET_SLICE_OR_PHASE | UX-R3 (see DEC-C above) → keyboard-accessibility gap closed by Final Functional Closure |
 | ACCEPTANCE_CRITERIA | As stated above |
-| EVIDENCE | The pre-existing "← Back to search results" button/`live.exit()` already covers the source-change case (`App.tsx`). UX-R3 adds the Compose-project-switch case: `App.tsx`'s new `previousComposeProjectRef` effect calls `live.exit()` on project change; proven via a real `<App />` integration test, `frontend/src/app/App.liveComposeProjectSwitch.test.tsx` ("exits Live... closing the real EventSource... the instant the selected Compose project changes"). Keyboard-accessibility re-verification against real rendered evidence still pending. |
+| EVIDENCE | The pre-existing "← Back to search results" button/`live.exit()` already covers the source-change case (`App.tsx`). UX-R3 adds the Compose-project-switch case: `App.tsx`'s new `previousComposeProjectRef` effect calls `live.exit()` on project change; proven via a real `<App />` integration test, `frontend/src/app/App.liveComposeProjectSwitch.test.tsx` ("exits Live... closing the real EventSource... the instant the selected Compose project changes"). **Keyboard-accessibility re-verification (the one gap this row named as pending) closed by Final Functional Closure**: `frontend/e2e/phase-j-live-tail.spec.ts` — `"Back to search results" is reachable and activatable by keyboard alone (DEC-C closure)` — a real rendered-browser test: `.focus()` + `Enter` (no click), against the real backend, confirms the button is keyboard-focusable, keyboard-activatable, the Live panel closes, and Search is restored and usable. |
 | NOTES / CONFLICTS | No conflicting prior treatment found anywhere in the repo. |
 
 ---
@@ -218,12 +218,12 @@ UX-27/UX-28) and were added above.
 
 | Field | Value |
 |---|---|
-| STATUS | `IN_PROGRESS` → see UX-R2 report for current disposition |
+| STATUS | `VERIFIED` (clarified by Final Functional Closure — was ambiguously left `IN_PROGRESS → see UX-R2 report`; the UX-R2 report itself closes every field with real included/excluded evidence, so the row is updated to state that outcome directly) |
 | CATEGORY | Functional correctness |
 | OWNER_DECISION | The owner previously reported filtering "appeared not to work." A representative sample (`docs/verification/FILTER_FUNCTIONAL_AUDIT.md`, pre-UX-R2) was explicitly insufficient to close this. UX-R2 must exhaustively verify every relevant filter. |
 | TARGET_SLICE_OR_PHASE | UX-R2 (this mission) |
 | ACCEPTANCE_CRITERIA | Every field proven with real included AND excluded evidence, not HTTP 200 alone |
-| EVIDENCE | `docs/verification/UX_R2_FILTER_AND_SEARCH_FUNCTIONAL_REPORT.md` |
+| EVIDENCE | `docs/verification/UX_R2_FILTER_AND_SEARCH_FUNCTIONAL_REPORT.md` — all 11 remaining fields closed with real inclusion/exclusion counts against the real Fixture backend, on top of `FILTER_FUNCTIONAL_AUDIT.md`'s own prior PASS for `text`/`traceId`/`errorCode`/`businessStep`/`customerId`/guided Query builder |
 
 ---
 
@@ -480,7 +480,7 @@ No formal numeric performance budget (no "must stay under X kB/ms") is defined a
 | Requirement | STATUS | Evidence |
 |---|---|---|
 | Loki adapter implementation | `VERIFIED` | `REQUIREMENTS_TRACEABILITY.md` row 2; `LokiLogSourceTest` etc. |
-| Live-cluster verification | `DEFERRED` — external blocker (no reachable cluster), not resolvable from inside this project alone | `REQUIREMENTS_TRACEABILITY.md`; `IMPLEMENTATION_PLAN.md` §2; reconfirmed in UX-R2, UX-R4, UX-R5 and UX-R6, all of which recorded `REAL_LOKI=BLOCKED` |
+| Live-cluster verification | Split by Final Functional Closure — was one row, is now two different truths: **OpenShift Direct** `VERIFIED`/`PASS` (`REAL_OPENSHIFT_1F=PASS`, §12o.1 below — a real Red Hat Developer Sandbox run); **Loki** remains `DEFERRED` — external blocker (no reachable Loki route/service in either real Sandbox namespace) | `REQUIREMENTS_TRACEABILITY.md`; `IMPLEMENTATION_PLAN.md` §2; OpenShift Direct: §12o.1 below; Loki: reconfirmed in UX-R2, UX-R4, UX-R5, UX-R6 and OS-1G, all of which recorded `REAL_LOKI=BLOCKED` |
 
 ### 12a. OS-A — first-class OpenShift direct logging (assessment complete, implementation not started)
 
@@ -489,6 +489,28 @@ assessment mission**. OS-A was an architecture/feasibility mission only:
 **no OpenShift code was written**, and no production behaviour changed.
 Full reasoning, with fact/assumption separation, is in
 `docs/architecture/OPENSHIFT_DIRECT_LOGGING_ARCHITECTURE_ASSESSMENT.md`.
+
+**Final Functional Closure reconciliation note (read before trusting the
+`STATUS` column below):** every row in this §12a table is the OS-A
+assessment's own **historical, as-recorded-at-the-time** status text —
+preserved verbatim, per CLAUDE.md §5, never silently rewritten. Almost
+all of them (`OS-1` through `OS-11`, `OS-13`, `OS-14`, `OS-16`) still read
+`APPROVED_PENDING`, and `OS-15` still reads `OPEN_UNDECIDED`, here even
+though the underlying capability was later actually **implemented and
+independently marked `VERIFIED`** by its own granular row further down
+this register (the `OS-1A-N`/`OS-1B-N`/`OS-1C-N`/etc. sections — `OS-15`
+specifically by `OS-1A-9`) — this table's own status text was simply
+never flipped once that happened, since §12a documents what OS-A
+*decided*, not a live status feed. Do not read an `APPROVED_PENDING` or
+`OS-15`'s `OPEN_UNDECIDED` here as a current gap without first checking
+whether a later, more specific row already
+resolved it — `docs/verification/PRE_CLOSURE_FUNCTIONAL_RECOVERY_2_REPORT.md`'s
+own closure-traceability work (`docs/verification/FINAL_FUNCTIONAL_CLOSURE_REPORT.md`)
+did exactly that reconciliation and is the authoritative current-status
+reference. Two rows in this table are **genuinely, currently open**, not
+stale: `OS-12` (Loki-as-aggregated-provider consolidation, gated on
+real-Loki evidence that has never existed) and `OS-17` (multi-cluster,
+permanently `OUT_OF_CURRENT_SCOPE` by CLAUDE.md §8).
 
 | ID | NAME | STATUS | TARGET | NOTES |
 |---|---|---|---|---|

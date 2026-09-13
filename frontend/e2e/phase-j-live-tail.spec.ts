@@ -128,6 +128,33 @@ test('"Back to search results" leaves live mode, and a fresh Live click starts a
   await expect(panelOf(page).getByText(/received: 0/i)).toBeVisible();
 });
 
+// Final Functional Closure - closes the one narrow, explicitly-named gap
+// register DEC-C/§5 "Live to Search" recorded as still `IN_PROGRESS`:
+// the button itself was already real-browser click-tested (the test
+// above) and unit-tested for its click handler
+// (`LiveTailPanel.test.tsx`), but never re-verified with real rendered
+// evidence that it is reachable and activatable by KEYBOARD alone - the
+// specific thing DEC-C's own text names as still pending. `<Button>` is
+// a native `<button>` element (keyboard-focusable/activatable by the
+// browser itself, not custom JS), so this is expected to pass - but
+// "expected to pass" is not the same as verified, per CLAUDE.md §3.
+test('"Back to search results" is reachable and activatable by keyboard alone (DEC-C closure)', async ({ page }) => {
+  await selectFixtureSource(page);
+  await page.getByRole('button', { name: /^live$/i }).click();
+  const panel = panelOf(page);
+  await expect(panel.locator('[class*="list"] li').first()).toBeVisible({ timeout: 5_000 });
+
+  const exitButton = panel.getByRole('button', { name: /back to search results/i });
+  await exitButton.focus();
+  await expect(exitButton).toBeFocused();
+  await page.keyboard.press('Enter');
+
+  await expect(panel).not.toBeVisible();
+  // Search itself is restored, reachable, and usable - not just "the
+  // panel closed" (which could just as easily mean a crash).
+  await expect(page.getByRole('button', { name: /^search$/i })).toBeVisible();
+});
+
 test('no page-level horizontal overflow while live tail is streaming, at 1280px and under 200% zoom', async ({
   page,
 }) => {
