@@ -1,0 +1,97 @@
+# OS-1F real-Sandbox testbed - one Deployment + Service per logical
+# microservice, all sharing the SAME image, differentiated only by
+# environment variables. Rendered per service by
+# scripts/deploy.sh (envsubst) - never hand-duplicated ten times.
+#
+# Every resource carries the two labels the cleanup script keys off:
+#   app.kubernetes.io/part-of=log-explorer-sandbox-testbed
+#   log-explorer-testbed=true
+# so `oc delete ... -l log-explorer-testbed=true` removes exactly (and
+# only) what this testbed created - never the owner's other Sandbox
+# workloads.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${SERVICE_NAME}
+  namespace: ${TESTBED_NAMESPACE}
+  labels:
+    app: ${SERVICE_NAME}
+    app.kubernetes.io/part-of: log-explorer-sandbox-testbed
+    log-explorer-testbed: "true"
+spec:
+  replicas: ${REPLICAS}
+  selector:
+    matchLabels:
+      app: ${SERVICE_NAME}
+  template:
+    metadata:
+      labels:
+        app: ${SERVICE_NAME}
+        app.kubernetes.io/part-of: log-explorer-sandbox-testbed
+        log-explorer-testbed: "true"
+    spec:
+      containers:
+        - name: app
+          image: ${IMAGE}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SERVICE_NAME
+              value: "${SERVICE_NAME}"
+            - name: SERVICE_ROLE
+              value: "${SERVICE_ROLE}"
+            - name: VERSION
+              value: "${VERSION}"
+            - name: TESTBED_BACKGROUND_INTERVAL_MS
+              value: "${TESTBED_BACKGROUND_INTERVAL_MS}"
+          resources:
+            requests:
+              cpu: "${CPU_REQUEST}"
+              memory: "${MEMORY_REQUEST}"
+            limits:
+              cpu: "${CPU_LIMIT}"
+              memory: "${MEMORY_LIMIT}"
+          # A real-Sandbox finding (not present when this was only tested
+          # locally): at the mission's own lightweight cpu request (~15-25m),
+          # a shared Sandbox node's CFS CPU throttling can make Spring Boot
+          # startup take 45-60s+ - far longer than a typical unthrottled
+          # boot. Without a startupProbe, the liveness probe's own
+          # initialDelaySeconds/periodSeconds/failureThreshold window can
+          # elapse BEFORE the app is actually ready, and kubelet kills a
+          # container that was about to succeed - an observed
+          # CrashLoopBackOff, not a hypothetical one. The startupProbe
+          # absorbs that slow-boot window (up to 150s) and defers
+          # readiness/liveness checking until it succeeds, per the
+          # standard Kubernetes pattern for slow-starting JVM workloads.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${SERVICE_NAME}
+  namespace: ${TESTBED_NAMESPACE}
+  labels:
+    app: ${SERVICE_NAME}
+    app.kubernetes.io/part-of: log-explorer-sandbox-testbed
+    log-explorer-testbed: "true"
+spec:
+  selector:
+    app: ${SERVICE_NAME}
+  ports:
+    - port: 8080
+      targetPort: 8080

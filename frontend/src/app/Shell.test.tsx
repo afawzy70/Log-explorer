@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { Shell } from './Shell';
 import type { SearchState } from './useSearchState';
 import { emptyAdvancedFilterValues } from '../features/search/advancedFilterFields';
@@ -90,7 +90,7 @@ describe('Shell - active Compose scope visibility (UX-R3 §12)', () => {
 
   it('shows only the source name when the active source has no real Compose-project concept', () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse({}))));
-    render(<Shell state={baseState()} />);
+    render(<Shell state={baseState()} openShiftScope={null} onOpenShiftScopeChanged={vi.fn()} />);
     expect(screen.getByText('Fixture')).toBeInTheDocument();
     expect(screen.queryByText('›')).not.toBeInTheDocument();
   });
@@ -112,6 +112,8 @@ describe('Shell - active Compose scope visibility (UX-R3 §12)', () => {
           selectedSource: { id: 'local-docker', displayName: 'Local Docker', capabilities: caps },
           selectedComposeProject: null,
         })}
+        openShiftScope={null}
+        onOpenShiftScopeChanged={vi.fn()}
       />,
     );
     expect(screen.getByText('Local Docker')).toBeInTheDocument();
@@ -135,9 +137,108 @@ describe('Shell - active Compose scope visibility (UX-R3 §12)', () => {
           selectedSource: { id: 'local-docker', displayName: 'Local Docker', capabilities: caps },
           selectedComposeProject: 'project-a',
         })}
+        openShiftScope={null}
+        onOpenShiftScopeChanged={vi.fn()}
       />,
     );
     expect(screen.getByText('Local Docker')).toBeInTheDocument();
     expect(screen.getByText('project-a')).toBeInTheDocument();
+  });
+});
+
+describe('Shell - OpenShift ScopeTrail (OS-1F §6)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const openShiftCaps = {
+    historicalSearch: true,
+    liveTail: true,
+    rawLogQL: false,
+    serviceDiscovery: false,
+    queryStatistics: false,
+    contextView: true,
+    composeProjectScoping: false,
+  };
+
+  function renderWithOpenShiftScope(scope: Parameters<typeof Shell>[0]['openShiftScope']) {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse({}))));
+    render(
+      <Shell
+        state={baseState({
+          selectedSource: { id: 'openshift', displayName: 'OpenShift', capabilities: openShiftCaps },
+          selectedSourceId: 'openshift',
+        })}
+        openShiftScope={scope}
+        onOpenShiftScopeChanged={vi.fn()}
+      />,
+    );
+  }
+
+  it('shows only the source name when no project/namespace is selected yet - no redundant "All" segments', () => {
+    renderWithOpenShiftScope({
+      selectedProject: null,
+      discoveryApi: null,
+      selectedWorkloadKind: null,
+      selectedWorkloadName: null,
+      selectedPod: null,
+      selectedContainer: null,
+    });
+    const trail = within(screen.getByTestId('scope-trail'));
+    expect(trail.getByText('OpenShift')).toBeInTheDocument();
+    expect(trail.queryByText('›')).not.toBeInTheDocument();
+  });
+
+  it('shows the bare project name (no "Project:" prefix) for native OpenShift Projects discovery', () => {
+    renderWithOpenShiftScope({
+      selectedProject: 'payments-dev',
+      discoveryApi: 'PROJECTS',
+      selectedWorkloadKind: null,
+      selectedWorkloadName: null,
+      selectedPod: null,
+      selectedContainer: null,
+    });
+    expect(screen.getByText('payments-dev')).toBeInTheDocument();
+    expect(screen.queryByText(/Namespace:/)).not.toBeInTheDocument();
+  });
+
+  it('labels the first level "Namespace:" (never a bare value) for a Kubernetes-fallback cluster - the discoveryApi truth', () => {
+    renderWithOpenShiftScope({
+      selectedProject: 'payments-dev',
+      discoveryApi: 'NAMESPACES',
+      selectedWorkloadKind: null,
+      selectedWorkloadName: null,
+      selectedPod: null,
+      selectedContainer: null,
+    });
+    expect(screen.getByText('Namespace: payments-dev')).toBeInTheDocument();
+  });
+
+  it('renders the full effective hierarchy - project, workload, pod, container - in order', () => {
+    renderWithOpenShiftScope({
+      selectedProject: 'payments-dev',
+      discoveryApi: 'PROJECTS',
+      selectedWorkloadKind: 'DEPLOYMENT',
+      selectedWorkloadName: 'payment-api',
+      selectedPod: 'payment-api-abc123',
+      selectedContainer: 'app',
+    });
+    expect(screen.getByText('payments-dev')).toBeInTheDocument();
+    expect(screen.getByText('Deployment: payment-api')).toBeInTheDocument();
+    expect(screen.getByText('payment-api-abc123')).toBeInTheDocument();
+    expect(screen.getByText('app')).toBeInTheDocument();
+  });
+
+  it('never shows a workload segment when no workload is selected ("All workloads" is not a redundant level)', () => {
+    renderWithOpenShiftScope({
+      selectedProject: 'payments-dev',
+      discoveryApi: 'PROJECTS',
+      selectedWorkloadKind: null,
+      selectedWorkloadName: null,
+      selectedPod: null,
+      selectedContainer: null,
+    });
+    expect(screen.getByText('payments-dev')).toBeInTheDocument();
+    expect(screen.queryByText(/Deployment:/)).not.toBeInTheDocument();
   });
 });

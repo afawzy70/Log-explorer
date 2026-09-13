@@ -12,12 +12,25 @@ import { DEFAULT_SEVERITY_LEVELS } from '../features/search/severityLevels';
 import type { AdvancedFilterValues } from '../features/search/advancedFilterFields';
 import { defaultTimeRange } from './useSearchState';
 import type { SearchState } from './useSearchState';
+import type { OpenShiftScopeSummary } from '../shared/api/types';
 import styles from './Toolbar.module.css';
 
 export interface ToolbarProps {
   state: SearchState;
   /** Starts live mode for the currently-selected source/services (IMPLEMENTATION_PLAN.md "Phase J") - undefined only in tests/stories that don't wire live tail up. */
   onStartLive?: () => void;
+  /**
+   * OS-1F §8 - `null` whenever OpenShift isn't the active source (the
+   * gate below is then always a no-op). When OpenShift IS active but no
+   * Project/Namespace has been selected yet, Search/Live must not appear
+   * available: a request without a selected scope reaches the backend
+   * only as an opaque failure today (`DirectPodLogProvider` throws
+   * `IllegalStateException("No project/namespace selected.")`, uncaught
+   * by any specific `GlobalExceptionHandler` mapping) - genuinely
+   * unusable, not merely unclear, so this is prevented here rather than
+   * only explained after the fact.
+   */
+  openShiftScope?: OpenShiftScopeSummary | null;
 }
 
 /**
@@ -34,10 +47,18 @@ export interface ToolbarProps {
  * `AdvancedFilters`' own drawer, under More filters, so Search stays the
  * single strongest primary action in this row.
  */
-export function Toolbar({ state, onStartLive }: ToolbarProps) {
+export function Toolbar({ state, onStartLive, openShiftScope }: ToolbarProps) {
   const liveTailSupported = state.selectedSource?.capabilities.liveTail ?? false;
   const rawLogQlSupported = state.selectedSource?.capabilities.rawLogQL ?? false;
   const composeProjectScopingSupported = state.selectedSource?.capabilities.composeProjectScoping ?? false;
+  // OS-1F §8 - only a genuinely CONNECTED OpenShift session with no
+  // Project/Namespace yet selected blocks Search/Live; `openShiftScope`
+  // is `null` both when OpenShift isn't selected and before the first
+  // scope read resolves, so this never blocks Search on some OTHER
+  // source, and never blocks it hard on a not-yet-loaded scope check.
+  const openShiftMissingRequiredScope =
+    state.selectedSourceId === 'openshift' && openShiftScope != null && openShiftScope.selectedProject == null;
+  const openShiftScopeHint = openShiftScope?.discoveryApi === 'NAMESPACES' ? 'a Namespace' : 'a Project';
 
   function removeAdvancedField(key: keyof AdvancedFilterValues) {
     state.applyAdvancedFilters({ ...state.advancedFilters, text: state.searchText, [key]: '' });
@@ -73,16 +94,31 @@ export function Toolbar({ state, onStartLive }: ToolbarProps) {
           onSubmit={state.runSearch}
           onApplyDetectedField={state.applyDetectedField}
         />
-        <Button variant="primary" onClick={() => state.runSearch()} disabled={state.searchLoading}>
+        <Button
+          variant="primary"
+          onClick={() => state.runSearch()}
+          disabled={state.searchLoading || openShiftMissingRequiredScope}
+          title={openShiftMissingRequiredScope ? `Select ${openShiftScopeHint} to search OpenShift` : undefined}
+        >
           {state.searchLoading ? 'Searching…' : 'Search'}
         </Button>
         {liveTailSupported ? (
           // Only ever rendered when the active source's own capabilities
           // say it supports live tail (never assumed, never shown for a
           // source that can't - CLAUDE.md §4 "Sources and capabilities").
-          <Button variant="secondary" onClick={onStartLive} disabled={!onStartLive || !state.selectedSourceId}>
+          <Button
+            variant="secondary"
+            onClick={onStartLive}
+            disabled={!onStartLive || !state.selectedSourceId || openShiftMissingRequiredScope}
+            title={openShiftMissingRequiredScope ? `Select ${openShiftScopeHint} to start Live` : undefined}
+          >
             Live
           </Button>
+        ) : null}
+        {openShiftMissingRequiredScope ? (
+          <span className={styles.scopeRequiredHint} role="status">
+            Select {openShiftScopeHint} to search OpenShift
+          </span>
         ) : null}
         <AdvancedFilters
           values={{ ...state.advancedFilters, text: state.searchText }}

@@ -1,0 +1,122 @@
+# OS-1F real-Sandbox testbed - mission §10 multi-container test. Applied
+# to logexp-test-edge ONLY (not every service, per the mission's own "do
+# not add sidecars to all services"), replacing its normal single-container
+# Deployment. Reuses the SAME image for the sidecar (a different
+# SERVICE_ROLE/container name - a companion "metrics" process) rather
+# than building a second image, so Pod -> Container narrowing has a real,
+# second, genuinely-distinct log stream to select between within one pod.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logexp-test-edge
+  namespace: ${TESTBED_NAMESPACE}
+  labels:
+    app: logexp-test-edge
+    app.kubernetes.io/part-of: log-explorer-sandbox-testbed
+    log-explorer-testbed: "true"
+spec:
+  replicas: ${REPLICAS}
+  selector:
+    matchLabels:
+      app: logexp-test-edge
+  template:
+    metadata:
+      labels:
+        app: logexp-test-edge
+        app.kubernetes.io/part-of: log-explorer-sandbox-testbed
+        log-explorer-testbed: "true"
+    spec:
+      containers:
+        - name: app
+          image: ${IMAGE}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SERVICE_NAME
+              value: "logexp-test-edge"
+            - name: SERVICE_ROLE
+              value: "EDGE"
+            - name: VERSION
+              value: "${VERSION}"
+            - name: TESTBED_BACKGROUND_INTERVAL_MS
+              value: "${TESTBED_BACKGROUND_INTERVAL_MS}"
+          resources:
+            requests: { cpu: "${CPU_REQUEST}", memory: "${MEMORY_REQUEST}" }
+            limits: { cpu: "${CPU_LIMIT}", memory: "${MEMORY_LIMIT}" }
+          # See deployment-template.yaml's own comment - a real-Sandbox
+          # finding: slow, CPU-throttled JVM startup needs a startupProbe
+          # to absorb it before readiness is checked.
+          startupProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 10
+        - name: metrics-sidecar
+          image: ${IMAGE}
+          # No exposed port needed - this container's only job here is to
+          # emit its own, genuinely distinct log stream so Container
+          # selection has a real second option within the pod. Runs on a
+          # different local port purely so both containers can start
+          # without a port clash.
+          env:
+            - name: SERVICE_NAME
+              value: "logexp-test-edge"
+            - name: SERVICE_ROLE
+              value: "SIDECAR_METRICS"
+            - name: VERSION
+              value: "${VERSION}"
+            - name: SERVER_PORT
+              value: "8081"
+            - name: TESTBED_BACKGROUND_INTERVAL_MS
+              value: "15000"
+          # A real-Sandbox finding: this container runs the SAME full
+          # Spring Boot web app (embedded Tomcat) as the main "app"
+          # container, not a stripped-down process - it genuinely needs
+          # comparable memory to boot reliably. The original 96Mi limit
+          # OOMKilled it (exit 137) before startup ever completed; sized
+          # to match the main container's own already-reliable footprint.
+          resources:
+            requests: { cpu: "15m", memory: "80Mi" }
+            limits: { cpu: "150m", memory: "160Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: logexp-test-edge
+  namespace: ${TESTBED_NAMESPACE}
+  labels:
+    app: logexp-test-edge
+    app.kubernetes.io/part-of: log-explorer-sandbox-testbed
+    log-explorer-testbed: "true"
+spec:
+  selector:
+    app: logexp-test-edge
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+# A Route so scripts/generate-traffic.sh (and an investigator, if useful)
+# can reach the journey entry point from outside the cluster - the edge
+# service is realistically the one that would be externally exposed. TLS
+# edge-terminated; no application-level auth is added since this is
+# disposable test infrastructure, not a real API.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: logexp-test-edge
+  namespace: ${TESTBED_NAMESPACE}
+  labels:
+    app: logexp-test-edge
+    app.kubernetes.io/part-of: log-explorer-sandbox-testbed
+    log-explorer-testbed: "true"
+spec:
+  to:
+    kind: Service
+    name: logexp-test-edge
+  port:
+    targetPort: 8080
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

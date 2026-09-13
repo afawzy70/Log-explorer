@@ -1,5 +1,7 @@
 package com.logexplorer.api;
 
+import com.logexplorer.api.dto.OpenShiftContainerSelectionDto;
+import com.logexplorer.api.dto.OpenShiftPodSelectionDto;
 import com.logexplorer.core.model.RawToken;
 import com.logexplorer.source.openshift.MockOpenShiftScopeServer;
 import com.logexplorer.source.openshift.MockOpenShiftScopeServer.PodFixture;
@@ -95,6 +97,66 @@ class OpenShiftScopeControllerIntegrationTest {
         .expectBody()
         .jsonPath("$.selectedWorkloadKind").doesNotExist()
         .jsonPath("$.selectedWorkloadName").doesNotExist();
+  }
+
+  /**
+   * OS-1F - {@code GET /scope} is a pure read: it must reflect exactly
+   * what the most recent {@code PUT} committed, with no discovery/cluster
+   * call of its own, so the frontend can render a truthful "WHERE am I
+   * searching?" trail from a single GET at any time (e.g. on page load or
+   * a Settings-panel reopen) without re-deriving state from a mutation.
+   */
+  @Test
+  void getScopeReflectsTheCurrentlyCommittedProjectWorkloadPodAndContainerSelection() throws IOException {
+    fixtureServer = new MockOpenShiftScopeServer(NAMESPACE);
+    fixtureServer.setWorkloads(WorkloadKind.DEPLOYMENT, List.of(
+        new WorkloadFixture("payment-api", 1, 1, Map.of("app", "payment-api"))));
+    fixtureServer.setPods(List.of(
+        new PodFixture("payment-api-abc", "Running", 1, 1, 0, List.of("app"), Map.of("app", "payment-api"))));
+    connectTo(fixtureServer.baseUrl());
+
+    webTestClient.get().uri("/api/v1/sources/openshift/workloads").exchange().expectStatus().isOk();
+    webTestClient.put().uri("/api/v1/sources/openshift/workload")
+        .bodyValue(new WorkloadSelectionBody("DEPLOYMENT", "payment-api"))
+        .exchange()
+        .expectStatus().isOk();
+    webTestClient.get().uri("/api/v1/sources/openshift/pods").exchange().expectStatus().isOk();
+    webTestClient.put().uri("/api/v1/sources/openshift/pod")
+        .bodyValue(new OpenShiftPodSelectionDto("payment-api-abc"))
+        .exchange()
+        .expectStatus().isOk();
+    webTestClient.get().uri("/api/v1/sources/openshift/containers").exchange().expectStatus().isOk();
+    webTestClient.put().uri("/api/v1/sources/openshift/container")
+        .bodyValue(new OpenShiftContainerSelectionDto("app"))
+        .exchange()
+        .expectStatus().isOk();
+
+    webTestClient.get().uri("/api/v1/sources/openshift/scope")
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody()
+        .jsonPath("$.selectedProject").isEqualTo(NAMESPACE)
+        .jsonPath("$.discoveryApi").isEqualTo("PROJECTS")
+        .jsonPath("$.selectedWorkloadKind").isEqualTo("DEPLOYMENT")
+        .jsonPath("$.selectedWorkloadName").isEqualTo("payment-api")
+        .jsonPath("$.selectedPod").isEqualTo("payment-api-abc")
+        .jsonPath("$.selectedContainer").isEqualTo("app");
+  }
+
+  @Test
+  void getScopeBeforeAnySelectionReportsEveryLevelAsAll() throws IOException {
+    fixtureServer = new MockOpenShiftScopeServer(NAMESPACE);
+    connectTo(fixtureServer.baseUrl());
+
+    webTestClient.get().uri("/api/v1/sources/openshift/scope")
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody()
+        .jsonPath("$.selectedProject").isEqualTo(NAMESPACE)
+        .jsonPath("$.selectedWorkloadKind").doesNotExist()
+        .jsonPath("$.selectedWorkloadName").doesNotExist()
+        .jsonPath("$.selectedPod").doesNotExist()
+        .jsonPath("$.selectedContainer").doesNotExist();
   }
 
   @Test

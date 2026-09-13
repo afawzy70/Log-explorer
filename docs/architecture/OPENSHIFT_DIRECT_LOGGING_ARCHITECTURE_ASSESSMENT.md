@@ -1008,6 +1008,34 @@ pass — it is scoped entirely to connection-establishment truthfulness,
 long-line/partial-line byte-level correctness, and status/transport
 lifecycle precision. `REAL_OPENSHIFT_1E = BLOCKED_CREDENTIALS`, unchanged.
 
+**[EVIDENCE, established by OS-1F, not this assessment]** The OS-1F row
+above ("OpenShift UX (Settings + scope trail + columns) under LERUX-1/
+LERDESIGN-1; full real-environment evidence") is now implemented,
+preceded by a real LERUX-1 audit rather than an assumed redesign. The
+audit's headline finding corrects this table's own implicit framing: it
+is not that OpenShift's UX had never been built — OS-1A/1B/1D had
+already delivered truthful Project-vs-Namespace labelling, safe token
+handling, a 403-vs-empty discovery distinction, and OpenShift WHERE
+fields (namespace/pod/container) into the generic Results/Inspector
+machinery, all independently re-verified here rather than assumed
+correct. Three genuine, narrow gaps were the entire implementation
+surface: the generic `ScopeTrail` had zero OpenShift awareness (no
+persistent "WHERE am I searching?" truth outside the Settings popover);
+the connection-status badge had no "Connecting…" state; and Search/Live
+remained clickable with no Project/Namespace selected, reaching the
+backend only as an opaque, uncaught exception. All three are closed —
+see `OWNER_REQUIREMENTS_REGISTER.md` §12o and
+`OS_1F_OPENSHIFT_PROFESSIONAL_UX_REPORT.md` for the full audit table and
+before/after account. No OS-1A/1B/1C/1D/1E connection, discovery,
+search, context, or live semantic changed — confirmed via targeted diff,
+not assumed; the one new backend surface (`GET .../openshift/scope`) is
+a pure, non-mutating read reusing existing session state, not a new
+discovery/authorization mechanism. `REAL_OPENSHIFT_1F = BLOCKED_CREDENTIALS`,
+the same honest gap every prior OS-1x slice has carried — every
+"connected"/"scoped" screenshot in this pass is explicit, honestly
+labelled MOCKED evidence (Playwright route interception), never
+presented as real-cluster verification.
+
 ---
 
 ## 21. Release order

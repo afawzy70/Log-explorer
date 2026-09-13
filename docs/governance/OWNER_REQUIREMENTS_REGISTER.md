@@ -835,6 +835,172 @@ untouched. `REL-1` (§7, §7b, §7c) remains confirmed `APPROVED_PENDING`,
 untouched. `REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`, consistent with every
 prior OS-1x slice. `UNTRACKED_OWNER_REQUIREMENTS=0`.
 
+### 12o. OS-1F — OpenShift Professional UX Integration
+
+A product/UX/integration slice, not a backend retrieval rewrite — OS-1A
+through OS-1E's own connection/discovery/search/context/live semantics
+are explicitly unchanged. Preceded by a real, evidence-backed LERUX-1
+audit of the entire OpenShift workflow (Settings → scope hierarchy →
+Search → Results → Inspector → Live) against the mission's own explicit
+checklist, before any UI change was made. See
+`docs/verification/OS_1F_OPENSHIFT_PROFESSIONAL_UX_REPORT.md` for the
+full audit table (every area classified `SAME_CORRECT`/`NEW_BETTER`/
+`STILL_OLD_THINKING`) and before/after account.
+
+**Audit headline finding:** most of the checklist was already
+`SAME_CORRECT` — OS-1A/1B/1D had already built truthful Project-vs-
+Namespace labelling, safe token handling, 403-vs-empty discovery
+distinctions, and OpenShift WHERE fields (namespace/pod/container) into
+the generic Results/Inspector machinery, verified by direct source
+reading rather than assumed. Three genuine, narrow gaps were found and
+closed:
+
+| # | Finding | Status |
+|---|---|---|
+| 1 | The generic header `ScopeTrail` (`Shell.tsx`) had zero OpenShift awareness — it rendered only the source name plus the Docker Compose project chip, so an investigator had no way to see their current Project/Workload/Pod/Container scope without reopening the Settings popover (`STILL_OLD_THINKING`) | `RESOLVED` |
+| 2 | The Settings connection-status badge had no "Connecting…" state — during the real async gap between submitting `oc login` and the backend's response, the badge kept reading "Not connected", which could be read as if nothing were happening | `RESOLVED` |
+| 3 | Attempting Search/Live on a connected OpenShift session with no Project/Namespace selected reached the backend only as an opaque, uncaught `IllegalStateException("No project/namespace selected.")` (no specific `GlobalExceptionHandler` mapping exists for it) — genuinely unusable, not merely unclear | `RESOLVED` (frontend-side prevention; no backend semantic touched) |
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| OS-1F-1 | A new, purely non-mutating `GET /api/v1/sources/openshift/scope` endpoint reflects the session's exact current project/workload/pod/container selection — reused by the frontend for both the header trail and (in principle) restoring Settings-panel display state, never re-deriving truth from a mutating response | `VERIFIED` | `OpenShiftScopeController#scope`; `OpenShiftScopeControllerIntegrationTest#getScopeReflectsTheCurrentlyCommittedProjectWorkloadPodAndContainerSelection`, `#getScopeBeforeAnySelectionReportsEveryLevelAsAll` |
+| OS-1F-2 | The header `ScopeTrail` renders the full effective OpenShift hierarchy (Project/Namespace → Workload → Pod → Container) as labelled breadcrumb segments, sourced from the SAME `OpenShiftScopeSummary` the Settings panel reads/writes — never a second, independently-derived truth. A level renders only when it genuinely narrows scope ("All workloads"/"All pods"/"All containers" add no segment, exactly like the pre-existing Compose-project chip's own convention) | `VERIFIED` (real rendered-browser evidence) | `Shell.tsx` (`openShiftScopeSegments`, `ScopeTrail`); `Shell.test.tsx` (OS-1F ScopeTrail describe block, 5 tests); `frontend/e2e/os-1f-openshift-professional-ux.spec.ts` (`G:`); `docs/verification/OS_1F_EVIDENCE/G-scope-trail.png` |
+| OS-1F-3 | The Project/Namespace level's own label stays truthful to `discoveryApi`: a bare value for native OpenShift Projects, `"Namespace: x"` for a Kubernetes-fallback cluster — never a bare value that could be misread as a Project (OS-1A review recovery #2's own invariant, extended to the trail) | `VERIFIED` | `Shell.tsx#openShiftScopeSegments`; `Shell.test.tsx` (Namespace-vs-Project label tests) |
+| OS-1F-4 | `ScopeTrail` stays visible and truthful with the Settings popover CLOSED, and updates live the moment a scope mutation commits (`OpenShiftSettingsPanel`'s new `onScopeChanged` callback, fired after every successful connect/disconnect/project/workload/pod/container mutation) — never stale, never requiring a reopen or reload to reflect the truth | `VERIFIED` | `useOpenShiftScopeSummary` hook (lifted to `App.tsx`, shared by `Shell` and `Toolbar`); `useOpenShiftScopeSummary.test.ts` (5 tests); `OpenShiftSettingsPanel.test.tsx` (3 new `onScopeChanged` tests) |
+| OS-1F-5 | The Settings connection-status badge shows a genuine, distinct "Connecting…" state during the async gap between submitting the login command and the backend's response — scoped narrowly to the initial connect attempt only, never relabeling every other busy scope-selection action | `VERIFIED` | `OpenShiftSettingsPanel.tsx` (`connecting` state, `.stateConnecting` CSS); `OpenShiftSettingsPanel.test.tsx#shows_Connecting…_in_the_top_status_badge_...` |
+| OS-1F-6 | Search and Live are disabled, with a truthful, visible, non-color-only reason ("Select a Project/Namespace to search/start Live OpenShift"), whenever OpenShift is the active source and no Project/Namespace has been selected yet — never available to trigger an opaque backend failure. Never gates a non-OpenShift source, and never gates before the scope read has resolved (an unresolved `null` scope is not treated as "definitely no project") | `VERIFIED` (real rendered-browser evidence) | `Toolbar.tsx` (`openShiftMissingRequiredScope`, `scopeRequiredHint`); `Toolbar.test.tsx` (5 new tests); `frontend/e2e/os-1f-openshift-professional-ux.spec.ts` (`H:`); `docs/verification/OS_1F_EVIDENCE/H-search-blocked-no-scope.png`, `H-search-enabled-with-scope.png` |
+| OS-1F-7 | Every other audited OpenShift UX area — Settings source labelling ("OpenShift" vs "OpenShift Loki"), token-never-displayed, 403-vs-empty workload/pod discovery, Results-table optional `pod`/`namespace`/`container` columns, Inspector's "when present" namespace/pod/container/service fields, and every OS-1E Live source-state badge — was independently re-verified against the mission's own checklist and found `SAME_CORRECT`/`NEW_BETTER`; none were redesigned, per the mission's own restraint requirement | `VERIFIED` (re-confirmed, not re-implemented) | `docs/verification/OS_1F_OPENSHIFT_PROFESSIONAL_UX_REPORT.md` §3 (full audit table) |
+
+**OS-1F pass.** 7 new rows (OS-1F-1 through OS-1F-7). No OS-1A/1B/1C/1D/
+1E `VERIFIED` row reopened or redesigned — `DirectPodLogProvider`,
+`OpenShiftLiveTailProvider`, `ContextTargetProofCodec`, and every backend
+search/context/live semantic are byte-for-byte unchanged (confirmed via
+targeted diff, §OS-1F verification report §6). The one new backend
+surface (`GET /scope`) is a pure, non-mutating read reusing the existing
+`scopeSummary()` helper — no new discovery/authorization logic. `Job`/
+`CronJob`/standalone pods/unknown workload types/init containers remain
+explicitly unsupported, unchanged from OS-1B. `openshift-loki` is
+untouched, not removed. `TEST-INFRA-1` remains
+`APPROVED_PENDING_HARDENING`, untouched — re-confirmed via the same
+PNG-restoration mitigation after this pass's own full backend/frontend/E2E
+validation (new `docs/verification/OS_1F_EVIDENCE/` screenshots are new
+evidence, not historical mutations, and are preserved). `REL-1` (§7, §7b,
+§7c) remains confirmed `APPROVED_PENDING`, untouched.
+`REAL_OPENSHIFT_1F=BLOCKED_CREDENTIALS`, consistent with every prior
+OS-1x slice — every "connected"/"scoped" screenshot and test in this pass
+is explicitly, honestly labelled MOCKED (Playwright route interception),
+never presented as real-cluster evidence. `UNTRACKED_OWNER_REQUIREMENTS=0`.
+
+### 12o.1 Real Red Hat Developer Sandbox validation attempt
+
+A follow-up mission, now that the owner has a real Red Hat Developer
+Sandbox, asked this pass to convert `REAL_OPENSHIFT_1F` from
+`BLOCKED_CREDENTIALS` into real evidence. **No credential was present in
+this session's environment** (confirmed by an explicit scan: no
+`OPENSHIFT_*`/`OC_*`/`KUBE*` environment variables, no `oc` CLI
+installed, no `~/.kube/config`), and none was supplied via the sanctioned
+mechanism (`OPENSHIFT_LOGIN_COMMAND` or `OPENSHIFT_API_SERVER`/
+`OPENSHIFT_TOKEN`). Per that mission's own explicit instruction, no
+connection attempt was made — `REAL_OPENSHIFT_1F` remains
+`BLOCKED_CREDENTIALS`, not fabricated as `PASS`. See
+`docs/verification/OS_1F_OPENSHIFT_PROFESSIONAL_UX_REPORT.md` §8 for the
+full checklist of real-Sandbox items, all correctly reported
+`BLOCKED_CREDENTIALS`/`NOT_TESTED_ENVIRONMENT_LIMITATION`.
+
+**What this pass DID complete, entirely credential-independent:** the
+full real-Sandbox testbed the eventual validation needs —
+`testbed/openshift/` (a reusable Spring Boot log generator matching the
+real product's own JSON parser field shape exactly; OpenShift manifests
+for ~10 logically distinct services with a sidecar container and a
+Route; deploy/traffic/rolling-update/cleanup scripts; a README with an
+explicit security section on credential handling) — genuinely test
+infrastructure, never a product dependency, never referenced by
+`backend/`/`frontend/`. The testbed's own JSON log format was verified,
+locally and without any cluster, to round-trip correctly through the
+real `LogLineParser` (a temporary, not-committed scratch test). This
+closes every credential-independent prerequisite for the real-Sandbox
+validation; only the credential itself remains outstanding.
+`UNTRACKED_OWNER_REQUIREMENTS=0`.
+
+### 12o.2 Real Red Hat Developer Sandbox validation — completed
+
+A follow-up mission supplied a fresh, never-previously-displayed
+credential via the sanctioned `OPENSHIFT_API_SERVER`/`OPENSHIFT_TOKEN`
+environment variables. The credential was never printed or persisted
+(verified: presence-only `[ -n ... ]` checks; the token appears in no
+committed file, no screenshot, no application log, no test artifact —
+full grep-based audit in
+`docs/verification/OS_1F_OPENSHIFT_PROFESSIONAL_UX_REPORT.md` §8.3).
+`oc new-project` confirmed `Forbidden` under this Sandbox's policy, so
+the mission's own pre-created-namespace fallback applied:
+`ahmedelrifaye70-dev` (the larger-quota of the two pre-provisioned
+projects; `ahmedelrifaye70-aece7-claw` was deliberately avoided — it
+already hosts unrelated `claw`/`claw-proxy` infrastructure presumed to
+belong to this execution environment itself).
+
+**Real-Sandbox-only defects found and fixed (test infrastructure, not
+product code — classified `HARDENING`):** (1) at the Sandbox's real
+`cpu: 15m` request, JVM startup took ~58s under real CFS throttling,
+but the original `livenessProbe` began killing the container around
+t=55s, causing `CrashLoopBackOff` — fixed with a `startupProbe`
+(`failureThreshold: 30`/`periodSeconds: 5`, 150s allowance) absorbing
+slow, throttled startup before liveness/readiness begin counting,
+applied to both `deployment-template.yaml` and
+`edge-with-sidecar-template.yaml`; (2) the `metrics-sidecar` container
+(running the same full Spring Boot jar) OOMKilled at its original
+`96Mi` limit — fixed by raising it to match the main container's own
+already-reliable sizing (`160Mi`). Neither finding touches
+`backend/`/`frontend/` product code.
+
+**Mid-flight, a separate mission required renaming the entire testbed
+away from banking-flavored naming** (`gateway-service` →
+`logexp-test-edge`, etc. — full ten-service mapping in
+`testbed/openshift/README.md`) before real validation evidence was
+captured, to remove any appearance of bank-specific branding from test
+infrastructure per `CLAUDE.md` §1's "neutral identity only" rule,
+applied here by extension to the testbed. All ten OpenShift resource
+identities (Deployment/Service/Route names, `app` labels/selectors,
+`SERVICE_NAME` env values, and hence every generated log line's
+`application` field) now use one single, consistent
+`logexp-test-<noun>` scheme. The five canonical masked MDC field NAMES
+(`cif`/`UserName`/`CustomerId`/`deviceId`/`deviceIp`, `CLAUDE.md` §2
+rule 1) were deliberately left unchanged — they are the real product's
+own masking vocabulary, not testbed-authored banking flavor, and
+renaming them would defeat the testbed's actual masking-verification
+purpose. Verified via exhaustive grep (zero banking terms remain
+outside explanatory comments) and a local smoke test before
+redeploying to the real Sandbox. `BANKING_TERMS_IN_TESTBED=0`,
+`GENERIC_TEST_NAMES_ONLY=YES`, `PRODUCT_CODE_CHANGED=NO`,
+`TESTBED_CAPABILITY_PRESERVED=YES`, `CREDENTIALS_CHANGED=NO`.
+
+**Real validation results** (full evidence:
+`docs/verification/OS_1F_REAL_OPENSHIFT_EVIDENCE/`, screenshots
+A–V; command output cited in the verification report §8):
+
+| Item | Result |
+|---|---|
+| Real Sandbox connection | `PASS` — real server/user/TLS/project-count shown, no token in DOM |
+| Real discovery (project/workload/pod/container, multi-replica, multi-container) | `PASS` — `logexp-test-edge` correctly shows 2 pods × 2 containers (`app`, `metrics-sidecar`) |
+| Real search (unscoped, scoped, severity-filtered) | `PASS` |
+| Real context / "Show surrounding logs" | `PASS` — ±30s window, root event highlighted, no cross-workload leakage |
+| Real cross-service correlation | `PASS` — one journeyId search across All workloads returned exactly 6 events, one from each of the 6 chained services (edge→profile→catalog→orders→message→activity), correct newest-first ordering |
+| Real Live — single pod/container | `PASS` — real events streamed, Stop works, confirmed no reconnect after Stop |
+| Real Live — multi-replica workload | `PASS` |
+| Real Live — All Workloads (bounded) | `PASS` — all 10 services interleaved in one stream, no truncation |
+| Real Live target-snapshot immutability | `PASS` — a running Live session on `logexp-test-orders` did **not** silently attach the new pods produced by `rolling-update-demo.sh`; it honestly reported both original targets `LIVE_TARGET_STOPPED` (real 404, pod no longer exists) rather than fabricating continued success; a fresh Stop→Live restart correctly resolved the new post-rollout pods |
+| Partial/failure truthfulness — stale/deleted target | `PASS` — same rollout evidence above |
+| Partial/failure truthfulness — one target down during multi-target Live | `PASS` — deleting one of `logexp-test-edge`'s 2 pods (self-healing Deployment) produced an honest `LIVE (2/4 active)` badge, naming both affected containers, while the surviving pod's events kept streaming |
+| Rolling update (`payment-service`→`logexp-test-orders`, v1→v2) | `PASS` — real `oc rollout status` completed, new pod names confirmed distinct from old |
+| Token absence (repo/screenshots/app logs/browser storage/test artifacts) | `PASS` — full grep audit, zero matches; browser storage never persisted (ephemeral Playwright contexts, no profile reuse) |
+
+`REAL_OPENSHIFT_1F=PASS` (supersedes the `BLOCKED_CREDENTIALS` status
+recorded in §12o.1, once credentials became available). No OS-1A
+through OS-1E backend semantic was touched to obtain this result — the
+same byte-for-byte-unchanged claim from the original OS-1F pass (§12o)
+still holds; this subsection records real-cluster confirmation of
+already-implemented behavior, not new implementation.
+`UNTRACKED_OWNER_REQUIREMENTS=0`.
+
 ---
 
 ## 13. Out of Current Scope
@@ -1331,6 +1497,56 @@ terminal-reconnect-suppression mechanisms are unchanged and correct; no
 changed. `TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`, untouched.
 `REL_1` (§7, §7b, §7c) remains confirmed `APPROVED_PENDING`, untouched.
 `REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`, unchanged.
+
+**OS-1F pass (§12o above).** Reconciled against
+`docs/verification/OS_1F_OPENSHIFT_PROFESSIONAL_UX_REPORT.md`. A product/
+UX/integration slice, explicitly not another backend retrieval rewrite —
+OS-1A through OS-1E's connection/discovery/search/context/live semantics
+are byte-for-byte unchanged (confirmed via targeted diff, not assumed). A
+real, evidence-backed LERUX-1 audit preceded implementation: most of the
+checklist (Settings source labelling, token safety, 403-vs-empty
+discovery, Results/Inspector WHERE fields, every OS-1E Live badge state)
+was already `SAME_CORRECT`/`NEW_BETTER`, verified by direct source
+reading rather than redesigned on assumption. Three genuine gaps were
+found and closed: (1) the generic header `ScopeTrail` had zero OpenShift
+awareness, so an investigator had no persistent "WHERE am I searching?"
+truth without reopening Settings — fixed with a new non-mutating `GET
+/scope` endpoint and a shared `useOpenShiftScopeSummary` hook feeding a
+truthful, non-redundant Project/Namespace → Workload → Pod → Container
+breadcrumb, correctly labelling "Namespace:" only for a Kubernetes-
+fallback cluster; (2) the connection-status badge had no "Connecting…"
+state during the real async gap after submitting `oc login`, reading
+"Not connected" as if nothing were happening — fixed with a narrowly-
+scoped `connecting` state, distinct from every other busy scope-selection
+action; (3) Search/Live remained clickable with no Project/Namespace
+selected, reaching the backend only as an opaque, uncaught
+`IllegalStateException` — fixed with a frontend-only truthful gate and
+visible hint, no backend semantic touched. All evidence in
+`docs/verification/OS_1F_EVIDENCE/` is explicitly, honestly labelled
+MOCKED (Playwright route interception) rather than presented as real-
+cluster evidence — at the time of that pass, `REAL_OPENSHIFT_1F` was
+`BLOCKED_CREDENTIALS`, consistent with every prior OS-1x slice; that
+pass neither touched nor could convert that status. `openshift-loki`
+untouched, not removed. `TEST-INFRA-1` remains
+`APPROVED_PENDING_HARDENING`, untouched. `REL_1` (§7, §7b, §7c) remains
+confirmed `APPROVED_PENDING`, untouched.
+
+**OS-1F real-Sandbox validation pass (§12o.2 above).** A fresh
+credential was supplied; connection, discovery, search, context,
+cross-service correlation, Live (single pod, multi-replica, and All
+Workloads), Live target-snapshot immutability under a real rolling
+update, and two partial/failure-truthfulness scenarios were all
+verified for real against the Red Hat Developer Sandbox — full evidence
+in `docs/verification/OS_1F_REAL_OPENSHIFT_EVIDENCE/`.
+`REAL_OPENSHIFT_1F=PASS`, superseding the `BLOCKED_CREDENTIALS` status
+above now that credentials exist; no OS-1A..1E backend semantic was
+touched to obtain it. A separate mission renamed the testbed away from
+banking-flavored naming to a generic `logexp-test-<noun>` scheme
+(`BANKING_TERMS_IN_TESTBED=0`, `PRODUCT_CODE_CHANGED=NO`); two
+real-Sandbox-only testbed defects (probe timing under CPU throttling,
+sidecar memory sizing) were found and fixed, classified `HARDENING`
+to test infrastructure, not product code. Token never printed or
+persisted throughout — full audit in the verification report §8.3.
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0
