@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <!--
+    REL-1: the macOS desktop launcher. Deliberately plain Java - zero
+    external dependencies beyond the JDK itself (java.desktop for
+    SystemTray, java.net.http for the health poll, java.nio for the
+    single-instance file lock) - rather than a native Swift/Xcode
+    project. Design rationale (docs/verification/REL_1_DESKTOP_RELEASE_READINESS_REPORT.md
+    §9): the Windows launcher (desktop/launcher, C#/WinForms/WebView2)
+    embeds the product inside a native application window; the macOS
+    launcher, in this v1, starts the SAME bundled backend jar and opens
+    the system's default browser to it, controlled via a menu-bar
+    (SystemTray) icon rather than an embedded native window. Same
+    product, same backend, same API, same security/masking behavior -
+    only the desktop "chrome" differs. Embedding a native WKWebView shell
+    is tracked as a FUTURE_IMPROVEMENT, not silently dropped.
+
+    Packaged into a macOS .app + .dmg by jpackage
+    (desktop/packaging-macos), the same way jlink already builds the
+    custom Java runtime this launcher and the backend both run on.
+  -->
+  <groupId>com.logexplorer</groupId>
+  <artifactId>log-explorer-desktop-launcher-macos</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+  <name>log-explorer-desktop-launcher-macos</name>
+  <description>Log Explorer macOS desktop launcher - starts the bundled backend, opens the system browser, and provides a menu-bar Quit action. Zero dependencies beyond the JDK.</description>
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <build>
+    <finalName>log-explorer-desktop-launcher-macos</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.1</version>
+        <configuration>
+          <archive>
+            <manifest>
+              <mainClass>com.logexplorer.desktoplauncher.Main</mainClass>
+            </manifest>
+          </archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

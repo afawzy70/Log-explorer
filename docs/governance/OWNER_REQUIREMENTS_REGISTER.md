@@ -261,7 +261,7 @@ below during OS-1B or any slice before REL-1 itself.
 |---|---|
 | ID | REL-1 (addendum) |
 | NAME | Local Reproducible Desktop Packaging |
-| STATUS | `APPROVED_PENDING` — tracked, **not started**, not implemented |
+| STATUS | `IMPLEMENTED_VERIFIED` — see §7b.1 below for real evidence (both `Windows` and `macOS`, real CI runners). GitHub Releases publication (§7's separate, pre-existing requirement) and `RELEASE_GRADE_MODE` exercised with real signing credentials remain deferred, not fabricated as done — see §7b.1 |
 | CATEGORY | Distribution / developer experience |
 | OWNER_INTENT | A developer who downloads/clones the source repository must be able to produce the native desktop package for the host operating system **without requiring GitHub Actions**. |
 | REQUIRED_FUTURE_BEHAVIOR | **Windows host:** clone repo → one documented repository-owned PowerShell entry point → Windows installer. **macOS host:** clone repo → one documented repository-owned shell entry point → native macOS package. CI/release workflows must call the **same** repository-owned packaging entry points rather than duplicating packaging logic inside GitHub workflow YAML — the workflow becomes a thin caller, not a second implementation. |
@@ -270,7 +270,33 @@ below during OS-1B or any slice before REL-1 itself.
 | TARGET_SLICE_OR_PHASE | REL-1 |
 | ACCEPTANCE_CRITERIA | Deferred to REL-1's own implementation mission — this row exists to guarantee the requirement is never silently lost between now and then |
 | EVIDENCE | None — genuinely not implemented. `desktop/` currently builds only through the existing Slice 9 CI-driven path (`jlink`/`jpackage`/Inno Setup inside `.github/workflows/windows-desktop.yml`), which is exactly the "packaging logic duplicated inside workflow YAML" pattern this new requirement says must eventually be replaced by repository-owned scripts the CI merely calls |
-| NOTES / CONFLICTS | This addendum does not change or weaken §7's existing REL-1 row (GitHub Releases as the end-user distribution surface, versioned installers, SHA-256 checksums, etc.) — it adds the *local, credential-free, CI-independent* reproducibility requirement on top of it, and requires the eventual CI implementation to route through the same local scripts rather than reimplementing packaging twice. `LOCAL_WINDOWS_PACKAGING_STATUS=APPROVED_PENDING_REL_1`, `LOCAL_MACOS_PACKAGING_STATUS=APPROVED_PENDING_REL_1`, `CI_REUSE_LOCAL_PACKAGING_SCRIPTS_REQUIREMENT=TRACKED`, `BUILD_DESKTOP_DOCUMENTATION_REQUIREMENT=TRACKED`. |
+| NOTES / CONFLICTS | This addendum does not change or weaken §7's existing REL-1 row (GitHub Releases as the end-user distribution surface, versioned installers, SHA-256 checksums, etc.) — it adds the *local, credential-free, CI-independent* reproducibility requirement on top of it, and requires the eventual CI implementation to route through the same local scripts rather than reimplementing packaging twice. `LOCAL_WINDOWS_PACKAGING_STATUS=IMPLEMENTED_VERIFIED`, `LOCAL_MACOS_PACKAGING_STATUS=IMPLEMENTED_VERIFIED`, `CI_REUSE_LOCAL_PACKAGING_SCRIPTS_REQUIREMENT=DONE`, `BUILD_DESKTOP_DOCUMENTATION_REQUIREMENT=DONE` (see §7b.1). |
+
+### 7b.1 REL-1 implementation — real evidence (this pass)
+
+Full detail, real CI logs, and the two real macOS-specific defects found
+and fixed: `docs/verification/REL_1_DESKTOP_RELEASE_READINESS_REPORT.md`.
+Summary:
+
+| Item | Status | Evidence |
+|---|---|---|
+| Windows: `scripts/build-desktop-windows.ps1`, a repository-owned local entry point, extracted from the pre-existing CI logic (not redesigned) | `VERIFIED` | Real `windows-latest` CI run: `WINDOWS_PACKAGE_BUILD=PASS`, `WINDOWS_PACKAGED_SMOKE=PASS` — real installer produced (`LogExplorer-0.1.0-dev.0c01b8b-windows-x64.exe`, 120.2 MB), real install→launch→health→UI→API→shutdown→uninstall lifecycle confirmed |
+| macOS: `scripts/build-desktop-macos.sh` + new `desktop/launcher-macos` (plain Java, zero dependencies) + `desktop/packaging-macos/` — genuinely new packaging path, none of it existed before | `VERIFIED` | Real `macos-latest` CI run: `MACOS_PACKAGE_BUILD=PASS`, `MACOS_PACKAGED_SMOKE=PASS` — real DMG produced (`LogExplorer-0.1.0-dev.0c01b8b-macos-arm64.dmg`, 81 MB), real install→launch→health→UI→API→shutdown→uninstall lifecycle confirmed |
+| CI orchestrates only — both `windows-desktop.yml` and the new `macos-desktop.yml` call the exact repository-owned scripts, never duplicating packaging logic in YAML | `VERIFIED` | Direct workflow-file review; both jobs' only build step is a single script invocation |
+| SHA-256 checksums | `VERIFIED` | Both scripts write a `.sha256` file alongside the produced artifact, confirmed present in both real CI runs |
+| One authoritative version source (`VERSION`, repository root) | `VERIFIED` | Both scripts resolve version identically; confirmed in both real CI runs (`0.1.0-dev.0c01b8b` on both platforms, from the same commit) |
+| `docs/development/BUILD_DESKTOP.md` | `VERIFIED` | Created — prerequisites, build, output, DEV/RELEASE modes, versioning, clean rebuild, common failures (including both real defects found this pass), artifact verification |
+| Two real macOS-only defects found via the real CI runner and fixed | `HARDENING` (packaging-script fixes, not product code) | bash 3.2's empty-array-under-`set -u` behavior (`"${SIGN_ARGS[@]}"` → the `${arr[@]+"${arr[@]}"}` idiom); jpackage's own `--app-version` rejecting this project's pre-1.0 leading-zero version (fixed with a jpackage-internal-metadata-only substitution, real `$VERSION` preserved everywhere else) |
+| GitHub Releases publication (tag-triggered, end-user-facing) | `DEFERRED` (§7's own separate requirement, not in this pass's scope) | Not attempted — mission's own "Do NOT publish a public release unless explicitly authorized"; CI produces artifacts only |
+| `RELEASE_GRADE_MODE` exercised with real Apple signing credentials | `NOT_TESTED_ENVIRONMENT_LIMITATION` | No Apple Developer credentials exist in this repository's CI or this session; verified only by code review and its own fail-fast behavior when credentials are absent (confirmed: it does fail loudly, never silently falls back to unsigned) |
+| Native macOS embedded web view (WebView2-equivalent) | `FUTURE_IMPROVEMENT` | v1 opens the system browser with a menu-bar tray icon instead — same product/backend/API, deliberate, documented, reversible design choice (decision report §9) |
+
+`PRODUCT_BEHAVIOR_CHANGED=NO` — `git diff --stat main -- backend/src/main/java frontend/src`
+is empty; no OpenShift/Loki/Docker/Fixture source touched.
+`HISTORICAL_DECISIONS_PRESERVED=YES` — the "registered now, not
+implemented now" framing above (§7b's own opening paragraph) is
+preserved as an accurate record of the OS-1B-era decision; this
+subsection records the later, real implementation. `UNTRACKED_OWNER_REQUIREMENTS=0`.
 
 ### 7c. Windows Desktop CI/Toolchain Hardening — reproducible .NET SDK / NuGet restore (`platform/windows-dotnet-nuget-restore-hardening`)
 
@@ -1594,6 +1620,33 @@ removed. `OpenShiftLogSource`/`DirectPodLogProvider` (OS-1A..1F)
 untouched. `TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`,
 untouched. `REL_1` (§7, §7b, §7c) remains confirmed `APPROVED_PENDING`,
 untouched.
+
+**REL-1 pass (§7b.1 above).** Implements the long-tracked, never-
+previously-implemented §7b addendum: a developer cloning the repository
+can now build the native desktop package for their own host OS without
+GitHub Actions, and CI (`windows-desktop.yml`, and the new
+`macos-desktop.yml`) calls the exact same repository-owned scripts
+rather than duplicating packaging logic in YAML. Windows:
+`scripts/build-desktop-windows.ps1` extracted from the pre-existing CI
+logic, unchanged behavior, now with an explicit preflight. macOS:
+genuinely new — `scripts/build-desktop-macos.sh`, a new
+`desktop/launcher-macos` plain-Java launcher (zero dependencies beyond
+the JDK, deliberately opens the system browser with a menu-bar tray icon
+rather than an embedded native window, a documented v1 design choice),
+and `desktop/packaging-macos/`. Both platforms verified for real on
+real GitHub-hosted `windows-latest`/`macos-latest` CI runners — real
+installer/DMG produced, real install→launch→health→UI→API→shutdown→
+uninstall lifecycle confirmed on both
+(`WINDOWS_PACKAGED_SMOKE=PASS`, `MACOS_PACKAGED_SMOKE=PASS`), never
+claimed from this (Linux) session directly. Two real macOS-only defects
+(a bash 3.2 empty-array-expansion incompatibility, and jpackage's own
+rejection of this project's pre-1.0 leading-zero version) were found via
+the real macOS runner and fixed, each confirmed by a subsequent green
+real CI run. `PRODUCT_BEHAVIOR_CHANGED=NO` — zero backend/frontend
+production source changed. GitHub Releases publication and
+`RELEASE_GRADE_MODE` with real Apple signing credentials remain
+explicitly deferred, not fabricated as done — full detail in
+`docs/verification/REL_1_DESKTOP_RELEASE_READINESS_REPORT.md`.
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0
