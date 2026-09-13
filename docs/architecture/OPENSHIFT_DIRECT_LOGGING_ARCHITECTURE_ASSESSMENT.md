@@ -355,6 +355,16 @@ and `tailLines`**. Everything else is post-filtering and must not be
 claimed. **[FACT]** The existing default returns an empty list precisely
 so that a source cannot accidentally over-claim.
 
+**[EVIDENCE, established by OS-1E]** "Live tail | SUPPORTED" above is now
+implemented exactly as proposed, over `follow=true` with no `oc logs -f`/
+shell/exec dependency, and with one addition the original assessment did
+not anticipate needing: a genuinely streaming `Flux<DataBuffer>` line
+decoder (never `bodyToMono(String.class)`), since the byte-bounded
+*historical* fetch OS-1C built cannot be reused unmodified for a
+potentially-infinite stream. Reuses OS-1C's own hardened
+`BaseSubscriber`/cancellation-bridge/pull-backpressure pattern rather than
+inventing a second one. See `OS_1E_OPENSHIFT_LIVE_REPORT.md` §3.
+
 ---
 
 ## 10. Ordering, pagination and bounded fan-out
@@ -928,6 +938,75 @@ and its unauthenticated-local-endpoint assumption; (2) multi-pod merge
 ordering and pagination truthfulness; (3) Live stream lifecycle across
 pod churn; (4) enterprise proxy behaviour (§17), which is an unverified
 assumption that could surprise the estimate.
+
+**[EVIDENCE, established by OS-1E, not this assessment]** The OS-1E row
+above ("multi-pod follow, buffering, reconnect, Stop/Pause/Resume, memory
+bounds") is now implemented, executed as a stacked continuation on PR
+#42's approved HEAD while that PR remained externally blocked on the
+Windows Desktop CI gate (`OWNER_REQUIREMENTS_REGISTER.md` §7c). One
+correction to this section's own risk framing: "(3) Live stream lifecycle
+across pod churn" turned out to require **no new lifecycle machinery at
+all** — the existing generic `useLiveTail.ts` reconnect/state-machine
+hook (bounded exponential backoff, session-id race guard, terminal
+`'failed'` state) already handles a backend `Flux` error identically
+regardless of source, so a backend-side per-target reconnect classifier
+(§3 of `OS_1E_OPENSHIFT_LIVE_REPORT.md`) was sufficient; no parallel
+frontend Live state model was built. "Pod-watch auto-attach of new pods"
+remains **[FUTURE]**, explicitly deferred exactly as this table already
+proposed — a resolved live-target set is an immutable snapshot for the
+life of one session, never silently re-resolved. `REAL_OPENSHIFT_1E =
+BLOCKED_CREDENTIALS`, the same honest gap every prior OS-1x slice has
+carried.
+
+**[EVIDENCE, established by the OS-1E REVIEW RECOVERY, not this
+assessment]** A post-implementation review found the first cut above had
+not fully delivered "memory bounds" and "Stop/Pause/Resume" as robustly
+as claimed: (a) the initial-tail replay-on-reconnect defect meant the
+reconnect *attempt count* itself was not a reliable bound (distinct from
+the byte/line memory bounds, which were correct); (b) one oversized
+physical log line could become several synthetic events rather than
+being bounded to exactly one; (c) "bounded fan-out" (§10 below) had a
+gap specific to Live: `maxConcurrency` was reused by name but never
+wired into the actual live connect/reconnect path at all. All three are
+now corrected — see `OWNER_REQUIREMENTS_REGISTER.md` §12l and
+`OS_1E_OPENSHIFT_LIVE_REPORT.md`'s own review-recovery section for the
+full before/after account, including two further truthfulness gaps this
+same review found beyond the original table's own scope: a session with
+zero active targets could remain visually indistinguishable from a
+healthy LIVE session, and a connection/scope change during an
+already-running immutable snapshot was never actively surfaced. Neither
+gap involved the credential/token model — the "old session never
+migrates onto new credentials" invariant held throughout; what was
+missing was the old session *actively terminating and saying so*, not a
+security boundary.
+
+**[EVIDENCE, established by the OS-1E FINAL IMPLEMENTATION, not this
+assessment]** A separate, owner-authorized text-only design-closure pass
+treated the review-recovery implementation above as input, not authority,
+and found the review-recovery pass had itself missed a real defect: a
+target was still marked `ACTIVE` at connection-attempt *start* rather than
+at genuine HTTP establishment, so a target still queued behind
+`maxConcurrency` admission could be displayed as active. This is now
+corrected by switching `OpenShiftApiClient#followPodLog` to WebClient
+`exchangeToFlux`, so an HTTP `2xx` response — not attempt start, not the
+first log line — is the sole evidence of establishment. The same pass
+closed five further design gaps: the long-line truncation boundary was
+off by one byte at exactly `maxLineBytes`; no final-partial-line flush
+existed for any termination cause (clean EOF/error/cancellation now have
+three distinct, tested outcomes); no `connectingTargets` state existed in
+`LiveSourceStatus`, risking a false `NO_ACTIVE_TARGETS` reading at session
+start; establishment becoming its own signal created a risk of
+conflating "stream active" with "reconnect budget reset" (now explicitly
+separated — only genuine post-reconnect data resets the budget); and a
+terminal SSE session had no bounded grace-close and the frontend's
+generic `EventSource` auto-reconnect could not distinguish a deliberate
+terminal close from an ordinary transport failure (now both bounded and
+distinguished). See `OWNER_REQUIREMENTS_REGISTER.md` §12m and
+`OS_1E_OPENSHIFT_LIVE_REPORT.md`'s own §14 for the full before/after
+account. No credential/token/scope-migration invariant changed by this
+pass — it is scoped entirely to connection-establishment truthfulness,
+long-line/partial-line byte-level correctness, and status/transport
+lifecycle precision. `REAL_OPENSHIFT_1E = BLOCKED_CREDENTIALS`, unchanged.
 
 ---
 

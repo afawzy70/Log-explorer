@@ -504,6 +504,268 @@ describe('useLiveTail (Legacy Remediation Slice 5)', () => {
     });
   });
 
+  describe('source status (OS-1E final implementation)', () => {
+    it('defaults to the nominal/RUNNING status, and a "status" event populates it from the payload verbatim', () => {
+      const { result } = renderHook(() => useLiveTail());
+      expect(result.current.sourceStatus).toEqual({
+        state: 'RUNNING',
+        resolvedTargets: 0,
+        connectingTargets: 0,
+        activeTargets: 0,
+        reconnectingTargets: 0,
+        stoppedTargets: 0,
+        warnings: [],
+      });
+
+      act(() => result.current.start('openshift', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() =>
+        latestMockEventSource().emit('status', {
+          droppedCount: 0,
+          serverTime: '2026-01-01T00:00:00Z',
+          liveSourceState: 'DEGRADED',
+          resolvedTargets: 2,
+          connectingTargets: 0,
+          activeTargets: 1,
+          reconnectingTargets: 0,
+          stoppedTargets: 1,
+          warnings: ['Pod payment-api-1 / container app stopped — the pod or container no longer exists (404).'],
+        }),
+      );
+
+      expect(result.current.sourceStatus).toEqual({
+        state: 'DEGRADED',
+        resolvedTargets: 2,
+        connectingTargets: 0,
+        activeTargets: 1,
+        reconnectingTargets: 0,
+        stoppedTargets: 1,
+        warnings: ['Pod payment-api-1 / container app stopped — the pod or container no longer exists (404).'],
+      });
+    });
+
+    it('a "status" event carrying CONNECTING (mission §15) is read verbatim - never confused with RUNNING', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('openshift', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() =>
+        latestMockEventSource().emit('status', {
+          droppedCount: 0,
+          serverTime: '2026-01-01T00:00:00Z',
+          liveSourceState: 'CONNECTING',
+          resolvedTargets: 10,
+          connectingTargets: 10,
+          activeTargets: 0,
+          reconnectingTargets: 0,
+          stoppedTargets: 0,
+          warnings: [],
+        }),
+      );
+      expect(result.current.sourceStatus.state).toBe('CONNECTING');
+      expect(result.current.sourceStatus.connectingTargets).toBe(10);
+      expect(result.current.sourceStatus.activeTargets).toBe(0);
+    });
+
+    it('a later "status" event replaces the whole snapshot - a resolved target no longer clears a stale field', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('openshift', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() =>
+        latestMockEventSource().emit('status', {
+          droppedCount: 0,
+          serverTime: '2026-01-01T00:00:00Z',
+          liveSourceState: 'NO_ACTIVE_TARGETS',
+          resolvedTargets: 1,
+          connectingTargets: 0,
+          activeTargets: 0,
+          reconnectingTargets: 0,
+          stoppedTargets: 1,
+          warnings: ['some target stopped'],
+        }),
+      );
+      expect(result.current.sourceStatus.state).toBe('NO_ACTIVE_TARGETS');
+
+      act(() =>
+        latestMockEventSource().emit('status', {
+          droppedCount: 0,
+          serverTime: '2026-01-01T00:00:01Z',
+          liveSourceState: 'RUNNING',
+          resolvedTargets: 1,
+          connectingTargets: 0,
+          activeTargets: 1,
+          reconnectingTargets: 0,
+          stoppedTargets: 0,
+          warnings: [],
+        }),
+      );
+      expect(result.current.sourceStatus.state).toBe('RUNNING');
+      expect(result.current.sourceStatus.warnings).toEqual([]);
+    });
+
+    it('a fresh start() resets sourceStatus back to nominal', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('openshift', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() =>
+        latestMockEventSource().emit('status', {
+          droppedCount: 0,
+          serverTime: '2026-01-01T00:00:00Z',
+          liveSourceState: 'EXPIRED',
+          resolvedTargets: 1,
+          connectingTargets: 0,
+          activeTargets: 0,
+          reconnectingTargets: 0,
+          stoppedTargets: 1,
+          warnings: ['some target stopped'],
+        }),
+      );
+      expect(result.current.sourceStatus.state).toBe('EXPIRED');
+
+      act(() => result.current.start('openshift', []));
+      expect(result.current.sourceStatus.state).toBe('RUNNING');
+      expect(result.current.sourceStatus.warnings).toEqual([]);
+    });
+
+    it('a source with no per-target concept (e.g. Docker/Fixture) simply never leaves RUNNING', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() =>
+        latestMockEventSource().emit('status', {
+          droppedCount: 0,
+          serverTime: '2026-01-01T00:00:00Z',
+          liveSourceState: 'RUNNING',
+          resolvedTargets: 0,
+          connectingTargets: 0,
+          activeTargets: 0,
+          reconnectingTargets: 0,
+          stoppedTargets: 0,
+          warnings: [],
+        }),
+      );
+      expect(result.current.sourceStatus.state).toBe('RUNNING');
+    });
+  });
+
+  describe('terminal source state suppresses the generic automatic reconnect (OS-1E final implementation, mission §18/§20)', () => {
+    it('NO_ACTIVE_TARGETS at the moment of disconnect transitions straight to stopped - no reconnect timer, events retained', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('openshift', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() => latestMockEventSource().emit('log', event({ message: 'before-terminal' })));
+      advanceOneFlush();
+      act(() =>
+        latestMockEventSource().emit('status', {
+          droppedCount: 0,
+          serverTime: '2026-01-01T00:00:00Z',
+          liveSourceState: 'NO_ACTIVE_TARGETS',
+          resolvedTargets: 1,
+          connectingTargets: 0,
+          activeTargets: 0,
+          reconnectingTargets: 0,
+          stoppedTargets: 1,
+          warnings: ['every target stopped'],
+        }),
+      );
+
+      act(() => latestMockEventSource().emitError());
+
+      expect(result.current.connectionState).toBe('stopped');
+      expect(result.current.reconnectAttempt).toBe(0);
+      expect(result.current.reconnectCount).toBe(0);
+      // Currently displayed events remain available - the same "Stop"
+      // guarantee an ordinary user-initiated Stop already gives.
+      expect(result.current.visibleEvents.some((e) => e.message === 'before-terminal')).toBe(true);
+
+      // No reconnect timer was armed - advancing time must not reopen a
+      // new EventSource.
+      const instanceCountBeforeAdvance = MockEventSource.instances.length;
+      act(() => vi.advanceTimersByTime(60_000));
+      expect(MockEventSource.instances.length).toBe(instanceCountBeforeAdvance); // no new EventSource was created
+      expect(result.current.connectionState).toBe('stopped');
+    });
+
+    it('EXPIRED at the moment of disconnect also suppresses the generic reconnect', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('openshift', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() =>
+        latestMockEventSource().emit('status', {
+          droppedCount: 0,
+          serverTime: '2026-01-01T00:00:00Z',
+          liveSourceState: 'EXPIRED',
+          resolvedTargets: 1,
+          connectingTargets: 0,
+          activeTargets: 0,
+          reconnectingTargets: 0,
+          stoppedTargets: 1,
+          warnings: ['session expired'],
+        }),
+      );
+
+      act(() => latestMockEventSource().emitError());
+
+      expect(result.current.connectionState).toBe('stopped');
+    });
+
+    it('STALE at the moment of disconnect also suppresses the generic reconnect', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('openshift', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() =>
+        latestMockEventSource().emit('status', {
+          droppedCount: 0,
+          serverTime: '2026-01-01T00:00:00Z',
+          liveSourceState: 'STALE',
+          resolvedTargets: 1,
+          connectingTargets: 0,
+          activeTargets: 0,
+          reconnectingTargets: 0,
+          stoppedTargets: 0,
+          warnings: ['scope changed'],
+        }),
+      );
+
+      act(() => latestMockEventSource().emitError());
+
+      expect(result.current.connectionState).toBe('stopped');
+    });
+
+    it('a NON-terminal source state (e.g. RUNNING/DEGRADED) at the moment of disconnect still uses the ordinary generic reconnect - no regression', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('openshift', []));
+      act(() => latestMockEventSource().emitOpen());
+      act(() =>
+        latestMockEventSource().emit('status', {
+          droppedCount: 0,
+          serverTime: '2026-01-01T00:00:00Z',
+          liveSourceState: 'RUNNING',
+          resolvedTargets: 1,
+          connectingTargets: 0,
+          activeTargets: 1,
+          reconnectingTargets: 0,
+          stoppedTargets: 0,
+          warnings: [],
+        }),
+      );
+
+      act(() => latestMockEventSource().emitError());
+
+      expect(result.current.connectionState).toBe('reconnecting');
+      expect(result.current.reconnectAttempt).toBe(1);
+    });
+
+    it('Docker/Fixture (always NOMINAL/RUNNING) are unaffected - the ordinary generic reconnect still applies', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('fixture', []));
+      act(() => latestMockEventSource().emitOpen());
+
+      act(() => latestMockEventSource().emitError());
+
+      expect(result.current.connectionState).toBe('reconnecting');
+    });
+  });
+
   describe('no sensitive persistence', () => {
     it('never writes to localStorage or sessionStorage at any point in the lifecycle', () => {
       const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');

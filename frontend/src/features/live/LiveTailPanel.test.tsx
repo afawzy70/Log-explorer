@@ -5,8 +5,8 @@ import { axe } from 'jest-axe';
 import { LiveTailPanel } from './LiveTailPanel';
 import { useLiveTail } from './useLiveTail';
 import type { LiveTailHandle } from './useLiveTail';
-import type { LiveConnectionState } from './liveTailTypes';
-import { BATCH_FLUSH_MS } from './liveTailTypes';
+import type { LiveConnectionState, LiveSourceStatusView } from './liveTailTypes';
+import { BATCH_FLUSH_MS, NOMINAL_SOURCE_STATUS } from './liveTailTypes';
 import { installMockEventSource, latestMockEventSource } from './mockEventSource';
 import type { LogEvent } from '../../shared/api/types';
 
@@ -72,6 +72,7 @@ function baseLive(overrides: Partial<LiveTailHandle> = {}): LiveTailHandle {
     reconnectCount: 0,
     followNewest: true,
     unseenCount: 0,
+    sourceStatus: NOMINAL_SOURCE_STATUS,
     start: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),
@@ -216,6 +217,94 @@ describe('LiveTailPanel', () => {
   it('reconnectCount === 0 shows no continuity notice', () => {
     renderPanel('live', { reconnectCount: 0 });
     expect(screen.queryByText(/reconnected/i)).not.toBeInTheDocument();
+  });
+
+  function status(overrides: Partial<LiveSourceStatusView> = {}): LiveSourceStatusView {
+    return { ...NOMINAL_SOURCE_STATUS, ...overrides };
+  }
+
+  it('OS-1E: sourceStatus.warnings renders each warning truthfully, in order', () => {
+    renderPanel('live', {
+      sourceStatus: status({
+        state: 'DEGRADED',
+        resolvedTargets: 2,
+        activeTargets: 1,
+        stoppedTargets: 1,
+        warnings: [
+          'Pod payment-api-1 / container app stopped — the pod or container no longer exists (404).',
+          'Only 2 pod/container targets are being tailed live; the resolved scope was larger and was capped (TARGET_CAP_REACHED).',
+        ],
+      }),
+    });
+    const statusEls = screen.getAllByRole('status').map((el) => el.textContent ?? '');
+    expect(statusEls.some((text) => text.includes('the pod or container no longer exists (404)'))).toBe(true);
+    expect(statusEls.some((text) => text.includes('TARGET_CAP_REACHED'))).toBe(true);
+  });
+
+  it('OS-1E: an empty sourceStatus.warnings renders no warnings list at all', () => {
+    renderPanel('live', { sourceStatus: status({ warnings: [] }) });
+    expect(screen.queryByText(/TARGET_CAP_REACHED|LIVE_TARGET_STOPPED/i)).not.toBeInTheDocument();
+  });
+
+  // ------------------------------------------------------------ OS-1E review recovery: zero-active-target truthfulness (mission §11/§14)
+
+  it('OS-1E review recovery: NO_ACTIVE_TARGETS overrides a healthy connectionState so it never reads as plain LIVE', () => {
+    renderPanel('live', { sourceStatus: status({ state: 'NO_ACTIVE_TARGETS', resolvedTargets: 2 }) });
+    expect(screen.getByText(/no active streams/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^live$/i)).not.toBeInTheDocument();
+  });
+
+  it('OS-1E review recovery: EXPIRED overrides a healthy connectionState', () => {
+    renderPanel('live', { sourceStatus: status({ state: 'EXPIRED', resolvedTargets: 1 }) });
+    expect(screen.getByText(/session expired/i)).toBeInTheDocument();
+  });
+
+  it('OS-1E review recovery: STALE overrides a healthy connectionState with a restart notice', () => {
+    renderPanel('live', { sourceStatus: status({ state: 'STALE', resolvedTargets: 1 }) });
+    expect(screen.getByText(/restart live/i)).toBeInTheDocument();
+  });
+
+  it('OS-1E review recovery: DEGRADED still shows LIVE, with the active/resolved count appended', () => {
+    renderPanel('live', { sourceStatus: status({ state: 'DEGRADED', resolvedTargets: 6, activeTargets: 5, stoppedTargets: 1 }) });
+    const badge = screen.getAllByRole('status')[0];
+    expect(badge.textContent).toMatch(/live/i);
+    expect(badge.textContent).toMatch(/5\/6 active/);
+  });
+
+  it('OS-1E review recovery: RUNNING (the default/nominal status) never overrides the badge', () => {
+    renderPanel('live', { sourceStatus: NOMINAL_SOURCE_STATUS });
+    const badge = screen.getAllByRole('status')[0];
+    expect(badge.textContent).toMatch(/^live$/i);
+  });
+
+  it('OS-1E review recovery: a non-live connectionState (e.g. connecting) is never overridden by source status', () => {
+    renderPanel('connecting', { sourceStatus: status({ state: 'NO_ACTIVE_TARGETS', resolvedTargets: 2 }) });
+    expect(screen.getByText(/^connecting$/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no active streams/i)).not.toBeInTheDocument();
+  });
+
+  // ------------------------------------------------------------ OS-1E final implementation: CONNECTING and terminal-stopped truthfulness
+
+  it('OS-1E final implementation: a healthy transport with source state CONNECTING never reads as plain LIVE (mission §11/§15)', () => {
+    renderPanel('live', { sourceStatus: status({ state: 'CONNECTING', resolvedTargets: 10, connectingTargets: 10 }) });
+    const badge = screen.getAllByRole('status')[0];
+    expect(badge.textContent).toMatch(/connecting/i);
+    expect(badge.textContent?.toLowerCase()).not.toBe('live');
+  });
+
+  it('OS-1E final implementation: a "stopped" transport caused by a terminal source state still shows the specific terminal reason (mission §18/§20)', () => {
+    // useLiveTail.ts's own onerror handler transitions straight to
+    // 'stopped' for a terminal source state (never arming the generic
+    // reconnect) while leaving sourceStatus untouched - the badge must
+    // keep showing the SPECIFIC reason, not revert to a generic "STOPPED".
+    renderPanel('stopped', { sourceStatus: status({ state: 'EXPIRED', resolvedTargets: 1 }) });
+    expect(screen.getByText(/session expired/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^stopped$/i)).not.toBeInTheDocument();
+  });
+
+  it('OS-1E final implementation: an ordinary user-initiated Stop (sourceStatus still RUNNING/DEGRADED/CONNECTING) shows the plain STOPPED badge, unaffected', () => {
+    renderPanel('stopped', { sourceStatus: status({ state: 'RUNNING', resolvedTargets: 1, activeTargets: 1 }) });
+    expect(screen.getByText(/^stopped$/i)).toBeInTheDocument();
   });
 
   it('clicking "Back to search results" calls live.exit', async () => {
