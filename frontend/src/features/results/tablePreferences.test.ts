@@ -200,6 +200,41 @@ describe('tablePreferences', () => {
       expect(result.current.preferences.columnOrder).toEqual(before);
     });
 
+    it('pre-closure functional recovery §20 - moveColumnToIndex (the drag-and-drop mutation) moves a column to an arbitrary target position', () => {
+      const { result } = renderHook(() => useTablePreferences());
+      const before = [...result.current.preferences.columnOrder];
+      const draggedId = before[before.length - 1]; // last column, dragged to the very front
+      act(() => result.current.moveColumnToIndex(draggedId, 0));
+      const after = result.current.preferences.columnOrder;
+      expect(after[0]).toBe(draggedId);
+      expect(after).toHaveLength(before.length);
+      expect(new Set(after)).toEqual(new Set(before)); // no column lost or duplicated
+    });
+
+    it('moveColumnToIndex clamps an out-of-range target index rather than dropping/duplicating a column', () => {
+      const { result } = renderHook(() => useTablePreferences());
+      const before = [...result.current.preferences.columnOrder];
+      act(() => result.current.moveColumnToIndex(before[0], 9999));
+      const after = result.current.preferences.columnOrder;
+      expect(after[after.length - 1]).toBe(before[0]);
+      expect(after).toHaveLength(before.length);
+    });
+
+    it('moveColumnToIndex dropping a column onto its own current position is a no-op', () => {
+      const { result } = renderHook(() => useTablePreferences());
+      const before = [...result.current.preferences.columnOrder];
+      const id = before[2];
+      act(() => result.current.moveColumnToIndex(id, before.indexOf(id)));
+      expect(result.current.preferences.columnOrder).toEqual(before);
+    });
+
+    it('moveColumnToIndex for an unknown column id is a safe no-op', () => {
+      const { result } = renderHook(() => useTablePreferences());
+      const before = [...result.current.preferences.columnOrder];
+      act(() => result.current.moveColumnToIndex('notARealColumn' as never, 0));
+      expect(result.current.preferences.columnOrder).toEqual(before);
+    });
+
     it('changes density', () => {
       const { result } = renderHook(() => useTablePreferences());
       act(() => result.current.setDensity('compact'));

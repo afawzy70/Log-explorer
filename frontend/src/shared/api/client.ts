@@ -4,7 +4,9 @@ import type {
   DockerConnectionSummary,
   EnvironmentInfo,
   JourneyRequestBody,
+  MaskingSettings,
   ProblemDetail,
+  ProtectedFieldKey,
   SearchRequestBody,
   SearchResponse,
   ServiceInfo,
@@ -14,6 +16,7 @@ import type {
   OpenShiftConnectionSummary,
   OpenShiftFailureReason,
   OpenShiftPodDiscovery,
+  OpenShiftProxySettings,
   OpenShiftScopeSummary,
   OpenShiftWorkloadDiscovery,
   OpenShiftWorkloadKind,
@@ -155,6 +158,36 @@ export async function testDockerConnection(candidate: DockerConnectionCandidate,
   return parseJsonOrThrow<SourceHealth>(response);
 }
 
+/*
+ * Pre-closure functional recovery (§11/§12/§13) - the global, source-
+ * independent masking-settings endpoint. Deliberately not nested under
+ * `/sources/docker` or `/sources/openshift` - masking applies identically
+ * to every source. `updateMaskingSetting` toggles exactly ONE field at a
+ * time (matching the settings UI's own one-checkbox-per-field
+ * interaction) and returns the full, authoritative policy the server now
+ * holds - callers must apply the RETURNED policy, never optimistically
+ * assume their own requested change took effect (the server is always the
+ * single source of truth for this).
+ */
+export async function fetchMaskingSettings(signal?: AbortSignal): Promise<MaskingSettings> {
+  const response = await fetch('/api/v1/settings/masking', { signal });
+  return parseJsonOrThrow<MaskingSettings>(response);
+}
+
+export async function updateMaskingSetting(
+  field: ProtectedFieldKey,
+  masked: boolean,
+  signal?: AbortSignal,
+): Promise<MaskingSettings> {
+  const response = await fetch('/api/v1/settings/masking', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ field, masked }),
+    signal,
+  });
+  return parseJsonOrThrow<MaskingSettings>(response);
+}
+
 /* ------------------------------------------------------------------ */
 /* OS-1A - OpenShift connection                                        */
 /* ------------------------------------------------------------------ */
@@ -221,6 +254,36 @@ export async function selectOpenShiftProject(
     signal,
   });
   return parseJsonOrThrow<OpenShiftConnectionSummary>(response);
+}
+
+/**
+ * Pre-closure functional recovery 2 (§B2/§B16) - the current OpenShift/
+ * Loki proxy mode, independent of whether a connection currently exists
+ * (it applies to the connect/test attempt itself).
+ */
+export async function fetchOpenShiftProxySettings(signal?: AbortSignal): Promise<OpenShiftProxySettings> {
+  const response = await fetch('/api/v1/sources/openshift/proxy', { signal });
+  return parseJsonOrThrow<OpenShiftProxySettings>(response);
+}
+
+/**
+ * Sets the proxy mode/host/port. `host`/`port` are ignored by the backend
+ * unless `mode` is `'CUSTOM'` - always send `null` for the other two
+ * modes so a leftover value from a previous CUSTOM entry is never
+ * mistakenly resubmitted (§B3 "switching away from CUSTOM must stop using
+ * stale custom values").
+ */
+export async function updateOpenShiftProxySettings(
+  settings: OpenShiftProxySettings,
+  signal?: AbortSignal,
+): Promise<OpenShiftProxySettings> {
+  const response = await fetch('/api/v1/sources/openshift/proxy', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+    signal,
+  });
+  return parseJsonOrThrow<OpenShiftProxySettings>(response);
 }
 
 /* ------------------------------------------------------------------ */

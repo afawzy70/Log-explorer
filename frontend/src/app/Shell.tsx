@@ -1,6 +1,7 @@
 import { SourceHealthBadge } from './SourceHealthBadge';
 import { DockerSettingsPanel } from '../features/settings/DockerSettingsPanel';
 import { OpenShiftSettingsPanel, WORKLOAD_KIND_LABELS } from '../features/settings/OpenShiftSettingsPanel';
+import { PrivacyMaskingSettingsPanel } from '../features/settings/PrivacyMaskingSettingsPanel';
 import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
 import { EnvironmentBadge } from './EnvironmentBadge';
 import type { SearchState } from './useSearchState';
@@ -103,6 +104,15 @@ export function Shell({ state, openShiftScope, onOpenShiftScopeChanged }: ShellP
       <EnvironmentBadge />
       <ScopeTrail state={state} openShiftScope={openShiftScope} />
       <div className={styles.spacer} />
+      {/*
+       * Pre-closure functional recovery (§11): Privacy & Masking is a
+       * GLOBAL, source-independent concern (unlike Docker/OpenShift
+       * settings below, which are per-source connection concerns) - it
+       * sits first, distinct from the two source-connection popovers, so
+       * "where do I control masking?" is never confused with "where do I
+       * connect a source?".
+       */}
+      <PrivacyMaskingSettingsPanel />
       <DockerSettingsPanel />
       {/* OS-1A - the OpenShift connection lives beside Docker settings: both
           are source-connection concerns, and keeping them together is what

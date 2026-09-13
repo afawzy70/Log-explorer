@@ -18,11 +18,16 @@ public class LokiQueryClient {
   private final LokiProperties properties;
   private final LokiTokenSupplier tokenSupplier;
   private final WebClient webClient;
+  private final boolean proxyConfigured;
 
   public LokiQueryClient(LokiProperties properties, LokiTokenSupplier tokenSupplier, LokiWebClientFactory webClientFactory) {
     this.properties = properties;
     this.tokenSupplier = tokenSupplier;
     this.webClient = webClientFactory.create(properties);
+    // Loki has exactly one fixed baseUrl per deployment (unlike OpenShift's
+    // per-connection server), so this is resolved once here rather than
+    // per-request.
+    this.proxyConfigured = webClientFactory.proxyFor(properties).isPresent();
   }
 
   /**
@@ -61,6 +66,7 @@ public class LokiQueryClient {
           return Mono.error(LokiErrorClassifier.classifyStatus(response.statusCode().value()));
         })
         .timeout(properties.getRequestTimeout())
-        .onErrorMap(t -> !(t instanceof LokiRequestException), LokiErrorClassifier::classifyThrowable);
+        .onErrorMap(
+            t -> !(t instanceof LokiRequestException), t -> LokiErrorClassifier.classifyThrowable(t, proxyConfigured));
   }
 }

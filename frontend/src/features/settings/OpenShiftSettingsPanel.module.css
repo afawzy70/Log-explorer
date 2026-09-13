@@ -180,6 +180,54 @@
   border-top: var(--border-width) solid var(--color-border);
 }
 
+/*
+ * Pre-closure functional recovery 2 (§B2/§B3) - proxy mode selection.
+ * A plain <fieldset>/<legend> (native grouping semantics, no extra ARIA
+ * needed) visually separated the same way `.scope` is above.
+ */
+.proxyFieldset {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3) 0 0;
+  border: none;
+  border-top: var(--border-width) solid var(--color-border);
+}
+
+.sectionLabel {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 0;
+  margin: 0 0 var(--space-2);
+}
+
+.radioGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.radioOption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.radioOption input[type='radio'] {
+  flex-shrink: 0;
+}
+
+.proxyCustomFields {
+  margin-top: var(--space-2);
+  padding-left: calc(var(--space-2) + 16px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

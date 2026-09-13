@@ -159,6 +159,16 @@ export interface TablePreferencesHandle {
   preferences: TablePreferences;
   setColumnVisible: (id: ColumnId, visible: boolean) => void;
   moveColumn: (id: ColumnId, direction: 'up' | 'down') => void;
+  /**
+   * Pre-closure functional recovery (§20): drag-and-drop's own mutation -
+   * moves `id` to sit at `targetIndex` in the CURRENT order (0-based,
+   * measured against the order before this column is removed from it).
+   * `moveColumn` (one-step up/down) remains the keyboard-accessible
+   * fallback (mission §20's own priority list: drag-and-drop first,
+   * keyboard-accessible fallback second) - this is additive, not a
+   * replacement.
+   */
+  moveColumnToIndex: (id: ColumnId, targetIndex: number) => void;
   setDensity: (density: TableDensity) => void;
   reset: () => void;
 }
@@ -222,6 +232,24 @@ export function useTablePreferences(): TablePreferencesHandle {
     });
   }, []);
 
+  const moveColumnToIndex = useCallback((id: ColumnId, targetIndex: number) => {
+    setPreferences((prev) => {
+      const currentIndex = prev.columnOrder.indexOf(id);
+      if (currentIndex < 0) {
+        return prev;
+      }
+      const withoutId = prev.columnOrder.filter((c) => c !== id);
+      const clampedIndex = Math.max(0, Math.min(targetIndex, withoutId.length));
+      const nextOrder = [...withoutId.slice(0, clampedIndex), id, ...withoutId.slice(clampedIndex)];
+      if (nextOrder.join('|') === prev.columnOrder.join('|')) {
+        return prev; // no-op - dropped back onto its own position
+      }
+      const next = { ...prev, columnOrder: nextOrder };
+      writeToStorage(next);
+      return next;
+    });
+  }, []);
+
   const setDensity = useCallback((density: TableDensity) => {
     setPreferences((prev) => {
       if (prev.density === density) {
@@ -237,5 +265,5 @@ export function useTablePreferences(): TablePreferencesHandle {
     commit(defaultTablePreferences());
   }, [commit]);
 
-  return { preferences, setColumnVisible, moveColumn, setDensity, reset };
+  return { preferences, setColumnVisible, moveColumn, moveColumnToIndex, setDensity, reset };
 }

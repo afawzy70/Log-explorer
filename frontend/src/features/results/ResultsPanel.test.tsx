@@ -10,6 +10,11 @@ import { emptyQueryAuthoringState } from '../search/QueryBuilder';
 import { DEFAULT_SEVERITY_LEVELS } from '../search/severityLevels';
 import { DEFAULT_PRESET_ID } from '../../shared/time/presets';
 
+/** Pre-closure functional recovery (§17) - see the identical helper's doc comment in ResultsTable.test.tsx. */
+function headerLabel(header: Element): string {
+  return (header.textContent ?? '').replace(/[↕▲▼].*$/, '').trim();
+}
+
 function baseEvent() {
   return {
     timestamp: '2026-01-01T00:00:00Z',
@@ -357,13 +362,13 @@ describe('ResultsPanel', () => {
       await user.click(screen.getByRole('button', { name: /^columns$/i }));
       await user.click(screen.getByRole('checkbox', { name: 'Logger' }));
       await user.click(screen.getByRole('button', { name: 'Close' }));
-      expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toContain('Logger');
+      expect(screen.getAllByRole('columnheader').map((h) => headerLabel(h))).toContain('Logger');
 
       // Refresh re-renders ResultsPanel with a fresh searchResult (same
       // component instance) - `useTablePreferences` state is not reset by
       // this, since it is not part of `SearchState` at all.
       await user.click(screen.getByRole('button', { name: /refresh/i }));
-      expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toContain('Logger');
+      expect(screen.getAllByRole('columnheader').map((h) => headerLabel(h))).toContain('Logger');
     });
 
     it('Inspector wiring (openInspector) still works with the Columns control mounted', async () => {
@@ -448,7 +453,7 @@ describe('ResultsPanel', () => {
           })}
         />,
       );
-      expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toContain('Logger');
+      expect(screen.getAllByRole('columnheader').map((h) => headerLabel(h))).toContain('Logger');
       expect(screen.getByRole('table').className).toMatch(/compact/i);
     });
   });

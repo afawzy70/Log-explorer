@@ -61,8 +61,49 @@ public record ProxyRoute(String host, int port, String username, String password
   }
 
   /**
-   * The proxy to use for {@code targetHost}, or empty when the request
-   * should go direct.
+   * Pre-closure functional recovery 2 (§B2/§B6/§B7/§B8/§B9) - the ONE
+   * authoritative resolver path every OpenShift/Loki caller now goes
+   * through, taking the user's own {@link ProxyConfig} into account
+   * before ever looking at the environment:
+   *
+   * <ul>
+   *   <li>{@link ProxyMode#DIRECT} - always empty. The environment's
+   *   {@code HTTP_PROXY}/{@code HTTPS_PROXY}/{@code NO_PROXY} are never
+   *   consulted, regardless of what is set (§B8) - explicit user intent
+   *   overrides whatever the OS happens to have configured.</li>
+   *   <li>{@link ProxyMode#CUSTOM} - always the configured host/port,
+   *   again never consulting the environment (§B9) - this is what makes
+   *   CUSTOM mode work identically regardless of launch method (a
+   *   packaged desktop app launched from Finder/Dock/Start Menu, a dev
+   *   server, a terminal - §B14): there is no environment dependency to
+   *   inherit or miss in the first place. {@code NO_PROXY} is
+   *   deliberately not applied here either (§B10 - "do not silently
+   *   bypass because machine environment has NO_PROXY"): a user who
+   *   explicitly configured a custom proxy gets that proxy.</li>
+   *   <li>{@link ProxyMode#SYSTEM} - delegates to {@link #resolve(Map,
+   *   String)} below, completely unchanged (§B7 - "preserve tested
+   *   behavior"). This is the ONLY place that method's own
+   *   HTTPS_PROXY/HTTP_PROXY/NO_PROXY logic is reused, never duplicated.</li>
+   * </ul>
+   */
+  public static Optional<ProxyRoute> resolve(ProxyConfig config, Map<String, String> environment, String targetHost) {
+    if (targetHost == null || targetHost.isBlank()) {
+      return Optional.empty();
+    }
+    return switch (config.mode()) {
+      case DIRECT -> Optional.empty();
+      case CUSTOM -> Optional.of(new ProxyRoute(config.customHost(), config.customPort(), null, null));
+      case SYSTEM -> resolve(environment, targetHost);
+    };
+  }
+
+  /**
+   * The proxy to use for {@code targetHost} from the environment alone
+   * ({@link ProxyMode#SYSTEM} behavior), or empty when the request should
+   * go direct. Pre-closure functional recovery 2: kept as its own public
+   * method (rather than folded away) because {@link #resolve(ProxyConfig,
+   * Map, String)} above still delegates to it for {@code SYSTEM} mode, and
+   * because it is directly, extensively tested on its own below.
    *
    * <p>The OpenShift API is always https, so {@code HTTPS_PROXY} wins;
    * {@code HTTP_PROXY} is honoured only as a fallback, matching the

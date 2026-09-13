@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, setViewport, setZoom } from './helpers';
+import { inspectorAllTabsText, openInspectorTab } from './inspector-helpers';
 
 /*
  * UX-R6 - final polish, structural consistency and acceptance readiness.
@@ -72,12 +73,17 @@ test.describe('UX-R6 §3 - the Inspector is a bounded, viewport-height column', 
     await search(page);
     await openInspectorAt(page, 3);
 
+    // Pre-closure functional recovery (PCFR-1): the active tabpanel
+    // (`role="tabpanel"`) is now the designated scroll boundary, not
+    // necessarily an already-overflowing element at this exact viewport/
+    // event/active tab - checking its CSS contract directly (own scroll +
+    // no chaining) is the honest, tab-independent version of this
+    // invariant, matching `InspectorTabs.module.css`'s own `.tabpanel`
+    // rule (`overflow-y: auto; overscroll-behavior: contain`).
     const scrollable = await inspector(page).evaluate((panel) => {
-      const body = Array.from(panel.querySelectorAll('div')).find(
-        (el) => el.scrollHeight > el.clientHeight + 50 && getComputedStyle(el).overflowY === 'auto',
-      ) as HTMLElement | undefined;
+      const body = panel.querySelector('[role="tabpanel"]') as HTMLElement | null;
       return body
-        ? { has: true, overscroll: getComputedStyle(body).overscrollBehaviorY }
+        ? { has: getComputedStyle(body).overflowY === 'auto', overscroll: getComputedStyle(body).overscrollBehaviorY }
         : { has: false, overscroll: '' };
     });
     expect(scrollable.has).toBe(true);
@@ -303,10 +309,16 @@ test.describe('UX-R6 §17 - security regression pass', () => {
   test('masking holds across Results, Inspector and Context, and nothing is persisted', async ({ page }) => {
     await search(page);
     await openInspectorAt(page, 3);
-    await inspector(page).getByRole('heading', { name: /all fields/i }).click();
+    // Pre-closure functional recovery (PCFR-1): "All fields" now lives
+    // behind its own "Technical / all fields" tab first.
+    await openInspectorTab(inspector(page), page, /technical.*all fields/i);
+    await inspector(page).getByRole('heading', { name: /^all fields$/i }).click();
+    const allFieldsPanelText = await inspector(page).innerText();
+    expect(allFieldsPanelText).toMatch(/\*\*\*/);
 
-    const panelText = await inspector(page).innerText();
-    expect(panelText).toMatch(/\*\*\*/);
+    // "Protected / masked - never revealed" lives in the Actor & client
+    // tab, not this one - check every tab's own text combined.
+    const panelText = await inspectorAllTabsText(inspector(page));
     expect(panelText).toMatch(/never revealed/i);
     expect(await inspector(page).getByRole('button', { name: /reveal|unmask|show raw/i }).count()).toBe(0);
 

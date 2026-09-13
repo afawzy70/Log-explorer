@@ -203,6 +203,15 @@ export function ResultsPanel({ state }: { state: SearchState }) {
         density={table.preferences.density}
         contextRootIdentity={state.breadcrumbLabel ? state.contextRootIdentity : null}
         gaps={gaps}
+        // Pre-closure functional recovery (§17/§37/§38): column sorting
+        // (including the Time header's own alias of Newest/Oldest) is
+        // disabled in a context ("Show surrounding logs") view for the
+        // exact same reason SortControl itself is already hidden there -
+        // that view's own chronological-around-the-root order IS the
+        // view, never a reorderable list.
+        sortable={!state.breadcrumbLabel}
+        timeSortDirection={state.breadcrumbLabel ? undefined : state.sortDirection}
+        onTimeSortChange={state.breadcrumbLabel ? undefined : state.setSortDirection}
       />
       {nextCursor ? (
         <div className={styles.loadMoreRow}>

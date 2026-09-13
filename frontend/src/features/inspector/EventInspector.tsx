@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SearchState } from '../../app/useSearchState';
 import { useShortcut } from '../../shared/keyboard/ShortcutRegistry';
 import { InspectorHeader } from './InspectorHeader';
@@ -7,6 +7,8 @@ import { ActorClientSection } from './ActorClientSection';
 import { RequestFlowSection } from './RequestFlowSection';
 import { BusinessErrorSection } from './BusinessErrorSection';
 import { AllFieldsSection } from './AllFieldsSection';
+import { InspectorTabs } from './InspectorTabs';
+import type { InspectorTab } from './InspectorTabs';
 import { MAX_PANEL_WIDTH, MIN_PANEL_WIDTH, useResizablePanel } from './useResizablePanel';
 import { wasConsumedByDismissableLayer } from '../../shared/ui/useDismissableLayer';
 import styles from './EventInspector.module.css';
@@ -38,6 +40,63 @@ export function EventInspector({ state }: { state: SearchState }) {
       closeButtonRef.current?.focus();
     }
   }, [event]);
+
+  /*
+   * Pre-closure functional recovery 2 (§A1-§A5) - named conflict per
+   * CLAUDE.md §5, superseding the first recovery's own decision below.
+   *
+   * SUPERSEDED (pre-closure functional recovery 1, §4/§8): "tabs are
+   * computed per event, hiding a tab entirely when its section has no
+   * data to show ('Do NOT display empty meaningless tabs')". The owner
+   * explicitly rejected this once it shipped: the ABSENCE of data is
+   * itself diagnostically important (was the field never a feature of
+   * this event category, or did this specific event simply fail to
+   * record it?) - a tab that silently disappears cannot answer that
+   * question, and worse, looks identical to "the UI hid something" from
+   * the investigator's seat. A user comparing two events (one complete,
+   * one sparse) needs the SAME five tabs in the SAME positions on both,
+   * so absence-of-a-tab is never mistaken for absence-of-a-feature.
+   *
+   * Current, applied decision: all five primary tabs (Overview, Actor &
+   * client, Request flow, Business / error, Technical / all fields) are
+   * ALWAYS present, for every event, with no conditional inclusion logic
+   * at all. Each section component already renders its own honest
+   * `EmptySectionNote` when its own field-builder returns nothing
+   * (`ActorClientSection`/`RequestFlowSection`/`BusinessErrorSection`,
+   * unchanged by this fix) - so this list is now a fixed, five-entry
+   * structural constant, and the "is this section empty" decision lives
+   * entirely inside each section itself, never here. "Trace /
+   * Correlation" remains unified into "Request Flow" (unchanged from the
+   * first recovery): this product's data model has no fields
+   * distinguishing the two.
+   */
+  const tabs: InspectorTab[] = useMemo(() => {
+    if (!event) return [];
+    return [
+      { id: 'overview', label: 'Overview', content: <OverviewSection event={event} sources={state.sources} /> },
+      { id: 'actor', label: 'Actor & client', content: <ActorClientSection event={event} /> },
+      {
+        id: 'requestFlow',
+        label: 'Request flow',
+        content: <RequestFlowSection event={event} onOpenJourney={state.openJourney} />,
+      },
+      { id: 'businessError', label: 'Business / error', content: <BusinessErrorSection event={event} /> },
+      {
+        id: 'allFields',
+        label: 'Technical / all fields',
+        content: <AllFieldsSection event={event} sources={state.sources} />,
+      },
+    ];
+  }, [event, state.sources, state.openJourney]);
+
+  const [activeTabId, setActiveTabId] = useState('overview');
+  // A newly-selected event (Previous/Next, or opening a different row)
+  // always starts back on Overview - staying on e.g. "Business / error"
+  // while stepping onto an event with no error would either show a stale
+  // tab that no longer exists for this event, or a misleadingly-empty one.
+  useEffect(() => {
+    setActiveTabId('overview');
+  }, [state.selectedIndex]);
 
   // Legacy Remediation Slice 8 - migrated onto the shared shortcut
   // registry (one document listener for the whole app). EventInspector is
@@ -144,13 +203,7 @@ export function EventInspector({ state }: { state: SearchState }) {
           }
           onShowContext={() => state.showContext(event)}
         />
-        <div className={styles.body}>
-          <OverviewSection event={event} sources={state.sources} />
-          <ActorClientSection event={event} />
-          <RequestFlowSection event={event} onOpenJourney={state.openJourney} />
-          <BusinessErrorSection event={event} />
-          <AllFieldsSection event={event} sources={state.sources} />
-        </div>
+        <InspectorTabs tabs={tabs} activeTabId={activeTabId} onActiveTabChange={setActiveTabId} />
       </div>
     </>
   );

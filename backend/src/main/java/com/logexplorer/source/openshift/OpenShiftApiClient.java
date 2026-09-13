@@ -30,6 +30,7 @@ import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
 import java.util.concurrent.atomic.AtomicReference;
 import org.reactivestreams.Subscription;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.HttpHeaders;
@@ -95,20 +96,47 @@ public class OpenShiftApiClient {
 
   private static final Duration TIMEOUT = Duration.ofSeconds(15);
 
+  private final OpenShiftProxyConfigService proxyConfigService;
   private final Map<String, String> environment;
 
-  public OpenShiftApiClient() {
-    this(System.getenv());
+  /**
+   * Spring's real wiring - {@code proxyConfigService} is the shared,
+   * singleton, mutable proxy setting (pre-closure functional recovery 2,
+   * §B5/§B6) - the exact same bean {@link
+   * com.logexplorer.source.loki.LokiWebClientFactory} is also injected
+   * with, so a mode/host/port change made through the settings UI takes
+   * effect for both at once, never drifting apart.
+   *
+   * <p>{@code @Autowired} is required here (unlike before this recovery,
+   * when a plain public no-arg constructor let Spring instantiate this
+   * bean without needing to choose among constructors at all): with three
+   * constructors now present and no no-arg one, Spring's default
+   * bean-instantiation path cannot pick a constructor on its own.
+   */
+  @Autowired
+  public OpenShiftApiClient(OpenShiftProxyConfigService proxyConfigService) {
+    this(proxyConfigService, System.getenv());
   }
 
-  /** Test seam: the proxy environment is injected rather than read globally. */
+  /**
+   * Test seam: SYSTEM-only proxy behavior via a fresh, never-mutated
+   * {@link OpenShiftProxyConfigService} (defaults to {@link
+   * ProxyConfig#SYSTEM_DEFAULT}) - preserves every pre-existing test's own
+   * environment-only expectations unchanged.
+   */
   OpenShiftApiClient(Map<String, String> environment) {
+    this(new OpenShiftProxyConfigService(), environment);
+  }
+
+  /** Test seam: both the proxy config and the environment are injected, for DIRECT/CUSTOM-mode tests. */
+  OpenShiftApiClient(OpenShiftProxyConfigService proxyConfigService, Map<String, String> environment) {
+    this.proxyConfigService = proxyConfigService;
     this.environment = environment;
   }
 
-  /** The proxy route that would be used for {@code server}, for display only. */
+  /** The proxy route that would be used for {@code server} under the CURRENT proxy setting, for display only. */
   public Optional<ProxyRoute> proxyFor(URI server) {
-    return ProxyRoute.resolve(environment, server.getHost());
+    return ProxyRoute.resolve(proxyConfigService.current(), environment, server.getHost());
   }
 
   /**
@@ -366,6 +394,7 @@ public class OpenShiftApiClient {
     } catch (OpenShiftApiException e) {
       return Mono.error(e);
     }
+    boolean proxyConfigured = ProxyRoute.resolve(proxyConfigService.current(), environment, server.getHost()).isPresent();
     UriComponentsBuilder uri = UriComponentsBuilder
         .fromPath("/api/v1/namespaces/" + namespace + "/pods/" + podName + "/log")
         .queryParam("container", containerName)
@@ -388,7 +417,7 @@ public class OpenShiftApiClient {
         .bodyToFlux(DataBuffer.class);
     return readBounded(rawBody, maxBytes)
         .timeout(timeout)
-        .onErrorMap(OpenShiftApiClient::classify);
+        .onErrorMap(e -> classify(e, proxyConfigured));
   }
 
   /**
@@ -451,6 +480,7 @@ public class OpenShiftApiClient {
     } catch (OpenShiftApiException e) {
       return Flux.error(e);
     }
+    boolean proxyConfigured = ProxyRoute.resolve(proxyConfigService.current(), environment, server.getHost()).isPresent();
     UriComponentsBuilder uri = UriComponentsBuilder
         .fromPath("/api/v1/namespaces/" + namespace + "/pods/" + podName + "/log")
         .queryParam("container", containerName)
@@ -477,7 +507,7 @@ public class OpenShiftApiClient {
           // every non-2xx status (401/403/404/etc.) exactly as before.
           return response.createException().flatMapMany(Flux::error);
         })
-        .onErrorMap(OpenShiftApiClient::classify);
+        .onErrorMap(e -> classify(e, proxyConfigured));
   }
 
   /**
@@ -1052,6 +1082,7 @@ public class OpenShiftApiClient {
     } catch (OpenShiftApiException e) {
       return Mono.error(e);
     }
+    boolean proxyConfigured = ProxyRoute.resolve(proxyConfigService.current(), environment, server.getHost()).isPresent();
     return client
         .get()
         .uri(path)
@@ -1059,7 +1090,7 @@ public class OpenShiftApiClient {
         .retrieve()
         .bodyToMono(JsonNode.class)
         .timeout(TIMEOUT)
-        .onErrorMap(OpenShiftApiClient::classify);
+        .onErrorMap(e -> classify(e, proxyConfigured));
   }
 
   /**
@@ -1069,8 +1100,14 @@ public class OpenShiftApiClient {
    * never surfaced: for a {@link WebClientResponseException} it can carry
    * the response body, and for a request exception it can carry the full
    * request URI - both built from user-supplied input.
+   *
+   * @param proxyConfigured whether {@link ProxyRoute#resolve} found a
+   *     proxy for this exact request's target host (computed once per
+   *     call site, mirroring {@link #build}'s own resolution) - see
+   *     {@link #isProxyConnectFailure} javadoc for why the exception type
+   *     alone is not always enough to detect a proxy-hop failure.
    */
-  private static Throwable classify(Throwable error) {
+  private static Throwable classify(Throwable error, boolean proxyConfigured) {
     if (error instanceof OpenShiftApiException) {
       return error;
     }
@@ -1108,6 +1145,34 @@ public class OpenShiftApiClient {
                 + "certificate.",
             error);
       }
+      // Pre-closure functional recovery (§31) - a real classification gap
+      // found via audit: Kind.PROXY existed in the enum but was never
+      // thrown; every proxy-connect failure (the proxy host itself is
+      // unreachable, refuses the connection, or rejects the CONNECT
+      // handshake) fell into the generic NETWORK bucket, indistinguishable
+      // from "the cluster itself is unreachable" - a materially different,
+      // more actionable diagnosis for a user behind an enterprise proxy.
+      // Netty's own ProxyHandler throws ProxyConnectException when a proxy
+      // CONNECT is rejected - a definitive signal on its own. But an
+      // empirical check (a standalone Reactor Netty diagnostic against a
+      // proxy address with nothing listening) confirmed Netty does NOT
+      // throw that type when the proxy's own TCP port is unreachable - it
+      // throws a plain ConnectException there, structurally identical to a
+      // direct-to-cluster connection failure. So the exception type alone
+      // is not a reliable signal; proxyConfigured (computed the same way
+      // build() itself decides whether to route through a proxy at all)
+      // closes that gap: whenever a proxy is configured for this host,
+      // Reactor Netty's HttpClient.proxy(...) means the TCP connection
+      // attempt necessarily targets the proxy first, never the real
+      // server directly - so ANY low-level connect failure in that state
+      // genuinely is a proxy-reachability failure, not a guess.
+      if (proxyConfigured || isProxyConnectFailure(cause)) {
+        return new OpenShiftApiException(
+            Kind.PROXY,
+            "Could not connect through the configured proxy (HTTPS_PROXY/HTTP_PROXY). Check the proxy address, "
+                + "port, and that it is reachable.",
+            error);
+      }
       return new OpenShiftApiException(
           Kind.NETWORK,
           "Could not reach the cluster API. Check VPN, DNS and that the server URL is correct.",
@@ -1122,6 +1187,27 @@ public class OpenShiftApiClient {
     return new OpenShiftApiException(Kind.MALFORMED_RESPONSE, "The cluster API call failed.", error);
   }
 
+  /**
+   * Pre-closure functional recovery (§31) - walks the cause chain (never
+   * just the immediate cause) for Netty's own {@link
+   * io.netty.handler.proxy.ProxyConnectException}, the definitive signal
+   * a configured proxy itself (not the ultimate cluster) is what could not
+   * be reached. Bounded depth - defensive against an accidental cause
+   * cycle, never a real concern for Reactor Netty's own exception chains
+   * but cheap insurance regardless.
+   */
+  private static boolean isProxyConnectFailure(Throwable cause) {
+    Throwable current = cause;
+    int guard = 0;
+    while (current != null && guard++ < 10) {
+      if (current instanceof io.netty.handler.proxy.ProxyConnectException) {
+        return true;
+      }
+      current = current.getCause();
+    }
+    return false;
+  }
+
   private WebClient build(URI server, String caPath) {
     HttpClient httpClient = HttpClient.create().responseTimeout(TIMEOUT);
 
@@ -1132,7 +1218,7 @@ public class OpenShiftApiClient {
 
     // OS-1A §12 - scoped proxy configuration, never JVM-global, and never
     // applied when NO_PROXY covers this host.
-    Optional<ProxyRoute> route = ProxyRoute.resolve(environment, server.getHost());
+    Optional<ProxyRoute> route = ProxyRoute.resolve(proxyConfigService.current(), environment, server.getHost());
     if (route.isPresent()) {
       ProxyRoute proxy = route.get();
       httpClient = httpClient.proxy(spec -> {

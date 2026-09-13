@@ -72,6 +72,22 @@ export interface EnvironmentInfo {
  * this deployment (no authenticated admin boundary) - `settingsNote`
  * explains why and what to do instead.
  */
+/**
+ * Pre-closure functional recovery (§11/§12) - the global, source-
+ * independent masking policy for the five protected fields. `true` means
+ * masked (the safe default); `false` means the server will return the raw
+ * value in NEW results going forward. Never carries an actual value.
+ */
+export interface MaskingSettings {
+  cif: boolean;
+  userName: boolean;
+  customerId: boolean;
+  deviceId: boolean;
+  deviceIp: boolean;
+}
+
+export type ProtectedFieldKey = keyof MaskingSettings;
+
 export interface DockerConnectionSummary {
   mode: 'LOCAL' | 'REMOTE';
   host: string | null;
@@ -317,6 +333,20 @@ export interface OpenShiftConnectionSummary {
   proxy: string | null;
   /** Which API answered discovery, so the UI can stay truthful about what it lists. */
   projectApi: 'PROJECTS' | 'NAMESPACES' | null;
+}
+
+/**
+ * Pre-closure functional recovery 2 (§B2/§B16) - the user-configurable
+ * OpenShift/Loki proxy mode. `host`/`port` are meaningful only for
+ * `CUSTOM`; `null` for `SYSTEM`/`DIRECT`, mirrored exactly as the backend
+ * returns them (never guessed or coerced on the frontend).
+ */
+export type ProxyMode = 'SYSTEM' | 'DIRECT' | 'CUSTOM';
+
+export interface OpenShiftProxySettings {
+  mode: ProxyMode;
+  host: string | null;
+  port: number | null;
 }
 
 /**

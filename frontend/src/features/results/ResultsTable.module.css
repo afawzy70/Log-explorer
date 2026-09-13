@@ -67,6 +67,47 @@
   top: 0;
 }
 
+/*
+ * Pre-closure functional recovery (§17): a sortable header is a real
+ * `<button>` filling the `<th>`'s own content box - never a click handler
+ * on the `<th>` itself (which would not be keyboard-operable/announced as
+ * interactive). The button never changes the `<th>`'s own box (no added
+ * padding/margin), so the existing header/cell 2px geometry contract
+ * (CLAUDE.md §4) is unaffected - `assertTableGeometry` measures the
+ * `<th>`/`<td>` elements themselves, not this inner button.
+ */
+.sortableHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.sortableHeader:hover {
+  color: var(--color-text);
+}
+
+.sortableHeader:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Never color-only: the glyph itself changes (▲/▼ vs ↕), plus aria-sort on the <th> and a visually-hidden text description. */
+.sortIndicator {
+  font-size: 0.7em;
+  opacity: 0.7;
+}
+
 .timeCell {
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);

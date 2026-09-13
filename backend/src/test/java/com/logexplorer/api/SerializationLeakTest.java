@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.logexplorer.api.dto.EventDto;
+import com.logexplorer.core.mask.MaskingPolicyService;
 import com.logexplorer.core.mask.MaskingService;
 import com.logexplorer.core.mask.TextRedactor;
 import com.logexplorer.core.model.CanonicalLogEvent;
@@ -32,7 +33,11 @@ class SerializationLeakTest {
   @Autowired
   private ObjectMapper objectMapper;
 
-  private final EventMapper eventMapper = new EventMapper(new MaskingService(), new TextRedactor());
+  // Pre-closure functional recovery (§12): a fresh MaskingPolicyService
+  // always starts fully masked (its own safe default) - this test's own
+  // "never leaks a raw value" guarantee is exercised under exactly that
+  // default policy, unchanged from before configurability existed.
+  private final EventMapper eventMapper = new EventMapper(new MaskingService(new MaskingPolicyService()), new TextRedactor());
 
   @Test
   void serializedEventDtoNeverContainsAnyRawSensitiveValue() throws Exception {

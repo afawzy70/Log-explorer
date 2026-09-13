@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { assertNoHorizontalOverflow, captureScreenshot, setViewport, setZoom } from './helpers';
+import { inspectorAllTabsText, openInspectorTab } from './inspector-helpers';
 
 /*
  * UX-R5 - the Event Inspector and Context investigation surfaces,
@@ -107,22 +108,26 @@ test.describe('UX-R5 §8/§9 - inspector information hierarchy', () => {
     await openInspectorAt(page, 3);
     const panel = inspector(page);
 
+    // Pre-closure functional recovery (PCFR-1): each section now lives
+    // behind its own tab - only the active tab's section is in the DOM.
     for (const [label, name] of [
       ['Actor & client', 'AFTER-E-actor-client'],
       ['Request flow', 'AFTER-F-request-flow'],
       ['Business / error', 'AFTER-G-business-error'],
     ] as const) {
+      await openInspectorTab(panel, page, new RegExp(label.replace('/', '\\/'), 'i'));
       const section = panel.locator(`section[aria-label="${label}"]`);
-      await section.scrollIntoViewIfNeeded();
       await expect(section).toBeVisible();
       await captureScreenshot(page, PHASE, name);
     }
 
-    // All fields is the escape hatch: present and reachable, but collapsed.
+    // All fields is the escape hatch: present and reachable, but collapsed
+    // - now doubly so (PCFR-1's own "Technical / all fields" tab, plus
+    // UX-R5's pre-existing collapsed <details> inside it).
+    await openInspectorTab(panel, page, /technical.*all fields/i);
     const allFields = panel.locator('details').filter({ hasText: 'All fields' }).first();
-    await allFields.scrollIntoViewIfNeeded();
     await expect(allFields).not.toHaveAttribute('open', '');
-    await allFields.getByRole('heading', { name: /all fields/i }).click();
+    await allFields.getByRole('heading', { name: /^all fields$/i }).click();
     await expect(allFields).toHaveAttribute('open', '');
     await expect(page.getByLabel('Search fields')).toBeVisible();
     await captureScreenshot(page, PHASE, 'AFTER-H-all-fields-expanded');
@@ -145,33 +150,53 @@ test.describe('UX-R5 §8/§9 - inspector information hierarchy', () => {
     await runRealSearch(page);
     await openInspectorAt(page, 3);
 
-    const height = await inspector(page).evaluate((panel) => {
-      const scroller = Array.from(panel.querySelectorAll('*')).find(
-        (el) => el.scrollHeight > el.clientHeight + 50,
-      ) as HTMLElement | undefined;
-      return scroller ? scroller.scrollHeight : 0;
-    });
+    // Pre-closure functional recovery (PCFR-1): with tabs, only the
+    // active tab's content renders at all, so the panel's own total
+    // rendered height (not "the tallest overflowing descendant", which
+    // no longer necessarily exists when a single tab's content fits
+    // without scrolling) is the honest, still-regression-guarding measure.
+    const height = await inspector(page).evaluate((panel) => panel.scrollHeight);
     // Measured BEFORE UX-R5: ~3,992px of stacked content. The floor here is
     // deliberately generous - this guards the regression, not a pixel value.
     expect(height).toBeGreaterThan(0);
     expect(height).toBeLessThan(3000);
   });
 
-  test('I: a section with no data says so once, instead of a grid of blanks', async ({ page }) => {
+  test('I: a section with no data stays offered as a tab, with an honest empty state - never hidden', async ({ page }) => {
+    // Pre-closure functional recovery 2 (§A1-§A5) named conflict, per
+    // CLAUDE.md §5, superseding the FIRST recovery's own decision here
+    // (PCFR-1, "do not display empty meaningless tabs" - a tab with
+    // nothing to show was removed entirely). The owner explicitly
+    // rejected that once it shipped: the absence of data is itself
+    // diagnostically meaningful - a user must be able to tell "this
+    // category doesn't exist for this event" apart from "the UI hid
+    // something." All five primary tabs are now a fixed, always-present
+    // structural constant; only the CONTENT inside an empty one changes
+    // (an honest note, same as UX-R5 originally had before PCFR-1).
     await runRealSearch(page);
     await rows(page).filter({ hasText: 'NOT-JSON' }).first().click();
     await expect(inspector(page)).toBeVisible();
 
-    const actor = inspector(page).locator('section[aria-label="Actor & client"]');
-    await expect(actor).toContainText(/No actor or client data on this event/i);
+    // Every primary tab remains offered, even for this sparsest possible event.
+    await expect(inspector(page).getByRole('tab', { name: /^overview$/i })).toBeVisible();
+    await expect(inspector(page).getByRole('tab', { name: /actor & client/i })).toBeVisible();
+    await expect(inspector(page).getByRole('tab', { name: /request flow/i })).toBeVisible();
+    await expect(inspector(page).getByRole('tab', { name: /business \/ error/i })).toBeVisible();
+    await expect(inspector(page).getByRole('tab', { name: /technical.*all fields/i })).toBeVisible();
+
+    await openInspectorTab(inspector(page), page, /actor & client/i);
+    await expect(inspector(page).getByText(/no actor or client data on this event/i)).toBeVisible();
     await captureScreenshot(page, PHASE, 'AFTER-I-missing-data-section');
   });
 
   test('§11 - every Request flow row anchors Copy in the same place', async ({ page }) => {
     await runRealSearch(page);
     await openInspectorAt(page, 3);
+    // Pre-closure functional recovery (PCFR-1): Request flow now lives
+    // behind its own tab.
+    await openInspectorTab(inspector(page), page, /request flow/i);
     const section = inspector(page).locator('section[aria-label="Request flow"]');
-    await section.scrollIntoViewIfNeeded();
+    await expect(section).toBeVisible();
 
     const lefts = await section.getByRole('button', { name: 'Copy' }).evaluateAll((els) =>
       els.map((el) => Math.round(el.getBoundingClientRect().left)),
@@ -191,8 +216,15 @@ test.describe('UX-R5 §14 - the context action is reachable from anywhere in the
     const contextButton = inspector(page).getByRole('button', { name: /show surrounding logs/i });
     await expect(contextButton).toBeVisible();
 
-    // Scroll to the very bottom of the inspector body.
-    await inspector(page).locator('section[aria-label="Business / error"]').scrollIntoViewIfNeeded();
+    // Pre-closure functional recovery (PCFR-1): "sections" are now tabs -
+    // navigate to the LAST one (Technical / all fields, always present)
+    // and scroll its own bounded tabpanel to the bottom; the context
+    // action lives in the sticky header outside the tabpanel, so it must
+    // stay visible regardless of which tab is open or how far scrolled.
+    await openInspectorTab(inspector(page), page, /technical.*all fields/i);
+    await inspector(page)
+      .locator('[role="tabpanel"]')
+      .evaluate((el) => el.scrollTo(0, el.scrollHeight));
     await expect(contextButton).toBeInViewport();
     await captureScreenshot(page, PHASE, 'AFTER-J-context-action-visible-while-scrolled');
   });
@@ -306,6 +338,9 @@ test.describe('UX-R5 §29 - accessibility', () => {
   test('All fields is keyboard-expandable', async ({ page }) => {
     await runRealSearch(page);
     await openInspectorAt(page, 3);
+    // Pre-closure functional recovery (PCFR-1): "All fields" now lives
+    // behind its own "Technical / all fields" tab first.
+    await openInspectorTab(inspector(page), page, /technical.*all fields/i);
     const allFields = inspector(page).locator('details').filter({ hasText: 'All fields' }).first();
     await allFields.locator('summary').first().focus();
     await page.keyboard.press('Enter');
@@ -318,10 +353,16 @@ test.describe('UX-R5 §28 - security', () => {
     await runRealSearch(page);
     await openInspectorAt(page, 3);
 
+    // Pre-closure functional recovery (PCFR-1): "All fields" now lives
+    // behind its own "Technical / all fields" tab first.
+    await openInspectorTab(inspector(page), page, /technical.*all fields/i);
     const allFields = inspector(page).locator('details').filter({ hasText: 'All fields' }).first();
-    await allFields.getByRole('heading', { name: /all fields/i }).click();
-    const panelText = await inspector(page).innerText();
-    expect(panelText).toMatch(/\*\*\*/);
+    await allFields.getByRole('heading', { name: /^all fields$/i }).click();
+    const allFieldsPanelText = await inspector(page).innerText();
+    expect(allFieldsPanelText).toMatch(/\*\*\*/);
+    // "Protected / masked - never revealed" lives in the Actor & client
+    // tab, not this one - check every tab's own text combined.
+    const panelText = await inspectorAllTabsText(inspector(page));
     expect(panelText).toMatch(/never revealed/i);
     // No reveal/unmask affordance anywhere in the inspector.
     expect(await inspector(page).getByRole('button', { name: /reveal|unmask|show raw/i }).count()).toBe(0);

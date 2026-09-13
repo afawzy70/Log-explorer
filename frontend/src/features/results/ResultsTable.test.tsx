@@ -6,6 +6,18 @@ import { ResultsTable } from './ResultsTable';
 import { eventIdentity } from '../../app/useSearchState';
 import type { LogEvent } from '../../shared/api/types';
 
+/**
+ * Pre-closure functional recovery (§17): a sortable header's `textContent`
+ * now includes its own accessible sort-state description (e.g. "Level↕,
+ * not sorted, activate to sort ascending") after the visible label - real
+ * accessibility improvement, not a bug. Tests asserting on the plain
+ * label strip everything from the first sort-glyph onward; a
+ * non-sortable header (no glyph at all) is returned unchanged.
+ */
+function headerLabel(header: Element): string {
+  return (header.textContent ?? '').replace(/[↕▲▼].*$/, '').trim();
+}
+
 function event(overrides: Partial<LogEvent> = {}): LogEvent {
   return {
     timestamp: '2026-01-01T00:00:00.500Z',
@@ -52,7 +64,7 @@ function event(overrides: Partial<LogEvent> = {}): LogEvent {
 describe('ResultsTable', () => {
   it('renders exactly the seven required columns, in order', () => {
     render(<ResultsTable events={[event()]} />);
-    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    const headers = screen.getAllByRole('columnheader').map((h) => headerLabel(h));
     expect(headers).toEqual(['Time', 'Level', 'Service', 'What happened', 'User/Customer', 'Correlation/Trace', 'Actions']);
   });
 
@@ -240,7 +252,7 @@ describe('ResultsTable', () => {
           hiddenColumnIds={[]}
         />,
       );
-      const headers = screen.getAllByRole('columnheader').map((h) => h.textContent);
+      const headers = screen.getAllByRole('columnheader').map((h) => headerLabel(h));
       expect(headers).toEqual([
         'Time',
         'Level',
@@ -266,7 +278,7 @@ describe('ResultsTable', () => {
           hiddenColumnIds={['service']}
         />,
       );
-      const headers = screen.getAllByRole('columnheader').map((h) => h.textContent);
+      const headers = screen.getAllByRole('columnheader').map((h) => headerLabel(h));
       expect(headers).toEqual(['Time', 'Level', 'What happened', 'User/Customer', 'Correlation/Trace', 'Actions']);
     });
 
@@ -278,7 +290,7 @@ describe('ResultsTable', () => {
           hiddenColumnIds={[]}
         />,
       );
-      const headers = screen.getAllByRole('columnheader').map((h) => h.textContent);
+      const headers = screen.getAllByRole('columnheader').map((h) => headerLabel(h));
       expect(headers[0]).toBe('Level');
       expect(headers[1]).toBe('Time');
       const row = screen.getAllByRole('row')[1];
@@ -295,7 +307,7 @@ describe('ResultsTable', () => {
           hiddenColumnIds={[]}
         />,
       );
-      const headers = screen.getAllByRole('columnheader').map((h) => h.textContent);
+      const headers = screen.getAllByRole('columnheader').map((h) => headerLabel(h));
       expect(headers[headers.length - 1]).toBe('Actions');
     });
 
@@ -412,6 +424,44 @@ describe('ResultsTable', () => {
       expect(rows[0].className).not.toMatch(/contextRoot/i);
       expect(rows[1].className).toMatch(/contextRoot/i);
     });
+
+    // Pre-closure functional recovery (§37/§40) - the one real gap the
+    // audit found: the root row was marked, but nothing brought it into
+    // view.
+    it('auto-scrolls the root row into view when a context view opens', () => {
+      const scrollIntoView = vi.fn();
+      HTMLElement.prototype.scrollIntoView = scrollIntoView;
+      const root = event({ message: 'the one under investigation' });
+      const other = event({ message: 'a neighbor' });
+      render(<ResultsTable events={[other, root]} contextRootIdentity={eventIdentity(root)} />);
+
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      expect(scrollIntoView).toHaveBeenCalledWith(expect.objectContaining({ block: 'center' }));
+      // Called on the actual root row's own DOM node, not some other row.
+      const rows = screen.getAllByRole('row').slice(1);
+      expect(scrollIntoView.mock.instances[0]).toBe(rows[1]);
+    });
+
+    it('does not re-scroll on a re-render while the same context view stays open (e.g. a density change)', () => {
+      const scrollIntoView = vi.fn();
+      HTMLElement.prototype.scrollIntoView = scrollIntoView;
+      const root = event({ message: 'the one under investigation' });
+      const other = event({ message: 'a neighbor' });
+      const { rerender } = render(
+        <ResultsTable events={[other, root]} contextRootIdentity={eventIdentity(root)} density="comfortable" />,
+      );
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+      rerender(<ResultsTable events={[other, root]} contextRootIdentity={eventIdentity(root)} density="compact" />);
+      expect(scrollIntoView).toHaveBeenCalledTimes(1); // still just the one, initial scroll
+    });
+
+    it('never scrolls when no context view is open', () => {
+      const scrollIntoView = vi.fn();
+      HTMLElement.prototype.scrollIntoView = scrollIntoView;
+      render(<ResultsTable events={[event(), event({ message: 'second' })]} />);
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    });
   });
 
   describe('gaps prop - investigation-gap markers (Legacy Remediation Slice 6)', () => {
@@ -522,6 +572,159 @@ describe('ResultsTable', () => {
       const menuItems = screen.getAllByRole('menuitem').map((el) => el.textContent);
       expect(menuItems.some((t) => /message|exception/i.test(t ?? ''))).toBe(false);
       expect(menuItems.some((t) => /copy trace id/i.test(t ?? ''))).toBe(true);
+    });
+  });
+
+  describe('pre-closure functional recovery §17/§18 - per-column sorting', () => {
+    function svc(name: string, severity: string, sevNum: number) {
+      return event({ service: name, severity, severityNumber: sevNum });
+    }
+
+    it('a column with no sortAccessor (e.g. What happened) renders no sort button - truthfully not sortable', () => {
+      render(<ResultsTable events={[event()]} />);
+      const whatHappenedHeader = screen.getAllByRole('columnheader').find((h) => headerLabel(h) === 'What happened')!;
+      expect(within(whatHappenedHeader).queryByRole('button')).not.toBeInTheDocument();
+      expect(whatHappenedHeader).not.toHaveAttribute('aria-sort');
+    });
+
+    it('a sortable column (e.g. Service) renders a real, keyboard-operable sort button with aria-sort="none" before any click', () => {
+      render(<ResultsTable events={[event()]} />);
+      const serviceHeader = screen.getAllByRole('columnheader').find((h) => headerLabel(h) === 'Service')!;
+      expect(within(serviceHeader).getByRole('button')).toBeInTheDocument();
+      expect(serviceHeader).toHaveAttribute('aria-sort', 'none');
+    });
+
+    it('clicking a sortable column header reorders the DISPLAYED rows client-side, first click ascending', async () => {
+      const user = userEvent.setup();
+      const events = [svc('charlie', 'INFO', 20000), svc('alpha', 'INFO', 20000), svc('bravo', 'INFO', 20000)];
+      render(<ResultsTable events={events} />);
+      const serviceHeader = screen.getAllByRole('columnheader').find((h) => headerLabel(h) === 'Service')!;
+      await user.click(within(serviceHeader).getByRole('button'));
+      const rows = screen.getAllByRole('row').slice(1);
+      expect(rows.map((r) => within(r).getAllByRole('cell')[2].textContent)).toEqual(['alpha', 'bravo', 'charlie']);
+      expect(serviceHeader).toHaveAttribute('aria-sort', 'ascending');
+    });
+
+    it('clicking the same column header again reverses to descending; a third click returns to ascending', async () => {
+      const user = userEvent.setup();
+      const events = [svc('charlie', 'INFO', 20000), svc('alpha', 'INFO', 20000), svc('bravo', 'INFO', 20000)];
+      render(<ResultsTable events={events} />);
+      const serviceHeader = screen.getAllByRole('columnheader').find((h) => headerLabel(h) === 'Service')!;
+      const button = within(serviceHeader).getByRole('button');
+      await user.click(button);
+      await user.click(button);
+      expect(screen.getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[2].textContent)).toEqual([
+        'charlie',
+        'bravo',
+        'alpha',
+      ]);
+      expect(serviceHeader).toHaveAttribute('aria-sort', 'descending');
+      await user.click(button);
+      expect(screen.getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[2].textContent)).toEqual([
+        'alpha',
+        'bravo',
+        'charlie',
+      ]);
+    });
+
+    it('sorting by Level orders by real severity priority (severityNumber), not alphabetically', async () => {
+      const user = userEvent.setup();
+      const events = [svc('a', 'WARN', 30000), svc('b', 'INFO', 20000), svc('c', 'ERROR', 40000)];
+      render(<ResultsTable events={events} />);
+      const levelHeader = screen.getAllByRole('columnheader').find((h) => headerLabel(h) === 'Level')!;
+      await user.click(within(levelHeader).getByRole('button'));
+      // Ascending severity: INFO(20000) < WARN(30000) < ERROR(40000).
+      expect(screen.getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[2].textContent)).toEqual([
+        'b',
+        'a',
+        'c',
+      ]);
+    });
+
+    it('only ONE column shows an active sort indicator at a time - sorting a second column clears the first', async () => {
+      const user = userEvent.setup();
+      const events = [svc('b', 'INFO', 20000), svc('a', 'WARN', 30000)];
+      render(<ResultsTable events={events} />);
+      const headers = screen.getAllByRole('columnheader');
+      const serviceHeader = headers.find((h) => headerLabel(h) === 'Service')!;
+      const levelHeader = headers.find((h) => headerLabel(h) === 'Level')!;
+      await user.click(within(serviceHeader).getByRole('button'));
+      expect(serviceHeader).toHaveAttribute('aria-sort', 'ascending');
+      await user.click(within(levelHeader).getByRole('button'));
+      expect(levelHeader).toHaveAttribute('aria-sort', 'ascending');
+      expect(serviceHeader).toHaveAttribute('aria-sort', 'none');
+    });
+
+    it('missing values always sort last, in both directions', async () => {
+      const user = userEvent.setup();
+      const events = [svc('zeta', 'INFO', 20000), event({ service: null, serviceSourceHint: null }), svc('alpha', 'INFO', 20000)];
+      render(<ResultsTable events={events} />);
+      const serviceHeader = screen.getAllByRole('columnheader').find((h) => headerLabel(h) === 'Service')!;
+      const button = within(serviceHeader).getByRole('button');
+      await user.click(button); // ascending
+      let cells = screen.getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[2].textContent);
+      expect(cells).toEqual(['alpha', 'zeta', '—']);
+      await user.click(button); // descending
+      cells = screen.getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[2].textContent);
+      expect(cells).toEqual(['zeta', 'alpha', '—']);
+    });
+
+    it('Time column, when wired with timeSortDirection/onTimeSortChange, is clickable and aliases the exact same state - never a second competing sort', async () => {
+      const user = userEvent.setup();
+      const onTimeSortChange = vi.fn();
+      render(<ResultsTable events={[event()]} timeSortDirection="BACKWARD" onTimeSortChange={onTimeSortChange} />);
+      const timeHeader = screen.getAllByRole('columnheader').find((h) => headerLabel(h) === 'Time')!;
+      expect(timeHeader).toHaveAttribute('aria-sort', 'descending'); // BACKWARD = Newest first = descending
+      await user.click(within(timeHeader).getByRole('button'));
+      expect(onTimeSortChange).toHaveBeenCalledWith('FORWARD');
+    });
+
+    it('Time column has no sort button at all when timeSortDirection is not provided (e.g. a context view)', () => {
+      render(<ResultsTable events={[event()]} />);
+      const timeHeader = screen.getAllByRole('columnheader').find((h) => headerLabel(h) === 'Time')!;
+      expect(within(timeHeader).queryByRole('button')).not.toBeInTheDocument();
+    });
+
+    it('sortable={false} disables every column sort button, even Time - the context-view contract', () => {
+      render(<ResultsTable events={[event()]} sortable={false} timeSortDirection="BACKWARD" onTimeSortChange={vi.fn()} />);
+      for (const header of screen.getAllByRole('columnheader')) {
+        expect(within(header).queryByRole('button')).not.toBeInTheDocument();
+      }
+    });
+
+    it('clicking Time clears any active column sort, reverting display to the given (fetch) order', async () => {
+      const user = userEvent.setup();
+      const onTimeSortChange = vi.fn();
+      const events = [svc('charlie', 'INFO', 20000), svc('alpha', 'INFO', 20000)];
+      render(<ResultsTable events={events} timeSortDirection="BACKWARD" onTimeSortChange={onTimeSortChange} />);
+      const headers = screen.getAllByRole('columnheader');
+      const serviceHeader = headers.find((h) => headerLabel(h) === 'Service')!;
+      await user.click(within(serviceHeader).getByRole('button'));
+      expect(screen.getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[2].textContent)).toEqual(['alpha', 'charlie']);
+      const timeHeader = headers.find((h) => headerLabel(h) === 'Time')!;
+      await user.click(within(timeHeader).getByRole('button'));
+      expect(screen.getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[2].textContent)).toEqual(['charlie', 'alpha']);
+    });
+
+    it('selection (selectedIndex/onInspect) stays correct against the ORIGINAL row identity even while a column sort reorders display', async () => {
+      const user = userEvent.setup();
+      const onInspect = vi.fn();
+      const events = [svc('charlie', 'INFO', 20000), svc('alpha', 'INFO', 20000), svc('bravo', 'INFO', 20000)];
+      // selectedIndex=1 is "alpha" in the ORIGINAL order.
+      render(<ResultsTable events={events} selectedIndex={1} onInspect={onInspect} />);
+      const serviceHeader = screen.getAllByRole('columnheader').find((h) => headerLabel(h) === 'Service')!;
+      await user.click(within(serviceHeader).getByRole('button')); // ascending: alpha, bravo, charlie
+      const rows = screen.getAllByRole('row').slice(1);
+      // "alpha" is now the FIRST displayed row, but it is still original index 1.
+      expect(within(rows[0]).getAllByRole('cell')[2].textContent).toBe('alpha');
+      expect(rows[0]).toHaveAttribute('aria-selected', 'true');
+      await user.click(rows[0]);
+      expect(onInspect).toHaveBeenCalledWith(1);
+    });
+
+    it('has no detectable accessibility violations with sortable headers present', async () => {
+      const { container } = render(<ResultsTable events={[event()]} timeSortDirection="BACKWARD" onTimeSortChange={vi.fn()} />);
+      expect(await axe(container)).toHaveNoViolations();
     });
   });
 });

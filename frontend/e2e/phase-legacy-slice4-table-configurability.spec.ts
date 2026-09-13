@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, setViewport } from './helpers';
+import { headerLabel } from './inspector-helpers';
 
 /*
  * Legacy Remediation Slice 4 — RESULTS TABLE CONFIGURABILITY & POWER-USER
@@ -56,7 +57,11 @@ async function search(page: Page) {
 }
 
 async function headers(page: Page): Promise<string[]> {
-  return page.getByRole('columnheader').evaluateAll((els) => els.map((e) => (e.textContent ?? '').trim()));
+  // Pre-closure functional recovery (PCFR-4): sortable headers now render
+  // a <button> with an appended visually-hidden sort-state description -
+  // strip it back to the plain column label before comparing.
+  const raw = await page.getByRole('columnheader').evaluateAll((els) => els.map((e) => (e.textContent ?? '').trim()));
+  return raw.map(headerLabel);
 }
 
 async function openColumns(page: Page) {

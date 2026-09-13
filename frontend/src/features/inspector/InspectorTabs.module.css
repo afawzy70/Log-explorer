@@ -1,0 +1,61 @@
+/*
+ * Pre-closure functional recovery (§3/§4): the tab bar sits between the
+ * sticky InspectorHeader and the scrollable body, and is itself sticky
+ * (stays visible while the active tab's own content scrolls) - "tab
+ * navigation remains reachable" while scrolled, matching the same
+ * already-correct sticky-header behavior the panel established.
+ */
+.tablist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: 0 var(--space-4);
+  border-bottom: var(--border-width) solid var(--color-border);
+  background: var(--color-bg-raised);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  flex: 0 0 auto;
+}
+
+.tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: var(--space-3) var(--space-2);
+  margin-bottom: -1px;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  color: var(--color-text);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Never color-only: the selected tab also carries a distinct border weight/position and font-weight already applied to every tab, plus aria-selected for assistive tech. */
+.tabSelected {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
+.tabpanel {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+}
+
+.tabpanel:focus-visible {
+  outline: none;
+}

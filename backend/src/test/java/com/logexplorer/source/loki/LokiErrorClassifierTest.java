@@ -47,28 +47,47 @@ class LokiErrorClassifierTest {
 
   @Test
   void classifiesTimeoutExceptionAsTimeout() {
-    LokiRequestException e = LokiErrorClassifier.classifyThrowable(new TimeoutException("slow"));
+    LokiRequestException e = LokiErrorClassifier.classifyThrowable(new TimeoutException("slow"), false);
     assertThat(e.reason()).isEqualTo(Reason.TIMEOUT);
   }
 
   @Test
   void classifiesSocketTimeoutExceptionAsTimeout() {
-    LokiRequestException e = LokiErrorClassifier.classifyThrowable(new SocketTimeoutException("slow"));
+    LokiRequestException e = LokiErrorClassifier.classifyThrowable(new SocketTimeoutException("slow"), false);
     assertThat(e.reason()).isEqualTo(Reason.TIMEOUT);
   }
 
   @Test
   void alreadyClassifiedExceptionsPassThroughUnchanged() {
     LokiRequestException original = LokiErrorClassifier.classifyStatus(403);
-    assertThat(LokiErrorClassifier.classifyThrowable(original)).isSameAs(original);
+    assertThat(LokiErrorClassifier.classifyThrowable(original, false)).isSameAs(original);
   }
 
   @Test
   void unrecognizedThrowablesFallBackToUnknownWithASanitizedMessageNeverTheRawText() {
     RuntimeException raw = new RuntimeException("some internal detail that must not leak: secret-abc-123");
-    LokiRequestException e = LokiErrorClassifier.classifyThrowable(raw);
+    LokiRequestException e = LokiErrorClassifier.classifyThrowable(raw, false);
     assertThat(e.reason()).isEqualTo(Reason.UNKNOWN);
     assertThat(e.getMessage()).doesNotContain("secret-abc-123");
+  }
+
+  // Pre-closure functional recovery (§25/§31/§45) - the same proxy-vs-
+  // generic-network distinction OpenShiftApiClientTest already proves for
+  // OpenShiftApiClient.classify, for Loki's own (much coarser) classifier.
+  @Test
+  void aConnectFailureIsClassifiedAsProxyOnlyWhenAProxyWasActuallyConfigured() {
+    org.springframework.web.reactive.function.client.WebClientRequestException connectFailure =
+        new org.springframework.web.reactive.function.client.WebClientRequestException(
+            new java.net.ConnectException("refused"),
+            org.springframework.http.HttpMethod.GET,
+            java.net.URI.create("http://loki.example.com/query"),
+            new org.springframework.http.HttpHeaders());
+
+    LokiRequestException withProxy = LokiErrorClassifier.classifyThrowable(connectFailure, true);
+    assertThat(withProxy.reason()).isEqualTo(Reason.PROXY);
+
+    LokiRequestException withoutProxy = LokiErrorClassifier.classifyThrowable(connectFailure, false);
+    assertThat(withoutProxy.reason()).isEqualTo(Reason.UNKNOWN);
   }
 
   @Test

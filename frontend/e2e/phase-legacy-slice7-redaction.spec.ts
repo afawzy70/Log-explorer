@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, setViewport } from './helpers';
+import { inspectorAllTabsText, openInspectorTab } from './inspector-helpers';
 
 /*
  * LEGACY REMEDIATION SLICE 7 — CONSERVATIVE FREE-TEXT SENSITIVE-DATA
@@ -82,7 +83,12 @@ test.describe('Legacy Remediation Slice 7 — Conservative free-text sensitive-d
     const dialog = page.getByRole('dialog', { name: /event details/i });
     await expect(dialog).toBeVisible();
 
-    const dialogText = await dialog.innerText();
+    // Pre-closure functional recovery (PCFR-1): the five sections now
+    // live behind a WAI-ARIA tabs pattern - only the active tab's content
+    // is in the DOM at a time, so every marker is checked for across
+    // every tab's own text combined, rather than one single always-flat
+    // dialog-wide innerText read.
+    const dialogText = await inspectorAllTabsText(dialog);
     expect(dialogText).toContain(SENTINEL_LABEL); // 3. redaction marker shown
     expect(dialogText).toContain(SENTINEL_CARD); // 9 (card, verified again below distinctly)
     expect(dialogText).toContain(SENTINEL_PASSWORD); // 10. password key=value redacted
@@ -100,10 +106,12 @@ test.describe('Legacy Remediation Slice 7 — Conservative free-text sensitive-d
 
     // No raw secret anywhere, including the inspector's own raw-JSON dump.
     // UX-R5 §13: "All fields" is the canonical escape hatch and now starts
-    // collapsed, so its nested "Raw JSON" disclosure has to be revealed
-    // first. Still exactly as reachable - one extra click, no capability
-    // lost - which is the property this expansion asserts.
-    await dialog.getByRole('heading', { name: /all fields/i }).click();
+    // collapsed, AND (PCFR-1) lives behind its own "Technical / all
+    // fields" tab - two clicks deep instead of one, still exactly as
+    // reachable, no capability lost - which is the property this
+    // expansion asserts.
+    await openInspectorTab(dialog, page, /technical.*all fields/i);
+    await dialog.getByRole('heading', { name: /^all fields$/i }).click();
     await dialog.getByText('Raw JSON').click();
     const dialogTextWithJson = await dialog.innerText();
     expect(dialogTextWithJson).not.toContain('DEMO-SENSITIVE-778899');
