@@ -434,7 +434,7 @@ Full reasoning, with fact/assumption separation, is in
 | OS-9 | **RBAC inheritance** — namespace-scoped discovery only; no cluster-admin assumed; partial permissions produce visibly partial results | `APPROVED_PENDING` | OS-1B | 401 → re-auth; 403 on a namespace → omit, never fabricate as empty; one inaccessible pod among several → partial result with the gap reported |
 | OS-10 | **Truthful source-specific ordering/pagination** — deterministic k-way merge over a fully materialised window; window-narrowing instead of cursors; never simulate pagination in React | `APPROVED_PENDING` | OS-1C | The pod-log API has no cursor and no backwards search. If the existing cursor contract cannot express this honestly, report `pagination` as unsupported rather than fake one |
 | OS-11 | **Capability model extended additively** (`projectDiscovery`, `workloadDiscovery`, `podDiscovery`, `pagination`, `globalSort`, `correlationSearch`), computed from the active provider and connection state | `APPROVED_PENDING` | OS-1C | UX-R4 already had to correct a capability that lied (`contextView`), so vague capabilities have a demonstrated cost here |
-| OS-12 | **Loki becomes an aggregated/historical provider behind OpenShift**, not a peer user-facing source | `OPEN_UNDECIDED` — direction proposed, final fold-in gated | OS-1G | Migration strategy **A (additive first)**: keep `openshift-loki` visible during OS-1A…1F. Folding in is gated on real-Loki verification existing, or an explicit owner decision to restructure an adapter that has never run against its real backend |
+| OS-12 | **Loki becomes an aggregated/historical provider behind OpenShift**, not a peer user-facing source | `OPEN_UNDECIDED` — interim decision recorded by OS-1G (§12p), final fold-in still gated | OS-1G | Migration strategy **A (additive first)**: keep `openshift-loki` visible during OS-1A…1F. OS-1G (§12p) confirmed with real evidence that `REAL_LOKI` remains unverified in this environment and, per the mission's own default-safety rule, deferred both product-level consolidation and the `AggregatedLogProvider` interface itself — not just the consolidation. Folding in still requires real-Loki verification (exact checklist in `docs/verification/OS_1G_AGGREGATED_PROVIDER_DECISION_REPORT.md` §6), or an explicit owner decision to restructure an adapter that has never run against its real backend |
 | OS-13 | **Real OpenShift verification** on Red Hat Developer Sandbox | `APPROVED_PENDING` | OS-1A onward | Verified externally: free, 30-day renewable, "shared, multi-tenant", "Pods are automatically deleted after running for 12 consecutive hours". Direct mode needs only namespace-scoped rights → `FEASIBLE`. The 12h pod deletion is an **asset**: free, repeatable pod churn for the hardest test cases |
 | OS-14 | **Three-layer test pyramid**; normal CI stays deterministic and credential-free | `APPROVED_PENDING` | OS-1A onward | Layer 1 unit/contract · Layer 2 fake Kubernetes API · Layer 3 opt-in real sandbox that **skips cleanly without credentials** |
 | OS-15 | **Enterprise proxy support** (`HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`) | `OPEN_UNDECIDED` — **unverified assumption**, must be checked before OS-1A is estimated | OS-1A | Reactor Netty is *assumed* not to honour these automatically. If that holds, proxy handling is real work that belongs in the connection slice rather than being discovered late |
@@ -1001,6 +1001,33 @@ still holds; this subsection records real-cluster confirmation of
 already-implemented behavior, not new implementation.
 `UNTRACKED_OWNER_REQUIREMENTS=0`.
 
+### 12p. OS-1G — OpenShift aggregated/historical provider decision
+
+A decision-gate mission, resolving OS-12 (§12a) with real evidence.
+Full inventory, decision matrix, and rationale in
+`docs/verification/OS_1G_AGGREGATED_PROVIDER_DECISION_REPORT.md`; the
+same conclusion is recorded in
+`docs/architecture/OPENSHIFT_DIRECT_LOGGING_ARCHITECTURE_ASSESSMENT.md`
+§23.
+
+| ID | NAME | STATUS | EVIDENCE |
+|---|---|---|---|
+| OS-1G-1 | The current `openshift-loki` implementation was fully inventoried before any decision was made — reusable components, source-coupled components, UI coupling, security coupling, and self-reported capability gaps, all traced to exact source | `VERIFIED` | `OS_1G_AGGREGATED_PROVIDER_DECISION_REPORT.md` §2 |
+| OS-1G-2 | `REAL_LOKI` was checked directly in this session's actual environment — env vars, local config, and the real Red Hat Developer Sandbox namespaces already connected to for OS-1F — rather than assumed from history | `VERIFIED` (checked, not fabricated) | `REAL_LOKI=BLOCKED_EXTERNAL_ENVIRONMENT`; §3 of the decision report; no `LOKI_*` env vars, no Loki route/service in `ahmedelrifaye70-dev` or `ahmedelrifaye70-aece7-claw`, `tools/mock-loki` correctly excluded as an explicitly-documented mock |
+| OS-1G-3 | Three architecture options (keep-separate / consolidate-now / abstraction-only-defer-consolidation) were compared across user mental model, truthfulness, security, migration risk, testability, and extensibility, not decided by preference alone | `VERIFIED` | Decision report §4 (full matrix) |
+| OS-1G-4 | Given `REAL_LOKI` is unverified, the mission's own default-safety rule was applied: `openshift-loki` was not removed, no Loki-backed OpenShift historical search was claimed production-verified, and the decision taken is reversible | `VERIFIED` | Decision report §5, §8; `OPENSHIFT_LOKI_RETAINED=YES`, `OPENSHIFT_LOKI_REMOVED=NO` |
+| OS-1G-5 | The `AggregatedLogProvider` interface itself was deliberately NOT implemented this slice — judged, against `CLAUDE.md`'s own anti-premature-abstraction rule, as speculative scaffolding for a single candidate implementation whose real behavior has never been observed | `VERIFIED` (deliberate non-implementation, not an oversight) | Decision report §5; `AGGREGATED_PROVIDER_IMPLEMENTED=NO` |
+| OS-1G-6 | Zero backend/frontend production source files were changed this slice | `VERIFIED` | `git diff --stat -- backend/src/main/java frontend/src` against `main` — empty |
+| OS-1G-7 | No OS-1A..1F OpenShift Direct behavior, and no existing Loki behavior, was touched — `OpenShiftLogSource`/`DirectPodLogProvider`, just proven correct against the real Sandbox in OS-1F, were not modified | `VERIFIED` | Decision report §10; existing Loki mock-backed test suite unchanged and still green |
+
+**OS-1G pass.** A decision/documentation-only slice. `OS-12` (§12a)
+updated with the interim outcome, not silently closed — final
+consolidation remains `OPEN_UNDECIDED`, gated on the exact real-Loki
+evidence checklist in the decision report §6. No OS-A/OS-1A..1F/OS-1G's-
+own-prior-state historical finding was rewritten; this section is
+additive. `HISTORICAL_DECISIONS_PRESERVED=YES`.
+`UNTRACKED_OWNER_REQUIREMENTS=0`.
+
 ---
 
 ## 13. Out of Current Scope
@@ -1547,6 +1574,26 @@ real-Sandbox-only testbed defects (probe timing under CPU throttling,
 sidecar memory sizing) were found and fixed, classified `HARDENING`
 to test infrastructure, not product code. Token never printed or
 persisted throughout — full audit in the verification report §8.3.
+
+**OS-1G pass (§12p above).** A decision-gate mission resolving OS-12:
+whether Loki should become an aggregated/historical provider behind the
+first-class OpenShift source. `REAL_LOKI` was checked directly in this
+session's own environment (no `LOKI_*` env vars, no Loki route/service in
+either real Sandbox project) and confirmed
+`REAL_LOKI=BLOCKED_EXTERNAL_ENVIRONMENT`, not fabricated as `PASS`. Per
+the mission's own default-safety rule, this triggered the most
+conservative of three compared options: `openshift-loki` stays exactly
+as-is, and — beyond that rule's own minimum — the `AggregatedLogProvider`
+interface itself was deliberately not implemented this slice either,
+judged as premature abstraction for a single candidate implementation
+never observed against real data (full rationale in
+`docs/verification/OS_1G_AGGREGATED_PROVIDER_DECISION_REPORT.md` §5).
+Zero backend/frontend production source changed. `OS-12` remains
+`OPEN_UNDECIDED`, not silently closed. `openshift-loki` untouched, not
+removed. `OpenShiftLogSource`/`DirectPodLogProvider` (OS-1A..1F)
+untouched. `TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`,
+untouched. `REL_1` (§7, §7b, §7c) remains confirmed `APPROVED_PENDING`,
+untouched.
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0

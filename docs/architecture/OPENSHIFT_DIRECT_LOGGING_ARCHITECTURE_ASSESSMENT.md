@@ -1061,7 +1061,10 @@ owner choice rather than a settled fact.
 
 1. **Provider visibility** — should Loki remain a separately selectable
    source during OS-1A…1F (recommended: yes, additive), and should it be
-   retired afterwards?
+   retired afterwards? **[RESOLVED, interim — see §23]** Answered by
+   OS-1G with real evidence: Loki remains separately selectable, unchanged,
+   for now. Final fold-in stays `OPEN_UNDECIDED`, gated on real-Loki
+   evidence that still does not exist.
 2. **Multi-cluster** — remains `OUT_OF_CURRENT_SCOPE`. Confirm, since
    "Add Source → OpenShift" could be read either way.
 3. **Insecure TLS** — confirm that `--insecure-skip-tls-verify` is
@@ -1071,3 +1074,46 @@ owner choice rather than a settled fact.
 5. **Sandbox vs real cluster** — sandbox proves correctness; scale bounds
    need a real cluster or explicit deferral.
 6. **Release order** — OS-1x before REL-1, or REL-1 first (§21).
+
+---
+
+## 23. OS-1G — aggregated/historical provider decision [EVIDENCE, established by OS-1G]
+
+Resolves open decision #1 above with real evidence rather than
+assumption, per `docs/verification/OS_1G_AGGREGATED_PROVIDER_DECISION_REPORT.md`
+(full inventory, decision matrix, and rationale).
+
+**[FACT]** `REAL_LOKI=BLOCKED_EXTERNAL_ENVIRONMENT` — checked directly in
+the OS-1G session: no `LOKI_*` environment variables, no reachable real
+Loki endpoint, and the real Red Hat Developer Sandbox namespace already
+connected to for OS-1F (`ahmedelrifaye70-dev`) hosts no Loki route or
+service. `tools/mock-loki` is an explicitly-documented mock, not real
+Loki software, and does not satisfy this gate.
+
+**[FACT]** The current `openshift-loki` source has near-zero frontend
+coupling (capability-driven, no per-source branching found in
+`frontend/src`) and clean security separation from OpenShift Direct's
+credential path (independent token source, independent TLS/CA config,
+a fixed deployment-time namespace rather than a session-selected
+project). Its own self-reported capabilities are honest about real gaps:
+`contextView=false`, `liveTail=false`, no correlation/journey-specific
+code exists for it at all. Its 7-file test suite is entirely
+mock-backed; zero tests exist against a real Loki instance.
+
+**[DECISION]** Option C: keep `openshift-loki` exactly as-is; do not
+implement `AggregatedLogProvider` yet. The mission's own default-safety
+rule (do not consolidate without `REAL_LOKI` evidence) directly applies.
+Writing the aggregated-provider interface now, with a single candidate
+implementation whose real behavior has never been observed, would mean
+guessing at the exact design questions (DIRECT vs AGGREGATED semantics,
+gap/ordering representation, capability-honesty surfacing) that should be
+answered from real data. The frontend's near-zero coupling means this
+costs nothing to defer — there is no tangled call site to unwind later.
+
+**[FACT]** `openshift-loki` is retained, not removed, not redesigned.
+`OpenShiftLogSource`/`DirectPodLogProvider` (OS-1A..1F, just proven
+correct against the real Sandbox) were not touched. Open decision #1
+above is resolved for the interim; final consolidation remains
+`OPEN_UNDECIDED` in `OWNER_REQUIREMENTS_REGISTER.md` §12a (OS-12) until
+a real Loki endpoint becomes available and is verified against the exact
+checklist in the OS-1G report §6.
