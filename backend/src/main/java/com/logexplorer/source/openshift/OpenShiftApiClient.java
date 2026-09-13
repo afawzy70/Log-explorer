@@ -30,6 +30,7 @@ import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
 import java.util.concurrent.atomic.AtomicReference;
 import org.reactivestreams.Subscription;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.HttpHeaders;
@@ -95,20 +96,47 @@ public class OpenShiftApiClient {
 
   private static final Duration TIMEOUT = Duration.ofSeconds(15);
 
+  private final OpenShiftProxyConfigService proxyConfigService;
   private final Map<String, String> environment;
 
-  public OpenShiftApiClient() {
-    this(System.getenv());
+  /**
+   * Spring's real wiring - {@code proxyConfigService} is the shared,
+   * singleton, mutable proxy setting (pre-closure functional recovery 2,
+   * §B5/§B6) - the exact same bean {@link
+   * com.logexplorer.source.loki.LokiWebClientFactory} is also injected
+   * with, so a mode/host/port change made through the settings UI takes
+   * effect for both at once, never drifting apart.
+   *
+   * <p>{@code @Autowired} is required here (unlike before this recovery,
+   * when a plain public no-arg constructor let Spring instantiate this
+   * bean without needing to choose among constructors at all): with three
+   * constructors now present and no no-arg one, Spring's default
+   * bean-instantiation path cannot pick a constructor on its own.
+   */
+  @Autowired
+  public OpenShiftApiClient(OpenShiftProxyConfigService proxyConfigService) {
+    this(proxyConfigService, System.getenv());
   }
 
-  /** Test seam: the proxy environment is injected rather than read globally. */
+  /**
+   * Test seam: SYSTEM-only proxy behavior via a fresh, never-mutated
+   * {@link OpenShiftProxyConfigService} (defaults to {@link
+   * ProxyConfig#SYSTEM_DEFAULT}) - preserves every pre-existing test's own
+   * environment-only expectations unchanged.
+   */
   OpenShiftApiClient(Map<String, String> environment) {
+    this(new OpenShiftProxyConfigService(), environment);
+  }
+
+  /** Test seam: both the proxy config and the environment are injected, for DIRECT/CUSTOM-mode tests. */
+  OpenShiftApiClient(OpenShiftProxyConfigService proxyConfigService, Map<String, String> environment) {
+    this.proxyConfigService = proxyConfigService;
     this.environment = environment;
   }
 
-  /** The proxy route that would be used for {@code server}, for display only. */
+  /** The proxy route that would be used for {@code server} under the CURRENT proxy setting, for display only. */
   public Optional<ProxyRoute> proxyFor(URI server) {
-    return ProxyRoute.resolve(environment, server.getHost());
+    return ProxyRoute.resolve(proxyConfigService.current(), environment, server.getHost());
   }
 
   /**
@@ -366,7 +394,7 @@ public class OpenShiftApiClient {
     } catch (OpenShiftApiException e) {
       return Mono.error(e);
     }
-    boolean proxyConfigured = ProxyRoute.resolve(environment, server.getHost()).isPresent();
+    boolean proxyConfigured = ProxyRoute.resolve(proxyConfigService.current(), environment, server.getHost()).isPresent();
     UriComponentsBuilder uri = UriComponentsBuilder
         .fromPath("/api/v1/namespaces/" + namespace + "/pods/" + podName + "/log")
         .queryParam("container", containerName)
@@ -452,7 +480,7 @@ public class OpenShiftApiClient {
     } catch (OpenShiftApiException e) {
       return Flux.error(e);
     }
-    boolean proxyConfigured = ProxyRoute.resolve(environment, server.getHost()).isPresent();
+    boolean proxyConfigured = ProxyRoute.resolve(proxyConfigService.current(), environment, server.getHost()).isPresent();
     UriComponentsBuilder uri = UriComponentsBuilder
         .fromPath("/api/v1/namespaces/" + namespace + "/pods/" + podName + "/log")
         .queryParam("container", containerName)
@@ -1054,7 +1082,7 @@ public class OpenShiftApiClient {
     } catch (OpenShiftApiException e) {
       return Mono.error(e);
     }
-    boolean proxyConfigured = ProxyRoute.resolve(environment, server.getHost()).isPresent();
+    boolean proxyConfigured = ProxyRoute.resolve(proxyConfigService.current(), environment, server.getHost()).isPresent();
     return client
         .get()
         .uri(path)
@@ -1190,7 +1218,7 @@ public class OpenShiftApiClient {
 
     // OS-1A §12 - scoped proxy configuration, never JVM-global, and never
     // applied when NO_PROXY covers this host.
-    Optional<ProxyRoute> route = ProxyRoute.resolve(environment, server.getHost());
+    Optional<ProxyRoute> route = ProxyRoute.resolve(proxyConfigService.current(), environment, server.getHost());
     if (route.isPresent()) {
       ProxyRoute proxy = route.get();
       httpClient = httpClient.proxy(spec -> {

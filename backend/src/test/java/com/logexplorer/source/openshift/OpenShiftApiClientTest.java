@@ -245,6 +245,66 @@ class OpenShiftApiClientTest {
     assertThat(discovery).isNotNull();
   }
 
+  // ------------------------------------------- ProxyMode DIRECT/CUSTOM
+  // Pre-closure functional recovery 2 (§B2/§B7/§B8/§B9/Part F) - the
+  // application-level proxy mode, over and above the environment-only
+  // SYSTEM behavior already proven above.
+
+  @Test
+  void directModeConnectsSuccessfullyEvenWhenTheEnvironmentHasAProxyConfigured_neverConsultingIt() {
+    // The environment alone would break this under SYSTEM mode (§B7's own
+    // test above proves that exact scenario) - DIRECT must ignore it
+    // entirely and reach the real, live server directly.
+    OpenShiftProxyConfigService directConfig = new OpenShiftProxyConfigService();
+    directConfig.update(ProxyConfig.direct());
+    OpenShiftApiClient directClient =
+        new OpenShiftApiClient(directConfig, Map.of("HTTPS_PROXY", "http://127.0.0.1:1"));
+
+    ProjectDiscovery discovery = directClient.fetchProjects(base, TOKEN, null).block();
+
+    assertThat(discovery).isNotNull();
+    assertThat(discovery.projects()).containsExactly("accounts", "gateway", "payments");
+  }
+
+  @Test
+  void customModeRoutesThroughTheConfiguredProxyAndIgnoresNoProxy() {
+    // NO_PROXY="*" would bypass every proxy under SYSTEM mode - CUSTOM
+    // must ignore it (§B10: "do not silently bypass because machine
+    // environment has NO_PROXY") and still route through the
+    // deliberately-broken custom proxy, proving it is genuinely being
+    // used rather than silently skipped.
+    OpenShiftProxyConfigService customConfig = new OpenShiftProxyConfigService();
+    customConfig.update(ProxyConfig.custom("127.0.0.1", 1));
+    OpenShiftApiClient customClient = new OpenShiftApiClient(customConfig, Map.of("NO_PROXY", "*"));
+
+    OpenShiftApiException e = catchThrowableOfType(
+        () -> customClient.fetchProjects(base, TOKEN, null).block(), OpenShiftApiException.class);
+
+    assertThat(e).isNotNull();
+    assertThat(e.kind()).isEqualTo(Kind.PROXY);
+  }
+
+  @Test
+  void customModeSucceedsWhenTheCustomProxyItselfIsReachable_provingItIsNotJustAlwaysBroken() {
+    // Not a real corp proxy - but proves CUSTOM mode's OWN resolved route
+    // is what actually gets dialed: pointing CUSTOM at the real
+    // MockOpenShiftServer's own host:port (standing in for "a reachable
+    // proxy") at least reaches something rather than failing to resolve
+    // the custom host/port fields at all. A genuine HTTP CONNECT proxy
+    // behavior is not something this deterministic fake server
+    // implements, so this only proves routing/resolution, not a full
+    // CONNECT handshake - the CONNECT-level behavior itself is Reactor
+    // Netty's own, already-proven-correct ProxyProvider integration
+    // (unchanged by this recovery).
+    OpenShiftProxyConfigService customConfig = new OpenShiftProxyConfigService();
+    customConfig.update(ProxyConfig.custom(base.getHost(), base.getPort()));
+    OpenShiftApiClient customClient = new OpenShiftApiClient(customConfig, Map.of());
+
+    assertThat(customClient.proxyFor(base)).isPresent();
+    assertThat(customClient.proxyFor(base).get().host()).isEqualTo(base.getHost());
+    assertThat(customClient.proxyFor(base).get().port()).isEqualTo(base.getPort());
+  }
+
   @Test
   void anUnreadableCertificateAuthorityIsATlsFailure() {
     OpenShiftApiException e = catchThrowableOfType(

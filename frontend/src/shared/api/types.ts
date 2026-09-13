@@ -336,6 +336,20 @@ export interface OpenShiftConnectionSummary {
 }
 
 /**
+ * Pre-closure functional recovery 2 (§B2/§B16) - the user-configurable
+ * OpenShift/Loki proxy mode. `host`/`port` are meaningful only for
+ * `CUSTOM`; `null` for `SYSTEM`/`DIRECT`, mirrored exactly as the backend
+ * returns them (never guessed or coerced on the frontend).
+ */
+export type ProxyMode = 'SYSTEM' | 'DIRECT' | 'CUSTOM';
+
+export interface OpenShiftProxySettings {
+  mode: ProxyMode;
+  host: string | null;
+  port: number | null;
+}
+
+/**
  * A failure category from the backend's `reason` property. The UI must
  * distinguish these rather than showing one generic "connection failed" -
  * OS-1A §15/§18, and in particular `FORBIDDEN` (you may not list

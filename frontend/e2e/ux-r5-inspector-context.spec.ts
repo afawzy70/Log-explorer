@@ -162,24 +162,30 @@ test.describe('UX-R5 §8/§9 - inspector information hierarchy', () => {
     expect(height).toBeLessThan(3000);
   });
 
-  test('I: a section with no data is not offered as a tab at all - never an empty/meaningless one', async ({ page }) => {
-    // Pre-closure functional recovery (PCFR-1) named conflict: UX-R5 had
-    // this event render an "Actor & client" section with an explicit "No
-    // actor or client data" note. The recovery mission's explicit
-    // requirement (§4/§8: "Do NOT display empty meaningless tabs") applies
-    // the later decision instead - a tab with nothing to show is not
-    // offered at all, which is a strictly stronger version of the same
-    // underlying principle ("say so once" -> "don't ask the investigator
-    // to open it just to be told there's nothing there").
+  test('I: a section with no data stays offered as a tab, with an honest empty state - never hidden', async ({ page }) => {
+    // Pre-closure functional recovery 2 (§A1-§A5) named conflict, per
+    // CLAUDE.md §5, superseding the FIRST recovery's own decision here
+    // (PCFR-1, "do not display empty meaningless tabs" - a tab with
+    // nothing to show was removed entirely). The owner explicitly
+    // rejected that once it shipped: the absence of data is itself
+    // diagnostically meaningful - a user must be able to tell "this
+    // category doesn't exist for this event" apart from "the UI hid
+    // something." All five primary tabs are now a fixed, always-present
+    // structural constant; only the CONTENT inside an empty one changes
+    // (an honest note, same as UX-R5 originally had before PCFR-1).
     await runRealSearch(page);
     await rows(page).filter({ hasText: 'NOT-JSON' }).first().click();
     await expect(inspector(page)).toBeVisible();
 
-    await expect(inspector(page).getByRole('tab', { name: /actor & client/i })).toHaveCount(0);
-    // Overview and Technical/all fields are structurally never empty, so
-    // they remain offered even for this sparsest possible event.
+    // Every primary tab remains offered, even for this sparsest possible event.
     await expect(inspector(page).getByRole('tab', { name: /^overview$/i })).toBeVisible();
+    await expect(inspector(page).getByRole('tab', { name: /actor & client/i })).toBeVisible();
+    await expect(inspector(page).getByRole('tab', { name: /request flow/i })).toBeVisible();
+    await expect(inspector(page).getByRole('tab', { name: /business \/ error/i })).toBeVisible();
     await expect(inspector(page).getByRole('tab', { name: /technical.*all fields/i })).toBeVisible();
+
+    await openInspectorTab(inspector(page), page, /actor & client/i);
+    await expect(inspector(page).getByText(/no actor or client data on this event/i)).toBeVisible();
     await captureScreenshot(page, PHASE, 'AFTER-I-missing-data-section');
   });
 

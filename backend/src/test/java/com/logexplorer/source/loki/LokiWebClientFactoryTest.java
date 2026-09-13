@@ -201,6 +201,74 @@ class LokiWebClientFactoryTest {
         .verifyComplete();
   }
 
+  // --------------------------------------------------- ProxyMode DIRECT/CUSTOM
+  // Pre-closure functional recovery 2 (§B2/§B5/§B13) - Loki must honor the
+  // exact same application-level proxy mode as the OpenShift API, from the
+  // exact same shared OpenShiftProxyConfigService, never its own separate
+  // configuration.
+
+  @Test
+  void directModeReachesTheRealServerDirectlyEvenWithAProxyConfiguredInTheEnvironment() {
+    LokiProperties properties = propertiesForServer();
+    properties.setCaCertPath(serverCertPath.toString());
+    com.logexplorer.source.openshift.OpenShiftProxyConfigService directConfig =
+        new com.logexplorer.source.openshift.OpenShiftProxyConfigService();
+    directConfig.update(com.logexplorer.source.openshift.ProxyConfig.direct());
+    LokiWebClientFactory directFactory =
+        new LokiWebClientFactory(directConfig, Map.of("HTTPS_PROXY", "http://127.0.0.1:1"));
+    LokiQueryClient directClient = new LokiQueryClient(properties, new LokiTokenSupplier(properties), directFactory);
+
+    StepVerifier.create(directClient.queryRange("{namespace=\"x\"}", 1L, 2L, 10, "backward"))
+        .assertNext(response -> assertThat(response.status()).isEqualTo("success"))
+        .verifyComplete();
+  }
+
+  @Test
+  void customModeRoutesThroughTheConfiguredProxyAndIgnoresNoProxy() {
+    LokiProperties properties = propertiesForServer();
+    properties.setCaCertPath(serverCertPath.toString());
+    com.logexplorer.source.openshift.OpenShiftProxyConfigService customConfig =
+        new com.logexplorer.source.openshift.OpenShiftProxyConfigService();
+    // Deliberately broken (nothing listens on port 1) and NO_PROXY="*" -
+    // which would bypass every proxy under SYSTEM mode - to prove CUSTOM
+    // both is actually used AND ignores NO_PROXY (§B10).
+    customConfig.update(com.logexplorer.source.openshift.ProxyConfig.custom("127.0.0.1", 1));
+    LokiWebClientFactory customFactory = new LokiWebClientFactory(customConfig, Map.of("NO_PROXY", "*"));
+    LokiQueryClient customClient = new LokiQueryClient(properties, new LokiTokenSupplier(properties), customFactory);
+
+    StepVerifier.create(customClient.queryRange("{namespace=\"x\"}", 1L, 2L, 10, "backward"))
+        .expectErrorSatisfies(e -> {
+          assertThat(e).isInstanceOf(LokiRequestException.class);
+          assertThat(((LokiRequestException) e).reason()).isEqualTo(Reason.PROXY);
+        })
+        .verify(Duration.ofSeconds(10));
+  }
+
+  @Test
+  void openShiftApiAndLokiShareTheExactSameProxyConfigService_oneModeChangeAffectsBoth() {
+    // §B5/§B6 - "one authoritative OpenShift proxy configuration", proven
+    // directly: a single OpenShiftProxyConfigService instance, handed to
+    // BOTH an OpenShiftApiClient and a LokiWebClientFactory, resolves the
+    // identical route for both the moment it is updated - never two
+    // independently-drifting configurations.
+    com.logexplorer.source.openshift.OpenShiftProxyConfigService shared =
+        new com.logexplorer.source.openshift.OpenShiftProxyConfigService();
+    shared.update(com.logexplorer.source.openshift.ProxyConfig.custom("proxy.company.local", 8080));
+
+    com.logexplorer.source.openshift.OpenShiftApiClient openShiftClient =
+        new com.logexplorer.source.openshift.OpenShiftApiClient(shared);
+    LokiWebClientFactory lokiFactory = new LokiWebClientFactory(shared, Map.of());
+
+    Optional<ProxyRoute> openShiftRoute =
+        openShiftClient.proxyFor(java.net.URI.create("https://api.cluster.example.com:6443"));
+    Optional<ProxyRoute> lokiRoute = lokiFactory.proxyFor(propertiesForServer());
+
+    assertThat(openShiftRoute).isPresent();
+    assertThat(lokiRoute).isPresent();
+    assertThat(openShiftRoute.get().host()).isEqualTo(lokiRoute.get().host()).isEqualTo("proxy.company.local");
+    assertThat(openShiftRoute.get().port()).isEqualTo(lokiRoute.get().port()).isEqualTo(8080);
+  }
+
   private void runKeytool(String... args) throws Exception {
     List<String> command = new ArrayList<>();
     command.add("keytool");

@@ -16,6 +16,7 @@ import type {
   OpenShiftConnectionSummary,
   OpenShiftFailureReason,
   OpenShiftPodDiscovery,
+  OpenShiftProxySettings,
   OpenShiftScopeSummary,
   OpenShiftWorkloadDiscovery,
   OpenShiftWorkloadKind,
@@ -253,6 +254,36 @@ export async function selectOpenShiftProject(
     signal,
   });
   return parseJsonOrThrow<OpenShiftConnectionSummary>(response);
+}
+
+/**
+ * Pre-closure functional recovery 2 (§B2/§B16) - the current OpenShift/
+ * Loki proxy mode, independent of whether a connection currently exists
+ * (it applies to the connect/test attempt itself).
+ */
+export async function fetchOpenShiftProxySettings(signal?: AbortSignal): Promise<OpenShiftProxySettings> {
+  const response = await fetch('/api/v1/sources/openshift/proxy', { signal });
+  return parseJsonOrThrow<OpenShiftProxySettings>(response);
+}
+
+/**
+ * Sets the proxy mode/host/port. `host`/`port` are ignored by the backend
+ * unless `mode` is `'CUSTOM'` - always send `null` for the other two
+ * modes so a leftover value from a previous CUSTOM entry is never
+ * mistakenly resubmitted (§B3 "switching away from CUSTOM must stop using
+ * stale custom values").
+ */
+export async function updateOpenShiftProxySettings(
+  settings: OpenShiftProxySettings,
+  signal?: AbortSignal,
+): Promise<OpenShiftProxySettings> {
+  const response = await fetch('/api/v1/sources/openshift/proxy', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+    signal,
+  });
+  return parseJsonOrThrow<OpenShiftProxySettings>(response);
 }
 
 /* ------------------------------------------------------------------ */

@@ -592,3 +592,220 @@ describe('describeFailure', () => {
     expect(described.message).toBe('something went wrong');
   });
 });
+
+describe('OpenShiftSettingsPanel - pre-closure functional recovery 2, proxy settings (§B3/§G)', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  const SYSTEM_PROXY = { mode: 'SYSTEM', host: null, port: null };
+
+  async function openPanel(proxySettings: unknown = SYSTEM_PROXY, extra?: (url: string, init?: RequestInit) => Response | undefined) {
+    stubFetch((url, init) => {
+      const overridden = extra?.(url, init);
+      if (overridden) return overridden;
+      if (url.includes('intake-allowed')) return jsonResponse(true);
+      if (url.endsWith('/proxy') && (!init || init.method === undefined)) return jsonResponse(proxySettings);
+      return jsonResponse(DISCONNECTED);
+    });
+    const user = userEvent.setup();
+    render(<OpenShiftSettingsPanel />);
+    await user.click(screen.getByRole('button', { name: 'OpenShift' }));
+    await screen.findByRole('dialog', { name: /openshift connection/i });
+    return user;
+  }
+
+  it('the proxy selector is visible with System selected by default', async () => {
+    await openPanel();
+    expect(await screen.findByText('Proxy')).toBeInTheDocument();
+    const system = screen.getByRole('radio', { name: /use system proxy/i });
+    expect(system).toBeChecked();
+    expect(screen.getByRole('radio', { name: /^direct connection$/i })).not.toBeChecked();
+    expect(screen.getByRole('radio', { name: /^custom proxy$/i })).not.toBeChecked();
+  });
+
+  it('reflects an already-configured Direct mode on open', async () => {
+    await openPanel({ mode: 'DIRECT', host: null, port: null });
+    expect(await screen.findByRole('radio', { name: /^direct connection$/i })).toBeChecked();
+  });
+
+  it('reflects an already-configured Custom mode, with the host/port fields pre-filled', async () => {
+    await openPanel({ mode: 'CUSTOM', host: 'proxy.company.local', port: 8080 });
+    expect(await screen.findByRole('radio', { name: /^custom proxy$/i })).toBeChecked();
+    expect(screen.getByLabelText(/proxy server/i)).toHaveValue('proxy.company.local');
+    expect(screen.getByLabelText(/proxy port/i)).toHaveValue('8080');
+  });
+
+  it('custom host/port fields are hidden under System and Direct, and appear only under Custom', async () => {
+    const user = await openPanel();
+    expect(screen.queryByLabelText(/proxy server/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: /^custom proxy$/i }));
+    expect(screen.getByLabelText(/proxy server/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/proxy port/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: /use system proxy/i }));
+    expect(screen.queryByLabelText(/proxy server/i)).not.toBeInTheDocument();
+  });
+
+  it('selecting Direct sends the change to the backend immediately', async () => {
+    let putBody: string | undefined;
+    const user = await openPanel(SYSTEM_PROXY, (url, init) => {
+      if (url.endsWith('/proxy') && init?.method === 'PUT') {
+        putBody = String(init.body);
+        return jsonResponse({ mode: 'DIRECT', host: null, port: null });
+      }
+      return undefined;
+    });
+
+    await user.click(screen.getByRole('radio', { name: /^direct connection$/i }));
+
+    await waitFor(() => expect(putBody).toBeDefined());
+    expect(JSON.parse(putBody!)).toEqual({ mode: 'DIRECT', host: null, port: null });
+  });
+
+  it('a blank custom host is rejected client-side before any request is sent', async () => {
+    let putCalled = false;
+    const user = await openPanel(SYSTEM_PROXY, (url, init) => {
+      if (url.endsWith('/proxy') && init?.method === 'PUT') {
+        putCalled = true;
+        return jsonResponse({ mode: 'CUSTOM', host: '', port: 8080 });
+      }
+      return undefined;
+    });
+
+    await user.click(screen.getByRole('radio', { name: /^custom proxy$/i }));
+    await user.clear(screen.getByLabelText(/proxy port/i));
+    await user.type(screen.getByLabelText(/proxy port/i), '8080');
+    await user.click(screen.getByRole('button', { name: /apply proxy/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/proxy server is required/i);
+    expect(putCalled).toBe(false);
+  });
+
+  it('a non-numeric custom port is rejected client-side', async () => {
+    const user = await openPanel();
+    await user.click(screen.getByRole('radio', { name: /^custom proxy$/i }));
+    await user.type(screen.getByLabelText(/proxy server/i), 'proxy.company.local');
+    await user.type(screen.getByLabelText(/proxy port/i), 'not-a-port');
+    await user.click(screen.getByRole('button', { name: /apply proxy/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/must be a number/i);
+  });
+
+  it('an out-of-range custom port is rejected client-side', async () => {
+    const user = await openPanel();
+    await user.click(screen.getByRole('radio', { name: /^custom proxy$/i }));
+    await user.type(screen.getByLabelText(/proxy server/i), 'proxy.company.local');
+    await user.type(screen.getByLabelText(/proxy port/i), '70000');
+    await user.click(screen.getByRole('button', { name: /apply proxy/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/between 1 and 65535/i);
+  });
+
+  it('a valid custom host/port is sent to the backend on Apply', async () => {
+    let putBody: string | undefined;
+    const user = await openPanel(SYSTEM_PROXY, (url, init) => {
+      if (url.endsWith('/proxy') && init?.method === 'PUT') {
+        putBody = String(init.body);
+        return jsonResponse({ mode: 'CUSTOM', host: 'proxy.company.local', port: 8080 });
+      }
+      return undefined;
+    });
+
+    await user.click(screen.getByRole('radio', { name: /^custom proxy$/i }));
+    await user.type(screen.getByLabelText(/proxy server/i), 'proxy.company.local');
+    await user.type(screen.getByLabelText(/proxy port/i), '8080');
+    await user.click(screen.getByRole('button', { name: /apply proxy/i }));
+
+    await waitFor(() => expect(putBody).toBeDefined());
+    expect(JSON.parse(putBody!)).toEqual({ mode: 'CUSTOM', host: 'proxy.company.local', port: 8080 });
+  });
+
+  it('a server-side rejection (e.g. a stale/invalid value) surfaces its own message, never a generic one', async () => {
+    const user = await openPanel(SYSTEM_PROXY, (url, init) => {
+      if (url.endsWith('/proxy') && init?.method === 'PUT') {
+        return new Response(
+          JSON.stringify({ status: 400, detail: 'Proxy port must be between 1 and 65535.' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return undefined;
+    });
+
+    await user.click(screen.getByRole('radio', { name: /^custom proxy$/i }));
+    await user.type(screen.getByLabelText(/proxy server/i), 'proxy.company.local');
+    await user.type(screen.getByLabelText(/proxy port/i), '99999999');
+    await user.click(screen.getByRole('button', { name: /apply proxy/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/between 1 and 65535/i);
+  });
+
+  it('switching away from Custom never resubmits the stale custom host/port', async () => {
+    const putBodies: string[] = [];
+    const user = await openPanel({ mode: 'CUSTOM', host: 'old-proxy.example.com', port: 3128 }, (url, init) => {
+      if (url.endsWith('/proxy') && init?.method === 'PUT') {
+        putBodies.push(String(init.body));
+        return jsonResponse(JSON.parse(String(init.body)));
+      }
+      return undefined;
+    });
+
+    await screen.findByRole('radio', { name: /^custom proxy$/i, checked: true });
+    await user.click(screen.getByRole('radio', { name: /use system proxy/i }));
+
+    await waitFor(() => expect(putBodies.length).toBe(1));
+    expect(JSON.parse(putBodies[0])).toEqual({ mode: 'SYSTEM', host: null, port: null });
+  });
+
+  it('never writes anything to localStorage or sessionStorage', async () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+    const user = await openPanel(SYSTEM_PROXY, (url, init) => {
+      if (url.endsWith('/proxy') && init?.method === 'PUT') {
+        return jsonResponse({ mode: 'CUSTOM', host: 'proxy.company.local', port: 8080 });
+      }
+      return undefined;
+    });
+
+    await user.click(screen.getByRole('radio', { name: /^custom proxy$/i }));
+    await user.type(screen.getByLabelText(/proxy server/i), 'proxy.company.local');
+    await user.type(screen.getByLabelText(/proxy port/i), '8080');
+    await user.click(screen.getByRole('button', { name: /apply proxy/i }));
+    await waitFor(() => expect(screen.getByLabelText(/proxy server/i)).toHaveValue('proxy.company.local'));
+
+    expect(setItemSpy).not.toHaveBeenCalled();
+    setItemSpy.mockRestore();
+  });
+
+  it('the proxy fieldset has labels correctly associated with their controls (axe)', async () => {
+    const { container } = await (async () => {
+      const user = await openPanel();
+      await user.click(screen.getByRole('radio', { name: /^custom proxy$/i }));
+      return { container: document.body };
+    })();
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('every proxy control is reachable and operable via keyboard alone', async () => {
+    let putBody: string | undefined;
+    const user = await openPanel(SYSTEM_PROXY, (url, init) => {
+      if (url.endsWith('/proxy') && init?.method === 'PUT') {
+        putBody = String(init.body);
+        return jsonResponse({ mode: 'DIRECT', host: null, port: null });
+      }
+      return undefined;
+    });
+
+    const directRadio = screen.getByRole('radio', { name: /^direct connection$/i });
+    directRadio.focus();
+    expect(directRadio).toHaveFocus();
+    await user.keyboard(' ');
+
+    await waitFor(() => expect(putBody).toBeDefined());
+    expect(JSON.parse(putBody!).mode).toBe('DIRECT');
+  });
+});

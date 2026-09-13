@@ -9,12 +9,14 @@ import {
   fetchOpenShiftContainers,
   fetchOpenShiftIntakeAllowed,
   fetchOpenShiftPods,
+  fetchOpenShiftProxySettings,
   fetchOpenShiftWorkloads,
   openShiftFailureReason,
   selectOpenShiftContainer,
   selectOpenShiftPod,
   selectOpenShiftProject,
   selectOpenShiftWorkload,
+  updateOpenShiftProxySettings,
 } from '../../shared/api/client';
 import type {
   OpenShiftConnectionSummary,
@@ -22,6 +24,7 @@ import type {
   OpenShiftPodDiscovery,
   OpenShiftWorkloadDiscovery,
   OpenShiftWorkloadKind,
+  ProxyMode,
 } from '../../shared/api/types';
 import styles from './OpenShiftSettingsPanel.module.css';
 
@@ -89,6 +92,9 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
   const commandId = useId();
   const nameId = useId();
   const projectId = useId();
+  const proxyGroupId = useId();
+  const proxyHostId = useId();
+  const proxyPortId = useId();
 
   const workloadId = useId();
   const podId = useId();
@@ -122,6 +128,27 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
   const [containers, setContainers] = useState<string[] | undefined>(undefined);
   const [selectedContainer, setSelectedContainer] = useState<string | null>(null);
   const [scopeError, setScopeError] = useState<string | null>(null);
+
+  // Pre-closure functional recovery 2 (§B2/§B3) - proxy mode is
+  // independent of connect/disconnect: readable and editable in either
+  // panel state, since it is what a user configures IN ORDER TO reach the
+  // cluster (§B12: Connect is this application's "Test connection"
+  // action, and must use whatever proxy mode is currently selected).
+  //
+  // The radio group's own selection IS the source of truth once the panel
+  // is open (seeded from the server's last-committed value on open, then
+  // updated optimistically-but-server-confirmed on every change below) -
+  // there is no separate "committed" value tracked afterward, since
+  // nothing else in this panel needs to distinguish "what the form shows"
+  // from "what the server has" once they have been reconciled.
+  const [formMode, setFormMode] = useState<ProxyMode>('SYSTEM');
+  const [proxyBusy, setProxyBusy] = useState(false);
+  const [proxyError, setProxyError] = useState<string | null>(null);
+  // Local text for the CUSTOM host/port fields - separate from `formMode`
+  // so the user can type a value without it taking effect until "Apply
+  // proxy" (§B3/§B4: validated before ever being submitted).
+  const [customHostInput, setCustomHostInput] = useState('');
+  const [customPortInput, setCustomPortInput] = useState('');
 
   useDismissableLayer(wrapperRef, popover.isOpen, close);
 
@@ -163,6 +190,76 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
       }
     }).catch(() => setSummary(null));
     void fetchOpenShiftIntakeAllowed().then(setIntakeAllowed).catch(() => setIntakeAllowed(true));
+    setProxyError(null);
+    void fetchOpenShiftProxySettings().then((p) => {
+      setFormMode(p.mode);
+      setCustomHostInput(p.host ?? '');
+      setCustomPortInput(p.port != null ? String(p.port) : '');
+    }).catch(() => undefined);
+  }
+
+  /** SYSTEM/DIRECT apply immediately - neither needs a host/port, so there is nothing to validate or hold pending. */
+  async function selectProxyMode(mode: 'SYSTEM' | 'DIRECT') {
+    setProxyBusy(true);
+    setProxyError(null);
+    try {
+      // Applies only the SERVER-CONFIRMED mode (never optimistic - the
+      // same "never assumes the write succeeded before the server
+      // confirms it" convention PrivacyMaskingSettingsPanel already uses).
+      const updated = await updateOpenShiftProxySettings({ mode, host: null, port: null });
+      setFormMode(updated.mode);
+    } catch (error) {
+      setProxyError(error instanceof Error ? error.message : 'Could not update the proxy setting.');
+    } finally {
+      setProxyBusy(false);
+    }
+  }
+
+  /**
+   * §B4 - deterministic client-side validation before ever attempting the
+   * request, mirroring the backend's own `ProxyConfig#validate` exactly
+   * (blank host, blank/non-numeric port, port outside 1..65535) so a
+   * malformed value is never silently coerced or sent at all.
+   */
+  function validateCustomProxyInput(): string | null {
+    if (customHostInput.trim() === '') {
+      return 'Proxy server is required for a custom proxy.';
+    }
+    if (customPortInput.trim() === '') {
+      return 'Proxy port is required for a custom proxy.';
+    }
+    if (!/^\d+$/.test(customPortInput.trim())) {
+      return 'Proxy port must be a number.';
+    }
+    const port = Number(customPortInput.trim());
+    if (port <= 0 || port > 65535) {
+      return 'Proxy port must be between 1 and 65535.';
+    }
+    return null;
+  }
+
+  async function applyCustomProxy() {
+    const validationError = validateCustomProxyInput();
+    if (validationError) {
+      setProxyError(validationError);
+      return;
+    }
+    setProxyBusy(true);
+    setProxyError(null);
+    try {
+      const updated = await updateOpenShiftProxySettings({
+        mode: 'CUSTOM',
+        host: customHostInput.trim(),
+        port: Number(customPortInput.trim()),
+      });
+      setFormMode(updated.mode);
+      setCustomHostInput(updated.host ?? '');
+      setCustomPortInput(updated.port != null ? String(updated.port) : '');
+    } catch (error) {
+      setProxyError(error instanceof Error ? error.message : 'Could not update the proxy setting.');
+    } finally {
+      setProxyBusy(false);
+    }
   }
 
   async function loadWorkloads() {
@@ -416,6 +513,28 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
                 />
               ) : null}
 
+              <OpenShiftProxyFieldset
+                groupId={proxyGroupId}
+                hostId={proxyHostId}
+                portId={proxyPortId}
+                formMode={formMode}
+                proxyBusy={proxyBusy}
+                proxyError={proxyError}
+                customHostInput={customHostInput}
+                customPortInput={customPortInput}
+                onSelectMode={(mode) => {
+                  if (mode === 'CUSTOM') {
+                    setFormMode('CUSTOM');
+                    setProxyError(null);
+                  } else {
+                    void selectProxyMode(mode);
+                  }
+                }}
+                onHostChange={setCustomHostInput}
+                onPortChange={setCustomPortInput}
+                onApplyCustom={() => void applyCustomProxy()}
+              />
+
               <div className={styles.actions}>
                 <Button variant="ghost" disabled={busy} onClick={() => void run(disconnectOpenShift)}>
                   Disconnect
@@ -438,6 +557,28 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
                   onChange={(e) => setConnectionName(e.target.value)}
                 />
               </div>
+
+              <OpenShiftProxyFieldset
+                groupId={proxyGroupId}
+                hostId={proxyHostId}
+                portId={proxyPortId}
+                formMode={formMode}
+                proxyBusy={proxyBusy}
+                proxyError={proxyError}
+                customHostInput={customHostInput}
+                customPortInput={customPortInput}
+                onSelectMode={(mode) => {
+                  if (mode === 'CUSTOM') {
+                    setFormMode('CUSTOM');
+                    setProxyError(null);
+                  } else {
+                    void selectProxyMode(mode);
+                  }
+                }}
+                onHostChange={setCustomHostInput}
+                onPortChange={setCustomPortInput}
+                onApplyCustom={() => void applyCustomProxy()}
+              />
 
               <div className={styles.field}>
                 <label className={styles.label} htmlFor={commandId}>
@@ -487,6 +628,137 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
         </div>
       ) : null}
     </div>
+  );
+}
+
+interface OpenShiftProxyFieldsetProps {
+  groupId: string;
+  hostId: string;
+  portId: string;
+  formMode: ProxyMode;
+  proxyBusy: boolean;
+  proxyError: string | null;
+  customHostInput: string;
+  customPortInput: string;
+  onSelectMode: (mode: ProxyMode) => void;
+  onHostChange: (value: string) => void;
+  onPortChange: (value: string) => void;
+  onApplyCustom: () => void;
+}
+
+/**
+ * Pre-closure functional recovery 2 (§B2/§B3/§B4) - proxy mode selection,
+ * additive to the existing panel (never a broad redesign): a plain radio
+ * group (native keyboard operability - arrow keys move the selection,
+ * Tab reaches it as one stop) with the Custom host/port fields appearing
+ * only when Custom is selected, exactly mirroring the mockup's own
+ * "appear only when Custom is selected" requirement. Shared between the
+ * connected and disconnected panel states - proxy routing is not tied to
+ * connect/disconnect (see the main component's own doc comment on
+ * `proxySettings`).
+ */
+function OpenShiftProxyFieldset({
+  groupId,
+  hostId,
+  portId,
+  formMode,
+  proxyBusy,
+  proxyError,
+  customHostInput,
+  customPortInput,
+  onSelectMode,
+  onHostChange,
+  onPortChange,
+  onApplyCustom,
+}: OpenShiftProxyFieldsetProps) {
+  return (
+    <fieldset className={styles.proxyFieldset}>
+      <legend className={styles.sectionLabel}>Proxy</legend>
+      <div className={styles.radioGroup}>
+        <label className={styles.radioOption}>
+          <input
+            type="radio"
+            name={groupId}
+            value="SYSTEM"
+            checked={formMode === 'SYSTEM'}
+            disabled={proxyBusy}
+            onChange={() => onSelectMode('SYSTEM')}
+          />
+          Use system proxy
+        </label>
+        <p className={styles.hint}>
+          Honors this machine's HTTPS_PROXY/HTTP_PROXY/NO_PROXY environment variables. The default.
+        </p>
+
+        <label className={styles.radioOption}>
+          <input
+            type="radio"
+            name={groupId}
+            value="DIRECT"
+            checked={formMode === 'DIRECT'}
+            disabled={proxyBusy}
+            onChange={() => onSelectMode('DIRECT')}
+          />
+          Direct connection
+        </label>
+        <p className={styles.hint}>Never uses a proxy, even if one is configured on this machine.</p>
+
+        <label className={styles.radioOption}>
+          <input
+            type="radio"
+            name={groupId}
+            value="CUSTOM"
+            checked={formMode === 'CUSTOM'}
+            disabled={proxyBusy}
+            onChange={() => onSelectMode('CUSTOM')}
+          />
+          Custom proxy
+        </label>
+      </div>
+
+      {formMode === 'CUSTOM' ? (
+        <div className={styles.proxyCustomFields}>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor={hostId}>
+              Proxy server
+            </label>
+            <input
+              id={hostId}
+              className={styles.input}
+              type="text"
+              value={customHostInput}
+              disabled={proxyBusy}
+              placeholder="proxy.company.local"
+              onChange={(e) => onHostChange(e.target.value)}
+            />
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor={portId}>
+              Proxy port
+            </label>
+            <input
+              id={portId}
+              className={styles.input}
+              type="text"
+              inputMode="numeric"
+              value={customPortInput}
+              disabled={proxyBusy}
+              placeholder="8080"
+              onChange={(e) => onPortChange(e.target.value)}
+            />
+          </div>
+          <Button type="button" variant="secondary" disabled={proxyBusy} onClick={onApplyCustom}>
+            Apply proxy
+          </Button>
+        </div>
+      ) : null}
+
+      {proxyError ? (
+        <p className={styles.error} role="alert">
+          {proxyError}
+        </p>
+      ) : null}
+    </fieldset>
   );
 }
 

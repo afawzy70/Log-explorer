@@ -2,6 +2,7 @@ package com.logexplorer.source.loki;
 
 import com.logexplorer.config.LokiProperties;
 import com.logexplorer.core.tls.CompositeX509TrustManager;
+import com.logexplorer.source.openshift.OpenShiftProxyConfigService;
 import com.logexplorer.source.openshift.ProxyRoute;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
@@ -18,6 +19,7 @@ import java.util.Map;
 import java.util.Optional;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -51,18 +53,41 @@ import reactor.netty.transport.ProxyProvider;
  * baseUrl} per deployment (see {@link LokiProperties#getNamespace}'s own
  * "fixed per deployment" note), so there is nothing to re-resolve on a
  * later request.
+ *
+ * <p><b>Pre-closure functional recovery 2 (§B5/§B6) - one authoritative
+ * proxy configuration.</b> {@code proxyConfigService} is the exact same
+ * shared {@link OpenShiftProxyConfigService} bean {@link
+ * com.logexplorer.source.openshift.OpenShiftApiClient} is also injected
+ * with - a mode/host/port change made through the settings UI takes
+ * effect for OpenShift API calls and Loki calls at once, from the one
+ * place that value lives. There is no second, Loki-specific proxy
+ * configuration anywhere.
  */
 @Component
 public class LokiWebClientFactory {
 
+  private final OpenShiftProxyConfigService proxyConfigService;
   private final Map<String, String> environment;
 
-  public LokiWebClientFactory() {
-    this(System.getenv());
+  /** {@code @Autowired} required - see {@code OpenShiftApiClient}'s identical constructor doc comment for why. */
+  @Autowired
+  public LokiWebClientFactory(OpenShiftProxyConfigService proxyConfigService) {
+    this(proxyConfigService, System.getenv());
   }
 
-  /** Test seam: the proxy environment is injected rather than read globally. */
+  /** Test seam: real environment, SYSTEM-only proxy behavior via a fresh, never-mutated {@link OpenShiftProxyConfigService} - the pre-existing no-arg shape every test predating this recovery already uses. */
+  LokiWebClientFactory() {
+    this(new OpenShiftProxyConfigService(), System.getenv());
+  }
+
+  /** Test seam: SYSTEM-only proxy behavior via a fresh, never-mutated {@link OpenShiftProxyConfigService}. */
   LokiWebClientFactory(Map<String, String> environment) {
+    this(new OpenShiftProxyConfigService(), environment);
+  }
+
+  /** Test seam: both the proxy config and the environment are injected, for DIRECT/CUSTOM-mode tests. */
+  LokiWebClientFactory(OpenShiftProxyConfigService proxyConfigService, Map<String, String> environment) {
+    this.proxyConfigService = proxyConfigService;
     this.environment = environment;
   }
 
@@ -122,7 +147,7 @@ public class LokiWebClientFactory {
     }
     try {
       String host = new URI(baseUrl).getHost();
-      return host == null ? Optional.empty() : ProxyRoute.resolve(environment, host);
+      return host == null ? Optional.empty() : ProxyRoute.resolve(proxyConfigService.current(), environment, host);
     } catch (URISyntaxException e) {
       return Optional.empty();
     }

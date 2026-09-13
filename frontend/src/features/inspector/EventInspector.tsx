@@ -9,7 +9,6 @@ import { BusinessErrorSection } from './BusinessErrorSection';
 import { AllFieldsSection } from './AllFieldsSection';
 import { InspectorTabs } from './InspectorTabs';
 import type { InspectorTab } from './InspectorTabs';
-import { buildActorClientFields, buildBusinessErrorFields, buildRequestFlowIdentifiers } from './sections';
 import { MAX_PANEL_WIDTH, MIN_PANEL_WIDTH, useResizablePanel } from './useResizablePanel';
 import { wasConsumedByDismissableLayer } from '../../shared/ui/useDismissableLayer';
 import styles from './EventInspector.module.css';
@@ -43,43 +42,51 @@ export function EventInspector({ state }: { state: SearchState }) {
   }, [event]);
 
   /*
-   * Pre-closure functional recovery (§4): tabs are computed per event,
-   * hiding a tab entirely when its section has no data to show ("Do NOT
-   * display empty meaningless tabs" - mission §4/§8). Overview and
-   * All Fields are never meaningfully empty (buildOverviewFields always
-   * returns Message/Time/Source/Service/Level/Logger; canonical fields
-   * always exist), so they are always present. "Trace / Correlation" is
-   * deliberately unified into "Request Flow" rather than duplicated as a
-   * separate tab - this product's data model has no fields distinguishing
-   * the two (both are exactly journeyId/correlationId/traceId/spanId/
-   * eventId), and showing the identical five rows twice under two tab
-   * labels would itself be the kind of confusing, non-data-driven
-   * grouping this recovery mission exists to fix.
+   * Pre-closure functional recovery 2 (§A1-§A5) - named conflict per
+   * CLAUDE.md §5, superseding the first recovery's own decision below.
+   *
+   * SUPERSEDED (pre-closure functional recovery 1, §4/§8): "tabs are
+   * computed per event, hiding a tab entirely when its section has no
+   * data to show ('Do NOT display empty meaningless tabs')". The owner
+   * explicitly rejected this once it shipped: the ABSENCE of data is
+   * itself diagnostically important (was the field never a feature of
+   * this event category, or did this specific event simply fail to
+   * record it?) - a tab that silently disappears cannot answer that
+   * question, and worse, looks identical to "the UI hid something" from
+   * the investigator's seat. A user comparing two events (one complete,
+   * one sparse) needs the SAME five tabs in the SAME positions on both,
+   * so absence-of-a-tab is never mistaken for absence-of-a-feature.
+   *
+   * Current, applied decision: all five primary tabs (Overview, Actor &
+   * client, Request flow, Business / error, Technical / all fields) are
+   * ALWAYS present, for every event, with no conditional inclusion logic
+   * at all. Each section component already renders its own honest
+   * `EmptySectionNote` when its own field-builder returns nothing
+   * (`ActorClientSection`/`RequestFlowSection`/`BusinessErrorSection`,
+   * unchanged by this fix) - so this list is now a fixed, five-entry
+   * structural constant, and the "is this section empty" decision lives
+   * entirely inside each section itself, never here. "Trace /
+   * Correlation" remains unified into "Request Flow" (unchanged from the
+   * first recovery): this product's data model has no fields
+   * distinguishing the two.
    */
   const tabs: InspectorTab[] = useMemo(() => {
     if (!event) return [];
-    const list: InspectorTab[] = [
+    return [
       { id: 'overview', label: 'Overview', content: <OverviewSection event={event} sources={state.sources} /> },
-    ];
-    if (buildActorClientFields(event).length > 0) {
-      list.push({ id: 'actor', label: 'Actor & client', content: <ActorClientSection event={event} /> });
-    }
-    if (buildRequestFlowIdentifiers(event).length > 0) {
-      list.push({
+      { id: 'actor', label: 'Actor & client', content: <ActorClientSection event={event} /> },
+      {
         id: 'requestFlow',
         label: 'Request flow',
         content: <RequestFlowSection event={event} onOpenJourney={state.openJourney} />,
-      });
-    }
-    if (buildBusinessErrorFields(event).length > 0 || event.exception) {
-      list.push({ id: 'businessError', label: 'Business / error', content: <BusinessErrorSection event={event} /> });
-    }
-    list.push({
-      id: 'allFields',
-      label: 'Technical / all fields',
-      content: <AllFieldsSection event={event} sources={state.sources} />,
-    });
-    return list;
+      },
+      { id: 'businessError', label: 'Business / error', content: <BusinessErrorSection event={event} /> },
+      {
+        id: 'allFields',
+        label: 'Technical / all fields',
+        content: <AllFieldsSection event={event} sources={state.sources} />,
+      },
+    ];
   }, [event, state.sources, state.openJourney]);
 
   const [activeTabId, setActiveTabId] = useState('overview');
