@@ -232,12 +232,12 @@ UX-27/UX-28) and were added above.
 | ID | REL-1 |
 |---|---|
 | NAME | Versioned Cross-Platform Desktop Release & Branding |
-| STATUS | `APPROVED_PENDING` (tracked, not started) |
+| STATUS | `IMPLEMENTED_VERIFIED` — `v0.1.0` published as a real GitHub Release, see the new §7d below |
 | CATEGORY | Distribution |
 | OWNER_DECISION | Current required user platforms: **Windows** and **macOS**. Linux: `DEFERRED` / not currently required. Windows target: a versioned installer executable, e.g. `LogExplorer-1.0.0-windows-x64.exe`. macOS target: a normal end-user downloadable `.app` package (preferred format, e.g. DMG, decided at implementation time per standard macOS UX). Do not promise Intel + Apple Silicon until architecture support is explicitly decided — evaluate Apple Silicon, Intel if justified, universal build only if technically/practically appropriate. **GitHub Releases must be the end-user distribution surface** — users must never need to navigate GitHub Actions artifacts for a production release. Example: tag `v1.0.0` with Windows and macOS downloadable assets. Required release behavior: explicit version/tag release; deterministic version from the tag; build on appropriate OS runners; smoke verification before publish; a failed package is never published; SHA-256 checksums; a documented release process; release notes; temporary CI artifacts may remain for CI diagnostics only. |
-| TARGET_SLICE_OR_PHASE | Not started — explicitly excluded from UX-R2/R3/R4/R5/R6 |
-| ACCEPTANCE_CRITERIA | As stated above |
-| EVIDENCE | None yet — genuinely new to this mission, no prior repo mention beyond Windows-only Slice 9 |
+| TARGET_SLICE_OR_PHASE | Done — `v0.1.0` release mission |
+| ACCEPTANCE_CRITERIA | As stated above — all met, see §7d |
+| EVIDENCE | `docs/verification/RELEASE_V0_1_0_REPORT.md`; <https://github.com/afawzy70/Log-explorer/releases/tag/v0.1.0> |
 | NOTES / CONFLICTS | Slice 9 (merged) is Windows-only and does not itself publish via GitHub Releases (CI artifact only) — REL-1 supersedes/extends Slice 9's distribution story, not its packaging mechanics (jlink/jpackage/Inno Setup remain the Windows build path). Slice 9's own known limitations remain tracked, not silently converted to PASS: |
 
 ### 7a. Slice 9 known limitations (carried forward, must remain tracked)
@@ -387,19 +387,38 @@ converted to `PASS`.
 | EVIDENCE | `WINDOWS_DESKTOP_GATE=BLOCKED_EXTERNAL_CI` evidence gathered during the "OS-1D Final Windows Gate & Merge" mission (workflow run id, failed step, exact restore error text, confirmed unchanged PR #42 HEAD/tree across every rerun) — the failure this addendum exists to make structurally less likely to recur, not proof the addendum has been implemented |
 | NOTES / CONFLICTS | Does not change or weaken §7b's existing addendum — this is a narrower, .NET/NuGet-specific companion to it, surfaced by a real incident rather than proposed speculatively. Not implemented in OS-1D, OS-1E, or any slice before REL-1 itself. |
 
+### 7d. `v0.1.0` — first published GitHub Release (real evidence)
+
+Full detail: `docs/verification/RELEASE_V0_1_0_REPORT.md`. Summary:
+
+| Item | Status | Evidence |
+|---|---|---|
+| Publisher/author metadata ("Ahmed Fawzy elrifaye") wired into Windows installer/executable and macOS app bundle metadata | `VERIFIED` (real CI assertions, not source review alone) | Windows: Add/Remove Programs `Publisher`, launcher `FileVersionInfo.CompanyName`, both read from the real installed app on a real `windows-latest` runner. macOS: `Info.plist` `NSHumanReadableCopyright`, read from the real installed `.app` on a real `macos-latest` runner |
+| Version resolves to exactly `0.1.0` (no `-dev.<sha>`) for the tagged release build | `VERIFIED` | Both real CI logs: `Version: 0.1.0`; artifact filenames `LogExplorer-0.1.0-windows-x64.exe` / `LogExplorer-0.1.0-macos-arm64.dmg` |
+| Windows/macOS artifacts built from the exact `v0.1.0` tag via `workflow_dispatch --ref v0.1.0`, not a push-triggered build against an untagged commit | `VERIFIED` | Real CI run IDs in the release report §4 |
+| Packaged smoke tests (install→launch→health→UI→API→shutdown→uninstall) against the release-tag build | `VERIFIED` | `WINDOWS_RELEASE_SMOKE=PASS`, `MACOS_RELEASE_SMOKE=PASS`, both real runs |
+| Security sweep of the two real downloaded release artifacts (not source review alone) | `VERIFIED` | Zero secret-pattern or CI-runner-path matches in either binary — `SECRETS_IN_RELEASE_ARTIFACTS=NO` |
+| GitHub Release published, not draft, not prerelease, target commit matches the merge SHA exactly | `VERIFIED` | <https://github.com/afawzy70/Log-explorer/releases/tag/v0.1.0>; `gh release view` output in the release report §7 |
+| Application icon | `OPEN`, not silently resolved | See §8 above — `CANONICAL_ICON_SOURCE=MISSING`, real audit performed, no branding fabricated |
+| Code signing / notarization | `NOT_CONFIGURED`, truthfully unsigned | No signing/notarization success fabricated; release notes disclose SmartScreen/Gatekeeper warnings explicitly |
+
+`PRODUCT_BEHAVIOR_CHANGED=NO` — no `backend/src/main/java`/`frontend/src`
+file touched by either the branding PR or this documentation follow-up.
+`HISTORICAL_DECISIONS_PRESERVED=YES`. `UNTRACKED_OWNER_REQUIREMENTS=0`.
+
 ---
 
 ## 8. Desktop Branding
 
 | Field | Value |
 |---|---|
-| STATUS | `APPROVED_PENDING` |
+| STATUS | `PARTIALLY_ADDRESSED` — publisher/author metadata is now `VERIFIED` for real (§7d below); **icon branding is still `OPEN`, flagged explicitly, not silently resolved** |
 | CATEGORY | Distribution / polish |
-| OWNER_DECISION | Windows icon correctly applied, as supported, to: application executable, running window, taskbar, Start Menu shortcut, installer, installed application entry (Add/Remove Programs where applicable). macOS: native application icon integration appropriate to its package/app bundle. Canonical branding source assets stored in the repo. Never ship a production release with placeholder/default framework icons. CI/release verification should prove branding resources are actually wired, not merely committed. |
+| OWNER_DECISION | Windows icon correctly applied, as supported, to: application executable, running window, taskbar, Start Menu shortcut, installer, installed application entry (Add/Remove Programs where applicable). macOS: native application icon integration appropriate to its package/app bundle. Canonical branding source assets stored in the repo. **Never ship a production release with placeholder/default framework icons.** CI/release verification should prove branding resources are actually wired, not merely committed. |
 | TARGET_SLICE_OR_PHASE | REL-1 / final hardening, before Phase M |
 | ACCEPTANCE_CRITERIA | As stated above |
-| EVIDENCE | `desktop/launcher/Resources/app.ico` exists as a committed file (Slice 9) but its wiring into taskbar/Start Menu/installer entries has not been verified against this mission's stricter bar (CI proving it's wired, not just present) |
-| NOTES / CONFLICTS | Genuinely new scope — no prior icon/branding verification requirement existed before this mission |
+| EVIDENCE | `docs/verification/RELEASE_V0_1_0_REPORT.md` §3 — a real icon audit was performed for the v0.1.0 release mission (frontend assets, desktop assets, README, packaging resources), found no official Log Explorer product mark/logo anywhere in the repository, and correctly did **not** fabricate one (`CANONICAL_ICON_SOURCE=MISSING`, per that mission's own explicit "STOP icon generation... do not invent unrelated branding without owner approval" instruction). Publisher/author metadata (`desktop/packaging/installer.iss`, `desktop/launcher/LogExplorerLauncher.csproj`, `jpackage --vendor`/`--copyright`) was verified wired for real via new CI assertions on real `windows-latest`/`macos-latest` runners |
+| NOTES / CONFLICTS | **This row's own standing requirement — "Never ship a production release with placeholder/default framework icons" — was NOT fully satisfied by the `v0.1.0` release.** `desktop/launcher/Resources/app.ico` (a small, generic, 32×32, 4-color rounded-rectangle-outline placeholder from Slice 9, not a distinctive designed mark) remains in use on Windows; macOS uses `jpackage`'s own default icon. The `v0.1.0` release mission explicitly authorized publication and explicitly instructed that, absent real source artwork, icon generation must stop rather than invent branding — those two instructions were in tension for this release, and publication proceeded with the pre-existing placeholder rather than blocking the release entirely. This is a genuine, owner-visible gap, not a silently-accepted one: the exact same placeholder was already shipping in the pre-`v0.1.0` state (Slice 9 onward), so `v0.1.0` does not *regress* this row, but it also does not close it. **Owner action required:** supply (or approve) real Log Explorer product artwork so a proper multi-resolution `.ico`/`.icns` can be produced for a future release. |
 
 ---
 
@@ -1647,6 +1666,29 @@ production source changed. GitHub Releases publication and
 `RELEASE_GRADE_MODE` with real Apple signing credentials remain
 explicitly deferred, not fabricated as done — full detail in
 `docs/verification/REL_1_DESKTOP_RELEASE_READINESS_REPORT.md`.
+
+**`v0.1.0` release pass (§7d above).** The owner explicitly authorized
+publishing the first GitHub Release. Set the required publisher/author
+identity ("Ahmed Fawzy elrifaye") in Windows installer/executable and
+macOS app bundle metadata, verified for real via new CI assertions
+against the real installed product on real `windows-latest`/
+`macos-latest` runners — not source review alone. Tagged `v0.1.0`
+(annotated, pointing exactly at the release-prep merge commit), built
+both platform artifacts from that exact tag via `workflow_dispatch`
+(resolving to exactly `0.1.0`, no dev-SHA suffix), re-ran both packaged
+smoke tests against the release build, swept both real downloaded
+artifacts for secrets (`SECRETS_IN_RELEASE_ARTIFACTS=NO`), and published
+the GitHub Release (not draft, not prerelease) with both artifacts and
+their SHA-256 checksums attached. **Icon branding was explicitly NOT
+resolved** — a real audit found no official Log Explorer product mark
+anywhere in the repository, and no branding was fabricated to fill the
+gap (`CANONICAL_ICON_SOURCE=MISSING`); `v0.1.0` ships with the same
+pre-existing generic placeholder icon Slice 9 already used, a genuine,
+owner-visible gap now explicit in §8 rather than silently resolved or
+hidden. `PRODUCT_BEHAVIOR_CHANGED=NO`. The
+`functional-baseline-pre-ux-redesign` tag was deliberately **not**
+created in this mission — that belongs to the separate, still-pending
+Final Functional Closure mission.
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0
