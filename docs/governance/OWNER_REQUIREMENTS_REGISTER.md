@@ -922,6 +922,85 @@ closes every credential-independent prerequisite for the real-Sandbox
 validation; only the credential itself remains outstanding.
 `UNTRACKED_OWNER_REQUIREMENTS=0`.
 
+### 12o.2 Real Red Hat Developer Sandbox validation — completed
+
+A follow-up mission supplied a fresh, never-previously-displayed
+credential via the sanctioned `OPENSHIFT_API_SERVER`/`OPENSHIFT_TOKEN`
+environment variables. The credential was never printed or persisted
+(verified: presence-only `[ -n ... ]` checks; the token appears in no
+committed file, no screenshot, no application log, no test artifact —
+full grep-based audit in
+`docs/verification/OS_1F_OPENSHIFT_PROFESSIONAL_UX_REPORT.md` §8.3).
+`oc new-project` confirmed `Forbidden` under this Sandbox's policy, so
+the mission's own pre-created-namespace fallback applied:
+`ahmedelrifaye70-dev` (the larger-quota of the two pre-provisioned
+projects; `ahmedelrifaye70-aece7-claw` was deliberately avoided — it
+already hosts unrelated `claw`/`claw-proxy` infrastructure presumed to
+belong to this execution environment itself).
+
+**Real-Sandbox-only defects found and fixed (test infrastructure, not
+product code — classified `HARDENING`):** (1) at the Sandbox's real
+`cpu: 15m` request, JVM startup took ~58s under real CFS throttling,
+but the original `livenessProbe` began killing the container around
+t=55s, causing `CrashLoopBackOff` — fixed with a `startupProbe`
+(`failureThreshold: 30`/`periodSeconds: 5`, 150s allowance) absorbing
+slow, throttled startup before liveness/readiness begin counting,
+applied to both `deployment-template.yaml` and
+`edge-with-sidecar-template.yaml`; (2) the `metrics-sidecar` container
+(running the same full Spring Boot jar) OOMKilled at its original
+`96Mi` limit — fixed by raising it to match the main container's own
+already-reliable sizing (`160Mi`). Neither finding touches
+`backend/`/`frontend/` product code.
+
+**Mid-flight, a separate mission required renaming the entire testbed
+away from banking-flavored naming** (`gateway-service` →
+`logexp-test-edge`, etc. — full ten-service mapping in
+`testbed/openshift/README.md`) before real validation evidence was
+captured, to remove any appearance of bank-specific branding from test
+infrastructure per `CLAUDE.md` §1's "neutral identity only" rule,
+applied here by extension to the testbed. All ten OpenShift resource
+identities (Deployment/Service/Route names, `app` labels/selectors,
+`SERVICE_NAME` env values, and hence every generated log line's
+`application` field) now use one single, consistent
+`logexp-test-<noun>` scheme. The five canonical masked MDC field NAMES
+(`cif`/`UserName`/`CustomerId`/`deviceId`/`deviceIp`, `CLAUDE.md` §2
+rule 1) were deliberately left unchanged — they are the real product's
+own masking vocabulary, not testbed-authored banking flavor, and
+renaming them would defeat the testbed's actual masking-verification
+purpose. Verified via exhaustive grep (zero banking terms remain
+outside explanatory comments) and a local smoke test before
+redeploying to the real Sandbox. `BANKING_TERMS_IN_TESTBED=0`,
+`GENERIC_TEST_NAMES_ONLY=YES`, `PRODUCT_CODE_CHANGED=NO`,
+`TESTBED_CAPABILITY_PRESERVED=YES`, `CREDENTIALS_CHANGED=NO`.
+
+**Real validation results** (full evidence:
+`docs/verification/OS_1F_REAL_OPENSHIFT_EVIDENCE/`, screenshots
+A–V; command output cited in the verification report §8):
+
+| Item | Result |
+|---|---|
+| Real Sandbox connection | `PASS` — real server/user/TLS/project-count shown, no token in DOM |
+| Real discovery (project/workload/pod/container, multi-replica, multi-container) | `PASS` — `logexp-test-edge` correctly shows 2 pods × 2 containers (`app`, `metrics-sidecar`) |
+| Real search (unscoped, scoped, severity-filtered) | `PASS` |
+| Real context / "Show surrounding logs" | `PASS` — ±30s window, root event highlighted, no cross-workload leakage |
+| Real cross-service correlation | `PASS` — one journeyId search across All workloads returned exactly 6 events, one from each of the 6 chained services (edge→profile→catalog→orders→message→activity), correct newest-first ordering |
+| Real Live — single pod/container | `PASS` — real events streamed, Stop works, confirmed no reconnect after Stop |
+| Real Live — multi-replica workload | `PASS` |
+| Real Live — All Workloads (bounded) | `PASS` — all 10 services interleaved in one stream, no truncation |
+| Real Live target-snapshot immutability | `PASS` — a running Live session on `logexp-test-orders` did **not** silently attach the new pods produced by `rolling-update-demo.sh`; it honestly reported both original targets `LIVE_TARGET_STOPPED` (real 404, pod no longer exists) rather than fabricating continued success; a fresh Stop→Live restart correctly resolved the new post-rollout pods |
+| Partial/failure truthfulness — stale/deleted target | `PASS` — same rollout evidence above |
+| Partial/failure truthfulness — one target down during multi-target Live | `PASS` — deleting one of `logexp-test-edge`'s 2 pods (self-healing Deployment) produced an honest `LIVE (2/4 active)` badge, naming both affected containers, while the surviving pod's events kept streaming |
+| Rolling update (`payment-service`→`logexp-test-orders`, v1→v2) | `PASS` — real `oc rollout status` completed, new pod names confirmed distinct from old |
+| Token absence (repo/screenshots/app logs/browser storage/test artifacts) | `PASS` — full grep audit, zero matches; browser storage never persisted (ephemeral Playwright contexts, no profile reuse) |
+
+`REAL_OPENSHIFT_1F=PASS` (supersedes the `BLOCKED_CREDENTIALS` status
+recorded in §12o.1, once credentials became available). No OS-1A
+through OS-1E backend semantic was touched to obtain this result — the
+same byte-for-byte-unchanged claim from the original OS-1F pass (§12o)
+still holds; this subsection records real-cluster confirmation of
+already-implemented behavior, not new implementation.
+`UNTRACKED_OWNER_REQUIREMENTS=0`.
+
 ---
 
 ## 13. Out of Current Scope
@@ -1445,11 +1524,29 @@ selected, reaching the backend only as an opaque, uncaught
 visible hint, no backend semantic touched. All evidence in
 `docs/verification/OS_1F_EVIDENCE/` is explicitly, honestly labelled
 MOCKED (Playwright route interception) rather than presented as real-
-cluster evidence — `REAL_OPENSHIFT_1F=BLOCKED_CREDENTIALS`, consistent
-with every prior OS-1x slice; this pass neither touched nor could convert
-that status. `openshift-loki` untouched, not removed.
-`TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`, untouched. `REL_1`
-(§7, §7b, §7c) remains confirmed `APPROVED_PENDING`, untouched.
+cluster evidence — at the time of that pass, `REAL_OPENSHIFT_1F` was
+`BLOCKED_CREDENTIALS`, consistent with every prior OS-1x slice; that
+pass neither touched nor could convert that status. `openshift-loki`
+untouched, not removed. `TEST-INFRA-1` remains
+`APPROVED_PENDING_HARDENING`, untouched. `REL_1` (§7, §7b, §7c) remains
+confirmed `APPROVED_PENDING`, untouched.
+
+**OS-1F real-Sandbox validation pass (§12o.2 above).** A fresh
+credential was supplied; connection, discovery, search, context,
+cross-service correlation, Live (single pod, multi-replica, and All
+Workloads), Live target-snapshot immutability under a real rolling
+update, and two partial/failure-truthfulness scenarios were all
+verified for real against the Red Hat Developer Sandbox — full evidence
+in `docs/verification/OS_1F_REAL_OPENSHIFT_EVIDENCE/`.
+`REAL_OPENSHIFT_1F=PASS`, superseding the `BLOCKED_CREDENTIALS` status
+above now that credentials exist; no OS-1A..1E backend semantic was
+touched to obtain it. A separate mission renamed the testbed away from
+banking-flavored naming to a generic `logexp-test-<noun>` scheme
+(`BANKING_TERMS_IN_TESTBED=0`, `PRODUCT_CODE_CHANGED=NO`); two
+real-Sandbox-only testbed defects (probe timing under CPU throttling,
+sidecar memory sizing) were found and fixed, classified `HARDENING`
+to test infrastructure, not product code. Token never printed or
+persisted throughout — full audit in the verification report §8.3.
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0

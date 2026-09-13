@@ -236,11 +236,142 @@ of Sandbox quota is spent on it.
 | Testbed build/design (Spring Boot app, manifests, scripts) | `DONE` | Entirely credential-independent; see §8.1 |
 | Testbed log-format/parser compatibility | `VERIFIED` (local, no cluster) | See §8.1 |
 
-**Owner action required:** supply a fresh Sandbox credential (never one
-previously shown in this conversation or any screenshot/document) via
-`OPENSHIFT_LOGIN_COMMAND` or `OPENSHIFT_API_SERVER`/`OPENSHIFT_TOKEN`
-environment variables, per `testbed/openshift/README.md`'s own security
-section, to unblock the remainder of this checklist in a follow-up pass.
+**Owner action required (historical, now resolved — see §8.3):** supply
+a fresh Sandbox credential (never one previously shown in this
+conversation or any screenshot/document) via `OPENSHIFT_LOGIN_COMMAND`
+or `OPENSHIFT_API_SERVER`/`OPENSHIFT_TOKEN` environment variables, per
+`testbed/openshift/README.md`'s own security section, to unblock the
+remainder of this checklist in a follow-up pass.
+
+### 8.3 Real Red Hat Developer Sandbox validation — completed (follow-up pass)
+
+A fresh, never-previously-displayed credential was supplied via
+`OPENSHIFT_API_SERVER`/`OPENSHIFT_TOKEN`. Preflight confirmed presence
+without ever printing either value (`[ -n "${VAR:-}" ]` checks only).
+`oc new-project` returned `Error from server (Forbidden): You may not
+request a new project via this API.`, confirming this Sandbox's policy
+forbids new-project creation — the mission's own pre-created-namespace
+fallback applied. Two projects were pre-provisioned:
+`ahmedelrifaye70-aece7-claw` (default context; already hosts unrelated
+`claw`/`claw-proxy` Deployments, presumed to be this execution
+environment's own infrastructure — deliberately avoided) and
+`ahmedelrifaye70-dev` (chosen: `ResourceQuota compute-deploy` HARD
+`requests.cpu=3` / `requests.memory=30Gi`, comfortably above the
+testbed's total footprint).
+
+**Testbed rename (separate mission, completed first).** Before real
+validation evidence was captured, a follow-up mission required renaming
+the entire testbed away from banking-flavored service names
+(`gateway-service`, `payment-service`, etc.) to generic names, per
+`CLAUDE.md` §1's "neutral identity only" rule applied to test
+infrastructure. All ten services now use one consistent
+`logexp-test-<noun>` identity (Deployment/Service/Route name, `app`
+label/selector, `SERVICE_NAME` env var, and the generated
+`application` field in every log line) — full mapping in
+`testbed/openshift/README.md`. Business-flavored scenario names/messages
+were renamed identically (payment→order processing, customer→profile,
+account→catalog, transfer→workflow, beneficiary→directory,
+fraud→rules/policy, statement→report). The five canonical masked MDC
+field NAMES (`cif`/`UserName`/`CustomerId`/`deviceId`/`deviceIp`,
+`CLAUDE.md` §2 rule 1) were deliberately **not** renamed — they are the
+real product's own masking vocabulary, not testbed-authored banking
+flavor; renaming them would defeat the testbed's actual
+masking-verification purpose. Verified via exhaustive grep (zero
+banking terms remain outside explanatory comments) and a local jar
+smoke test before redeploying. `BANKING_TERMS_IN_TESTBED=0`,
+`GENERIC_TEST_NAMES_ONLY=YES`, `PRODUCT_CODE_CHANGED=NO`,
+`TESTBED_CAPABILITY_PRESERVED=YES`, `CREDENTIALS_CHANGED=NO`.
+
+**Two real-Sandbox-only defects found and fixed** (test infrastructure
+only — `backend/`/`frontend/` product code untouched; classified
+`HARDENING`):
+
+1. **Liveness probe killing a slow-starting pod.** At the Sandbox's real
+   `cpu: 15m` request, JVM/Spring Boot startup took ~58s under real CFS
+   throttling (`oc logs --previous`: "Started TestbedApplication in
+   58.102 seconds"), but the original `livenessProbe`
+   (`initialDelaySeconds: 15, periodSeconds: 20`) began killing the
+   container around t=55s — right before it would have become healthy —
+   causing `CrashLoopBackOff` (confirmed via `oc describe pod`). Fixed
+   by adding a `startupProbe` (`failureThreshold: 30`/`periodSeconds: 5`,
+   150s allowance) to both `deployment-template.yaml` and
+   `edge-with-sidecar-template.yaml`, deferring liveness/readiness
+   checking until the app is genuinely up — the standard Kubernetes
+   pattern for slow-starting JVM workloads.
+2. **Sidecar OOMKilled.** The `metrics-sidecar` container (running the
+   same full Spring Boot web app jar, not a lightweight process) had
+   only a `96Mi` memory limit — too tight to boot a full embedded-Tomcat
+   app (confirmed via `oc get pod ... -o jsonpath='...lastState'` →
+   `{"terminated":{"exitCode":137,"reason":"OOMKilled"}}`). Fixed by
+   raising it to `160Mi`, matching the main containers' own already-
+   reliable sizing.
+
+After both fixes, all 13 pods (10 Deployments, 3 with 2 replicas, plus
+the sidecar container) reached `Running` with 0 restarts.
+
+**Real validation results** (full evidence in
+`docs/verification/OS_1F_REAL_OPENSHIFT_EVIDENCE/`, screenshots A–V):
+
+| Item | Result | Evidence |
+|---|---|---|
+| Real Sandbox connection | `PASS` | `A`, `B` — real server/user/TLS/project-count, no token in DOM |
+| Real project selection | `PASS` | `C`, `D`/`E` |
+| Real discovery — workload/pod/container, multi-replica, multi-container | `PASS` | `F` — `logexp-test-edge` correctly resolves 2 pods × 2 containers (`app`, `metrics-sidecar`) |
+| Real search — unscoped (all workloads) | `PASS` | `G` |
+| Real search — scoped to one workload | `PASS` | `H` — `logexp-test-orders` only |
+| Real search — severity-filtered (re-search required after filter change, confirmed this app's own workflow) | `PASS` | `I` |
+| Real Inspector WHERE evidence | `PASS` | `J` — real Namespace/Pod/Container shown, real masking confirmed (`te***19`, `DE***24`, etc.) |
+| Real context / "Show surrounding logs" | `PASS` | `K` — ±30s window, root event highlighted, mixed severities, no cross-workload leakage |
+| Real cross-service correlation | `PASS` | `L` — one journeyId search across All workloads returned exactly 6 events, one from each of the 6 chained services (edge→profile→catalog→orders→message→activity), correct newest-first ordering |
+| Real Live — one pod/container | `PASS` | `M`/`N` — real events streamed; `O` — Stop works, confirmed no reconnect over a 6s window |
+| Real Live — one multi-replica workload | `PASS` | `Q` |
+| Real Live — All Workloads (bounded) | `PASS` | `V` — all 10 services interleaved in one stream, Live button not blocked by bounds, no truncation |
+| Real Live target-snapshot immutability | `PASS` | `R` — a running Live session on `logexp-test-orders` did **not** silently attach the new pods produced by a real `rolling-update-demo.sh` rollout; both original targets honestly reported `LIVE_TARGET_STOPPED` (real 404, "pod or container no longer exists") rather than fabricating continued success; `S` — a fresh Stop→Live restart correctly resolved the new post-rollout pods with no stale-pod references |
+| Partial/failure truthfulness — stale/deleted target | `PASS` | Same evidence as target-snapshot row (`R`) |
+| Partial/failure truthfulness — one target down during multi-target Live | `PASS` | `T`/`U` — deleting one of `logexp-test-edge`'s 2 self-healing pods produced an honest `LIVE (2/4 active)` badge naming both affected containers, while the surviving pod's events kept streaming (`Received: 32`) |
+| Rolling update (v1→v2) | `PASS` | `oc rollout status` real output: "deployment \"logexp-test-orders\" successfully rolled out"; new pod names (`...6f4cc7f4f7-*`) distinct from old (`...85ddbfc758-*`) |
+| Token absence — repo diff | `PASS` | grep across full `git diff`, zero matches |
+| Token absence — screenshots | `PASS` | grep across all PNGs in `OS_1F_REAL_OPENSHIFT_EVIDENCE/`, zero matches |
+| Token absence — application logs | `PASS` | grep across backend/frontend dev-server logs, zero matches |
+| Token absence — browser storage | `PASS` | each Playwright run used a fresh, non-persisted browser context (no profile reuse) — no storage was ever created to leak from |
+| Token absence — test artifacts/scripts | `PASS` | grep across all scratchpad validation scripts, zero matches |
+
+`REAL_OPENSHIFT_1F=PASS`. §8.2's table below is historical (recorded
+before credentials existed) and is retained for the audit trail, not
+rewritten.
+
+### 8.4 Performance/scale observations (real Sandbox, not a formal benchmark)
+
+Recorded honestly as informal observations from this validation session
+only — not a load test, and no existing bound was changed to make a
+number look better:
+
+- **Testbed footprint at time of observation:** 10 Deployments, 13 pods
+  (3 workloads at 2 replicas, one with an extra sidecar container = 14
+  containers total), all `Running`, 0 restarts after the probe/memory
+  fixes (one transient restart-free self-heal observed after a
+  deliberate test pod deletion, new replacement pod reached `Running`
+  within the `startupProbe`'s allowance).
+- **Search latency (subjective, real network round-trip to the
+  Sandbox):** unscoped ("All workloads") search and single-workload
+  scoped search both returned and rendered within roughly 1–2.5s of
+  clicking Search, including the real HTTPS round-trip to
+  `api.rm1.0a51.p1.openshiftapps.com`.
+- **Live startup latency:** first events appeared within the ~5–8s
+  observation window used for screenshots in every Live scenario run;
+  not measured to sub-second precision.
+- **Live event volume:** the busiest single observation (All Workloads,
+  §8.3 row `V`) received 96–97 events well within the "Received"/
+  "Visible" counters with no truncation or eviction message shown — far
+  below the 1,000/2,000-event caps `CLAUDE.md` §4 requires, so cap
+  behavior itself was not exercised by this pass.
+- **No cap or truncation behavior was encountered or artificially
+  triggered** in this pass; the existing 1,000-event Live display cap
+  and 2,000-event retention cap remain unchanged and unverified against
+  the real Sandbox in this pass specifically (previously verified
+  against the deterministic Fixture source — out of scope to re-verify
+  here without generating an artificial, wasteful burst against
+  Sandbox quota).
 
 ## 9. Evidence captured (`docs/verification/OS_1F_EVIDENCE/`)
 
@@ -265,6 +396,33 @@ already-tested surfaces was judged lower priority than covering the
 actually-new behavior (§4) within this pass's time budget. None of these
 areas regressed — their existing test coverage (component tests,
 `OS_1A`/legacy-slice E2E evidence) continues to pass unchanged (§10).
+Every one of these deferred surfaces is now covered by **real** (not
+mocked) evidence in the table below, captured in the §8.3 follow-up
+pass.
+
+### 9.1 Real evidence (`docs/verification/OS_1F_REAL_OPENSHIFT_EVIDENCE/`)
+
+| Letter | Description | File | Real or Mocked |
+|---|---|---|---|
+| A | Connecting state (real async gap) | `A-real-connecting-state.png` | **Real** |
+| B | Connected Settings (real server/user/TLS/project-count) | `B-real-connected-settings.png` | **Real** |
+| C | Real project selected | `C-real-project-selected.png` | **Real** |
+| D | ScopeTrail (superseded by E, kept for history) | `D-real-scope-trail.png` | **Real** |
+| E | ScopeTrail, project only | `E-real-scope-trail-project-only.png` | **Real** |
+| F | Workload → pod → container narrowing (`logexp-test-edge`, 2 pods × 2 containers) | `F-real-workload-pod-container-narrowing.png` | **Real** |
+| G | Search across all workloads | `G-real-search-all-workloads.png` | **Real** |
+| H | Scoped search (`logexp-test-orders` only) | `H-real-scoped-search-orders-only.png` | **Real** |
+| I | Errors-only filtered search | `I-real-error-filtered-search.png` | **Real** |
+| J | Inspector WHERE evidence, real masking | `J-real-inspector-where-evidence.png` | **Real** |
+| K | Context / surrounding logs | `K-real-context-surrounding-logs.png` | **Real** |
+| L | Cross-service journey correlation (6/6 services) | `L-real-cross-service-journey-correlation.png` | **Real** |
+| M/N | Live connecting / healthy, single pod | `M-real-live-connecting-single-pod.png`, `N-real-live-healthy-single-pod.png` | **Real** |
+| O | Live stopped, no reconnect | `O-real-live-stopped-no-reconnect.png` | **Real** |
+| P/Q | Live connecting / healthy, multi-replica workload | `P-real-live-connecting-multireplica.png`, `Q-real-live-healthy-multireplica-before-rollout.png` | **Real** |
+| R | Live target-snapshot immutability — stale targets honestly reported after rollout | `R-real-live-snapshot-still-old-pods-after-rollout.png` | **Real** |
+| S | Fresh Live restart resolving new post-rollout targets | `S-real-live-fresh-restart-new-targets.png` | **Real** |
+| T/U | Partial failure — multi-target Live before/after one pod deleted (`LIVE (2/4 active)`) | `T-real-live-multitarget-before-partial-kill.png`, `U-real-live-partial-failure-one-target-down.png` | **Real** |
+| V | Live across All Workloads, all 10 services | `V-real-live-all-workloads.png` | **Real** |
 
 ## 10. Validation
 
@@ -293,12 +451,15 @@ areas regressed — their existing test coverage (component tests,
 
 ## 12. Documentation
 
-- `docs/governance/OWNER_REQUIREMENTS_REGISTER.md` — new §12o (`OS-1F-1` through `OS-1F-7`), closing §14 narrative paragraph.
+- `docs/governance/OWNER_REQUIREMENTS_REGISTER.md` — new §12o (`OS-1F-1` through `OS-1F-7`), new §12o.2 (real-Sandbox validation results), updated closing §14 narrative paragraph.
 - `docs/architecture/OPENSHIFT_DIRECT_LOGGING_ARCHITECTURE_ASSESSMENT.md` — new `[EVIDENCE, established by OS-1F]` note.
-- This report.
+- This report — new §8.3 (real-Sandbox validation), §9.1 (real evidence table).
+- `testbed/openshift/README.md` — updated for the generic `logexp-test-<noun>` rename.
 
 `UNTRACKED_OWNER_REQUIREMENTS=0`. No OS-1A..1E historical finding was
-rewritten; §12a through §12n are untouched.
+rewritten; §12a through §12n are untouched. §12o.1's historical
+`BLOCKED_CREDENTIALS` narrative is preserved as-is (accurate for its
+point in time); §12o.2 records the later, real result.
 
 ## 13. Scope boundary (explicitly not touched)
 
