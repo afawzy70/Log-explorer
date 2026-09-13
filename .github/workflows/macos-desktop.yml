@@ -1,0 +1,95 @@
+name: macOS Desktop
+
+# REL-1: real evidence for the macOS standalone desktop deliverable, on a
+# real macOS runner - not "jpackage produced a file" taken on faith.
+# Mirrors windows-desktop.yml's own structure exactly: this workflow
+# ORCHESTRATES ONLY (REL-1 §13 - "CI should orchestrate only") - the
+# actual build (frontend, backend jar, jlink runtime, launcher-macos
+# build, jpackage .app/.dmg) is scripts/build-desktop-macos.sh, the SAME
+# repository-owned script a developer runs locally
+# (docs/development/BUILD_DESKTOP.md). This job runs in DEV_UNSIGNED_MODE
+# (no Apple signing credentials exist in this repository's CI, and none
+# are fabricated) and runs the real install -> launch -> health -> UI ->
+# API -> shutdown -> uninstall smoke test
+# (desktop/packaging-macos/packaged-smoke-test.sh) against the genuinely
+# built, genuinely launched product.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'backend/**'
+      - 'frontend/**'
+      - 'scripts/build-desktop-macos.sh'
+      - 'VERSION'
+      - '.github/workflows/macos-desktop.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'backend/**'
+      - 'frontend/**'
+      - 'scripts/build-desktop-macos.sh'
+      - 'VERSION'
+      - '.github/workflows/macos-desktop.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: macos-desktop-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  macos-desktop:
+    name: Build, package, and smoke-test the macOS desktop app
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: |
+            backend/pom.xml
+            desktop/launcher-macos/pom.xml
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # The one and only build step - identical to what a developer runs
+      # locally. --skip-preflight because this job has already
+      # provisioned exactly what the preflight checks (Java 21 and Maven
+      # via setup-java above, which also provisions mvn; Node via
+      # setup-node above; Xcode command-line tools ship on
+      # macos-latest runner images by default).
+      - name: Build the macOS desktop package (scripts/build-desktop-macos.sh)
+        run: ./scripts/build-desktop-macos.sh --mode dev --skip-preflight
+
+      - name: Packaged macOS smoke test (install -> launch -> health -> UI -> API -> shutdown -> uninstall)
+        run: |
+          dmg=$(find desktop/build-macos/dmg -maxdepth 1 -name '*.dmg' | head -n1)
+          ./desktop/packaging-macos/packaged-smoke-test.sh "$dmg"
+
+      - name: Upload DMG artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LogExplorer-macos-dmg
+          path: desktop/build-macos/dmg/*.dmg
+          retention-days: 14
+
+      - name: Upload backend log on failure (packaged smoke test diagnostics)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-log-on-failure-macos
+          path: '~/Library/Application Support/LogExplorer/logs/backend.log'
+          retention-days: 14
+          if-no-files-found: ignore
