@@ -64,6 +64,7 @@ function event(message: string, timestamp: string) {
     stream: null,
     namespace: null,
     pod: null,
+    contextTargetProof: null,
   };
 }
 

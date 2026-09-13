@@ -91,6 +91,17 @@ class EventFiltersTest {
   }
 
   @Test
+  void filtersByContainerNameOs1d() {
+    // OS-1D — same generic /context-only scope-hint pattern as containerId
+    // above, but for a source (OpenShift) with no short container-id
+    // concept of its own; only ever compared against event.containerName().
+    CanonicalLogEvent scoped = baseEvent().containerName("app").pod("payment-api-abc").build();
+    assertThat(EventFilters.matches(scoped, baseRequest().containerName("app").build())).isTrue();
+    assertThat(EventFilters.matches(scoped, baseRequest().containerName("sidecar").build())).isFalse();
+    assertThat(EventFilters.matches(scoped, baseRequest().build())).isTrue(); // absent -> no narrowing
+  }
+
+  @Test
   void filtersByDevicePlatformAndLanguage() {
     assertThat(EventFilters.matches(baseEvent().build(), baseRequest().devicePlatform("WEB").build())).isTrue();
     assertThat(EventFilters.matches(baseEvent().build(), baseRequest().devicePlatform("IOS").build())).isFalse();

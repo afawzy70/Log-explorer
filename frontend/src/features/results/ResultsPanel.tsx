@@ -127,6 +127,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
             source={state.selectedSource?.displayName ?? null}
             counts={counts}
             gaps={gaps}
+            rootIdentity={state.contextRootIdentity}
           />
         ) : null}
         <RefreshRow state={state} />
@@ -170,6 +171,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
           source={state.selectedSource?.displayName ?? null}
           counts={counts}
           gaps={gaps}
+          rootIdentity={state.contextRootIdentity}
         />
       ) : null}
       <div className={styles.summaryRow}>

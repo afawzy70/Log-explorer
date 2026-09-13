@@ -39,6 +39,7 @@ export function sparseEvent(overrides: Partial<LogEvent> = {}): LogEvent {
     stream: null,
     namespace: null,
     pod: null,
+    contextTargetProof: null,
     ...overrides,
   };
 }
@@ -88,6 +89,7 @@ export function fullEvent(overrides: Partial<LogEvent> = {}): LogEvent {
     stream: 'stdout',
     namespace: null,
     pod: null,
+    contextTargetProof: null,
     ...overrides,
   });
 }

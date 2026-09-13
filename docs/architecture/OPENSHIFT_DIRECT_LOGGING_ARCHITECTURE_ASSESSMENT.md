@@ -480,6 +480,17 @@ aggregated provider (§13): cross-service journey reconstruction is
 exactly what an index is for. Direct mode should present journey results
 as "within this project and window" and say so.
 
+**[EVIDENCE, established by OS-1D]** The bounded fan-out post-filter
+described above is implemented exactly as proposed, with one correction:
+it required **zero new fan-out logic** — `DirectPodLogProvider` already
+threads every `SearchRequest` filter field (`traceId`/`correlationId`/
+`journeyId`/`eventId` included) through the shared, source-agnostic
+`EventFilters.matches` call every ordinary search already uses, so
+correlation/trace/journey search "just worked" once tested. Scope is
+exactly "the current OS-1B resolved pod set," never cluster-wide, never
+all-namespace, matching this section's own proposal precisely. See
+`OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §2/§6.
+
 ---
 
 ## 12. Context (±30s)
@@ -498,6 +509,81 @@ must reuse it rather than implying completeness.
 **[PROPOSED]** The `contextView` capability should be reported per
 provider, honestly — a lesson already learned in UX-R4, where all three
 sources declared `contextView=false` while the feature worked.
+
+**[EVIDENCE, established by OS-1D]** Implemented at exactly pod/container
+scope, as proposed, via a target-resolution override in
+`DirectPodLogProvider#resolveTargetPlan` rather than "workload scope
+within the pod cap" — the mission's own explicit decision was "same pod/
+container by default, do not broaden scope implicitly" (mission §8),
+which is a narrower, more conservative choice than this section's own
+earlier proposal; the workload-scope option remains available as a future
+opt-in broaden action, not implemented here. Pod churn during the window
+is honest by construction: a target that has disappeared is queried for
+real (never assumed absent from a local cache) and a genuine 404 becomes
+an explicit failure, never a silently "complete" empty context — see
+`OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §4/§6. `contextView` is
+now correctly `true` for OpenShift, reported honestly only after real
+end-to-end verification (§8/§10 of that report) — the exact discipline
+this paragraph itself calls for.
+
+**[EVIDENCE, established by the OS-1D review recovery — CORRECTS the
+paragraph immediately above]** "A target that has disappeared is queried
+for real" was true but incomplete: the first implementation let the
+*request itself* decide whether a target was queried at all, using
+nothing but the client-supplied `pod`/`containerName` fields once the
+target left the local scope cache — a real server-side authorization gap,
+not merely an incompleteness. A crafted request could name any pod in the
+namespace (a Job pod, a standalone pod, an operator pod) and reach the
+real pod-log API for it. Corrected: a target absent from current scope
+now requires a server-issued, HMAC-signed historical proof
+(`core.search.ContextTargetProofCodec`) binding source, connection
+generation, namespace, pod, and container — before the cluster is ever
+called. See `OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §14 for the
+full account. The "pod churn is honest by construction" and "`contextView`
+is correctly `true`" claims above remain accurate; only the authorization
+mechanism underneath the disappeared-pod path was corrected.
+
+**[EVIDENCE, established by the OS-1D final review recovery — CORRECTS
+the paragraph immediately above]** The proof-verification gate this
+paragraph describes checked the proof's connection-generation field
+against a *live* `session.generation()` read rather than the same
+immutable operation snapshot (`generation`/`server`/`token`/`caPath`/
+`scope`, captured once at the top of `DirectPodLogProvider#searchWithOutcome`)
+that governs the rest of the operation — a time-of-check/time-of-use gap,
+not a reopening of the authorization rules themselves (source/namespace/
+pod/container binding, the HMAC envelope, and the current-scope-vs-proof
+decision tree all remain exactly as described above). Corrected: the
+already-captured `generation` is now threaded through
+`resolveTargetPlan`/`authorizeNarrowContextTarget` explicitly; no
+`session.generation()` call remains anywhere in the authorization path.
+Proven with genuine interleaving — an actual reconnect to an independent
+second mock cluster, landing after an operation's own snapshot was
+captured, never causes that operation to touch the new connection. See
+`OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §15.
+
+**[EVIDENCE, established by the OS-1D final snapshot atomicity recovery —
+CORRECTS the paragraph immediately above]** "The same immutable operation
+snapshot... captured once" was not yet accurate: `generation`/`server`/
+`token`/`caPath`/`scope` were each obtained through their own independent
+`OpenShiftSession` getter call — five (more, counting the project-
+selection check) separate atomic reads of the session's internal state,
+not one. A reconnect landing between any two of those reads could still
+produce an operation whose `generation` belonged to one connection and
+whose `server`/`token` belonged to another. Corrected with a new
+`OpenShiftSession#operationSnapshot()`, which reads the session's
+internal `AtomicReference` exactly once and projects every field from
+that single value into a new package-private `ConnectionOperationSnapshot`
+— the only way to obtain one at all, making "one atomic read per
+operation" structural rather than a discipline callers have to remember.
+Applied to every class in `source.openshift` making an authenticated
+cluster call from multiple session fields (`DirectPodLogProvider`,
+`OpenShiftScopeService`, `OpenShiftConnectionService` — confirmed the
+complete set via search). See
+`OS_1D_OPENSHIFT_CONTEXT_CORRELATION_REPORT.md` §16 for the full account,
+including the audited table of remaining independent session reads that
+were deliberately left unchanged (the generation guard itself, single-
+expression CAS-guard reads, and the display-only health badge) and why
+each is safe.
 
 ---
 

@@ -48,6 +48,7 @@ function baseEvent() {
     stream: null,
     namespace: null,
     pod: null,
+    contextTargetProof: null,
   };
 }
 

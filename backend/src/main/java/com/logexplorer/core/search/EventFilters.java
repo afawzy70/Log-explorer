@@ -125,6 +125,12 @@ public final class EventFilters {
     if (!fieldMatches(request.pod(), event.pod())) {
       return false;
     }
+    // OS-1D — generic container-name scope hint, parallel to containerId
+    // above; only ever comes from the /context endpoint for a source (like
+    // OpenShift) with no short container-id concept of its own.
+    if (!fieldMatches(request.containerName(), event.containerName())) {
+      return false;
+    }
     // Source-side filtering against raw sensitive values is exactly the
     // allowance IMPLEMENTATION_PLAN.md Phase B item 8 describes: adapters
     // may hold raw values for this purpose; they never leave via search().

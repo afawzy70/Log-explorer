@@ -8,6 +8,7 @@ import com.logexplorer.config.DirectPodLogProperties;
 import com.logexplorer.core.model.RawToken;
 import com.logexplorer.core.model.SourceHealth;
 import com.logexplorer.core.parse.LogLineParser;
+import com.logexplorer.core.search.ContextTargetProofCodec;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
@@ -170,8 +171,8 @@ class OpenShiftSecurityBoundariesTest {
   private static OpenShiftLogSource logSource(OpenShiftSession session) {
     OpenShiftApiClient client = new OpenShiftApiClient(Map.of());
     DirectPodLogProperties properties = new DirectPodLogProperties();
-    DirectPodLogProvider provider =
-        new DirectPodLogProvider(client, session, new LogLineParser(new ObjectMapper()), properties);
+    DirectPodLogProvider provider = new DirectPodLogProvider(
+        client, session, new LogLineParser(new ObjectMapper()), properties, new ContextTargetProofCodec(new ObjectMapper()));
     return new OpenShiftLogSource(session, provider);
   }
 
@@ -184,8 +185,18 @@ class OpenShiftSecurityBoundariesTest {
    * own javadoc for why that flag's real-world meaning ("bounded direct
    * search over resolved pods," never "indexed history") still satisfies
    * this test's original intent: never advertise a capability this source
-   * cannot actually deliver. Every other capability is unchanged and still
-   * correctly {@code false} — OS-1D/1E territory.
+   * cannot actually deliver.
+   *
+   * <p><b>CORRECTED (OS-1D)</b> — {@code contextView} was {@code false}
+   * here because "Show surrounding logs" had not been implemented for
+   * OpenShift yet. OS-1D implements it (narrowed to the exact (pod,
+   * container) the selected event came from — see {@code
+   * DirectPodLogProvider#resolveTargetPlan}'s own javadoc), reusing the
+   * same generic {@code /api/v1/logs/context} endpoint every other source
+   * already uses, tested end to end. {@code contextView=true} is now the
+   * truthful value. {@code liveTail}/{@code rawLogQL}/{@code
+   * serviceDiscovery}/{@code composeProjectScoping} remain unchanged and
+   * still correctly {@code false} — OS-1E/Loki/Docker-shaped territory.
    */
   @Test
   void openShiftAdvertisesExactlyTheCapabilitiesItCanDeliver() {
@@ -194,7 +205,7 @@ class OpenShiftSecurityBoundariesTest {
 
     assertThat(capabilities.historicalSearch()).isTrue();
     assertThat(capabilities.liveTail()).isFalse();
-    assertThat(capabilities.contextView()).isFalse();
+    assertThat(capabilities.contextView()).isTrue();
     assertThat(capabilities.rawLogQL()).isFalse();
     assertThat(capabilities.serviceDiscovery()).isFalse();
     assertThat(capabilities.composeProjectScoping()).isFalse();

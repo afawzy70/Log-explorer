@@ -203,6 +203,7 @@ describe('persistence: nothing ever written to localStorage/sessionStorage/the U
               devicePlatformType: null, language: null, serverIp: null, serverHost: null, unknownTopLevelFields: {},
               unknownMdcFields: {}, malformed: false, rawLine: null, sourceId: null, composeProject: null,
               composeService: null, containerId: null, containerName: null, stream: null, namespace: null, pod: null,
+              contextTargetProof: null,
             }],
             counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false },
             nextCursor: null,

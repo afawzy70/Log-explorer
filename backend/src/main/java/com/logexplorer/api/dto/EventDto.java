@@ -49,6 +49,16 @@ public record EventDto(
     String containerName,
     String stream,
     String namespace,
-    String pod
+    String pod,
+    /**
+     * OS-1D review recovery — an opaque, server-issued, HMAC-signed proof
+     * that this event's own (source, connection generation, namespace,
+     * pod, container) tuple was a real, legitimately-resolved search
+     * target. {@code null} for every source except OpenShift. The
+     * frontend treats this as an opaque string: never displayed, never
+     * persisted, never logged — echoed back verbatim only on a later
+     * "Show surrounding logs" call. See {@code core.search.ContextTargetProofCodec}.
+     */
+    String contextTargetProof
 ) {
 }

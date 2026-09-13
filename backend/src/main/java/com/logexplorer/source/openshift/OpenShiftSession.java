@@ -49,6 +49,16 @@ import org.springframework.stereotype.Component;
  * on {@link #disconnect} and {@link #markExpired}: once there is no live,
  * trusted connection, there is no current discovery mode to report either.
  *
+ * <h2>Atomic operation snapshot (OS-1D final review recovery)</h2>
+ *
+ * <p>{@link #operationSnapshot()} is the one atomic read every
+ * authenticated OpenShift operation must use to capture the state it
+ * will act on — never several independent getter calls stitched
+ * together, which a reconnect landing in between could turn into a
+ * hybrid of two different connections (generation from one, server/token
+ * from another). See {@link ConnectionOperationSnapshot}'s own javadoc
+ * for the full rationale.
+ *
  * <h2>Workload/pod/container scope (OS-1B)</h2>
  *
  * <p>{@link #scope()} carries everything below the selected project -
@@ -152,6 +162,30 @@ public class OpenShiftSession {
    */
   RawToken token() {
     return current.get().token();
+  }
+
+  /**
+   * OS-1D final snapshot atomicity recovery — the one atomic read every
+   * authenticated OpenShift operation (search, context-target
+   * authorization, workload/pod/container discovery, project refresh)
+   * must use instead of several independent getter calls. Reads {@link
+   * #current} exactly once and projects every connection-sensitive field
+   * from that SAME value into a {@link ConnectionOperationSnapshot} — so
+   * a reconnect landing between what would otherwise be two separate
+   * getter calls can never produce a hybrid pre-/post-reconnect operation
+   * state (generation from one connection paired with a server/token from
+   * another). This is the fix for the exact defect the individual getters
+   * above ({@link #generation()}, {@link #server()}, {@link #token()},
+   * {@link #certificateAuthorityPath()}, {@link #selectedProject()},
+   * {@link #scope()}) each remain correct for on their own (a single
+   * value, read once) but were never safe to combine across multiple
+   * calls into one logical operation's state.
+   */
+  ConnectionOperationSnapshot operationSnapshot() {
+    Snapshot snapshot = current.get();
+    return new ConnectionOperationSnapshot(
+        snapshot.state(), snapshot.generation(), snapshot.server(), snapshot.token(),
+        snapshot.certificateAuthorityPath(), snapshot.selectedProject(), snapshot.scope());
   }
 
   /** Host:port of the API server - safe for display and logs. */

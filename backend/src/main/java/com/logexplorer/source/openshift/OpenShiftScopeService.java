@@ -46,6 +46,16 @@ import reactor.core.publisher.Mono;
  * against before making the network call, and {@link OpenShiftSession}
  * rejects the result if either has changed by the time it arrives (OS-1B
  * §15).
+ *
+ * <h2>Atomic capture (OS-1D final review recovery)</h2>
+ *
+ * <p>{@code generation}/{@code server}/{@code token}/{@code caPath}
+ * (and, for {@link #discoverPods()}, {@code scope}) are captured via
+ * exactly one {@link OpenShiftSession#operationSnapshot()} call per
+ * discovery method — never through several independent {@code
+ * OpenShiftSession} getters, which a reconnect landing between two of
+ * them could turn into a hybrid of two different connections. See {@link
+ * ConnectionOperationSnapshot}'s own javadoc.
  */
 @Service
 public class OpenShiftScopeService {
@@ -68,11 +78,17 @@ public class OpenShiftScopeService {
    * KindOutcome} rather than failing kinds that succeeded (OS-1B §7/§17).
    */
   public Mono<WorkloadDiscovery> discoverWorkloads() {
-    String namespace = requireSelectedProject();
-    long generation = session.generation();
-    URI server = session.server();
-    var token = session.token();
-    var caPath = session.certificateAuthorityPath();
+    // OS-1D final snapshot atomicity recovery - one atomic session read
+    // for this whole operation (see ConnectionOperationSnapshot's own
+    // javadoc), never several independent generation()/server()/token()/
+    // certificateAuthorityPath() calls that a reconnect landing between
+    // them could turn into a hybrid of two different connections.
+    ConnectionOperationSnapshot connection = requireConnectedWithSelectedProject();
+    String namespace = connection.selectedProject();
+    long generation = connection.generation();
+    URI server = connection.server();
+    var token = connection.token();
+    var caPath = connection.certificateAuthorityPath();
 
     List<Mono<KindAttempt>> attempts = new ArrayList<>();
     for (WorkloadKind kind : WorkloadKind.values()) {
@@ -171,18 +187,22 @@ public class OpenShiftScopeService {
    * honestly as possibly incomplete (OS-1B §5/§6 of this recovery).
    */
   public Mono<PodDiscovery> discoverPods() {
-    String namespace = requireSelectedProject();
-    WorkloadRef selectedWorkload = session.scope().selectedWorkload();
-    long generation = session.generation();
-    URI server = session.server();
-    var token = session.token();
-    var caPath = session.certificateAuthorityPath();
+    // OS-1D final snapshot atomicity recovery - one atomic session read,
+    // same as discoverWorkloads() above.
+    ConnectionOperationSnapshot connection = requireConnectedWithSelectedProject();
+    String namespace = connection.selectedProject();
+    OpenShiftScope scope = connection.scope();
+    WorkloadRef selectedWorkload = scope.selectedWorkload();
+    long generation = connection.generation();
+    URI server = connection.server();
+    var token = connection.token();
+    var caPath = connection.certificateAuthorityPath();
 
     Mono<PodDiscovery> discovery = selectedWorkload != null
         ? client.fetchWorkloadSelector(server, token, caPath, selectedWorkload)
             .flatMap(selector -> client.fetchPods(server, token, caPath, namespace, selector, selectedWorkload))
             .map(pods -> new PodDiscovery(pods, PodDiscovery.Status.COMPLETE))
-        : discoverAllWorkloadsPods(server, token, caPath, namespace);
+        : discoverAllWorkloadsPods(server, token, caPath, namespace, scope);
 
     return discovery
         .flatMap(result -> {
@@ -200,9 +220,13 @@ public class OpenShiftScopeService {
         });
   }
 
-  private Mono<PodDiscovery> discoverAllWorkloadsPods(URI server, RawToken token, String caPath, String namespace) {
-    List<WorkloadSummary> supportedWorkloads = session.scope().workloads();
-    boolean workloadSetComplete = session.scope().workloadScopeComplete();
+  private Mono<PodDiscovery> discoverAllWorkloadsPods(
+      URI server, RawToken token, String caPath, String namespace, OpenShiftScope scope) {
+    // OS-1D final snapshot atomicity recovery - `scope` is the caller's
+    // (discoverPods') own already-captured operation snapshot field,
+    // never a fresh session.scope() read here.
+    List<WorkloadSummary> supportedWorkloads = scope.workloads();
+    boolean workloadSetComplete = scope.workloadScopeComplete();
 
     if (supportedWorkloads.isEmpty()) {
       // Nothing to union - genuinely zero known supported workloads. If
@@ -288,15 +312,21 @@ public class OpenShiftScopeService {
     return session.selectContainer(containerName, session.generation());
   }
 
-  private String requireSelectedProject() {
-    if (!session.isConnected()) {
+  /**
+   * OS-1D final snapshot atomicity recovery - captures and validates the
+   * connection state in one atomic read, replacing the previous {@code
+   * requireSelectedProject()} (which called {@code session.isConnected()}
+   * then {@code session.selectedProject()} as two separate live reads).
+   */
+  private ConnectionOperationSnapshot requireConnectedWithSelectedProject() {
+    ConnectionOperationSnapshot connection = session.operationSnapshot();
+    if (!connection.isConnected()) {
       throw new IllegalStateException("Not connected to OpenShift.");
     }
-    String project = session.selectedProject();
-    if (project == null) {
+    if (connection.selectedProject() == null) {
       throw new IllegalStateException("No project/namespace selected.");
     }
-    return project;
+    return connection;
   }
 
   /** A workload/pod/container discovery result belonged to a scope that has since changed. */

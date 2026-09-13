@@ -153,9 +153,18 @@ test.describe('OS-1A §21 - capability truthfulness in the rendered app', () => 
    * `OpenShiftLogSource#capabilities()`'s own javadoc for why that flag's
    * real meaning ("bounded direct search over resolved pods," never
    * "indexed history") still satisfies this test's original intent: never
-   * advertise a capability this source cannot actually deliver. Every
-   * other capability is unchanged and still correctly `false` - OS-1D/1E
-   * territory.
+   * advertise a capability this source cannot actually deliver.
+   *
+   * CORRECTED (OS-1D): `contextView` was `false` because "Show
+   * surrounding logs" had not been implemented for OpenShift yet. OS-1D
+   * implements it (narrowed to the exact (pod, container) the selected
+   * event came from - see `DirectPodLogProvider#resolveTargetPlan`'s own
+   * javadoc), reusing the same generic `/api/v1/logs/context` endpoint
+   * every other source already uses, tested end to end (backend +
+   * real rendered frontend - see the OS-1D verification report).
+   * `contextView === true` is now the truthful value. `liveTail`/
+   * `rawLogQL`/`composeProjectScoping` remain unchanged and still
+   * correctly `false` - OS-1E/Loki/Docker-shaped territory.
    */
   test('OpenShift appears as a source and advertises exactly the search capability it can deliver', async ({ page }) => {
     await page.goto('/');
@@ -170,9 +179,10 @@ test.describe('OS-1A §21 - capability truthfulness in the rendered app', () => 
     expect(openshift!.displayName).toBe('OpenShift');
     // OS-1C: bounded direct search now exists.
     expect(openshift!.capabilities.historicalSearch).toBe(true);
-    // Still out of scope: live tail, context view, raw LogQL, Compose-style scoping.
+    // OS-1D: "Show surrounding logs" now works end to end.
+    expect(openshift!.capabilities.contextView).toBe(true);
+    // Still out of scope: live tail, raw LogQL, Compose-style scoping.
     expect(openshift!.capabilities.liveTail).toBe(false);
-    expect(openshift!.capabilities.contextView).toBe(false);
     expect(openshift!.capabilities.rawLogQL).toBe(false);
     expect(openshift!.capabilities.composeProjectScoping).toBe(false);
 

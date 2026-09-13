@@ -86,6 +86,8 @@ public class RequestMapper {
         .services(dto.service() == null || dto.service().isBlank() ? List.of() : List.of(dto.service()))
         .containerId(dto.containerId())
         .pod(dto.pod())
+        .containerName(dto.containerName())
+        .contextTargetProof(dto.contextTargetProof())
         .composeProject(dto.composeProject())
         .build();
   }

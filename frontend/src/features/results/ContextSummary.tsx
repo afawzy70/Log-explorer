@@ -5,6 +5,7 @@ import { localZoneLabel, formatUtcTimestamp } from '../inspector/timestampFormat
 import { countDistinctServices } from '../journey/journeyFields';
 import { detectGaps, formatGapDuration } from './gapDetection';
 import type { GapMarker } from './gapDetection';
+import { eventIdentity } from '../../app/useSearchState';
 import styles from './ContextSummary.module.css';
 
 /**
@@ -37,6 +38,16 @@ import styles from './ContextSummary.module.css';
  * recomputed here, so it is derived exactly once and shared with
  * `ResultsTable`'s own inline gap markers - never two different gap counts
  * disagreeing with each other.
+ *
+ * <p><b>OS-1D</b> adds a truthful "root not found" notice: `rootIdentity`
+ * (the same {@link eventIdentity} value `ResultsTable` marks its own
+ * highlighted row with) is checked against the returned `events` here too,
+ * so a root event that has aged out of the source's own retained window -
+ * always possible for OpenShift's rolling pod logs, and never previously
+ * surfaced as anything other than "no row happens to be highlighted" - now
+ * says so explicitly (mission §9 "return ROOT_NOT_FOUND ... Context can
+ * still show nearby evidence" / §36 "Root unavailable" must be its own
+ * distinct state, never collapsed into "No results").
  */
 export function ContextSummary({
   events,
@@ -44,17 +55,20 @@ export function ContextSummary({
   source = null,
   counts = null,
   gaps,
+  rootIdentity = null,
 }: {
   events: LogEvent[];
   range: CommittedTimeRange | null;
   source?: string | null;
   counts?: ResultCounts | null;
   gaps?: GapMarker[];
+  rootIdentity?: string | null;
 }) {
   const errorCount = events.filter((e) => e.severity?.toUpperCase() === 'ERROR').length;
   const warnCount = events.filter((e) => e.severity?.toUpperCase() === 'WARN').length;
   const serviceCount = countDistinctServices(events);
   const resolvedGaps = gaps ?? detectGaps(events);
+  const rootFound = rootIdentity == null || events.some((e) => eventIdentity(e) === rootIdentity);
 
   const timestamped = events.filter((e): e is LogEvent & { timestamp: string } => e.timestamp != null);
   const observedSpanMs =
@@ -117,6 +131,13 @@ export function ContextSummary({
         </p>
       ) : null}
 
+      {!rootFound ? (
+        <p className={styles.incompleteNotice} role="status">
+          ⚠ The original event is no longer available from this source — showing nearby evidence only. It may have
+          aged out of the retained log window since your original search.
+        </p>
+      ) : null}
+
       {resolvedGaps.length > 0 ? (
         <div className={styles.gapsList}>
           <p className={styles.gapsListTitle}>
@@ -134,9 +155,11 @@ export function ContextSummary({
       ) : null}
 
       <p className={styles.disclaimer}>
-        Sorted chronologically, oldest first — this order does not indicate causality between events. The highlighted
-        row below is the original event you were investigating. A detected gap means no event was observed in that
-        interval - it is not evidence that anything failed.
+        Sorted chronologically, oldest first — this order does not indicate causality between events.{' '}
+        {rootFound
+          ? 'The highlighted row below is the original event you were investigating.'
+          : 'The original event itself could not be re-identified below - these are correlated/nearby events only.'}{' '}
+        A detected gap means no event was observed in that interval - it is not evidence that anything failed.
       </p>
     </div>
   );
