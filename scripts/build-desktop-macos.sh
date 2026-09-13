@@ -203,7 +203,7 @@ jpackage \
   --mac-package-identifier com.logexplorer.desktop \
   --vendor "Log Explorer" \
   --copyright "Log Explorer" \
-  "${SIGN_ARGS[@]}"
+  "${SIGN_ARGS[@]+"${SIGN_ARGS[@]}"}"
 
 DMG_FILE="$(find "$DMG_DEST" -maxdepth 1 -name '*.dmg' | head -n1)"
 if [ -z "$DMG_FILE" ]; then fail 'jpackage reported success but no .dmg was found'; fi
