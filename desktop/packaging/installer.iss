@@ -29,7 +29,12 @@
 #endif
 
 #define MyAppName "Log Explorer"
-#define MyAppPublisher "Log Explorer"
+; v0.1.0 release/branding pass: AppPublisher drives BOTH the installer's
+; own displayed publisher AND the Windows Add/Remove Programs "Publisher"
+; registry value Inno Setup writes automatically for the uninstall entry
+; - a single change point for both. Owner-required exact spelling/casing,
+; no invented company suffix.
+#define MyAppPublisher "Ahmed Fawzy elrifaye"
 #define MyAppExeName "LogExplorerLauncher.exe"
 
 [Setup]

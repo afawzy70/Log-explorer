@@ -35,7 +35,12 @@
          only the local/dev fallback. -->
     <Version>0.1.0</Version>
     <Product>Log Explorer</Product>
-    <Company>Log Explorer</Company>
+    <!-- v0.1.0 release/branding pass: Company is the Win32 FileVersionInfo
+         field Windows Explorer surfaces as "Company" in a file's
+         Properties > Details tab - the owner-required publisher/author
+         identity, not a company name (no Ltd/LLC/Inc. suffix invented). -->
+    <Company>Ahmed Fawzy elrifaye</Company>
+    <Authors>Ahmed Fawzy elrifaye</Authors>
     <AssemblyTitle>Log Explorer</AssemblyTitle>
     <!-- Windows CI toolchain hardening (platform/windows-dotnet-nuget-
          restore-hardening) — a clean checkout must resolve the exact
