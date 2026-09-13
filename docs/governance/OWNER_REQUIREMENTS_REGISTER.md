@@ -891,6 +891,37 @@ OS-1x slice — every "connected"/"scoped" screenshot and test in this pass
 is explicitly, honestly labelled MOCKED (Playwright route interception),
 never presented as real-cluster evidence. `UNTRACKED_OWNER_REQUIREMENTS=0`.
 
+### 12o.1 Real Red Hat Developer Sandbox validation attempt
+
+A follow-up mission, now that the owner has a real Red Hat Developer
+Sandbox, asked this pass to convert `REAL_OPENSHIFT_1F` from
+`BLOCKED_CREDENTIALS` into real evidence. **No credential was present in
+this session's environment** (confirmed by an explicit scan: no
+`OPENSHIFT_*`/`OC_*`/`KUBE*` environment variables, no `oc` CLI
+installed, no `~/.kube/config`), and none was supplied via the sanctioned
+mechanism (`OPENSHIFT_LOGIN_COMMAND` or `OPENSHIFT_API_SERVER`/
+`OPENSHIFT_TOKEN`). Per that mission's own explicit instruction, no
+connection attempt was made — `REAL_OPENSHIFT_1F` remains
+`BLOCKED_CREDENTIALS`, not fabricated as `PASS`. See
+`docs/verification/OS_1F_OPENSHIFT_PROFESSIONAL_UX_REPORT.md` §8 for the
+full checklist of real-Sandbox items, all correctly reported
+`BLOCKED_CREDENTIALS`/`NOT_TESTED_ENVIRONMENT_LIMITATION`.
+
+**What this pass DID complete, entirely credential-independent:** the
+full real-Sandbox testbed the eventual validation needs —
+`testbed/openshift/` (a reusable Spring Boot log generator matching the
+real product's own JSON parser field shape exactly; OpenShift manifests
+for ~10 logically distinct services with a sidecar container and a
+Route; deploy/traffic/rolling-update/cleanup scripts; a README with an
+explicit security section on credential handling) — genuinely test
+infrastructure, never a product dependency, never referenced by
+`backend/`/`frontend/`. The testbed's own JSON log format was verified,
+locally and without any cluster, to round-trip correctly through the
+real `LogLineParser` (a temporary, not-committed scratch test). This
+closes every credential-independent prerequisite for the real-Sandbox
+validation; only the credential itself remains outstanding.
+`UNTRACKED_OWNER_REQUIREMENTS=0`.
+
 ---
 
 ## 13. Out of Current Scope
