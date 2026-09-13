@@ -402,6 +402,30 @@ Full detail: `docs/verification/RELEASE_V0_1_0_REPORT.md`. Summary:
 | Application icon | `OPEN`, not silently resolved | See §8 above — `CANONICAL_ICON_SOURCE=MISSING`, real audit performed, no branding fabricated |
 | Code signing / notarization | `NOT_CONFIGURED`, truthfully unsigned | No signing/notarization success fabricated; release notes disclose SmartScreen/Gatekeeper warnings explicitly |
 
+### 7e. Automated tag-driven release pipeline (for every release after `v0.1.0`)
+
+Full detail: `docs/verification/AUTOMATED_RELEASE_PIPELINE_REPORT.md`.
+`v0.1.0` itself was published manually and remains **untouched** by this
+pipeline — verified (`V0_1_0_TAG_UNCHANGED=YES`,
+`V0_1_0_RELEASE_UNCHANGED=YES`, `V0_1_0_ASSETS_UNCHANGED=YES`) in that
+report §6, not merely asserted.
+
+| Item | Status | Evidence |
+|---|---|---|
+| `.github/workflows/release.yml` — `push: tags: v*` triggers a strict version gate, real Windows + macOS release builds, then automated GitHub Release publication | `IMPLEMENTED` | New file; `validate-version` → `windows-release`/`macos-release` → `publish-release`, structural `needs:` dependency means publication cannot run if any prior job fails |
+| Strict tag-vs-`VERSION` gate — a mismatched tag is refused, never published | `VERIFIED` (logic tested locally, both matching and mismatched cases) | `AUTOMATED_RELEASE_PIPELINE_REPORT.md` §3 |
+| Windows/macOS release jobs reuse the exact same `windows-desktop.yml`/`macos-desktop.yml` every PR already runs — via `workflow_call`, not copied steps | `VERIFIED` (deepest-level reuse: whole CI job, not just the build script) | `AUTOMATED_RELEASE_PIPELINE_REPORT.md` §2 |
+| Release publication gated on Windows + macOS success (build, real packaged smoke test, secret scan) | `VERIFIED` (structural `needs:`, not a conditional flag) | `AUTOMATED_RELEASE_PIPELINE_REPORT.md` §4 |
+| Artifact provenance — tag commit, both platform builds, and the published release's own target commit all match | `VERIFIED` (asserted and enforced in the workflow itself, not just claimed) | `AUTOMATED_RELEASE_PIPELINE_REPORT.md` §5; `RELEASE_PROVENANCE_MATCH` computed and gated in the `publish-release` job |
+| Minimum required permissions (`contents: write` only on the one job that needs it) | `VERIFIED` (code review) | `AUTOMATED_RELEASE_PIPELINE_REPORT.md` §9; `EXCESS_PERMISSIONS=NO` |
+| Repository-owned release notes (`docs/release-notes/NEXT_RELEASE.md`), not hardcoded in YAML | `IMPLEMENTED` | `AUTOMATED_RELEASE_PIPELINE_REPORT.md` §8 |
+| Secret/developer-path scan of the built artifact, automated and gating (both platforms) | `IMPLEMENTED` | New steps in `windows-desktop.yml`/`macos-desktop.yml`, same pattern as the manual `v0.1.0` sweep |
+| Safe validation without creating a real tag or a temporary public release | `VERIFIED` (per this mission's own explicit prohibition on a fake production release) | `AUTOMATED_RELEASE_PIPELINE_REPORT.md` §7 — YAML syntax, version-gate logic, release-notes assembly all tested locally; the reused build/smoke-test logic already has real `windows-latest`/`macos-latest` CI evidence from REL-1 and the `v0.1.0` branding pass |
+| Icon status | `CANONICAL_ICON_SOURCE=MISSING`, unchanged | No icon work attempted this mission, per explicit instruction |
+
+`PRODUCT_BEHAVIOR_CHANGED=NO`. `HISTORICAL_DECISIONS_PRESERVED=YES`.
+`UNTRACKED_OWNER_REQUIREMENTS=0`.
+
 `PRODUCT_BEHAVIOR_CHANGED=NO` — no `backend/src/main/java`/`frontend/src`
 file touched by either the branding PR or this documentation follow-up.
 `HISTORICAL_DECISIONS_PRESERVED=YES`. `UNTRACKED_OWNER_REQUIREMENTS=0`.
@@ -1689,6 +1713,28 @@ hidden. `PRODUCT_BEHAVIOR_CHANGED=NO`. The
 `functional-baseline-pre-ux-redesign` tag was deliberately **not**
 created in this mission — that belongs to the separate, still-pending
 Final Functional Closure mission.
+
+**Automated tag-driven release pipeline pass (§7e above).** Added
+`.github/workflows/release.yml` — every release after `v0.1.0` now
+publishes automatically on `git push origin vX.Y.Z`, gated by a strict
+tag-vs-`VERSION` match, real Windows/macOS release builds (reusing
+`windows-desktop.yml`/`macos-desktop.yml` via `workflow_call` — the
+exact same jobs every PR runs, not copied steps), their real packaged
+smoke tests, and a new automated secret/developer-path scan of each
+built artifact — publication is structurally impossible unless every
+one of those succeeds. `v0.1.0`'s own tag, release, and all four assets
+were verified byte-for-byte unchanged before and after this pass
+(`V0_1_0_TAG_UNCHANGED=YES`, `V0_1_0_RELEASE_UNCHANGED=YES`,
+`V0_1_0_ASSETS_UNCHANGED=YES`) — this pipeline was never exercised
+against it. No real tag was created to test the new pipeline (per
+explicit instruction not to publish a fake production release);
+validated instead via YAML syntax checks, local testing of the
+version-gate and release-notes-assembly logic, and code review of
+permissions (`contents: write` scoped to only the one job that needs
+it, `EXCESS_PERMISSIONS=NO`) — the reused build/smoke-test logic itself
+already has real CI evidence from REL-1 and the `v0.1.0` branding pass.
+`CANONICAL_ICON_SOURCE=MISSING`, unchanged, no icon work attempted.
+`PRODUCT_BEHAVIOR_CHANGED=NO`.
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0

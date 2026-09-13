@@ -12,6 +12,13 @@ name: Windows Desktop
 # install -> launch -> health -> UI -> API -> shutdown -> uninstall smoke
 # test (desktop/packaging/packaged-smoke-test.ps1) against the genuinely
 # installed product.
+#
+# Also reusable (workflow_call) by .github/workflows/release.yml - the
+# automated tag-driven release pipeline calls this SAME workflow for its
+# Windows release job, passing `release_version` so the build script
+# produces an exact-version artifact instead of the normal `-dev.<sha>`
+# CI build - zero duplication of tool setup, the build step, or the
+# smoke test between ordinary CI and a real release.
 on:
   pull_request:
     branches: [main]
@@ -32,6 +39,13 @@ on:
       - 'VERSION'
       - '.github/workflows/windows-desktop.yml'
   workflow_dispatch: {}
+  workflow_call:
+    inputs:
+      release_version:
+        description: 'Exact release version (e.g. "0.2.0"), passed by release.yml for a tagged release build. Leave unset for a normal dev/CI build.'
+        type: string
+        required: false
+        default: ''
 
 concurrency:
   group: windows-desktop-${{ github.event.pull_request.number || github.ref }}
@@ -116,10 +130,14 @@ jobs:
       # exactly what the preflight checks (Java 21, Node, .NET 8 via the
       # setup-* actions above, Inno Setup via choco just above) - running
       # it again would only re-verify what actions/setup-* already
-      # guarantees on this runner image.
+      # guarantees on this runner image. -Version is empty for ordinary
+      # CI (workflow_call's own default) - the script's own version
+      # resolution (git tag if present, else VERSION + "-dev.<sha>")
+      # applies exactly as before; release.yml passes a real version
+      # here for a tagged release build.
       - name: Build the Windows desktop package (scripts/build-desktop-windows.ps1)
         shell: pwsh
-        run: .\scripts\build-desktop-windows.ps1 -SkipPreflight
+        run: .\scripts\build-desktop-windows.ps1 -SkipPreflight -Version '${{ inputs.release_version }}'
 
       - name: Upload current packages.lock.json (evidence - should always equal the committed file byte-for-byte under locked-mode restore)
         if: always()
@@ -136,12 +154,36 @@ jobs:
           $installer = Get-ChildItem desktop/build/installer -Filter '*.exe' | Select-Object -First 1
           .\desktop\packaging\packaged-smoke-test.ps1 -InstallerPath $installer.FullName
 
-      - name: Upload installer artifact
+      # Security sweep of the real built artifact - never upload a
+      # package (CI evidence or a real release asset) without this
+      # check having run against it. Same pattern as the manual sweep
+      # performed for the v0.1.0 release, now automated.
+      - name: Scan the built installer for embedded secrets/developer paths
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem desktop/build/installer -Filter '*.exe' | Select-Object -First 1
+          $bytes = [System.IO.File]::ReadAllText($installer.FullName, [System.Text.Encoding]::Latin1)
+          # Deliberately specific, credential-shaped patterns only - a
+          # generic pattern like "password=" would false-positive on
+          # unrelated WinForms/.NET boilerplate text and break every
+          # release; this gate must not cry wolf.
+          $patterns = @('sk-[a-zA-Z0-9]{20,}', 'ghp_[a-zA-Z0-9]{30,}', 'BEGIN RSA PRIVATE', 'BEGIN EC PRIVATE', 'BEGIN OPENSSH PRIVATE', 'OPENSHIFT_TOKEN=', 'D:\\a\\Log-explorer', 'runneradmin')
+          $found = @()
+          foreach ($p in $patterns) { if ($bytes -match $p) { $found += $p } }
+          if ($found.Count -gt 0) {
+            Write-Host "##[error] Secret-pattern scan found matches in the built installer: $($found -join ', ')"
+            exit 1
+          }
+          Write-Host 'Secret-pattern scan: no matches - installer is clean'
+
+      - name: Upload installer artifact (installer + checksum, never a development-only diagnostic file)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: LogExplorer-windows-installer
-          path: desktop/build/installer/*.exe
+          path: |
+            desktop/build/installer/*.exe
+            desktop/build/installer/*.exe.sha256
           retention-days: 14
 
       - name: Upload backend log on failure (packaged smoke test diagnostics)

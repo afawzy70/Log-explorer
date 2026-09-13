@@ -1,0 +1,194 @@
+name: Release
+
+# Automated tag-driven GitHub Release publication for FUTURE versions
+# (starting after v0.1.0, which was published manually and remains
+# untouched - see docs/verification/RELEASE_V0_1_0_REPORT.md and
+# docs/verification/AUTOMATED_RELEASE_PIPELINE_REPORT.md).
+#
+# Lifecycle: verified main -> update VERSION -> merge -> tag vX.Y.Z ->
+# push the tag -> this workflow triggers automatically -> strict
+# tag-vs-VERSION gate -> real Windows + macOS release builds (the SAME
+# repository-owned scripts/reusable CI workflows every PR already
+# exercises - zero packaging logic duplicated here) -> real packaged
+# smoke tests -> checksum verification -> GitHub Release created
+# automatically, with the built artifacts attached. Any mandatory job
+# failing (version mismatch, a platform build/smoke-test/security-scan
+# failure, a checksum mismatch) means NO release is published - the
+# publish-release job only runs if every job before it succeeded.
+#
+# This workflow ORCHESTRATES ONLY: windows-release/macos-release reuse
+# .github/workflows/windows-desktop.yml / macos-desktop.yml as-is (the
+# same workflows every PR touching desktop/backend/frontend already
+# runs), via `workflow_call` - not a copy of their steps, the literal
+# same job definitions, parameterized with the exact release version
+# instead of falling back to a dev/SHA-suffixed version.
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate-version:
+    name: Validate tag matches VERSION (strict gate)
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare tag version against the repository-owned VERSION file
+        id: check
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          FILE_VERSION="$(tr -d '[:space:]' < VERSION)"
+          echo "Tag:          $GITHUB_REF_NAME"
+          echo "Tag version:  $TAG_VERSION"
+          echo "VERSION file: $FILE_VERSION"
+          if [ "$TAG_VERSION" != "$FILE_VERSION" ]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' (version '$TAG_VERSION') does not match the repository's VERSION file ('$FILE_VERSION'). Refusing to publish a mismatched release - update VERSION and re-tag, or delete this tag if it was created by mistake."
+            exit 1
+          fi
+          echo "Version gate passed: tag and VERSION file agree on '$TAG_VERSION'."
+          echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Record exact tag target commit (provenance)
+        run: |
+          echo "TAG_TARGET_SHA=$GITHUB_SHA"
+          git rev-parse "$GITHUB_REF_NAME^{commit}"
+
+  windows-release:
+    name: Windows release build
+    needs: validate-version
+    uses: ./.github/workflows/windows-desktop.yml
+    with:
+      release_version: ${{ needs.validate-version.outputs.version }}
+
+  macos-release:
+    name: macOS release build
+    needs: validate-version
+    uses: ./.github/workflows/macos-desktop.yml
+    with:
+      release_version: ${{ needs.validate-version.outputs.version }}
+
+  publish-release:
+    name: Publish GitHub Release
+    # Publication is gated on every mandatory job above succeeding - a
+    # Windows failure, a macOS failure, a version mismatch, a smoke-test
+    # failure, or a security-scan failure inside either reusable
+    # workflow all mean this job (and therefore the release) never runs.
+    needs: [validate-version, windows-release, macos-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm this job is running against the exact tag commit (provenance)
+        run: |
+          echo "GITHUB_RELEASE_TARGET_SHA=$GITHUB_SHA"
+          git rev-parse HEAD
+
+      - name: Download the real Windows release build (installer + checksum)
+        uses: actions/download-artifact@v4
+        with:
+          name: LogExplorer-windows-installer
+          path: release-assets
+
+      - name: Download the real macOS release build (DMG + checksum)
+        uses: actions/download-artifact@v4
+        with:
+          name: LogExplorer-macos-dmg
+          path: release-assets
+
+      - name: Verify expected release files are present, named for the exact release version
+        id: verify
+        run: |
+          VERSION="${{ needs.validate-version.outputs.version }}"
+          ls -la release-assets
+          EXE="release-assets/LogExplorer-${VERSION}-windows-x64.exe"
+          EXE_SHA="${EXE}.sha256"
+          DMG="$(find release-assets -maxdepth 1 -name "LogExplorer-${VERSION}-macos-*.dmg" | head -n1)"
+          DMG_SHA="${DMG}.sha256"
+          for f in "$EXE" "$EXE_SHA" "$DMG" "$DMG_SHA"; do
+            if [ -z "$f" ] || [ ! -f "$f" ]; then
+              echo "::error::Expected release file missing or empty version match: '$f'. The downloaded artifact does not carry the exact tagged version '$VERSION' - refusing to publish."
+              exit 1
+            fi
+          done
+          echo "exe=$EXE" >> "$GITHUB_OUTPUT"
+          echo "exe_sha=$EXE_SHA" >> "$GITHUB_OUTPUT"
+          echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
+          echo "dmg_sha=$DMG_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Verify checksums (defense-in-depth, in addition to each platform job's own build-time checksum and security scan)
+        run: |
+          cd release-assets
+          sha256sum -c "$(basename '${{ steps.verify.outputs.exe_sha }}')"
+          sha256sum -c "$(basename '${{ steps.verify.outputs.dmg_sha }}')"
+
+      - name: Build release notes (repository-owned notes file + a small generated provenance section - never large static text hardcoded in this YAML)
+        id: notes
+        run: |
+          VERSION="${{ needs.validate-version.outputs.version }}"
+          {
+            # Strip the leading HTML comment block from the repo-owned
+            # notes file (docs/release-notes/NEXT_RELEASE.md) - only the
+            # maintainer-authored content below it becomes the release
+            # body's opening section.
+            sed '1,/-->/d' docs/release-notes/NEXT_RELEASE.md
+            echo
+            echo '---'
+            echo
+            echo '**Publisher:** Ahmed Fawzy elrifaye'
+            echo
+            echo '**Signing status:** unsigned. Windows may show a SmartScreen warning; macOS Gatekeeper requires a right-click -> Open the first time. No code-signing certificate or Apple Developer account is configured for this release.'
+            echo
+            echo '### Checksums (SHA-256)'
+            echo
+            echo '```'
+            cat "${{ steps.verify.outputs.exe_sha }}"
+            cat "${{ steps.verify.outputs.dmg_sha }}"
+            echo '```'
+            echo
+            echo "Built from commit \`$GITHUB_SHA\`."
+          } > release-notes-final.md
+          echo '---- final release notes ----'
+          cat release-notes-final.md
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "${{ steps.verify.outputs.exe }}" \
+            "${{ steps.verify.outputs.exe_sha }}" \
+            "${{ steps.verify.outputs.dmg }}" \
+            "${{ steps.verify.outputs.dmg_sha }}" \
+            --title "Log Explorer $GITHUB_REF_NAME" \
+            --notes-file release-notes-final.md \
+            --target "$GITHUB_SHA"
+
+      - name: Verify the published release (provenance + not draft/prerelease)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" --json tagName,isDraft,isPrerelease,targetCommitish,assets | tee published-release.json
+          TARGET="$(jq -r '.targetCommitish' published-release.json)"
+          if [ "$TARGET" != "$GITHUB_SHA" ]; then
+            echo "::error::Published release target commit '$TARGET' does not match the exact tag commit '$GITHUB_SHA' (RELEASE_PROVENANCE_MATCH would be FAIL)."
+            exit 1
+          fi
+          IS_DRAFT="$(jq -r '.isDraft' published-release.json)"
+          IS_PRERELEASE="$(jq -r '.isPrerelease' published-release.json)"
+          if [ "$IS_DRAFT" != "false" ] || [ "$IS_PRERELEASE" != "false" ]; then
+            echo "::error::Published release is draft=$IS_DRAFT prerelease=$IS_PRERELEASE - expected a normal, fully published release."
+            exit 1
+          fi
+          echo "RELEASE_PROVENANCE_MATCH=PASS - published release target ($TARGET) matches the exact tag commit."

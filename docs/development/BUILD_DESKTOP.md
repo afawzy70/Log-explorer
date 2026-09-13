@@ -281,6 +281,42 @@ tracked as a `FUTURE_IMPROVEMENT`, not silently skipped.
 
 ---
 
+## Publishing a future release (automated)
+
+`v0.1.0` was published manually (the first release; see
+`docs/verification/RELEASE_V0_1_0_REPORT.md`). Every release **after**
+`v0.1.0` is published automatically by
+`.github/workflows/release.yml` — full detail in
+`docs/verification/AUTOMATED_RELEASE_PIPELINE_REPORT.md`. The process:
+
+1. Update the root `VERSION` file to the new version (e.g. `0.2.0`).
+2. Optionally edit `docs/release-notes/NEXT_RELEASE.md` with a short,
+   user-facing description of what changed.
+3. Merge that change to `main` normally (PR, green CI).
+4. Tag the merge commit exactly matching `VERSION`: `git tag -a v0.2.0
+   -m "..."`.
+5. Push the tag: `git push origin v0.2.0`.
+6. GitHub Actions takes over from here — no manual build or upload step:
+   a strict gate confirms the tag matches `VERSION` (refuses to publish
+   otherwise), then real Windows and macOS release builds run (the exact
+   same `windows-desktop.yml`/`macos-desktop.yml` workflows every PR
+   already exercises, reused via `workflow_call` — not duplicated), each
+   with its own real packaged smoke test and a secret/developer-path
+   scan of the built artifact.
+7. If every job above succeeds, the GitHub Release is created
+   automatically — title `Log Explorer v0.2.0`, the Windows `.exe` +
+   `.sha256` and macOS `.dmg` + `.sha256` attached, not draft, not
+   prerelease.
+
+**If anything fails, no release is published** — a version mismatch, a
+platform build failure, a smoke-test failure, or a secret-scan match on
+either platform all stop the pipeline before the publish step ever runs.
+Fix the underlying issue, then either push a corrected tag (if the old
+one was never published — delete and recreate it) or bump `VERSION`
+again and tag a new version.
+
+---
+
 ## Clean rebuild
 
 Both scripts are safe to re-run from a clean checkout; each removes its
