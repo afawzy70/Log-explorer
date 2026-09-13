@@ -213,9 +213,17 @@ jpackage \
   --runtime-image "$REPO_ROOT/desktop/build-macos/runtime" \
   --dest "$DMG_DEST" \
   --mac-package-identifier com.logexplorer.desktop \
-  --vendor "Log Explorer" \
-  --copyright "Log Explorer" \
+  --vendor "Ahmed Fawzy elrifaye" \
+  --copyright "Copyright (c) $(date +%Y) Ahmed Fawzy elrifaye" \
   "${SIGN_ARGS[@]+"${SIGN_ARGS[@]}"}"
+# v0.1.0 release/branding pass: --vendor and --copyright are the two
+# jpackage-supported author/publisher fields for a macOS app bundle.
+# --copyright is written directly into the generated Info.plist as
+# NSHumanReadableCopyright, which Finder's "Get Info" panel displays -
+# the most user-visible publisher/author attribution macOS packaging
+# truthfully supports without a real Apple Developer Team identity
+# (which this project does not have, and does not fabricate).
+# Owner-required exact spelling/casing, no invented company suffix.
 
 DMG_FILE="$(find "$DMG_DEST" -maxdepth 1 -name '*.dmg' | head -n1)"
 if [ -z "$DMG_FILE" ]; then fail 'jpackage reported success but no .dmg was found'; fi

@@ -219,6 +219,66 @@ To cut a real release, tag the commit (`git tag v1.2.3`) before running
 either build script - both will then use `1.2.3` verbatim, matching the
 existing pre-REL-1 CI convention.
 
+**macOS-only exception:** `jpackage`'s own `--app-version` rejects a
+leading-zero major version outright ("The first number in an app-version
+cannot be zero or negative") - unavoidable for this project's current
+pre-1.0 versions (`0.1.0`). `scripts/build-desktop-macos.sh` substitutes
+a fixed `1.0.0` for jpackage's own internal bundle-version metadata only
+in that case; the DMG filename and every other artifact-naming/logging
+path still use the real, correct version. This means a `v0.1.0`
+release's macOS `.app`'s internal `CFBundleShortVersionString`/
+`CFBundleVersion` will read `1.0.0`, not `0.1.0` - a `jpackage`
+constraint, not a product versioning decision. Windows has no equivalent
+constraint; its installer/assembly metadata shows the real version
+exactly.
+
+---
+
+## Publisher / author metadata
+
+Product identity is consistent across both platforms:
+
+- **Product name:** Log Explorer
+- **Publisher / author:** Ahmed Fawzy elrifaye (exact spelling/casing;
+  no company suffix - this is an individual owner, not a registered
+  organization)
+
+**Windows:** `desktop/packaging/installer.iss`'s `MyAppPublisher` drives
+both the installer's own displayed publisher and the Windows Add/Remove
+Programs "Publisher" registry value Inno Setup writes for the uninstall
+entry. `desktop/launcher/LogExplorerLauncher.csproj`'s `<Company>` is the
+Win32 `FileVersionInfo` field Windows Explorer shows as "Company" in a
+file's Properties > Details tab.
+
+**macOS:** `jpackage --vendor` and `--copyright` are the two
+jpackage-supported author/publisher fields for a macOS app bundle.
+`--copyright` is written directly into the generated `Info.plist` as
+`NSHumanReadableCopyright`, which Finder's "Get Info" panel displays -
+the most user-visible attribution macOS packaging truthfully supports
+without a real Apple Developer Team identity (this project has none, and
+does not fabricate one).
+
+**Important:** none of the above is code-signing identity. An unsigned
+build shows this metadata but is NOT digitally verified by Windows
+SmartScreen or macOS Gatekeeper - those require a real, paid signing
+certificate/Apple Developer account, which this project does not have.
+See `RELEASE_GRADE_MODE` above for the (currently unexercised) signed
+path.
+
+## Application icon status
+
+**No official Log Explorer product mark/logo exists in this repository**
+as of this writing (audited: no SVG/PNG logo in `frontend/`, no
+favicon, no brand asset directory - only a small, generic 32x32
+placeholder icon at `desktop/launcher/Resources/app.ico`, already in use
+by the Windows launcher, but not a distinctive designed mark). Per this
+project's own anti-fabrication discipline, no new "official" icon was
+invented for this pass - the existing placeholder continues to be used
+on Windows, and macOS packaging uses `jpackage`'s own default icon.
+`CANONICAL_ICON_SOURCE=MISSING`. Replacing this with real, owner-supplied
+or owner-approved artwork (a proper multi-resolution `.ico`/`.icns`) is
+tracked as a `FUTURE_IMPROVEMENT`, not silently skipped.
+
 ---
 
 ## Clean rebuild

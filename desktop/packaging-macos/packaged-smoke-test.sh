@@ -50,6 +50,22 @@ LAUNCHER_BIN="$(find "$INSTALLED_APP/Contents/MacOS" -maxdepth 1 -type f | head 
 if [ -z "$LAUNCHER_BIN" ]; then fail "no executable found under $INSTALLED_APP/Contents/MacOS"; fi
 echo "Installed at $INSTALLED_APP"
 
+step 'Verify product/version/publisher metadata (v0.1.0 release branding requirement)'
+INFO_PLIST="$INSTALLED_APP/Contents/Info.plist"
+if [ ! -f "$INFO_PLIST" ]; then fail "Info.plist not found at $INFO_PLIST"; fi
+PLIST_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$INFO_PLIST" 2>/dev/null || true)"
+PLIST_SHORT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO_PLIST" 2>/dev/null || true)"
+PLIST_COPYRIGHT="$(/usr/libexec/PlistBuddy -c 'Print :NSHumanReadableCopyright' "$INFO_PLIST" 2>/dev/null || true)"
+echo "Info.plist CFBundleName: $PLIST_NAME"
+echo "Info.plist CFBundleShortVersionString: $PLIST_SHORT_VERSION"
+echo "Info.plist NSHumanReadableCopyright: $PLIST_COPYRIGHT"
+if [ "$PLIST_NAME" != "Log Explorer" ]; then fail "Info.plist CFBundleName is '$PLIST_NAME', expected 'Log Explorer'"; fi
+case "$PLIST_COPYRIGHT" in
+  *"Ahmed Fawzy elrifaye"*) : ;;
+  *) fail "Info.plist NSHumanReadableCopyright '$PLIST_COPYRIGHT' does not contain the expected publisher 'Ahmed Fawzy elrifaye'" ;;
+esac
+echo 'Product/version/publisher metadata verified'
+
 step 'Launch the real installed application'
 "$LAUNCHER_BIN" &
 APP_PID=$!
