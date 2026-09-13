@@ -138,12 +138,24 @@ if [ -z "$VERSION" ]; then
   fi
 fi
 echo "Version: $VERSION"
-# jpackage's --app-version rejects a version with a leading zero in a
-# component or trailing non-numeric qualifiers on macOS in some JDK
-# builds - use a numeric-only fallback for --app-version specifically
-# while keeping the full, human-readable $VERSION for the DMG filename
-# and the app's own About/bundle-name text.
-APP_VERSION_NUMERIC="$(echo "$VERSION" | grep -Eo '^[0-9]+\.[0-9]+\.[0-9]+' || echo '0.0.1')"
+# jpackage's macOS --app-version has its own hard constraint (confirmed
+# via a real jpackage run on a real macos-latest CI runner): the FIRST
+# numeric component must be >= 1 ("The first number in an app-version
+# cannot be zero or negative") and it must be 1-3 dot-separated integers
+# with no qualifier suffix - it cannot carry a pre-1.0 semantic version
+# like "0.1.0" or a "-dev.<sha>" suffix at all. This is jpackage's own
+# internal bundle-metadata requirement, not this project's real product
+# version - the full, correct, human-readable $VERSION (including any
+# "0.x.y" or "-dev.<sha>") is what appears in the DMG filename and
+# everywhere else a person actually reads it.
+RAW_APP_VERSION="$(echo "$VERSION" | grep -Eo '^[0-9]+\.[0-9]+\.[0-9]+' || echo '0.0.1')"
+APP_VERSION_MAJOR="${RAW_APP_VERSION%%.*}"
+if [ "$APP_VERSION_MAJOR" = "0" ]; then
+  APP_VERSION_NUMERIC="1.0.0"
+  echo "Note: resolved version '$VERSION' has a major component of 0, which jpackage's --app-version rejects outright. Using a fixed internal jpackage app-version of '$APP_VERSION_NUMERIC' - this is jpackage bundle metadata only; the DMG filename and all other artifact naming use the real '$VERSION'."
+else
+  APP_VERSION_NUMERIC="$RAW_APP_VERSION"
+fi
 
 # ---------------------------------------------------------------------
 # Frontend production build, embedded into the backend's static
