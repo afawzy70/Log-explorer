@@ -1835,3 +1835,35 @@ Full method, evidence, and security re-validation:
 `HISTORICAL_DECISIONS_PRESERVED=YES`. `UNTRACKED_OWNER_REQUIREMENTS=0`.
 
 ---
+
+## 17. Final Pre-UX Baseline and User Guides
+
+`FINAL_PRE_UX_BASELINE_AND_USER_GUIDES` mission: merged Final Functional
+Closure (PR #52), cleaned the repository of every fully-merged branch,
+froze an immutable pre-redesign functional baseline, and produced
+bilingual (English/Arabic) user-facing documentation. No product
+behavior changed in this mission — it is merge, cleanup, and
+documentation only.
+
+| ID | NAME | STATUS | EVIDENCE | NOTES |
+|---|---|---|---|---|
+| FPUB-1 | Final Functional Closure (PR #52) merged to `main`; post-merge `main` re-verified green | `VERIFIED` | `gh pr merge 52 --squash --match-head-commit 549544cd894916cd20eeb58053b237df63ba8340`; `docs/verification/FINAL_PRE_UX_BASELINE_REPORT.md` §1–2 | Merge SHA `9a574c2644f11a0fc6a9d0175494b1620318fa74`. Backend 1078/1078, frontend 871/871, typecheck/build clean, CI/Windows/macOS PASS, E2E 307/307 (clean low-concurrency run; two prior full-parallel runs each showed one already-known Live-timing flake, re-run and confirmed non-regression) |
+| FPUB-2 | Repository branch cleanup — every non-`main` branch classified and, where proven fully merged, deleted; no approved work lost | `VERIFIED` | `docs/verification/FINAL_PRE_UX_BASELINE_REPORT.md` §4 | Squash-merge-only convention makes `git merge-base --is-ancestor` structurally wrong for this audit; tip-SHA-vs-merged-PR-`headRefOid` comparison used instead. 48 remote + 15 local branches deleted, all proven `SAFE_TO_DELETE`. One apparent divergence (`os/1e-openshift-live-tail`, a pre-merge rebase the local copy never saw) resolved by direct content-diff proof, not assumption, before deleting. `EVERYTHING_APPROVED_ON_MAIN=YES`, `APPROVED_WORK_MISSING_FROM_MAIN=0` |
+| FPUB-3 | Immutable annotated tag `functional-baseline-pre-ux-redesign` created at the final, fully-verified main commit | `VERIFIED` | `docs/verification/FINAL_PRE_UX_BASELINE_REPORT.md` §10; tag itself (`git show functional-baseline-pre-ux-redesign`) | Created only after this mission's own closure/guide/cleanup changes were merged and `main` re-verified green a second time — never frozen early. This tag must not be moved by any future mission |
+| FPUB-4 | Bilingual (English/Arabic) user documentation — User Guide, Quick Start, Troubleshooting, Capability Matrix | `VERIFIED` | `docs/user-guide/USER_GUIDE_EN.md`, `USER_GUIDE_AR.md`, `QUICK_START_EN.md`, `QUICK_START_AR.md`, `TROUBLESHOOTING_EN.md`, `TROUBLESHOOTING_AR.md`, `CAPABILITY_MATRIX.md` | Arabic guides are natural, independently-composed Arabic conveying the same substance as their English counterparts — not literal machine translations. Every capability claim cross-checked directly against current source (`SourceCapabilities`, `EventInspector.tsx`, `ContextAction.tsx`, `PrivacyMaskingSettingsPanel.tsx`, `LiveTailPanel.tsx`, settings panels, column/filter registries) — see `docs/verification/FINAL_PRE_UX_BASELINE_REPORT.md` §7 for the full list. `USER_GUIDE_CODE_CONSISTENCY=PASS`, `EN_AR_CAPABILITY_PARITY=PASS`, `CAPABILITY_MATRIX_ACCURATE=YES`, `QUICK_START_VERIFIED=YES` |
+| FPUB-5 | Fresh baseline screenshots, Fixture source only, safe generic data, embedded in both language guides | `VERIFIED` | `docs/user-guide/screenshots/01-06*.png` | Captured via a one-off Playwright script run once against the running dev app, then deleted (not added to the permanent regression suite). Each image individually reviewed before embedding — no tokens/credentials/real protected data/private infrastructure addresses; masked fields render exactly as the product renders them (`fi***NN`). Every guide states current-UI screenshots document the functional baseline only and are not the redesign's visual target |
+| FPUB-6 | `docs/ux-reference/old-ui/` and `docs/verification/OLD_UX_RESTORATION_AUDIT.md` preserved untouched; redesign handoff rule recorded | `VERIFIED` | `docs/verification/FINAL_PRE_UX_BASELINE_REPORT.md` §9 | OLD UI authoritative for information hierarchy/workflow/grouping/density/discoverability/professional feel; current frozen baseline authoritative for functionality/architecture/security/correctness/accessibility/reliability/capabilities; the future redesign must exceed both |
+| FPUB-7 | TEST-INFRA-1 (E2E-mutated tracked evidence PNGs) contained, not opportunistically fixed | `VERIFIED` | `docs/verification/FINAL_PRE_UX_BASELINE_REPORT.md` §6 | `git status --porcelain \| grep '\.png$' \| xargs git checkout --` applied after every E2E run and after the screenshot capture in this mission. `UNRELATED_BINARY_CHANGES=0` confirmed immediately before commit |
+
+**Final Pre-UX Baseline and User Guides pass (this section).** Closes the
+loop opened by Final Functional Closure: PR #52 is merged, the repository
+is free of stale branches, a named and immutable tag now marks the exact
+pre-redesign functional state, and both English and Arabic users have
+complete, code-verified guides to actually operate the product. This is
+explicitly **not** the start of the Impeccable UI/UX redesign, not Phase
+M, and does not change any product behavior — see
+`docs/verification/FINAL_PRE_UX_BASELINE_REPORT.md` for the full record,
+including the exact final `main` SHA the baseline tag points to.
+`HISTORICAL_DECISIONS_PRESERVED=YES`. `UNTRACKED_OWNER_REQUIREMENTS=0`.
+
+---
