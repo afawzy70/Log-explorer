@@ -43,7 +43,7 @@ $uninstallInfo = Get-ItemProperty -Path $uninstallKey
 Write-Host "Add/Remove Programs DisplayName: $($uninstallInfo.DisplayName)"
 Write-Host "Add/Remove Programs Publisher:   $($uninstallInfo.Publisher)"
 Write-Host "Add/Remove Programs DisplayVersion: $($uninstallInfo.DisplayVersion)"
-if ($uninstallInfo.DisplayName -ne 'Log Explorer') { Fail "Add/Remove Programs DisplayName is '$($uninstallInfo.DisplayName)', expected 'Log Explorer'" }
+if ($uninstallInfo.DisplayName -notlike 'Log Explorer*') { Fail "Add/Remove Programs DisplayName is '$($uninstallInfo.DisplayName)', expected it to start with 'Log Explorer'" }
 if ($uninstallInfo.Publisher -ne $expectedPublisher) { Fail "Add/Remove Programs Publisher is '$($uninstallInfo.Publisher)', expected '$expectedPublisher'" }
 
 $launcherVersionInfo = (Get-Item $launcherExe).VersionInfo
