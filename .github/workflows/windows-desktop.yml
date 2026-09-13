@@ -58,6 +58,55 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      # Windows CI toolchain hardening (platform/windows-dotnet-nuget-
+      # restore-hardening) — the repeated `MSB4181: The "RestoreTask" task
+      # returned false but did not log an error` failure traced back to
+      # this repository never pinning an effective .NET SDK version:
+      # without a `global.json`, `dotnet` resolves to the HIGHEST SDK
+      # installed on the runner image, not necessarily the 8.0.x SDK
+      # `actions/setup-dotnet@v4` just installed above — `windows-latest`
+      # images bundle several SDK major versions, and the observed
+      # failures were executing through a preinstalled .NET 10 SDK
+      # (`C:\Program Files\dotnet\sdk\10.0.400\NuGet.targets`) whose
+      # restore/NuGet task pairing is not what this net8.0-windows project
+      # was ever built or tested against. `global.json` (repo root) now
+      # pins `8.0.100` with `rollForward: latestFeature`, which uses the
+      # highest installed 8.0.x feature band/patch but can never silently
+      # cross into 9.x/10.x. This step makes that contract self-verifying
+      # instead of an opaque downstream restore failure: it fails fast,
+      # with a clear message, the moment `dotnet --version` (governed by
+      # `global.json`) is not an 8.0.x SDK.
+      - name: Verify effective .NET SDK matches the repository-owned contract (global.json)
+        shell: pwsh
+        run: |
+          Write-Host '---- dotnet --info ----'
+          dotnet --info
+          Write-Host '---- dotnet --list-sdks ----'
+          dotnet --list-sdks
+          $effective = (dotnet --version).Trim()
+          Write-Host "Effective 'dotnet --version' (governed by repository global.json): $effective"
+          if ($effective -notlike '8.0.*') {
+            Write-Host "##[error] Effective .NET SDK is '$effective', not an 8.0.x SDK. global.json (rollForward=latestFeature) should make this impossible - a preinstalled/newer SDK may be shadowing the repository-owned contract. Failing fast here instead of an opaque MSB4181/RestoreTask failure several steps later."
+            exit 1
+          }
+          Write-Host '---- NuGet sources (from repository nuget.config) ----'
+          dotnet nuget list source
+
+      - name: Determine NuGet global packages folder (explicit path, for deterministic caching)
+        shell: pwsh
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP 'nuget-packages'
+          Write-Host "NUGET_PACKAGES=$path"
+          echo "NUGET_PACKAGES=$path" >> $env:GITHUB_ENV
+
+      - name: Cache NuGet packages (optimization only - locked-mode restore below is the actual correctness source of truth)
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('desktop/launcher/packages.lock.json') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
       - name: Determine version (git tag if this commit has one, else a dev version)
         id: version
         shell: pwsh
@@ -98,10 +147,99 @@ jobs:
           if (-not $jar) { throw "backend jar not found in backend/target" }
           .\desktop\packaging\build-runtime.ps1 -JarPath $jar.FullName -OutputDir desktop\build\runtime
 
-      - name: Publish the launcher (self-contained, single-file, win-x64)
+      # Windows CI toolchain hardening — explicit restore, separated from
+      # `dotnet publish`, so a restore failure is diagnosable on its own
+      # step (never masked by, or confused with, a publish-time failure),
+      # and `publish --no-restore` below can never silently perform its
+      # own second, different dependency resolution. Restore is invoked
+      # with the SAME `-r win-x64` RuntimeIdentifier as the publish step
+      # below - a real defect this hardening pass's own first CI run
+      # caught: restoring without `-r win-x64` produces a
+      # `project.assets.json` with no RID-specific target at all, so a
+      # later `publish --no-restore -r win-x64` fails with
+      # `NETSDK1047: ... doesn't have a target for 'net8.0-windows/win-x64'`
+      # even though restore itself succeeded cleanly.
+      #
+      # `--locked-mode` makes this restore fail loudly the moment the
+      # committed `packages.lock.json` (generated and reviewed during this
+      # hardening pass's own bootstrap CI run, real content hashes from
+      # nuget.org - never hand-written) no longer matches what
+      # `LogExplorerLauncher.csproj` actually declares, instead of silently
+      # re-resolving and rewriting the lock file mid-CI (mission §6: "Do
+      # not regenerate the lock file silently during normal CI"). To
+      # intentionally update the pinned dependency graph, regenerate the
+      # lock file locally/via CI without `--locked-mode`, review the diff,
+      # and commit it as its own explicit change.
+      - name: Restore NuGet packages (locked mode; bounded retry on transient network/feed failures only)
+        working-directory: desktop/launcher
+        shell: pwsh
+        run: |
+          # Bounded retry (max 2 attempts total, i.e. at most 1 retry) -
+          # and ONLY for a small, explicit allowlist of transient
+          # network/feed failure signatures. Anything else (a NU1xxx
+          # dependency-resolution error, an MSB-prefixed build/SDK error,
+          # a lock-file mismatch, a project configuration error) is NOT
+          # in this allowlist and therefore fails immediately on the
+          # first attempt - retrying those would hide a real, deterministic
+          # defect behind a flaky-looking extra attempt, which mission §8
+          # explicitly forbids.
+          $transientPatterns = @(
+            'Unable to load the service index',
+            'The SSL connection could not be established',
+            'timed out',
+            'A task was canceled',
+            'An error occurred while sending the request',
+            'No such host is known',
+            'The operation has timed out',
+            ': 503',
+            ': 502',
+            'temporarily unavailable'
+          )
+          $maxAttempts = 2
+          $attempt = 0
+          $exitCode = 1
+          while ($attempt -lt $maxAttempts) {
+            $attempt++
+            Write-Host "---- dotnet restore attempt $attempt/$maxAttempts ----"
+            $output = & dotnet restore LogExplorerLauncher.csproj -r win-x64 --locked-mode --verbosity detailed 2>&1
+            $exitCode = $LASTEXITCODE
+            $output | ForEach-Object { Write-Host $_ }
+            if ($exitCode -eq 0) { break }
+            $joined = ($output | Out-String)
+            $isTransient = $false
+            foreach ($pattern in $transientPatterns) {
+              if ($joined -match [regex]::Escape($pattern)) { $isTransient = $true; break }
+            }
+            if (-not $isTransient -or $attempt -ge $maxAttempts) {
+              Write-Host "##[error] dotnet restore failed (attempt $attempt/$maxAttempts, classified-transient=$isTransient) - not retrying further. See the diagnostic dump below (selected SDK / NuGet sources / locked-mode status) before investigating further."
+              Write-Host '---- Failure diagnostics: effective SDK ----'
+              dotnet --version
+              Write-Host '---- Failure diagnostics: NuGet sources ----'
+              dotnet nuget list source
+              Write-Host '---- Failure diagnostics: locked-mode status ----'
+              Write-Host 'Restore was invoked with --locked-mode against the committed desktop/launcher/packages.lock.json.'
+              Write-Host 'A NU1004/NU1101/lock-mismatch-shaped error above means the lock file and the .csproj have drifted - regenerate deliberately, do not silently re-lock in CI.'
+              exit $exitCode
+            }
+            Write-Host "##[warning] dotnet restore failed with a transient-looking network/feed error (attempt $attempt/$maxAttempts) - retrying once after a short delay."
+            Start-Sleep -Seconds 5
+          }
+          if ($exitCode -ne 0) { exit $exitCode }
+
+      - name: Upload current packages.lock.json (evidence - should always equal the committed file byte-for-byte under locked-mode restore)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages-lock-json
+          path: desktop/launcher/packages.lock.json
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Publish the launcher (self-contained, single-file, win-x64, no implicit restore)
         working-directory: desktop/launcher
         run: |
           dotnet publish -c Release -r win-x64 --self-contained true `
+            --no-restore `
             -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:Version=${{ steps.version.outputs.version }} `
             -o ..\build\launcher-publish
