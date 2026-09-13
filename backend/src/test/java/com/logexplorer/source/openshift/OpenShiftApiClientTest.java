@@ -216,6 +216,35 @@ class OpenShiftApiClientTest {
     assertThat(e.kind()).isEqualTo(Kind.NETWORK);
   }
 
+  // Pre-closure functional recovery (§25/§27/§45) - proves the configured
+  // proxy is ACTUALLY wired into the real HttpClient used for this
+  // request (not just that ProxyRoute's own resolution logic is correct
+  // in isolation, which ProxyRouteTest already covers), and that a
+  // proxy-connect failure is classified distinctly from a generic
+  // NETWORK failure.
+  @Test
+  void aConfiguredProxyThatCannotBeReachedIsClassifiedAsAProxyFailure_notGenericNetwork() {
+    // Port 1 on loopback: nothing listens there, connection refused
+    // immediately - same deterministic-failure pattern the existing
+    // "anUnreachableClusterIsANetworkFailure" test above already uses,
+    // but here it is the PROXY that is unreachable, not the cluster
+    // itself (base is a real, live MockOpenShiftServer - proving the
+    // failure is specifically about the proxy hop, not the target).
+    OpenShiftApiClient proxiedClient = new OpenShiftApiClient(Map.of("HTTPS_PROXY", "http://127.0.0.1:1"));
+
+    OpenShiftApiException e = catchThrowableOfType(
+        () -> proxiedClient.fetchProjects(base, TOKEN, null).block(), OpenShiftApiException.class);
+
+    assertThat(e).isNotNull();
+    assertThat(e.kind()).isEqualTo(Kind.PROXY);
+    // The generic client (no proxy configured) reaching the exact same
+    // real, live server must succeed - proving the failure above is
+    // genuinely caused by the (deliberately broken) proxy hop, not some
+    // unrelated flakiness in the target server itself.
+    ProjectDiscovery discovery = client.fetchProjects(base, TOKEN, null).block();
+    assertThat(discovery).isNotNull();
+  }
+
   @Test
   void anUnreadableCertificateAuthorityIsATlsFailure() {
     OpenShiftApiException e = catchThrowableOfType(

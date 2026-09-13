@@ -9,6 +9,7 @@ import com.logexplorer.config.SourcesProperties;
 import com.logexplorer.core.guard.GuardrailViolationException;
 import com.logexplorer.core.guard.LiveTailGuard;
 import com.logexplorer.core.guard.TooManyConcurrentLiveTailsException;
+import com.logexplorer.core.mask.MaskingPolicyService;
 import com.logexplorer.core.mask.MaskingService;
 import com.logexplorer.core.mask.TextRedactor;
 import com.logexplorer.core.model.CanonicalLogEvent;
@@ -59,7 +60,7 @@ class LiveTailServiceTest {
 
   private LiveTailService newService(StubLogSource stub, LiveTailProperties properties) {
     LiveTailGuard guard = new LiveTailGuard(properties);
-    EventMapper eventMapper = new EventMapper(new MaskingService(), new TextRedactor());
+    EventMapper eventMapper = new EventMapper(new MaskingService(new MaskingPolicyService()), new TextRedactor());
     LogSourceRegistry registry = new LogSourceRegistry(List.of(stub), new SourcesProperties());
     return new LiveTailService(registry, guard, properties, eventMapper);
   }

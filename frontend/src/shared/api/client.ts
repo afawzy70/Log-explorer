@@ -4,7 +4,9 @@ import type {
   DockerConnectionSummary,
   EnvironmentInfo,
   JourneyRequestBody,
+  MaskingSettings,
   ProblemDetail,
+  ProtectedFieldKey,
   SearchRequestBody,
   SearchResponse,
   ServiceInfo,
@@ -153,6 +155,36 @@ export async function testDockerConnection(candidate: DockerConnectionCandidate,
     signal,
   });
   return parseJsonOrThrow<SourceHealth>(response);
+}
+
+/*
+ * Pre-closure functional recovery (§11/§12/§13) - the global, source-
+ * independent masking-settings endpoint. Deliberately not nested under
+ * `/sources/docker` or `/sources/openshift` - masking applies identically
+ * to every source. `updateMaskingSetting` toggles exactly ONE field at a
+ * time (matching the settings UI's own one-checkbox-per-field
+ * interaction) and returns the full, authoritative policy the server now
+ * holds - callers must apply the RETURNED policy, never optimistically
+ * assume their own requested change took effect (the server is always the
+ * single source of truth for this).
+ */
+export async function fetchMaskingSettings(signal?: AbortSignal): Promise<MaskingSettings> {
+  const response = await fetch('/api/v1/settings/masking', { signal });
+  return parseJsonOrThrow<MaskingSettings>(response);
+}
+
+export async function updateMaskingSetting(
+  field: ProtectedFieldKey,
+  masked: boolean,
+  signal?: AbortSignal,
+): Promise<MaskingSettings> {
+  const response = await fetch('/api/v1/settings/masking', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ field, masked }),
+    signal,
+  });
+  return parseJsonOrThrow<MaskingSettings>(response);
 }
 
 /* ------------------------------------------------------------------ */

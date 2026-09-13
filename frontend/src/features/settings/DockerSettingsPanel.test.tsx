@@ -120,18 +120,12 @@ describe('DockerSettingsPanel', () => {
     expect(screen.queryByText('Connection name')).not.toBeInTheDocument();
   });
 
-  it('UX-R3 §14: shows the informational protected-field masking panel, listing all five sensitive fields, with no reveal/unmask/copy action', async () => {
-    const user = userEvent.setup();
-    render(<DockerSettingsPanel />);
-    await open(user);
-    await waitFor(() => expect(mockFetchSummary).toHaveBeenCalled());
-
-    expect(screen.getByText(/protected field masking/i)).toBeInTheDocument();
-    for (const field of ['CIF', 'Username', 'Customer ID', 'Device ID', 'Device IP']) {
-      expect(screen.getByText(field)).toBeInTheDocument();
-    }
-    expect(screen.queryByRole('button', { name: /reveal|unmask|copy/i })).not.toBeInTheDocument();
-  });
+  // Pre-closure functional recovery (§11): the informational "Protected
+  // field masking" block that used to live here (UX-R3 §14) was moved
+  // out of Docker Settings entirely - masking is a global, source-
+  // independent concern, not Docker-specific. It is now a real,
+  // configurable control in its own PrivacyMaskingSettingsPanel, with its
+  // own tests (PrivacyMaskingSettingsPanel.test.tsx).
 
   it('shows a sanitized error if the summary fetch fails', async () => {
     mockFetchSummary.mockRejectedValue(new Error('Failed to load Docker connection settings'));

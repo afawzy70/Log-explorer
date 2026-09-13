@@ -148,28 +148,6 @@ export function DockerSettingsPanel() {
             <p className={styles.note}>{summary.settingsNote}</p>
           ) : null}
 
-          {/*
-           * UX-R3 §14 - informational only, never a "Reveal"/"Unmask"/"Copy
-           * raw value" action (CLAUDE.md §2 rule 5). This explains a
-           * server-side guarantee that already holds for every response
-           * this application ever sends - it does not toggle or configure
-           * anything.
-           */}
-          <div className={styles.maskingSection}>
-            <h3 className={styles.subheading}>Protected field masking</h3>
-            <p className={styles.hint}>
-              These fields are masked on the server before any response reaches the browser. Log Explorer never sends
-              or stores the raw values, and there is no way to reveal them here.
-            </p>
-            <ul className={styles.maskingList}>
-              <li>CIF</li>
-              <li>Username</li>
-              <li>Customer ID</li>
-              <li>Device ID</li>
-              <li>Device IP</li>
-            </ul>
-          </div>
-
           <div className={styles.testSection}>
             <h3 className={styles.subheading}>Test connection</h3>
             <p className={styles.hint}>

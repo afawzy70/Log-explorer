@@ -1,8 +1,10 @@
-import { Fragment } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
-import type { JourneyField, LogEvent } from '../../shared/api/types';
+import type { JourneyField, LogEvent, SearchDirection } from '../../shared/api/types';
 import { COLUMN_REGISTRY_BY_ID, DEFAULT_COLUMN_ORDER, DEFAULT_HIDDEN_COLUMN_IDS, ACTIONS_COLUMN_WIDTH } from './columnRegistry';
 import type { ColumnId } from './columnRegistry';
+import { nextColumnSort, sortIndexedEventsByColumn } from './columnSort';
+import type { ColumnSortState } from './columnSort';
 import { ActionsCell } from './ActionsCell';
 import type { TableDensity } from './tablePreferences';
 import { eventIdentity } from '../../app/useSearchState';
@@ -102,6 +104,27 @@ export interface ResultsTableProps {
    * even with gap rows present, not just without them.
    */
   gaps?: GapMarker[];
+  /**
+   * Pre-closure functional recovery (§17/§18/§37/§38): `false` only in a
+   * "Show surrounding logs" context view, where chronological order
+   * around the root event IS the whole point of the view (§37) - offering
+   * column sorting there would let a user silently turn a carefully
+   * root-centered context window into an arbitrarily-reordered list,
+   * exactly the "do not let the global sort control create a misleading
+   * surrounding sequence" mission requires. Defaults to `true`.
+   */
+  sortable?: boolean;
+  /**
+   * The CURRENT Newest/Oldest backend fetch direction (`state.sortDirection`)
+   * - passed through so the Time column header can be clicked as a second,
+   * equally-truthful way to change the exact same state `SortControl`
+   * already changes (§18: "Do NOT create two conflicting sort states").
+   * `undefined` (e.g. in a context view) hides Time's own sort affordance,
+   * matching `SortControl`'s own existing "not offered in context view"
+   * rule.
+   */
+  timeSortDirection?: SearchDirection;
+  onTimeSortChange?: (next: SearchDirection) => void;
 }
 
 /**
@@ -211,6 +234,9 @@ export function ResultsTable({
   density = 'comfortable',
   contextRootIdentity = null,
   gaps = [],
+  sortable = true,
+  timeSortDirection,
+  onTimeSortChange,
 }: ResultsTableProps) {
   const hiddenSet = new Set(hiddenColumnIds);
   const visibleColumns = columnOrder
@@ -218,8 +244,92 @@ export function ResultsTable({
     .map((id) => COLUMN_REGISTRY_BY_ID.get(id))
     .filter((col): col is NonNullable<typeof col> => col != null);
 
+  /*
+   * Pre-closure functional recovery (§17/§22): a pure, bounded, CLIENT-
+   * SIDE display transform over the already-loaded `events` array - never
+   * a second pagination model, never a fetch. Local component state
+   * (never persisted, never threaded through `useSearchState`) is
+   * deliberate: this table is not unmounted/remounted by column-order,
+   * density, or search-refinement changes (they only ever change props),
+   * so "sort survives reorder" and "density change does not destroy sort
+   * state" (§22) hold structurally, not by extra bookkeeping. Gap-marker
+   * rows (Legacy Remediation Slice 6) are keyed to a specific numeric
+   * `afterIndex` into the ORIGINAL fetch-order array - reordering rows
+   * for a non-time column sort would make that index meaningless, so gap
+   * rows are simply not interleaved while a column sort other than the
+   * natural fetch order is active (time-column "sort" never actually
+   * reorders this array - see below - so gaps remain exactly correct in
+   * that case).
+   */
+  const [columnSort, setColumnSort] = useState<ColumnSortState | null>(null);
+
+  /*
+   * Pre-closure functional recovery (§37/§40) - "the root/selected event
+   * clearly, visibly identified (auto-scrolled into view, labeled, not
+   * color-only)". The visible marker + `aria-current` already existed
+   * (see `contextRootIdentity`'s own doc comment above); this closes the
+   * one real gap an audit found - nothing brought the root row into the
+   * viewport, so on a long context window a user could open "Show
+   * surrounding logs" and land on a scroll position where the very event
+   * they asked about isn't visible at all. Keyed to `contextRootIdentity`
+   * (a stable string, not the `events` array reference) so this fires
+   * exactly once per context view opening - never on every re-render
+   * while one is already open (a density or column-order change must not
+   * re-scroll the page out from under the investigator).
+   */
+  const contextRootRowRef = useRef<HTMLTableRowElement | null>(null);
+  useEffect(() => {
+    if (contextRootIdentity != null) {
+      contextRootRowRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    }
+  }, [contextRootIdentity]);
+
+  const indexedEvents = events.map((event, originalIndex) => ({ event, originalIndex }));
+  const displayList = sortIndexedEventsByColumn(indexedEvents, columnSort);
+  const displayGaps = columnSort ? [] : gaps;
+
   const gapsByAfterIndex = new Map<number, GapMarker>();
-  gaps.forEach((gap) => gapsByAfterIndex.set(gap.afterIndex, gap));
+  displayGaps.forEach((gap) => gapsByAfterIndex.set(gap.afterIndex, gap));
+
+  function headerSortProps(colId: ColumnId) {
+    if (!sortable) {
+      return null;
+    }
+    if (colId === 'time') {
+      if (timeSortDirection == null || !onTimeSortChange) {
+        return null;
+      }
+      // §18 - aliases the EXACT SAME state `SortControl` changes: Newest
+      // first (BACKWARD) = descending, Oldest first (FORWARD) = ascending.
+      // Clicking Time always clears any active column sort, so display
+      // reverts to the backend's own real fetch order (never a client-side
+      // reorder pretending to be the authoritative Newest/Oldest order).
+      const ariaDirection: 'ascending' | 'descending' = timeSortDirection === 'FORWARD' ? 'ascending' : 'descending';
+      return {
+        active: columnSort == null,
+        ariaSort: (columnSort == null ? ariaDirection : 'none') as 'ascending' | 'descending' | 'none',
+        direction: (timeSortDirection === 'FORWARD' ? 'asc' : 'desc') as 'asc' | 'desc',
+        onClick: () => {
+          setColumnSort(null);
+          onTimeSortChange(timeSortDirection === 'FORWARD' ? 'BACKWARD' : 'FORWARD');
+        },
+      };
+    }
+    const column = COLUMN_REGISTRY_BY_ID.get(colId);
+    if (!column?.sortAccessor) {
+      return null;
+    }
+    const active = columnSort?.columnId === colId;
+    return {
+      active,
+      ariaSort: (active ? (columnSort!.direction === 'asc' ? 'ascending' : 'descending') : 'none') as
+        | 'ascending'
+        | 'descending'
+        | 'none',
+      direction: active ? columnSort!.direction : 'asc',
+      onClick: () => setColumnSort((prev) => nextColumnSort(prev, colId)),
+    };
+  }
 
   const tableClassName = density === 'compact' ? `${styles.table} ${styles.compact}` : styles.table;
 
@@ -240,16 +350,36 @@ export function ResultsTable({
         </colgroup>
         <thead>
           <tr>
-            {visibleColumns.map((col) => (
-              <th key={col.id} scope="col">
-                {col.label}
-              </th>
-            ))}
+            {visibleColumns.map((col) => {
+              const sort = headerSortProps(col.id);
+              if (!sort) {
+                return (
+                  <th key={col.id} scope="col">
+                    {col.label}
+                  </th>
+                );
+              }
+              return (
+                <th key={col.id} scope="col" aria-sort={sort.ariaSort}>
+                  <button type="button" className={styles.sortableHeader} onClick={sort.onClick}>
+                    {col.label}
+                    <span className={styles.sortIndicator} aria-hidden="true">
+                      {sort.active ? (sort.direction === 'asc' ? '▲' : '▼') : '↕'}
+                    </span>
+                    <VisuallyHidden>
+                      {sort.active
+                        ? `, sorted ${sort.direction === 'asc' ? 'ascending' : 'descending'}, activate to reverse`
+                        : ', not sorted, activate to sort ascending'}
+                    </VisuallyHidden>
+                  </button>
+                </th>
+              );
+            })}
             <th scope="col">Actions</th>
           </tr>
         </thead>
         <tbody onKeyDown={handleRowKeyDown}>
-          {events.map((event, index) => {
+          {displayList.map(({ event, originalIndex: index }) => {
             const isContextRoot = contextRootIdentity != null && eventIdentity(event) === contextRootIdentity;
             const rowClassName = [
               severityRowClass(event.severity),
@@ -260,13 +390,14 @@ export function ResultsTable({
               .join(' ') || undefined;
             const gap = gapsByAfterIndex.get(index);
             return (
-              // Index is stable for the lifetime of one rendered result set
-              // (events are never reordered/added mid-render - a fresh
-              // search always replaces the whole list) and the backend
-              // gives no other stable per-event id to key on.
+              // The ORIGINAL index is stable for the lifetime of one
+              // rendered result set even though display order (this map's
+              // iteration order) can now differ from it under an active
+              // column sort - see the identity-based resolution above.
               // eslint-disable-next-line react/no-array-index-key
               <Fragment key={index}>
                 <tr
+                  ref={isContextRoot ? contextRootRowRef : undefined}
                   className={rowClassName}
                   data-row-index={index}
                   aria-current={isContextRoot ? 'location' : undefined}

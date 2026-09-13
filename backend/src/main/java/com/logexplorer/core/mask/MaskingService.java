@@ -12,7 +12,9 @@ import org.springframework.stereotype.Service;
  * {@code api} package never need to name or import that type themselves
  * (see the {@code arch} test package for the rule this enables).
  *
- * <p>Masking rules (HANDOVER.md §6.1):
+ * <p>Masking rules (HANDOVER.md §6.1) — applied only when {@link
+ * MaskingPolicyService} says the field is currently masked (pre-closure
+ * functional recovery §12: masked by default, individually configurable):
  * <ul>
  *   <li>{@code cif} — strongly masked: a fixed-length mask, never reveals length.</li>
  *   <li>{@code customerId}, {@code userName}, {@code deviceId} — partially masked:
@@ -21,7 +23,15 @@ import org.springframework.stereotype.Service;
  *   <li>{@code deviceIp} — final portion masked, for both IPv4 and IPv6.</li>
  * </ul>
  * {@code null} (no value) and {@code ""} (present but empty) are both
- * preserved as-is — neither is treated as something to mask.
+ * preserved as-is — neither is treated as something to mask, and the
+ * policy is never even consulted for them (nothing to reveal either way).
+ *
+ * <p>When a field's policy says unmasked, the RAW value is returned as-is
+ * — this is the one, single, server-side place that decision is made
+ * (§16: "Masking must remain server-side... If explicitly configured as
+ * unmasked, the server may return the raw value"). The ArchUnit rule that
+ * only this class may read {@link RawSensitiveFields} is unchanged by
+ * this — the policy check happens entirely inside this same boundary.
  */
 @Service
 public class MaskingService {
@@ -29,14 +39,20 @@ public class MaskingService {
   private static final String STRONG_MASK = "****";
   private static final int PARTIAL_MIN_LENGTH = 5; // below this, nothing safe to reveal
 
+  private final MaskingPolicyService policy;
+
+  public MaskingService(MaskingPolicyService policy) {
+    this.policy = policy;
+  }
+
   public MaskedSensitiveFields mask(CanonicalLogEvent event) {
     RawSensitiveFields raw = event.sensitive();
     return new MaskedSensitiveFields(
-        maskStrong(raw.cif()),
-        maskPartial(raw.userName()),
-        maskPartial(raw.customerId()),
-        maskPartial(raw.deviceId()),
-        maskIp(raw.deviceIp()));
+        policy.isMasked(ProtectedField.CIF) ? maskStrong(raw.cif()) : raw.cif(),
+        policy.isMasked(ProtectedField.USER_NAME) ? maskPartial(raw.userName()) : raw.userName(),
+        policy.isMasked(ProtectedField.CUSTOMER_ID) ? maskPartial(raw.customerId()) : raw.customerId(),
+        policy.isMasked(ProtectedField.DEVICE_ID) ? maskPartial(raw.deviceId()) : raw.deviceId(),
+        policy.isMasked(ProtectedField.DEVICE_IP) ? maskIp(raw.deviceIp()) : raw.deviceIp());
   }
 
   private String maskStrong(String value) {

@@ -70,17 +70,14 @@
 }
 
 /*
- * `overscroll-behavior: contain` (UX-R6 §3's explicit "scrolling the
- * Inspector must not silently scroll Results"): reaching the end of the
- * Inspector's own scroll stops there instead of chaining into the page
- * and moving the results list out from under the investigator.
+ * Pre-closure functional recovery (§4): the flat `.body` scroll
+ * container that used to hold every section stacked is now
+ * `InspectorTabs.module.css`'s own `.tablist` (sticky) + `.tabpanel`
+ * (the scroll container, same `overflow-y: auto` +
+ * `overscroll-behavior: contain` contract UX-R6 §3 established) - the
+ * panel's own bounded-viewport-height/sticky behavior below is
+ * unchanged.
  */
-.body {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  min-height: 0;
-}
 
 /*
  * "Sheet/overlay on narrow screens" (HANDOVER.md §16) - a real

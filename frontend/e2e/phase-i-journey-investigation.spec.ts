@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { assertNoHorizontalOverflow, captureScreenshot, setViewport, setZoom } from './helpers';
+import { openInspectorTab } from './inspector-helpers';
 
 /*
  * Browser checks - IMPLEMENTATION_PLAN.md "Phase I": "paste a journey ID,
@@ -87,8 +88,12 @@ test('"Find this Journey ID" from the inspector opens a real, multi-trace, cross
   }
   await row.getByRole('button', { name: /actions for this event/i }).click();
   await page.getByRole('menuitem', { name: /view details/i }).click();
-  await expect(page.getByRole('dialog', { name: /event details/i })).toBeVisible();
+  const dialog = page.getByRole('dialog', { name: /event details/i });
+  await expect(dialog).toBeVisible();
 
+  // Pre-closure functional recovery (PCFR-1): "Find this Journey ID"
+  // lives in the Request flow tab, not visible until that tab is active.
+  await openInspectorTab(dialog, page, /request flow/i);
   const journeyButton = page.getByRole('button', { name: /find this journey id/i });
   await journeyButton.waitFor();
   await journeyButton.click();

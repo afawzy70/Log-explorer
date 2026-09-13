@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
 import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, setViewport } from './helpers';
+import { openInspectorTab } from './inspector-helpers';
 
 /*
  * LEGACY REMEDIATION SLICE 6 — INVESTIGATION DEPTH, GAP VISIBILITY & RICHER
@@ -258,6 +259,10 @@ test.describe('Legacy Remediation Slice 6 — Investigation depth, gap visibilit
     }
     await row.getByRole('button', { name: /actions for this event/i }).click();
     await page.getByRole('menuitem', { name: /view details/i }).click();
+    // Pre-closure functional recovery (PCFR-1): "Find this Journey ID"
+    // lives in the Request flow tab, not visible until that tab is active.
+    const dialog = page.getByRole('dialog', { name: /event details/i });
+    await openInspectorTab(dialog, page, /request flow/i);
     await page.getByRole('button', { name: /find this journey id/i }).click();
 
     const journeyView = page.getByTestId('journey-view');

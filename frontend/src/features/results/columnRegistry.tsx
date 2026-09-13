@@ -83,6 +83,22 @@ export interface ColumnDefinition {
   /** Applied to the `<td>` itself - see this module's own doc comment for why. */
   cellClassName?: string;
   render: (event: LogEvent, ctx: ColumnRenderContext) => ReactNode;
+  /**
+   * Pre-closure functional recovery (§17): present only for a column with
+   * meaningful, deterministic scalar ordering - its absence is exactly
+   * what makes a column truthfully NOT sortable (no header sort button is
+   * rendered for it at all, never a disabled/no-op one -
+   * `UNSORTABLE_COLUMNS_TRUTHFUL`). Returns the RAW underlying value to
+   * sort on (never the rendered "—" placeholder) so missing values can be
+   * consistently ordered last regardless of direction - see
+   * `columnSort.ts`'s own `compareSortValues`. `time` is deliberately
+   * absent here even though it is sortable: Time sorting reuses the
+   * existing Newest/Oldest backend-driven mechanism (§18) via a separate,
+   * dedicated prop on `ResultsTable`, never this generic client-side
+   * per-column path - the two must never become two competing
+   * "sort by time" implementations.
+   */
+  sortAccessor?: (event: LogEvent) => string | number | null;
 }
 
 function levelColor(severity: string | null): string | undefined {
@@ -123,6 +139,10 @@ export const COLUMN_REGISTRY: ColumnDefinition[] = [
     label: 'Level',
     defaultVisible: true,
     width: '90px',
+    // severityNumber (higher = more severe) sorts by actual severity
+    // priority, not alphabetically ("ERROR" < "INFO" < "WARN" would be a
+    // meaningless order for a log-level column).
+    sortAccessor: (event) => event.severityNumber,
     render: (event) => {
       const color = levelColor(event.severity);
       return (
@@ -139,12 +159,18 @@ export const COLUMN_REGISTRY: ColumnDefinition[] = [
     defaultVisible: true,
     width: '160px',
     cellClassName: styles.serviceCell,
+    sortAccessor: (event) => event.service ?? event.serviceSourceHint ?? null,
     render: (event) => resolveService(event),
   },
   {
     id: 'whatHappened',
     label: 'What happened',
     defaultVisible: true,
+    // Deliberately NOT sortable (§17: "Do not make ... columns appear
+    // sortable if ordering would be meaningless") - alphabetical message
+    // text ordering is not a useful investigative operation, unlike the
+    // other columns mission §17 names as examples (which never include
+    // the message column).
     /*
      * UX-R4 §13/§14 - the message is the primary scanning field, and it is
      * deliberately the one column with NO fixed width: it absorbs whatever
@@ -172,6 +198,10 @@ export const COLUMN_REGISTRY: ColumnDefinition[] = [
     defaultVisible: true,
     width: '160px',
     cellClassName: styles.idCell,
+    // Sorts on the exact already-masked display value (whichever of
+    // Username/Customer ID is actually shown) - never a fabricated deeper
+    // semantic across the two underlying fields.
+    sortAccessor: (event) => resolveUserOrCustomer(event)?.value ?? null,
     render: (event) => {
       const userOrCustomer = resolveUserOrCustomer(event);
       if (!userOrCustomer) {
@@ -191,6 +221,8 @@ export const COLUMN_REGISTRY: ColumnDefinition[] = [
     defaultVisible: true,
     width: '170px',
     cellClassName: styles.idCell,
+    // Same principle as User/Customer above: sorts on the exact displayed value.
+    sortAccessor: (event) => resolveCorrelationOrTrace(event)?.value ?? null,
     render: (event, ctx) => {
       const correlationOrTrace = resolveCorrelationOrTrace(event);
       if (!correlationOrTrace) {
@@ -227,23 +259,23 @@ export const COLUMN_REGISTRY: ColumnDefinition[] = [
 
   // --- optional columns (Legacy Remediation Slice 4) - hidden by default,
   // every one a genuine existing LogEvent field, never a sensitive one. ---
-  { id: 'logger', label: 'Logger', defaultVisible: false, width: '200px', cellClassName: styles.idCell, render: (e) => simpleValue(e.logger) },
-  { id: 'thread', label: 'Thread', defaultVisible: false, width: '140px', cellClassName: styles.idCell, render: (e) => simpleValue(e.thread) },
-  { id: 'traceId', label: 'Trace ID', defaultVisible: false, width: '160px', cellClassName: styles.idCell, render: (e) => simpleValue(e.traceId) },
-  { id: 'spanId', label: 'Span ID', defaultVisible: false, width: '160px', cellClassName: styles.idCell, render: (e) => simpleValue(e.spanId) },
-  { id: 'correlationId', label: 'Correlation ID', defaultVisible: false, width: '160px', cellClassName: styles.idCell, render: (e) => simpleValue(e.correlationId) },
-  { id: 'journeyId', label: 'Journey ID', defaultVisible: false, width: '160px', cellClassName: styles.idCell, render: (e) => simpleValue(e.journeyId) },
-  { id: 'eventId', label: 'Event ID', defaultVisible: false, width: '160px', cellClassName: styles.idCell, render: (e) => simpleValue(e.eventId) },
-  { id: 'errorCode', label: 'Error code', defaultVisible: false, width: '140px', cellClassName: styles.idCell, render: (e) => simpleValue(e.errorCode) },
-  { id: 'businessStep', label: 'Business step', defaultVisible: false, width: '160px', cellClassName: styles.idCell, render: (e) => simpleValue(e.businessStep) },
-  { id: 'uiIdentifier', label: 'UI identifier', defaultVisible: false, width: '160px', cellClassName: styles.idCell, render: (e) => simpleValue(e.uiIdentifier) },
-  { id: 'container', label: 'Container', defaultVisible: false, width: '180px', cellClassName: styles.idCell, render: (e) => resolveContainer(e) },
-  { id: 'pod', label: 'Pod', defaultVisible: false, width: '160px', cellClassName: styles.idCell, render: (e) => simpleValue(e.pod) },
-  { id: 'namespace', label: 'Namespace', defaultVisible: false, width: '140px', cellClassName: styles.idCell, render: (e) => simpleValue(e.namespace) },
-  { id: 'composeProject', label: 'Compose project', defaultVisible: false, width: '160px', cellClassName: styles.idCell, render: (e) => simpleValue(e.composeProject) },
-  { id: 'composeService', label: 'Compose service', defaultVisible: false, width: '160px', cellClassName: styles.idCell, render: (e) => simpleValue(e.composeService) },
-  { id: 'devicePlatform', label: 'Device platform', defaultVisible: false, width: '140px', cellClassName: styles.idCell, render: (e) => simpleValue(e.devicePlatformType) },
-  { id: 'language', label: 'Language', defaultVisible: false, width: '110px', cellClassName: styles.idCell, render: (e) => simpleValue(e.language) },
+  { id: 'logger', label: 'Logger', defaultVisible: false, width: '200px', cellClassName: styles.idCell, sortAccessor: (e) => e.logger, render: (e) => simpleValue(e.logger) },
+  { id: 'thread', label: 'Thread', defaultVisible: false, width: '140px', cellClassName: styles.idCell, sortAccessor: (e) => e.thread, render: (e) => simpleValue(e.thread) },
+  { id: 'traceId', label: 'Trace ID', defaultVisible: false, width: '160px', cellClassName: styles.idCell, sortAccessor: (e) => e.traceId, render: (e) => simpleValue(e.traceId) },
+  { id: 'spanId', label: 'Span ID', defaultVisible: false, width: '160px', cellClassName: styles.idCell, sortAccessor: (e) => e.spanId, render: (e) => simpleValue(e.spanId) },
+  { id: 'correlationId', label: 'Correlation ID', defaultVisible: false, width: '160px', cellClassName: styles.idCell, sortAccessor: (e) => e.correlationId, render: (e) => simpleValue(e.correlationId) },
+  { id: 'journeyId', label: 'Journey ID', defaultVisible: false, width: '160px', cellClassName: styles.idCell, sortAccessor: (e) => e.journeyId, render: (e) => simpleValue(e.journeyId) },
+  { id: 'eventId', label: 'Event ID', defaultVisible: false, width: '160px', cellClassName: styles.idCell, sortAccessor: (e) => e.eventId, render: (e) => simpleValue(e.eventId) },
+  { id: 'errorCode', label: 'Error code', defaultVisible: false, width: '140px', cellClassName: styles.idCell, sortAccessor: (e) => e.errorCode, render: (e) => simpleValue(e.errorCode) },
+  { id: 'businessStep', label: 'Business step', defaultVisible: false, width: '160px', cellClassName: styles.idCell, sortAccessor: (e) => e.businessStep, render: (e) => simpleValue(e.businessStep) },
+  { id: 'uiIdentifier', label: 'UI identifier', defaultVisible: false, width: '160px', cellClassName: styles.idCell, sortAccessor: (e) => e.uiIdentifier, render: (e) => simpleValue(e.uiIdentifier) },
+  { id: 'container', label: 'Container', defaultVisible: false, width: '180px', cellClassName: styles.idCell, sortAccessor: (e) => e.containerName ?? e.containerId ?? null, render: (e) => resolveContainer(e) },
+  { id: 'pod', label: 'Pod', defaultVisible: false, width: '160px', cellClassName: styles.idCell, sortAccessor: (e) => e.pod, render: (e) => simpleValue(e.pod) },
+  { id: 'namespace', label: 'Namespace', defaultVisible: false, width: '140px', cellClassName: styles.idCell, sortAccessor: (e) => e.namespace, render: (e) => simpleValue(e.namespace) },
+  { id: 'composeProject', label: 'Compose project', defaultVisible: false, width: '160px', cellClassName: styles.idCell, sortAccessor: (e) => e.composeProject, render: (e) => simpleValue(e.composeProject) },
+  { id: 'composeService', label: 'Compose service', defaultVisible: false, width: '160px', cellClassName: styles.idCell, sortAccessor: (e) => e.composeService, render: (e) => simpleValue(e.composeService) },
+  { id: 'devicePlatform', label: 'Device platform', defaultVisible: false, width: '140px', cellClassName: styles.idCell, sortAccessor: (e) => e.devicePlatformType, render: (e) => simpleValue(e.devicePlatformType) },
+  { id: 'language', label: 'Language', defaultVisible: false, width: '110px', cellClassName: styles.idCell, sortAccessor: (e) => e.language, render: (e) => simpleValue(e.language) },
 ];
 
 export const COLUMN_REGISTRY_BY_ID: ReadonlyMap<ColumnId, ColumnDefinition> = new Map(

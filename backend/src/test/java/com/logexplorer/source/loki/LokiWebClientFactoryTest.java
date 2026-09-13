@@ -3,6 +3,8 @@ package com.logexplorer.source.loki;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.logexplorer.config.LokiProperties;
+import com.logexplorer.source.loki.LokiRequestException.Reason;
+import com.logexplorer.source.openshift.ProxyRoute;
 import com.sun.net.httpserver.HttpsConfigurator;
 import com.sun.net.httpserver.HttpsServer;
 import java.io.IOException;
@@ -15,6 +17,8 @@ import java.security.KeyStore;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import org.junit.jupiter.api.AfterEach;
@@ -142,6 +146,59 @@ class LokiWebClientFactoryTest {
     StepVerifier.create(clientFor(properties).queryRange("{namespace=\"x\"}", 1L, 2L, 10, "backward"))
         .expectErrorSatisfies(e -> assertThat(e).isInstanceOf(LokiRequestException.class))
         .verify(Duration.ofSeconds(10));
+  }
+
+  // ------------------------------------------------------- enterprise proxy
+  // Pre-closure functional recovery (§25/§31/§45) - `LokiWebClientFactory`
+  // did not honour HTTPS_PROXY/HTTP_PROXY/NO_PROXY at all until this
+  // recovery (see its own javadoc for why openshift-loki is a live,
+  // retained source this gap mattered for, not a dead path).
+
+  @Test
+  void proxyForReturnsEmptyWithNoProxyEnvironmentConfigured() {
+    LokiWebClientFactory factory = new LokiWebClientFactory(Map.of());
+    Optional<ProxyRoute> route = factory.proxyFor(propertiesForServer());
+    assertThat(route).isEmpty();
+  }
+
+  @Test
+  void proxyForResolvesHttpsProxyForTheGatewayHost() {
+    LokiWebClientFactory factory =
+        new LokiWebClientFactory(Map.of("HTTPS_PROXY", "http://proxy.corp.example.com:3128"));
+    Optional<ProxyRoute> route = factory.proxyFor(propertiesForServer());
+    assertThat(route).isPresent();
+    assertThat(route.get().host()).isEqualTo("proxy.corp.example.com");
+    assertThat(route.get().port()).isEqualTo(3128);
+  }
+
+  @Test
+  void noProxyCoveringTheGatewayHostBypassesAConfiguredProxy() {
+    LokiWebClientFactory factory = new LokiWebClientFactory(
+        Map.of("HTTPS_PROXY", "http://proxy.corp.example.com:3128", "NO_PROXY", "127.0.0.1"));
+    Optional<ProxyRoute> route = factory.proxyFor(propertiesForServer());
+    assertThat(route).as("NO_PROXY must win over HTTPS_PROXY").isEmpty();
+  }
+
+  @Test
+  void aConfiguredProxyThatCannotBeReachedFailsWithProxyReason_notGenericUnknown() {
+    LokiProperties properties = propertiesForServer();
+    properties.setCaCertPath(serverCertPath.toString());
+    LokiWebClientFactory proxiedFactory = new LokiWebClientFactory(Map.of("HTTPS_PROXY", "http://127.0.0.1:1"));
+    LokiQueryClient proxiedClient = new LokiQueryClient(properties, new LokiTokenSupplier(properties), proxiedFactory);
+
+    StepVerifier.create(proxiedClient.queryRange("{namespace=\"x\"}", 1L, 2L, 10, "backward"))
+        .expectErrorSatisfies(e -> {
+          assertThat(e).isInstanceOf(LokiRequestException.class);
+          assertThat(((LokiRequestException) e).reason()).isEqualTo(Reason.PROXY);
+        })
+        .verify(Duration.ofSeconds(10));
+
+    // The real server, reached directly (no proxy configured), still works -
+    // proving the failure above is genuinely the (deliberately broken)
+    // proxy hop, not unrelated flakiness in the target server itself.
+    StepVerifier.create(clientFor(properties).queryRange("{namespace=\"x\"}", 1L, 2L, 10, "backward"))
+        .assertNext(response -> assertThat(response.status()).isEqualTo("success"))
+        .verifyComplete();
   }
 
   private void runKeytool(String... args) throws Exception {

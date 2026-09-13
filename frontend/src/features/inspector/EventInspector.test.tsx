@@ -102,13 +102,99 @@ describe('EventInspector', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('renders every section for a selected event', () => {
+  it('renders every tab for a selected event with data in every group, and switching tabs shows that tab\'s section', async () => {
+    // Pre-closure functional recovery (§4): the flat "renders every
+    // section" assertion no longer applies - sections are now grouped
+    // into tabs, and only the active tab's section is in the DOM at a
+    // time (standard tab-panel behavior). This test now walks every tab
+    // and confirms each one's own heading appears once selected.
+    const user = userEvent.setup();
     renderWithRegistry(<EventInspector state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0 })} />);
-    expect(screen.getByRole('heading', { name: /overview/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /actor & client/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /request flow/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /business \/ error/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /all fields/i })).toBeInTheDocument();
+    const tablist = screen.getByRole('tablist', { name: /event detail sections/i });
+    const expected: Array<[tabName: RegExp, headingName: RegExp]> = [
+      [/^overview$/i, /overview/i],
+      [/actor & client/i, /actor & client/i],
+      [/request flow/i, /request flow/i],
+      [/business \/ error/i, /business \/ error/i],
+      [/technical \/ all fields/i, /all fields/i],
+    ];
+    for (const [tabName, headingName] of expected) {
+      await user.click(within(tablist).getByRole('tab', { name: tabName }));
+      expect(screen.getByRole('heading', { name: headingName })).toBeInTheDocument();
+    }
+  });
+
+  it('does not show a tab for a section with no data on this event (e.g. no business/error data)', () => {
+    const minimal = fullEvent({
+      businessStep: null,
+      uiIdentifier: null,
+      errorCode: null,
+      exception: null,
+      journeyId: null,
+      correlationId: null,
+      traceId: null,
+      spanId: null,
+      eventId: null,
+      protectedFields: { userName: null, customerId: null, cif: null, deviceId: null, deviceIp: null },
+      devicePlatformType: null,
+      language: null,
+    });
+    renderWithRegistry(<EventInspector state={baseState({ selectedEvent: minimal, selectedIndex: 0 })} />);
+    const tablist = screen.getByRole('tablist', { name: /event detail sections/i });
+    expect(within(tablist).getByRole('tab', { name: /^overview$/i })).toBeInTheDocument();
+    expect(within(tablist).getByRole('tab', { name: /technical \/ all fields/i })).toBeInTheDocument();
+    expect(within(tablist).queryByRole('tab', { name: /actor & client/i })).not.toBeInTheDocument();
+    expect(within(tablist).queryByRole('tab', { name: /request flow/i })).not.toBeInTheDocument();
+    expect(within(tablist).queryByRole('tab', { name: /business \/ error/i })).not.toBeInTheDocument();
+  });
+
+  it('keyboard: ArrowRight/ArrowLeft move between tabs, Home/End jump to the first/last tab', async () => {
+    const user = userEvent.setup();
+    renderWithRegistry(<EventInspector state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0 })} />);
+    const tablist = screen.getByRole('tablist', { name: /event detail sections/i });
+    const overviewTab = within(tablist).getByRole('tab', { name: /^overview$/i });
+    overviewTab.focus();
+    await user.keyboard('{ArrowRight}');
+    expect(within(tablist).getByRole('tab', { name: /actor & client/i })).toHaveFocus();
+    expect(within(tablist).getByRole('tab', { name: /actor & client/i })).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('{ArrowLeft}');
+    expect(within(tablist).getByRole('tab', { name: /^overview$/i })).toHaveFocus();
+    await user.keyboard('{End}');
+    expect(within(tablist).getByRole('tab', { name: /technical \/ all fields/i })).toHaveFocus();
+    await user.keyboard('{Home}');
+    expect(within(tablist).getByRole('tab', { name: /^overview$/i })).toHaveFocus();
+  });
+
+  it('selecting a new event (Previous/Next) resets the active tab back to Overview', async () => {
+    const user = userEvent.setup();
+    const events = [fullEvent({ eventId: 'evt-1' }), fullEvent({ eventId: 'evt-2' })];
+    const { rerender } = renderWithRegistry(
+      <EventInspector
+        state={baseState({
+          selectedEvent: events[0],
+          selectedIndex: 0,
+          searchResult: { events, total: 2, truncated: false, capabilitiesUsed: [] } as never,
+        })}
+      />,
+    );
+    const tablist = screen.getByRole('tablist', { name: /event detail sections/i });
+    await user.click(within(tablist).getByRole('tab', { name: /technical \/ all fields/i }));
+    expect(within(tablist).getByRole('tab', { name: /technical \/ all fields/i })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    rerender(
+      <ShortcutRegistryProvider>
+        <EventInspector
+          state={baseState({
+            selectedEvent: events[1],
+            selectedIndex: 1,
+            searchResult: { events, total: 2, truncated: false, capabilitiesUsed: [] } as never,
+          })}
+        />
+      </ShortcutRegistryProvider>,
+    );
+    expect(within(tablist).getByRole('tab', { name: /^overview$/i })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('focus moves into the panel (the close button) when it opens', async () => {
@@ -237,8 +323,12 @@ describe('EventInspector', () => {
       exception: 'java.lang.RuntimeException: Authorization: Bearer [REDACTED]\n\tat com.example.Foo.bar(Foo.java:1)',
     });
 
-    it('the Business/error section renders the redacted exception as plain text, never the original', () => {
+    it('the Business/error section renders the redacted exception as plain text, never the original', async () => {
+      const user = userEvent.setup();
       renderWithRegistry(<EventInspector state={baseState({ selectedEvent: redactedEvent, selectedIndex: 0 })} />);
+      // Pre-closure functional recovery (§4): Business/error is now its own
+      // tab, not always in the DOM - switch to it first.
+      await user.click(screen.getByRole('tab', { name: /business \/ error/i }));
       const section = screen.getByRole('heading', { name: /business \/ error/i }).closest('section')!;
       expect(within(section).getByText(/Authorization: Bearer \[REDACTED\]/)).toBeInTheDocument();
       expect(section.textContent).not.toMatch(/Bearer ey[A-Za-z0-9]/); // no raw-looking token survives
@@ -254,6 +344,9 @@ describe('EventInspector', () => {
     it('the raw JSON dump only ever shows what the event already carries - already-redacted text, never anything extra', async () => {
       const user = userEvent.setup();
       renderWithRegistry(<EventInspector state={baseState({ selectedEvent: redactedEvent, selectedIndex: 0 })} />);
+      // Pre-closure functional recovery (§4): "All fields" (which owns the
+      // raw JSON disclosure) is now its own tab - switch to it first.
+      await user.click(screen.getByRole('tab', { name: /technical \/ all fields/i }));
       await user.click(screen.getByText('Raw JSON'));
       const rawJson = screen.getByText(/"message"/).closest('pre')!;
       expect(rawJson.textContent).toContain('[REDACTED]');

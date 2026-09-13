@@ -78,7 +78,11 @@ public class LokiLogSource implements LogSource {
     return queryClient.queryRange(selector, toNanos(now.minusSeconds(5)), toNanos(now), 1, "backward")
         .map(response -> new SourceHealth(SourceHealth.Status.UP, "Loki gateway reachable", Instant.now()))
         .onErrorResume(e -> Mono.just(new SourceHealth(
-            SourceHealth.Status.DOWN, LokiErrorClassifier.classifyThrowable(e).getMessage(), Instant.now())));
+            // `e` here is always already a LokiRequestException - queryRange()'s
+            // own onErrorMap classifies every failure before it can reach this
+            // onErrorResume - so this is a defensive pass-through only; the
+            // `proxyConfigured` value is irrelevant to that pass-through branch.
+            SourceHealth.Status.DOWN, LokiErrorClassifier.classifyThrowable(e, false).getMessage(), Instant.now())));
   }
 
   @Override

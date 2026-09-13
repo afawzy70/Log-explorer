@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { assertNoHorizontalOverflow, assertNoOverlap, captureScreenshot, setViewport, setZoom } from './helpers';
+import { inspectorAllTabsText, openInspectorTab } from './inspector-helpers';
 
 /*
  * Browser checks (the gate) - IMPLEMENTATION_PLAN.md "Phase H": "Inspector
@@ -29,16 +30,24 @@ test('opening the inspector shows every section with real, fully-populated fixtu
   await runRealSearch(page);
   await openInspectorOnRow(page, 0);
 
+  // Pre-closure functional recovery (PCFR-1): the five sections now live
+  // behind a WAI-ARIA tabs pattern - only the active tab's content is in
+  // the DOM, so each tab (never all five headings at once) is what's
+  // actually reachable now. The tabs themselves are the section labels.
   const dialog = page.getByRole('dialog', { name: /event details/i });
+  await expect(dialog.getByRole('tab', { name: /^overview$/i })).toBeVisible();
+  await expect(dialog.getByRole('tab', { name: /actor & client/i })).toBeVisible();
+  await expect(dialog.getByRole('tab', { name: /request flow/i })).toBeVisible();
+  await expect(dialog.getByRole('tab', { name: /business \/ error/i })).toBeVisible();
+  await expect(dialog.getByRole('tab', { name: /all fields/i })).toBeVisible();
+
   await expect(dialog.getByRole('heading', { name: /^overview$/i })).toBeVisible();
-  await expect(dialog.getByRole('heading', { name: /actor & client/i })).toBeVisible();
-  await expect(dialog.getByRole('heading', { name: /request flow/i })).toBeVisible();
-  await expect(dialog.getByRole('heading', { name: /business \/ error/i })).toBeVisible();
-  await expect(dialog.getByRole('heading', { name: /all fields/i })).toBeVisible();
 
   // Real fixture events always have every protected field populated -
-  // "Protected / masked" must be visible, never a raw value.
-  await expect(dialog.getByText(/protected \/ masked/i)).toBeVisible();
+  // "Protected / masked" must be visible, never a raw value - somewhere
+  // in the inspector (Actor & client is where it actually lives).
+  const allText = await inspectorAllTabsText(dialog);
+  expect(allText).toMatch(/protected \/ masked/i);
 
   await captureScreenshot(page, 'h', 'inspector-open-1280px');
 });
@@ -48,7 +57,8 @@ test('masked fields in the inspector always look masked, never raw - real backen
   await openInspectorOnRow(page, 0);
 
   const dialog = page.getByRole('dialog', { name: /event details/i });
-  const actorSection = dialog.locator('section', { has: page.getByRole('heading', { name: /actor & client/i }) });
+  await openInspectorTab(dialog, page, /actor & client/i);
+  const actorSection = dialog.locator('section[aria-label="Actor & client"]');
   const text = await actorSection.textContent();
   expect(text).toMatch(/\*/); // every fixture protected field is masked with '*'
 });

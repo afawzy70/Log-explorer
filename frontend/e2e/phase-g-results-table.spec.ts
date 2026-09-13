@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, setViewport, setZoom } from './helpers';
+import { headerLabel } from './inspector-helpers';
 
 /*
  * Browser checks (the gate) - IMPLEMENTATION_PLAN.md "Phase G": "For each
@@ -58,7 +59,10 @@ test('real fixture events render correctly: seven columns, newest first, malform
 }) => {
   await runRealSearch(page);
 
-  const headers = await page.getByRole('columnheader').allTextContents();
+  // Pre-closure functional recovery (PCFR-4): sortable headers now render
+  // a <button> with an appended visually-hidden sort-state description -
+  // strip it back to the plain column label before comparing.
+  const headers = (await page.getByRole('columnheader').allTextContents()).map(headerLabel);
   expect(headers).toEqual(['Time', 'Level', 'Service', 'What happened', 'User/Customer', 'Correlation/Trace', 'Actions']);
 
   const rowCount = await page.locator('tbody tr').count();

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, renderHook, screen } from '@testing-library/react';
+import { fireEvent, render, renderHook, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { TableSettingsControl } from './TableSettingsControl';
@@ -158,5 +158,87 @@ describe('TableSettingsControl', () => {
     await open(user);
     await user.click(screen.getByRole('button', { name: 'Close' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  describe('pre-closure functional recovery §19/§20 - drag-and-drop reorder', () => {
+    /** jsdom's DataTransfer is incomplete - a minimal real-enough stand-in for the HTML5 DnD contract this component actually uses (effectAllowed/dropEffect/setData). */
+    function dataTransferStub() {
+      return { effectAllowed: '', dropEffect: '', setData: vi.fn(), getData: vi.fn() } as unknown as DataTransfer;
+    }
+
+    it('every column row is a real, visibly-draggable list item', async () => {
+      const user = userEvent.setup();
+      render(<Harness />);
+      await open(user);
+      for (const row of screen.getAllByRole('listitem')) {
+        expect(row).toHaveAttribute('draggable', 'true');
+      }
+    });
+
+    it('dragging the last row and dropping it on the first row moves it to the front', async () => {
+      const user = userEvent.setup();
+      render(<Harness />);
+      await open(user);
+      const rows = screen.getAllByRole('listitem');
+      const firstRow = rows[0];
+      const lastRow = rows[rows.length - 1];
+      const draggedLabel = lastRow.querySelector('label')!.textContent;
+
+      const dataTransfer = dataTransferStub();
+      fireEvent.dragStart(lastRow, { dataTransfer });
+      fireEvent.dragOver(firstRow, { dataTransfer });
+      fireEvent.drop(firstRow, { dataTransfer });
+
+      const rowsAfter = screen.getAllByRole('listitem');
+      expect(rowsAfter[0].querySelector('label')!.textContent).toBe(draggedLabel);
+      // Same set of columns, none lost or duplicated.
+      expect(rowsAfter).toHaveLength(rows.length);
+    });
+
+    it('dropping a row onto itself changes nothing', async () => {
+      const user = userEvent.setup();
+      render(<Harness />);
+      await open(user);
+      const rows = screen.getAllByRole('listitem');
+      const before = rows.map((r) => r.querySelector('label')!.textContent);
+      const row = rows[2];
+
+      const dataTransfer = dataTransferStub();
+      fireEvent.dragStart(row, { dataTransfer });
+      fireEvent.drop(row, { dataTransfer });
+
+      const after = screen.getAllByRole('listitem').map((r) => r.querySelector('label')!.textContent);
+      expect(after).toEqual(before);
+    });
+
+    it('the keyboard-accessible Move up/down buttons still work exactly as before - drag-and-drop is additive, not a replacement', async () => {
+      // This is the same assertion as the pre-existing "Move up/down
+      // buttons reorder columns" test above, re-affirmed here specifically
+      // in the context of this recovery's own drag-and-drop addition -
+      // priorities 2 and 3 of mission §20 must survive priority 1 being
+      // added.
+      const user = userEvent.setup();
+      render(<Harness />);
+      await open(user);
+      const moveServiceUp = screen.getByRole('button', { name: 'Move Service up' });
+      await user.click(moveServiceUp);
+      const labelsAfter = screen.getAllByRole('listitem').map((r) => r.querySelector('label')!.textContent);
+      expect(labelsAfter[1]).toBe('Service');
+    });
+
+    it('drag-and-drop reordering persists to localStorage exactly like every other table preference change', async () => {
+      const user = userEvent.setup();
+      render(<Harness />);
+      await open(user);
+      const rowsBefore = screen.getAllByRole('listitem');
+      const draggedId = rowsBefore[rowsBefore.length - 1].querySelector('input')!.id;
+      const dataTransfer = dataTransferStub();
+      fireEvent.dragStart(rowsBefore[rowsBefore.length - 1], { dataTransfer });
+      fireEvent.drop(rowsBefore[0], { dataTransfer });
+
+      const stored = JSON.parse(localStorage.getItem('logexplorer.tablePreferences.v1')!);
+      const draggedColumnId = draggedId.replace(/^.*-col-/, '');
+      expect(stored.columnOrder[0]).toBe(draggedColumnId);
+    });
   });
 });

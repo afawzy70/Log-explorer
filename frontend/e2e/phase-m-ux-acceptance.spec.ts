@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { assertNoHorizontalOverflow, captureScreenshot } from './helpers';
+import { inspectorAllTabsText, openInspectorTab } from './inspector-helpers';
 
 /*
  * IMPLEMENTATION_PLAN.md "Phase M" - HANDOVER.md §27's six scripted
@@ -102,8 +103,11 @@ test.describe('Task 2 - What happened for a user/customer?', () => {
     // Inspector: open it and confirm the same.
     await page.locator('tbody tr').first().getByRole('button', { name: /actions for this event/i }).click();
     await page.getByRole('menuitem', { name: /view details/i }).click();
-    await expect(page.getByRole('dialog', { name: /event details/i })).toBeVisible();
-    const dialogText = await page.getByRole('dialog', { name: /event details/i }).innerText();
+    const dialog = page.getByRole('dialog', { name: /event details/i });
+    await expect(dialog).toBeVisible();
+    // Pre-closure functional recovery (PCFR-1): the sections now live
+    // behind tabs - check every tab's own text combined.
+    const dialogText = await inspectorAllTabsText(dialog);
     expect(dialogText).not.toContain('fixture.user0');
     expect(dialogText).not.toContain('DEMO-CUST-200000');
     expect(dialogText.toLowerCase()).toContain('protected');
@@ -170,11 +174,12 @@ test.describe('Task 4 - Explain one event', () => {
     const dialog = page.getByRole('dialog', { name: /event details/i });
     await expect(dialog).toBeVisible();
 
-    // what/when/where/who/request-flow all present as distinct sections.
-    await expect(dialog.getByRole('heading', { name: /^overview$/i })).toBeVisible(); // what/when
-    await expect(dialog.getByRole('heading', { name: /actor & client/i })).toBeVisible(); // who
-    await expect(dialog.getByRole('heading', { name: /request flow/i })).toBeVisible(); // request-flow
-    await expect(dialog.getByText(/business \/ error/i)).toBeVisible();
+    // what/when/where/who/request-flow all present as distinct sections -
+    // now as tabs (PCFR-1) rather than five simultaneously-visible headings.
+    await expect(dialog.getByRole('tab', { name: /^overview$/i })).toBeVisible(); // what/when
+    await expect(dialog.getByRole('tab', { name: /actor & client/i })).toBeVisible(); // who
+    await expect(dialog.getByRole('tab', { name: /request flow/i })).toBeVisible(); // request-flow
+    await expect(dialog.getByRole('tab', { name: /business \/ error/i })).toBeVisible();
 
     await captureScreenshot(page, 'm', 'task4-explain-one-event-inspector');
 

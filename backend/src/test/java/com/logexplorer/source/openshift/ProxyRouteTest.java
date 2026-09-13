@@ -141,6 +141,21 @@ class ProxyRouteTest {
     assertThat(route).as("NO_PROXY must win over HTTPS_PROXY").isEmpty();
   }
 
+  // Pre-closure functional recovery (§45) - NO_PROXY's lowercase spelling
+  // was already implemented (`ProxyRoute.NO_PROXY_KEYS`) but, unlike
+  // HTTPS_PROXY's own `lowercaseSpellingIsHonouredToo` test above, had no
+  // dedicated test proving it - closing that specific coverage gap.
+  @Test
+  void lowercaseNoProxySpellingIsHonouredToo() {
+    Optional<ProxyRoute> route = ProxyRoute.resolve(
+        Map.of(
+            "HTTPS_PROXY", "http://proxy.example.com:3128",
+            "no_proxy", ".cluster.internal"),
+        "api.cluster.internal");
+
+    assertThat(route).as("lowercase no_proxy must win over HTTPS_PROXY exactly like NO_PROXY does").isEmpty();
+  }
+
   @Test
   void aHostNotCoveredByNoProxyStillUsesTheProxy() {
     Optional<ProxyRoute> route = ProxyRoute.resolve(

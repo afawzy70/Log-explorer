@@ -72,6 +72,22 @@ export interface EnvironmentInfo {
  * this deployment (no authenticated admin boundary) - `settingsNote`
  * explains why and what to do instead.
  */
+/**
+ * Pre-closure functional recovery (§11/§12) - the global, source-
+ * independent masking policy for the five protected fields. `true` means
+ * masked (the safe default); `false` means the server will return the raw
+ * value in NEW results going forward. Never carries an actual value.
+ */
+export interface MaskingSettings {
+  cif: boolean;
+  userName: boolean;
+  customerId: boolean;
+  deviceId: boolean;
+  deviceIp: boolean;
+}
+
+export type ProtectedFieldKey = keyof MaskingSettings;
+
 export interface DockerConnectionSummary {
   mode: 'LOCAL' | 'REMOTE';
   host: string | null;

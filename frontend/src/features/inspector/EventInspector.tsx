@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SearchState } from '../../app/useSearchState';
 import { useShortcut } from '../../shared/keyboard/ShortcutRegistry';
 import { InspectorHeader } from './InspectorHeader';
@@ -7,6 +7,9 @@ import { ActorClientSection } from './ActorClientSection';
 import { RequestFlowSection } from './RequestFlowSection';
 import { BusinessErrorSection } from './BusinessErrorSection';
 import { AllFieldsSection } from './AllFieldsSection';
+import { InspectorTabs } from './InspectorTabs';
+import type { InspectorTab } from './InspectorTabs';
+import { buildActorClientFields, buildBusinessErrorFields, buildRequestFlowIdentifiers } from './sections';
 import { MAX_PANEL_WIDTH, MIN_PANEL_WIDTH, useResizablePanel } from './useResizablePanel';
 import { wasConsumedByDismissableLayer } from '../../shared/ui/useDismissableLayer';
 import styles from './EventInspector.module.css';
@@ -38,6 +41,55 @@ export function EventInspector({ state }: { state: SearchState }) {
       closeButtonRef.current?.focus();
     }
   }, [event]);
+
+  /*
+   * Pre-closure functional recovery (§4): tabs are computed per event,
+   * hiding a tab entirely when its section has no data to show ("Do NOT
+   * display empty meaningless tabs" - mission §4/§8). Overview and
+   * All Fields are never meaningfully empty (buildOverviewFields always
+   * returns Message/Time/Source/Service/Level/Logger; canonical fields
+   * always exist), so they are always present. "Trace / Correlation" is
+   * deliberately unified into "Request Flow" rather than duplicated as a
+   * separate tab - this product's data model has no fields distinguishing
+   * the two (both are exactly journeyId/correlationId/traceId/spanId/
+   * eventId), and showing the identical five rows twice under two tab
+   * labels would itself be the kind of confusing, non-data-driven
+   * grouping this recovery mission exists to fix.
+   */
+  const tabs: InspectorTab[] = useMemo(() => {
+    if (!event) return [];
+    const list: InspectorTab[] = [
+      { id: 'overview', label: 'Overview', content: <OverviewSection event={event} sources={state.sources} /> },
+    ];
+    if (buildActorClientFields(event).length > 0) {
+      list.push({ id: 'actor', label: 'Actor & client', content: <ActorClientSection event={event} /> });
+    }
+    if (buildRequestFlowIdentifiers(event).length > 0) {
+      list.push({
+        id: 'requestFlow',
+        label: 'Request flow',
+        content: <RequestFlowSection event={event} onOpenJourney={state.openJourney} />,
+      });
+    }
+    if (buildBusinessErrorFields(event).length > 0 || event.exception) {
+      list.push({ id: 'businessError', label: 'Business / error', content: <BusinessErrorSection event={event} /> });
+    }
+    list.push({
+      id: 'allFields',
+      label: 'Technical / all fields',
+      content: <AllFieldsSection event={event} sources={state.sources} />,
+    });
+    return list;
+  }, [event, state.sources, state.openJourney]);
+
+  const [activeTabId, setActiveTabId] = useState('overview');
+  // A newly-selected event (Previous/Next, or opening a different row)
+  // always starts back on Overview - staying on e.g. "Business / error"
+  // while stepping onto an event with no error would either show a stale
+  // tab that no longer exists for this event, or a misleadingly-empty one.
+  useEffect(() => {
+    setActiveTabId('overview');
+  }, [state.selectedIndex]);
 
   // Legacy Remediation Slice 8 - migrated onto the shared shortcut
   // registry (one document listener for the whole app). EventInspector is
@@ -144,13 +196,7 @@ export function EventInspector({ state }: { state: SearchState }) {
           }
           onShowContext={() => state.showContext(event)}
         />
-        <div className={styles.body}>
-          <OverviewSection event={event} sources={state.sources} />
-          <ActorClientSection event={event} />
-          <RequestFlowSection event={event} onOpenJourney={state.openJourney} />
-          <BusinessErrorSection event={event} />
-          <AllFieldsSection event={event} sources={state.sources} />
-        </div>
+        <InspectorTabs tabs={tabs} activeTabId={activeTabId} onActiveTabChange={setActiveTabId} />
       </div>
     </>
   );
