@@ -53,6 +53,21 @@ public class OpenShiftScopeController {
     this.session = session;
   }
 
+  /**
+   * OS-1F - a pure, non-mutating read of the session's CURRENT
+   * project/workload/pod/container scope. Exists so the frontend can
+   * render a truthful "WHERE am I searching?" trail (the generic
+   * {@code ScopeTrail}, and this panel's own reopen state) without ever
+   * having to infer scope from a mutating {@code PUT} response, and
+   * without repeating any discovery/authorization logic - it returns
+   * exactly the same {@link OpenShiftScopeSummaryDto} shape every
+   * mutating endpoint below already returns, just without the mutation.
+   */
+  @GetMapping("/scope")
+  public ResponseEntity<OpenShiftScopeSummaryDto> scope() {
+    return ResponseEntity.ok(scopeSummary());
+  }
+
   @GetMapping("/workloads")
   public Mono<OpenShiftWorkloadDiscoveryDto> workloads() {
     return scopeService.discoverWorkloads().map(this::toDto);

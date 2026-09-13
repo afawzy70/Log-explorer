@@ -208,3 +208,103 @@ describe('Toolbar', () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 });
+
+describe('Toolbar - OpenShift Project/Namespace required for Search/Live (OS-1F §8)', () => {
+  const openShiftCaps = {
+    historicalSearch: true,
+    liveTail: true,
+    rawLogQL: false,
+    serviceDiscovery: false,
+    queryStatistics: false,
+    contextView: true,
+    composeProjectScoping: false,
+  };
+
+  function openShiftState(overrides: Partial<SearchState> = {}) {
+    return baseState({
+      selectedSource: { id: 'openshift', displayName: 'OpenShift', capabilities: openShiftCaps },
+      selectedSourceId: 'openshift',
+      ...overrides,
+    });
+  }
+
+  it('disables Search and Live, with a visible reason, when connected but no Project/Namespace is selected', () => {
+    render(
+      <Toolbar
+        state={openShiftState()}
+        onStartLive={vi.fn()}
+        openShiftScope={{
+          selectedProject: null,
+          discoveryApi: 'PROJECTS',
+          selectedWorkloadKind: null,
+          selectedWorkloadName: null,
+          selectedPod: null,
+          selectedContainer: null,
+        }}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /^search$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^live$/i })).toBeDisabled();
+    expect(screen.getByText(/select a project to search openshift/i)).toBeInTheDocument();
+  });
+
+  it('says "Namespace" instead of "Project" in the hint for a Kubernetes-fallback cluster', () => {
+    render(
+      <Toolbar
+        state={openShiftState()}
+        onStartLive={vi.fn()}
+        openShiftScope={{
+          selectedProject: null,
+          discoveryApi: 'NAMESPACES',
+          selectedWorkloadKind: null,
+          selectedWorkloadName: null,
+          selectedPod: null,
+          selectedContainer: null,
+        }}
+      />,
+    );
+    expect(screen.getByText(/select a namespace to search openshift/i)).toBeInTheDocument();
+  });
+
+  it('enables Search and Live once a Project/Namespace is selected', () => {
+    render(
+      <Toolbar
+        state={openShiftState()}
+        onStartLive={vi.fn()}
+        openShiftScope={{
+          selectedProject: 'payments-dev',
+          discoveryApi: 'PROJECTS',
+          selectedWorkloadKind: null,
+          selectedWorkloadName: null,
+          selectedPod: null,
+          selectedContainer: null,
+        }}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /^search$/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^live$/i })).toBeEnabled();
+    expect(screen.queryByText(/select a project to search openshift/i)).not.toBeInTheDocument();
+  });
+
+  it('never gates Search for a non-OpenShift source, even when openShiftScope happens to be non-null (stale from a prior source)', () => {
+    render(
+      <Toolbar
+        state={baseState()}
+        openShiftScope={{
+          selectedProject: null,
+          discoveryApi: 'PROJECTS',
+          selectedWorkloadKind: null,
+          selectedWorkloadName: null,
+          selectedPod: null,
+          selectedContainer: null,
+        }}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /^search$/i })).toBeEnabled();
+  });
+
+  it('never gates Search before the scope has resolved (openShiftScope still null on first render)', () => {
+    render(<Toolbar state={openShiftState()} onStartLive={vi.fn()} openShiftScope={null} />);
+    expect(screen.getByRole('button', { name: /^search$/i })).toBeEnabled();
+  });
+});

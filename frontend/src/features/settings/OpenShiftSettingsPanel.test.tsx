@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { OpenShiftSettingsPanel, describeFailure } from './OpenShiftSettingsPanel';
@@ -431,6 +431,110 @@ describe('OpenShiftSettingsPanel - OS-1B scope controls', () => {
     await screen.findByRole('option', { name: /payment-api-abc/i });
 
     expect(screen.queryByText(/this list may be incomplete/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('OpenShiftSettingsPanel - OS-1F connecting state & scope-change notifications', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function openPanel() {
+    const user = userEvent.setup();
+    render(<OpenShiftSettingsPanel />);
+    await user.click(screen.getByRole('button', { name: 'OpenShift' }));
+    await screen.findByRole('dialog', { name: /openshift connection/i });
+    return user;
+  }
+
+  it('shows "Connecting…" in the top status badge during the async gap between submit and response - never "Not connected", which would claim nothing is happening', async () => {
+    let resolveConnect!: (value: Response) => void;
+    const connectPromise = new Promise<Response>((resolve) => {
+      resolveConnect = resolve;
+    });
+    stubFetch((url, init) => {
+      if (url.includes('intake-allowed')) return jsonResponse(true);
+      if (url.endsWith('/connect') && init?.method === 'POST') return connectPromise;
+      return jsonResponse(DISCONNECTED);
+    });
+
+    const user = await openPanel();
+    const field = screen.getByLabelText(/paste your oc login command/i);
+    await user.type(field, 'oc login --token=sha256~connectingstate123456 --server=https://api.example.com:6443');
+    await user.click(screen.getByRole('button', { name: /^connect$/i }));
+
+    const badge = screen.getByTestId('openshift-connection-state');
+    await waitFor(() => expect(within(badge).getByText(/^connecting…$/i)).toBeInTheDocument());
+    expect(within(badge).queryByText(/^not connected$/i)).not.toBeInTheDocument();
+
+    resolveConnect(jsonResponse(CONNECTED));
+    await waitFor(() => expect(within(badge).getByText(/^connected$/i)).toBeInTheDocument());
+    // The transient state clears once the real state is known.
+    expect(within(badge).queryByText(/^connecting…$/i)).not.toBeInTheDocument();
+  });
+
+  it('calls onScopeChanged after a successful connect, so a caller (Shell) can re-read the truth', async () => {
+    stubFetch((url) => {
+      if (url.includes('intake-allowed')) return jsonResponse(true);
+      if (url.endsWith('/connect')) return jsonResponse(CONNECTED);
+      return jsonResponse(DISCONNECTED);
+    });
+    const onScopeChanged = vi.fn();
+    const user = userEvent.setup();
+    render(<OpenShiftSettingsPanel onScopeChanged={onScopeChanged} />);
+    await user.click(screen.getByRole('button', { name: 'OpenShift' }));
+    await screen.findByRole('dialog', { name: /openshift connection/i });
+    const field = screen.getByLabelText(/paste your oc login command/i);
+    await user.type(field, 'oc login --token=sha256~scopechangedafter123 --server=https://api.example.com:6443');
+    await user.click(screen.getByRole('button', { name: /^connect$/i }));
+
+    await screen.findByText(/^connected$/i);
+    expect(onScopeChanged).toHaveBeenCalled();
+  });
+
+  it('calls onScopeChanged after disconnecting', async () => {
+    stubFetch((url, init) => {
+      if (url.includes('intake-allowed')) return jsonResponse(true);
+      if (url.endsWith('/connect') && init?.method === 'DELETE') return jsonResponse(DISCONNECTED);
+      return jsonResponse(CONNECTED);
+    });
+    const onScopeChanged = vi.fn();
+    const user = userEvent.setup();
+    render(<OpenShiftSettingsPanel onScopeChanged={onScopeChanged} />);
+    await user.click(screen.getByRole('button', { name: 'OpenShift' }));
+    await screen.findByRole('dialog', { name: /openshift connection/i });
+    await screen.findByText(/^connected$/i);
+
+    await user.click(screen.getByRole('button', { name: /^disconnect$/i }));
+
+    await screen.findByText(/^not connected$/i);
+    expect(onScopeChanged).toHaveBeenCalled();
+  });
+
+  it('calls onScopeChanged after selecting a project', async () => {
+    const CONNECTED_TWO_PROJECTS = { ...CONNECTED, projects: ['accounts', 'payments'] };
+    stubFetch((url, init) => {
+      if (url.includes('intake-allowed')) return jsonResponse(true);
+      if (url.endsWith('/project') && init?.method === 'PUT') {
+        return jsonResponse({ ...CONNECTED_TWO_PROJECTS, selectedProject: 'payments' });
+      }
+      if (url.endsWith('/workloads')) return jsonResponse({ status: 'SUCCESS', workloads: [], kindOutcomes: [] });
+      if (url.endsWith('/pods')) return jsonResponse({ status: 'COMPLETE', pods: [] });
+      return jsonResponse(CONNECTED_TWO_PROJECTS);
+    });
+    const onScopeChanged = vi.fn();
+    const user = userEvent.setup();
+    render(<OpenShiftSettingsPanel onScopeChanged={onScopeChanged} />);
+    await user.click(screen.getByRole('button', { name: 'OpenShift' }));
+    await screen.findByRole('dialog', { name: /openshift connection/i });
+
+    const select = await screen.findByLabelText(/^project$/i);
+    await user.selectOptions(select, 'payments');
+
+    await waitFor(() => expect(onScopeChanged).toHaveBeenCalled());
   });
 });
 

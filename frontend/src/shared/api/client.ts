@@ -227,6 +227,18 @@ export async function selectOpenShiftProject(
 /* OS-1B - OpenShift workload / pod / container scope discovery        */
 /* ------------------------------------------------------------------ */
 
+/**
+ * OS-1F - a pure, non-mutating read of the session's CURRENT project/
+ * workload/pod/container scope, for a truthful "WHERE am I searching?"
+ * trail (`ScopeTrail`) and for restoring the Settings panel's own scope
+ * controls on reopen - never inferred from a mutating PUT response, and
+ * never re-derived by re-running discovery.
+ */
+export async function fetchOpenShiftScope(signal?: AbortSignal): Promise<OpenShiftScopeSummary> {
+  const response = await fetch('/api/v1/sources/openshift/scope', { signal });
+  return parseJsonOrThrow<OpenShiftScopeSummary>(response);
+}
+
 export async function fetchOpenShiftWorkloads(signal?: AbortSignal): Promise<OpenShiftWorkloadDiscovery> {
   const response = await fetch('/api/v1/sources/openshift/workloads', { signal });
   return parseJsonOrThrow<OpenShiftWorkloadDiscovery>(response);

@@ -835,6 +835,62 @@ untouched. `REL-1` (§7, §7b, §7c) remains confirmed `APPROVED_PENDING`,
 untouched. `REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`, consistent with every
 prior OS-1x slice. `UNTRACKED_OWNER_REQUIREMENTS=0`.
 
+### 12o. OS-1F — OpenShift Professional UX Integration
+
+A product/UX/integration slice, not a backend retrieval rewrite — OS-1A
+through OS-1E's own connection/discovery/search/context/live semantics
+are explicitly unchanged. Preceded by a real, evidence-backed LERUX-1
+audit of the entire OpenShift workflow (Settings → scope hierarchy →
+Search → Results → Inspector → Live) against the mission's own explicit
+checklist, before any UI change was made. See
+`docs/verification/OS_1F_OPENSHIFT_PROFESSIONAL_UX_REPORT.md` for the
+full audit table (every area classified `SAME_CORRECT`/`NEW_BETTER`/
+`STILL_OLD_THINKING`) and before/after account.
+
+**Audit headline finding:** most of the checklist was already
+`SAME_CORRECT` — OS-1A/1B/1D had already built truthful Project-vs-
+Namespace labelling, safe token handling, 403-vs-empty discovery
+distinctions, and OpenShift WHERE fields (namespace/pod/container) into
+the generic Results/Inspector machinery, verified by direct source
+reading rather than assumed. Three genuine, narrow gaps were found and
+closed:
+
+| # | Finding | Status |
+|---|---|---|
+| 1 | The generic header `ScopeTrail` (`Shell.tsx`) had zero OpenShift awareness — it rendered only the source name plus the Docker Compose project chip, so an investigator had no way to see their current Project/Workload/Pod/Container scope without reopening the Settings popover (`STILL_OLD_THINKING`) | `RESOLVED` |
+| 2 | The Settings connection-status badge had no "Connecting…" state — during the real async gap between submitting `oc login` and the backend's response, the badge kept reading "Not connected", which could be read as if nothing were happening | `RESOLVED` |
+| 3 | Attempting Search/Live on a connected OpenShift session with no Project/Namespace selected reached the backend only as an opaque, uncaught `IllegalStateException("No project/namespace selected.")` (no specific `GlobalExceptionHandler` mapping exists for it) — genuinely unusable, not merely unclear | `RESOLVED` (frontend-side prevention; no backend semantic touched) |
+
+| ID | Requirement | Status | Evidence |
+|---|---|---|---|
+| OS-1F-1 | A new, purely non-mutating `GET /api/v1/sources/openshift/scope` endpoint reflects the session's exact current project/workload/pod/container selection — reused by the frontend for both the header trail and (in principle) restoring Settings-panel display state, never re-deriving truth from a mutating response | `VERIFIED` | `OpenShiftScopeController#scope`; `OpenShiftScopeControllerIntegrationTest#getScopeReflectsTheCurrentlyCommittedProjectWorkloadPodAndContainerSelection`, `#getScopeBeforeAnySelectionReportsEveryLevelAsAll` |
+| OS-1F-2 | The header `ScopeTrail` renders the full effective OpenShift hierarchy (Project/Namespace → Workload → Pod → Container) as labelled breadcrumb segments, sourced from the SAME `OpenShiftScopeSummary` the Settings panel reads/writes — never a second, independently-derived truth. A level renders only when it genuinely narrows scope ("All workloads"/"All pods"/"All containers" add no segment, exactly like the pre-existing Compose-project chip's own convention) | `VERIFIED` (real rendered-browser evidence) | `Shell.tsx` (`openShiftScopeSegments`, `ScopeTrail`); `Shell.test.tsx` (OS-1F ScopeTrail describe block, 5 tests); `frontend/e2e/os-1f-openshift-professional-ux.spec.ts` (`G:`); `docs/verification/OS_1F_EVIDENCE/G-scope-trail.png` |
+| OS-1F-3 | The Project/Namespace level's own label stays truthful to `discoveryApi`: a bare value for native OpenShift Projects, `"Namespace: x"` for a Kubernetes-fallback cluster — never a bare value that could be misread as a Project (OS-1A review recovery #2's own invariant, extended to the trail) | `VERIFIED` | `Shell.tsx#openShiftScopeSegments`; `Shell.test.tsx` (Namespace-vs-Project label tests) |
+| OS-1F-4 | `ScopeTrail` stays visible and truthful with the Settings popover CLOSED, and updates live the moment a scope mutation commits (`OpenShiftSettingsPanel`'s new `onScopeChanged` callback, fired after every successful connect/disconnect/project/workload/pod/container mutation) — never stale, never requiring a reopen or reload to reflect the truth | `VERIFIED` | `useOpenShiftScopeSummary` hook (lifted to `App.tsx`, shared by `Shell` and `Toolbar`); `useOpenShiftScopeSummary.test.ts` (5 tests); `OpenShiftSettingsPanel.test.tsx` (3 new `onScopeChanged` tests) |
+| OS-1F-5 | The Settings connection-status badge shows a genuine, distinct "Connecting…" state during the async gap between submitting the login command and the backend's response — scoped narrowly to the initial connect attempt only, never relabeling every other busy scope-selection action | `VERIFIED` | `OpenShiftSettingsPanel.tsx` (`connecting` state, `.stateConnecting` CSS); `OpenShiftSettingsPanel.test.tsx#shows_Connecting…_in_the_top_status_badge_...` |
+| OS-1F-6 | Search and Live are disabled, with a truthful, visible, non-color-only reason ("Select a Project/Namespace to search/start Live OpenShift"), whenever OpenShift is the active source and no Project/Namespace has been selected yet — never available to trigger an opaque backend failure. Never gates a non-OpenShift source, and never gates before the scope read has resolved (an unresolved `null` scope is not treated as "definitely no project") | `VERIFIED` (real rendered-browser evidence) | `Toolbar.tsx` (`openShiftMissingRequiredScope`, `scopeRequiredHint`); `Toolbar.test.tsx` (5 new tests); `frontend/e2e/os-1f-openshift-professional-ux.spec.ts` (`H:`); `docs/verification/OS_1F_EVIDENCE/H-search-blocked-no-scope.png`, `H-search-enabled-with-scope.png` |
+| OS-1F-7 | Every other audited OpenShift UX area — Settings source labelling ("OpenShift" vs "OpenShift Loki"), token-never-displayed, 403-vs-empty workload/pod discovery, Results-table optional `pod`/`namespace`/`container` columns, Inspector's "when present" namespace/pod/container/service fields, and every OS-1E Live source-state badge — was independently re-verified against the mission's own checklist and found `SAME_CORRECT`/`NEW_BETTER`; none were redesigned, per the mission's own restraint requirement | `VERIFIED` (re-confirmed, not re-implemented) | `docs/verification/OS_1F_OPENSHIFT_PROFESSIONAL_UX_REPORT.md` §3 (full audit table) |
+
+**OS-1F pass.** 7 new rows (OS-1F-1 through OS-1F-7). No OS-1A/1B/1C/1D/
+1E `VERIFIED` row reopened or redesigned — `DirectPodLogProvider`,
+`OpenShiftLiveTailProvider`, `ContextTargetProofCodec`, and every backend
+search/context/live semantic are byte-for-byte unchanged (confirmed via
+targeted diff, §OS-1F verification report §6). The one new backend
+surface (`GET /scope`) is a pure, non-mutating read reusing the existing
+`scopeSummary()` helper — no new discovery/authorization logic. `Job`/
+`CronJob`/standalone pods/unknown workload types/init containers remain
+explicitly unsupported, unchanged from OS-1B. `openshift-loki` is
+untouched, not removed. `TEST-INFRA-1` remains
+`APPROVED_PENDING_HARDENING`, untouched — re-confirmed via the same
+PNG-restoration mitigation after this pass's own full backend/frontend/E2E
+validation (new `docs/verification/OS_1F_EVIDENCE/` screenshots are new
+evidence, not historical mutations, and are preserved). `REL-1` (§7, §7b,
+§7c) remains confirmed `APPROVED_PENDING`, untouched.
+`REAL_OPENSHIFT_1F=BLOCKED_CREDENTIALS`, consistent with every prior
+OS-1x slice — every "connected"/"scoped" screenshot and test in this pass
+is explicitly, honestly labelled MOCKED (Playwright route interception),
+never presented as real-cluster evidence. `UNTRACKED_OWNER_REQUIREMENTS=0`.
+
 ---
 
 ## 13. Out of Current Scope
@@ -1331,6 +1387,38 @@ terminal-reconnect-suppression mechanisms are unchanged and correct; no
 changed. `TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`, untouched.
 `REL_1` (§7, §7b, §7c) remains confirmed `APPROVED_PENDING`, untouched.
 `REAL_OPENSHIFT_1E=BLOCKED_CREDENTIALS`, unchanged.
+
+**OS-1F pass (§12o above).** Reconciled against
+`docs/verification/OS_1F_OPENSHIFT_PROFESSIONAL_UX_REPORT.md`. A product/
+UX/integration slice, explicitly not another backend retrieval rewrite —
+OS-1A through OS-1E's connection/discovery/search/context/live semantics
+are byte-for-byte unchanged (confirmed via targeted diff, not assumed). A
+real, evidence-backed LERUX-1 audit preceded implementation: most of the
+checklist (Settings source labelling, token safety, 403-vs-empty
+discovery, Results/Inspector WHERE fields, every OS-1E Live badge state)
+was already `SAME_CORRECT`/`NEW_BETTER`, verified by direct source
+reading rather than redesigned on assumption. Three genuine gaps were
+found and closed: (1) the generic header `ScopeTrail` had zero OpenShift
+awareness, so an investigator had no persistent "WHERE am I searching?"
+truth without reopening Settings — fixed with a new non-mutating `GET
+/scope` endpoint and a shared `useOpenShiftScopeSummary` hook feeding a
+truthful, non-redundant Project/Namespace → Workload → Pod → Container
+breadcrumb, correctly labelling "Namespace:" only for a Kubernetes-
+fallback cluster; (2) the connection-status badge had no "Connecting…"
+state during the real async gap after submitting `oc login`, reading
+"Not connected" as if nothing were happening — fixed with a narrowly-
+scoped `connecting` state, distinct from every other busy scope-selection
+action; (3) Search/Live remained clickable with no Project/Namespace
+selected, reaching the backend only as an opaque, uncaught
+`IllegalStateException` — fixed with a frontend-only truthful gate and
+visible hint, no backend semantic touched. All evidence in
+`docs/verification/OS_1F_EVIDENCE/` is explicitly, honestly labelled
+MOCKED (Playwright route interception) rather than presented as real-
+cluster evidence — `REAL_OPENSHIFT_1F=BLOCKED_CREDENTIALS`, consistent
+with every prior OS-1x slice; this pass neither touched nor could convert
+that status. `openshift-loki` untouched, not removed.
+`TEST-INFRA-1` remains `APPROVED_PENDING_HARDENING`, untouched. `REL_1`
+(§7, §7b, §7c) remains confirmed `APPROVED_PENDING`, untouched.
 
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0

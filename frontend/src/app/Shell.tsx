@@ -1,13 +1,22 @@
 import { SourceHealthBadge } from './SourceHealthBadge';
 import { DockerSettingsPanel } from '../features/settings/DockerSettingsPanel';
-import { OpenShiftSettingsPanel } from '../features/settings/OpenShiftSettingsPanel';
+import { OpenShiftSettingsPanel, WORKLOAD_KIND_LABELS } from '../features/settings/OpenShiftSettingsPanel';
 import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
 import { EnvironmentBadge } from './EnvironmentBadge';
 import type { SearchState } from './useSearchState';
+import type { OpenShiftScopeSummary } from '../shared/api/types';
 import styles from './Shell.module.css';
 
 export interface ShellProps {
   state: SearchState;
+  /**
+   * OS-1F - lifted to `App.tsx` (not owned by `Shell` itself) specifically
+   * so `Toolbar`, rendered as `Shell`'s own sibling, can share the exact
+   * same scope truth (to gate Search/Live on a required Project/Namespace,
+   * §8) rather than each fetching and potentially disagreeing.
+   */
+  openShiftScope: OpenShiftScopeSummary | null;
+  onOpenShiftScopeChanged: () => void;
 }
 
 /**
@@ -26,38 +35,79 @@ export interface ShellProps {
  * currently selected - "All projects" (the unscoped default) adds no new
  * chip, since it changes nothing about today's pre-UX-R3 behavior.
  */
-function ScopeTrail({ state }: ShellProps) {
+/**
+ * OS-1F §6/§13 - the effective OpenShift scope hierarchy, as a list of
+ * already-labelled breadcrumb segments, truthful to the SAME
+ * `OpenShiftScopeSummary` the Settings panel reads and writes (never a
+ * second, independently-derived truth). A level is included only when it
+ * actually narrows scope - "All workloads"/"All pods"/"All containers"
+ * add no segment, exactly like the pre-existing Compose-project chip's
+ * own "no chip for the unscoped default" convention, so the trail never
+ * implies a false narrowing and never grows noisy for the common case.
+ *
+ * The Project/Namespace level's own label is the one place this
+ * necessarily branches: `discoveryApi === 'NAMESPACES'` is a genuinely
+ * different truth from a native OpenShift Project (OS-1A review recovery
+ * #2), so a Kubernetes-only cluster's scope reads "Namespace: x", never a
+ * bare value that could be misread as a Project.
+ */
+function openShiftScopeSegments(scope: OpenShiftScopeSummary): string[] {
+  const segments: string[] = [];
+  if (scope.selectedProject) {
+    segments.push(
+      scope.discoveryApi === 'NAMESPACES' ? `Namespace: ${scope.selectedProject}` : scope.selectedProject,
+    );
+  }
+  if (scope.selectedWorkloadKind && scope.selectedWorkloadName) {
+    const kindLabel = WORKLOAD_KIND_LABELS[scope.selectedWorkloadKind] ?? scope.selectedWorkloadKind;
+    segments.push(`${kindLabel}: ${scope.selectedWorkloadName}`);
+  }
+  if (scope.selectedPod) {
+    segments.push(scope.selectedPod);
+  }
+  if (scope.selectedContainer) {
+    segments.push(scope.selectedContainer);
+  }
+  return segments;
+}
+
+function ScopeTrail({ state, openShiftScope }: Pick<ShellProps, 'state' | 'openShiftScope'>) {
   if (!state.selectedSource) {
     return null;
   }
-  const showProject = state.selectedSource.capabilities.composeProjectScoping && state.selectedComposeProject;
+  const isOpenShift = state.selectedSource.id === 'openshift';
+  const segments = isOpenShift && openShiftScope
+    ? openShiftScopeSegments(openShiftScope)
+    : state.selectedSource.capabilities.composeProjectScoping && state.selectedComposeProject
+      ? [state.selectedComposeProject]
+      : [];
   return (
-    <span className={styles.sourceName}>
+    <span className={styles.sourceName} data-testid="scope-trail">
       {state.selectedSource.displayName}
-      {showProject ? (
-        <>
+      {segments.map((segment, index) => (
+        <span key={index}>
           <span className={styles.scopeSeparator} aria-hidden="true">
             ›
           </span>
-          <span className={styles.scopeProject}>{state.selectedComposeProject}</span>
-        </>
-      ) : null}
+          <span className={styles.scopeProject}>{segment}</span>
+        </span>
+      ))}
     </span>
   );
 }
 
-export function Shell({ state }: ShellProps) {
+export function Shell({ state, openShiftScope, onOpenShiftScopeChanged }: ShellProps) {
   return (
     <header className={styles.header}>
       <h1 className={styles.title}>Log Explorer</h1>
       <EnvironmentBadge />
-      <ScopeTrail state={state} />
+      <ScopeTrail state={state} openShiftScope={openShiftScope} />
       <div className={styles.spacer} />
       <DockerSettingsPanel />
       {/* OS-1A - the OpenShift connection lives beside Docker settings: both
           are source-connection concerns, and keeping them together is what
           makes "where do I set up a source?" answerable in one place. */}
-      <OpenShiftSettingsPanel />
+      <OpenShiftSettingsPanel onScopeChanged={onOpenShiftScopeChanged} />
       <KeyboardShortcutsHelp />
       <SourceHealthBadge health={state.health} loading={state.healthLoading} onRetry={state.retryHealth} />
     </header>

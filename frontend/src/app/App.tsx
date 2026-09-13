@@ -6,6 +6,7 @@ import { EventInspector } from '../features/inspector/EventInspector';
 import { useLiveTail } from '../features/live/useLiveTail';
 import { useLiveKeyboardShortcuts } from '../features/live/useLiveKeyboardShortcuts';
 import { useSearchState } from './useSearchState';
+import { useOpenShiftScopeSummary } from '../features/settings/useOpenShiftScopeSummary';
 import { useProductivityShortcuts } from './useProductivityShortcuts';
 import { ShortcutRegistryProvider } from '../shared/keyboard/ShortcutRegistry';
 import styles from './App.module.css';
@@ -65,6 +66,12 @@ export default function App() {
 function AppContent() {
   const state = useSearchState();
   const live = useLiveTail();
+  // OS-1F §6/§8 - lifted here (not owned by Shell or Toolbar individually)
+  // so both share the exact same OpenShift scope truth: Shell's
+  // ScopeTrail displays it, Toolbar gates Search/Live on it, and
+  // OpenShiftSettingsPanel (rendered inside Shell) triggers the refresh
+  // after every scope mutation it commits.
+  const openShiftScopeState = useOpenShiftScopeSummary(state.selectedSourceId === 'openshift');
   useProductivityShortcuts(state);
 
   const liveModeActive = live.connectionState !== 'idle';
@@ -113,9 +120,14 @@ function AppContent() {
        * own comment for why a z-index-only fix does not work here.
        */}
       <div data-app-chrome>
-        <Shell state={state} />
+        <Shell
+          state={state}
+          openShiftScope={openShiftScopeState.scope}
+          onOpenShiftScopeChanged={openShiftScopeState.refresh}
+        />
         <Toolbar
           state={state}
+          openShiftScope={openShiftScopeState.scope}
           onStartLive={
             state.selectedSourceId
               ? () => live.start(state.selectedSourceId!, state.selectedServices, state.selectedComposeProject ?? undefined)

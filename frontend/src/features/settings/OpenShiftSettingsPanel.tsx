@@ -25,8 +25,13 @@ import type {
 } from '../../shared/api/types';
 import styles from './OpenShiftSettingsPanel.module.css';
 
-/** A workload kind's own name, for the select control (OS-1B §6/§21). Jobs/CronJobs are deferred, not offered. */
-const WORKLOAD_KIND_LABELS: Record<OpenShiftWorkloadKind, string> = {
+/**
+ * A workload kind's own name, for the select control (OS-1B §6/§21).
+ * Jobs/CronJobs are deferred, not offered. Exported so `Shell`'s
+ * `ScopeTrail` (OS-1F) can render the identical label for the same
+ * kind, rather than maintaining a second, driftable copy.
+ */
+export const WORKLOAD_KIND_LABELS: Record<OpenShiftWorkloadKind, string> = {
   DEPLOYMENT: 'Deployment',
   DEPLOYMENT_CONFIG: 'DeploymentConfig',
   STATEFUL_SET: 'StatefulSet',
@@ -67,8 +72,17 @@ function workloadOptionValue(kind: OpenShiftWorkloadKind, name: string): string 
  * one exists - and in particular a `FORBIDDEN` project discovery must
  * never be shown as "no accessible projects", which is a different truth
  * entirely (§15).
+ *
+ * <h2>OS-1F - {@code onScopeChanged}</h2>
+ *
+ * <p>Called after every connect/disconnect/project/workload/pod/container
+ * mutation that actually succeeded, so a caller (`Shell`'s
+ * `useOpenShiftScopeSummary`) can re-read the truth from {@code GET
+ * /scope} and keep the header `ScopeTrail` in sync - this panel never
+ * pushes its own local state upward, it only signals "something changed,
+ * go re-read the source of truth."
  */
-export function OpenShiftSettingsPanel() {
+export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: () => void } = {}) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const popover = usePopoverTrigger();
   const headingId = useId();
@@ -85,6 +99,14 @@ export function OpenShiftSettingsPanel() {
   const [loginCommand, setLoginCommand] = useState('');
   const [connectionName, setConnectionName] = useState('');
   const [busy, setBusy] = useState(false);
+  // OS-1F §4F - the top status badge must be able to say "Connecting…"
+  // truthfully, distinct from "Not connected", for the real async gap
+  // between submitting the login command and the backend's response -
+  // scoped narrowly to the initial connect attempt (not every `busy`
+  // scope-selection action) so it reports a genuinely new fact rather
+  // than relabeling something already covered by the Connect button's
+  // own "Connecting…" label.
+  const [connecting, setConnecting] = useState(false);
   const [failure, setFailure] = useState<{ message: string; reason: OpenShiftFailureReason | null } | null>(null);
 
   // OS-1B - workload/pod/container scope, one level at a time. Each level
@@ -184,6 +206,7 @@ export function OpenShiftSettingsPanel() {
       setSelectedWorkload(null);
       try {
         await selectOpenShiftWorkload(null);
+        onScopeChanged?.();
       } catch {
         setScopeError('Could not clear the workload selection.');
       }
@@ -194,6 +217,7 @@ export function OpenShiftSettingsPanel() {
     try {
       await selectOpenShiftWorkload({ kind, name });
       setSelectedWorkload({ kind, name });
+      onScopeChanged?.();
       void loadPods();
     } catch {
       setScopeError('That workload is no longer available. Refresh and try again.');
@@ -208,6 +232,7 @@ export function OpenShiftSettingsPanel() {
     try {
       await selectOpenShiftPod(value);
       setSelectedPod(value);
+      onScopeChanged?.();
       if (value) {
         void loadContainers();
       }
@@ -222,6 +247,7 @@ export function OpenShiftSettingsPanel() {
     try {
       await selectOpenShiftContainer(value);
       setSelectedContainer(value);
+      onScopeChanged?.();
     } catch {
       setScopeError('That container is no longer available on this pod.');
     }
@@ -230,6 +256,7 @@ export function OpenShiftSettingsPanel() {
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
+    setConnecting(true);
     setFailure(null);
     const submitted = loginCommand;
     // Cleared before the await resolves: the value has left the component
@@ -237,11 +264,13 @@ export function OpenShiftSettingsPanel() {
     setLoginCommand('');
     try {
       setSummary(await connectOpenShift(submitted, connectionName.trim() || undefined));
+      onScopeChanged?.();
     } catch (error) {
       setFailure(describeFailure(error));
       void fetchOpenShiftConnection().then(setSummary).catch(() => undefined);
     } finally {
       setBusy(false);
+      setConnecting(false);
     }
   }
 
@@ -250,6 +279,7 @@ export function OpenShiftSettingsPanel() {
     setFailure(null);
     try {
       setSummary(await action());
+      onScopeChanged?.();
     } catch (error) {
       setFailure(describeFailure(error));
     } finally {
@@ -288,9 +318,12 @@ export function OpenShiftSettingsPanel() {
               State is never colour-only: the word itself is the signal, and
               the dot is decoration (CLAUDE.md §7).
             */}
-            <span className={`${styles.state} ${stateClass(summary?.state, styles)}`}>
+            <span
+              data-testid="openshift-connection-state"
+              className={`${styles.state} ${connecting ? styles.stateConnecting : stateClass(summary?.state, styles)}`}
+            >
               <span className={styles.stateDot} aria-hidden="true" />
-              {stateLabel(summary?.state)}
+              {connecting ? 'Connecting…' : stateLabel(summary?.state)}
             </span>
           </div>
 

@@ -73,6 +73,13 @@
   color: var(--color-text-tertiary);
 }
 
+/* OS-1F §4F - a real, distinct third truth ("attempting to connect right
+   now") rather than reusing stateIdle's "Not connected" colour, which
+   would visually claim nothing is happening. */
+.stateConnecting {
+  color: var(--color-text-secondary);
+}
+
 .field {
   margin-bottom: var(--space-3);
 }
