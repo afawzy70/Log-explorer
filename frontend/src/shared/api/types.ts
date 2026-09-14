@@ -285,8 +285,14 @@ export interface ContextRequestBody {
   contextTargetProof?: string;
 }
 
-/** The exact four non-sensitive identifiers "Find this X" (IMPLEMENTATION_PLAN.md "Phase I") can search by - never a sensitive field, structurally. */
-export type JourneyField = 'journeyId' | 'correlationId' | 'traceId' | 'eventId';
+/**
+ * The exact five non-sensitive identifiers the Investigation Workspace
+ * (owner mission "Mapping Verification and Investigation Workspace") can
+ * search by — never a sensitive field, structurally. {@code spanId} added
+ * alongside the original four (IMPLEMENTATION_PLAN.md "Phase I") so "View
+ * Span" reuses this exact generic mechanism rather than a duplicate one.
+ */
+export type JourneyField = 'journeyId' | 'correlationId' | 'traceId' | 'spanId' | 'eventId';
 
 /**
  * `POST /api/v1/logs/journey` body - "Click actions on non-sensitive IDs"
@@ -467,6 +473,18 @@ export interface OpenShiftScopeSummary {
 /** Stable wire key for one of the 24 canonical fields (`core.mapping.CanonicalField#key()`), e.g. `"cif"`, `"journeyName"`. */
 export type CanonicalFieldKey = string;
 
+/**
+ * Owner mission "Mapping Verification and Investigation Workspace" -
+ * exactly three statuses, no invented extra complexity.
+ * `DEFAULT_MAPPING != VERIFIED_MAPPING`: a field starts `UNVERIFIED` even
+ * when it carries the built-in default candidate - it becomes `VERIFIED`
+ * only through an explicit, evidence-gated verify action (server-checked,
+ * never a client-only claim), and reverts to `UNVERIFIED` the moment its
+ * candidates are edited (never silently promoted back by a save alone).
+ * `NEEDS_CHANGE` is a deliberate owner flag, set explicitly, never inferred.
+ */
+export type FieldVerificationStatus = 'UNVERIFIED' | 'VERIFIED' | 'NEEDS_CHANGE';
+
 export interface CanonicalFieldMapping {
   field: CanonicalFieldKey;
   displayName: string;
@@ -474,6 +492,8 @@ export interface CanonicalFieldMapping {
   sensitive: boolean;
   /** Ordered candidate JSON paths, first usable non-empty value wins. Empty means "not yet mapped" (e.g. Journey Name by default). */
   candidatePaths: string[];
+  /** Scoped identically to the mapping profile itself (same `sourceId`/`project`) - never implies verified for any other source/project/namespace. */
+  verificationStatus: FieldVerificationStatus;
 }
 
 /**

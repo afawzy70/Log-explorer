@@ -133,13 +133,13 @@ test.describe('UX-R4 §8 - hover, focus and selected are visually distinct', () 
 });
 
 test.describe('UX-R4 §17/§18/§19 - row actions', () => {
-  test('F: the menu leads with View details and Show surrounding logs', async ({ page }) => {
+  test('F: the menu leads with View details and Show Surroundings', async ({ page }) => {
     await runRealSearch(page);
     await page.getByRole('button', { name: 'Actions for this event' }).nth(3).click();
     const menu = page.getByRole('menu', { name: 'Event actions' });
 
     await expect(menu.getByRole('menuitem', { name: /view details/i })).toBeVisible();
-    await expect(menu.getByRole('menuitem', { name: /show surrounding logs/i })).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: /show surroundings/i })).toBeVisible();
     await captureScreenshot(page, PHASE, 'AFTER-F-actions-menu');
   });
 
@@ -154,7 +154,7 @@ test.describe('UX-R4 §17/§18/§19 - row actions', () => {
     await expect(rows(page).nth(3)).toHaveAttribute('aria-selected', 'true');
   });
 
-  test('I/J: "Show surrounding logs" runs the bounded context view, and returning restores the original results', async ({
+  test('I/J: "Show Surroundings" runs the bounded context view, and returning restores the original results', async ({
     page,
   }) => {
     await runRealSearch(page);
@@ -162,7 +162,7 @@ test.describe('UX-R4 §17/§18/§19 - row actions', () => {
     const originalCount = await rows(page).count();
 
     await page.getByRole('button', { name: 'Actions for this event' }).nth(3).click();
-    await page.getByRole('menuitem', { name: /show surrounding logs/i }).click();
+    await page.getByRole('menuitem', { name: /show surroundings/i }).click();
 
     await expect(page.getByRole('button', { name: /back to original search/i })).toBeVisible({ timeout: 15_000 });
     await captureScreenshot(page, PHASE, 'AFTER-I-context-from-row-actions');
@@ -243,7 +243,7 @@ test.describe('UX-R4 §9/§10/§12 - truthful sorting', () => {
   test('the sort control is not offered in a context view, which is always ascending', async ({ page }) => {
     await runRealSearch(page);
     await page.getByRole('button', { name: 'Actions for this event' }).nth(3).click();
-    await page.getByRole('menuitem', { name: /show surrounding logs/i }).click();
+    await page.getByRole('menuitem', { name: /show surroundings/i }).click();
     await expect(page.getByRole('button', { name: /back to original search/i })).toBeVisible({ timeout: 15_000 });
 
     await expect(page.getByRole('combobox', { name: /sort/i })).toHaveCount(0);
@@ -353,7 +353,7 @@ test.describe('UX-R4 §33 - no security regression from the new entry points', (
     await expect(page.getByRole('dialog', { name: 'Event details' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Actions for this event' }).nth(3).click();
-    await page.getByRole('menuitem', { name: /show surrounding logs/i }).click();
+    await page.getByRole('menuitem', { name: /show surroundings/i }).click();
     await expect(page.getByRole('button', { name: /back to original search/i })).toBeVisible({ timeout: 15_000 });
 
     // The fixture corpus's protected values are masked server-side; the

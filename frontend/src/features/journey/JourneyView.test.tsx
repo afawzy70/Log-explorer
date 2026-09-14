@@ -73,17 +73,22 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     breadcrumbLabel: null,
     contextRootIdentity: null,
     restoreOriginalSearch: vi.fn(),
+    restoreOriginalSearchLabel: 'Back to original search',
     showContext: vi.fn(),
     journeyQuery: null,
     journeyResult: null,
     journeyLoading: false,
     journeyError: null,
+    journeyRootEvent: null,
     openJourney: vi.fn(),
     closeJourney: vi.fn(),
     fieldMappingProfile: null,
     fieldMappingProfileError: null,
     fieldMappingSearchReady: true,
     refreshFieldMappingProfile: vi.fn(),
+    mappingWorkspaceOpen: false,
+    openMappingWorkspace: vi.fn(),
+    closeMappingWorkspace: vi.fn(),
     ...overrides,
   };
 }
@@ -260,6 +265,94 @@ describe('JourneyView', () => {
         />,
       );
       expect(await axe(container)).toHaveNoViolations();
+    });
+  });
+
+  describe('root event anchoring (owner mission "Mapping Verification and Investigation Workspace")', () => {
+    it('highlights the root event, shows its position, and never a different event', () => {
+      const root = fullEvent({ message: 'root', timestamp: '2026-01-01T12:00:05Z' });
+      const events = [
+        fullEvent({ message: 'before', timestamp: '2026-01-01T12:00:00Z' }),
+        root,
+        fullEvent({ message: 'after', timestamp: '2026-01-01T12:00:10Z' }),
+      ];
+      render(
+        <JourneyView
+          state={baseState({
+            journeyQuery: { field: 'traceId', value: 'trace-1' },
+            journeyRootEvent: root,
+            journeyResult: { events, counts: { estimatedTotal: null, returned: 3, visible: 3, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+          })}
+        />,
+      );
+      expect(screen.getByText(/selected event: 2 of 3/i)).toBeInTheDocument();
+      const highlighted = screen.getByText('root').closest('li');
+      expect(highlighted).toHaveAttribute('aria-current', 'location');
+      expect(screen.getByText('Selected event')).toBeInTheDocument();
+    });
+
+    it('honestly reports when the root event is not present in this bounded result, rather than highlighting a different one', () => {
+      const root = fullEvent({ message: 'not-in-result', timestamp: '2026-01-01T11:00:00Z', eventId: 'ev-missing' });
+      const events = [fullEvent({ message: 'other', timestamp: '2026-01-01T12:00:00Z', eventId: 'ev-other' })];
+      render(
+        <JourneyView
+          state={baseState({
+            journeyQuery: { field: 'traceId', value: 'trace-1' },
+            journeyRootEvent: root,
+            journeyResult: { events, counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+          })}
+        />,
+      );
+      expect(screen.getByText(/not present in this result/i)).toBeInTheDocument();
+      expect(screen.queryByText('Selected event')).not.toBeInTheDocument();
+      expect(document.querySelector('[aria-current="location"]')).not.toBeInTheDocument();
+    });
+
+    it('shows no position line at all when no root event was captured', () => {
+      const events = [fullEvent()];
+      render(
+        <JourneyView
+          state={baseState({
+            journeyQuery: { field: 'traceId', value: 'trace-1' },
+            journeyResult: { events, counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+          })}
+        />,
+      );
+      expect(screen.queryByText(/selected event/i)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('in-timeline Show Surroundings (owner mission "Mapping Verification and Investigation Workspace")', () => {
+    it('each timestamped entry offers Show Surroundings, wired to state.showContext with that exact event', async () => {
+      const user = userEvent.setup();
+      const showContext = vi.fn();
+      const target = fullEvent({ message: 'target', timestamp: '2026-01-01T12:00:00Z' });
+      const events = [target];
+      render(
+        <JourneyView
+          state={baseState({
+            journeyQuery: { field: 'traceId', value: 'trace-1' },
+            showContext,
+            journeyResult: { events, counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+          })}
+        />,
+      );
+      await user.click(screen.getByRole('button', { name: /^show surroundings$/i }));
+      await user.click(screen.getByRole('button', { name: /^run$/i }));
+      expect(showContext).toHaveBeenCalledWith(target);
+    });
+
+    it('omits Show Surroundings for an entry with no timestamp, rather than offering a dead action', () => {
+      const events = [fullEvent({ timestamp: null })];
+      render(
+        <JourneyView
+          state={baseState({
+            journeyQuery: { field: 'traceId', value: 'trace-1' },
+            journeyResult: { events, counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+          })}
+        />,
+      );
+      expect(screen.queryByRole('button', { name: /show surroundings/i })).not.toBeInTheDocument();
     });
   });
 

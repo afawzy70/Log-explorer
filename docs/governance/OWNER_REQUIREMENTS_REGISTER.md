@@ -2021,3 +2021,158 @@ projects. `PROJECT_SCOPED_SCHEMA_SCAN=PASS`, `DOCKER_PROJECT_ISOLATION=PASS`,
 `MERGE_AUTHORIZED=NO` — owner review of PR #55 required before merge.
 
 ---
+
+## 22. Mapping Verification and Investigation Workspace
+
+`MAPPING_VERIFICATION_AND_INVESTIGATION_WORKSPACE` mission — owner
+clarification received after section 21 shipped, continuing on the SAME
+branch (`feature/configurable-log-field-mapping`) and SAME PR (#55),
+never merged into `ux/v2-professional-redesign` (PR #54, untouched). Two
+independent parts building directly on sections 19–21's foundation: Part
+A turns configurable mapping into a genuine **verification** workflow
+(candidate ≠ verified); Part B restores and formalizes a dedicated
+**Investigation Workspace** distinct from Search/Results and the
+Inspector.
+
+**Named conflicts, applied per CLAUDE.md §5 (later decision wins, earlier
+rationale preserved, never deleted):**
+
+1. **UX-R5 §15's "one name everywhere" decision is upheld, but the name
+   itself changes.** UX-R5 §15 established that "Show surrounding logs"
+   must be the one label used at every invocation site (row Actions menu,
+   inspector header) rather than the "Show ±30 seconds" wording an
+   earlier phase used in one place. This mission keeps that "one name
+   everywhere" reasoning intact and renames the shared label to **"Show
+   Surroundings"** (this mission's own explicit, exact required wording)
+   — applied identically to every existing invocation site
+   (`ActionsCell.tsx`'s row menu, `ContextAction.tsx`'s inspector header
+   action) plus the new one this mission adds (`JourneyEntryRow.tsx`'s
+   in-timeline action, which reuses `ContextAction` directly rather than
+   a second implementation). UX-R5 §15's own rationale (recorded in
+   section 16/17 above and in `ContextAction.tsx`'s own doc comment) is
+   preserved verbatim alongside the supersession note, not deleted.
+2. **IMPLEMENTATION_PLAN.md "Phase I" scope item 1's "never spanId" rule
+   is superseded.** Phase I deliberately excluded `spanId` from the
+   journey click-actions ("Find this trace / correlation / journey /
+   event... never spanId, which has no 'Find this Span' action in the
+   plan's own scope"). This mission adds **View Span** as a first-class
+   fifth investigation action, reusing the exact same generic `/journey`
+   endpoint (one-line backend extension — `spanId` added to the closed
+   `JOURNEY_FIELDS` set — never a duplicate endpoint). The historical
+   comment recording the old exclusion is updated in place to point at
+   this section rather than silently left to assert something no longer
+   true.
+3. **The Log Schema & Field Mapping popover (`FieldMappingSettingsPanel`,
+   sections 19–21's UI home) is retired in favor of a dedicated full page
+   (`FieldMappingWorkspace`).** This mission's own explicit requirement:
+   "a dedicated Settings page/workspace... not a hidden popover/
+   implementation detail." All of sections 19–21's scan/candidate-editor/
+   validate/save/reset mechanics move unchanged into the new component;
+   only the verification layer (below) and the outer page/popover
+   structure change. `Shell.tsx` keeps a same-styled trigger button
+   (`state.openMappingWorkspace()`), now rendering the workspace as a
+   mutually-exclusive `App.tsx` overlay — the exact same pattern
+   `JourneyView`/`LiveTailPanel` already establish — rather than a
+   `role="dialog"` popover. The five prior sections' `VERIFIED` rows
+   remain `VERIFIED`: their underlying mechanics are unchanged, only
+   relocated.
+
+### Part A — Mapping Verification
+
+**Core rule, restated as the mission's own required invariant:**
+`DEFAULT_MAPPING != VERIFIED_MAPPING`. A canonical field's built-in
+default candidate — or any candidate inherited from a prior mission —
+never becomes `VERIFIED` merely by existing; it starts and stays
+`UNVERIFIED` until an owner explicitly verifies it against real evidence.
+
+| ID | NAME | STATUS | EVIDENCE | NOTES |
+|---|---|---|---|---|
+| MVER-1 | Exactly three verification statuses — `UNVERIFIED` / `VERIFIED` / `NEEDS_CHANGE`, no invented extra complexity; every field (including the built-in default) starts `UNVERIFIED` | `VERIFIED` | New backend enum `core.mapping.FieldVerificationStatus`; `FieldMappingProfileService`'s per-scope `ScopeState` gained `ConcurrentHashMap<CanonicalField, FieldVerificationStatus> verificationStatuses`, freshly initialized to `UNVERIFIED` for every field on scope creation; `FieldMappingProfileDto.CanonicalFieldMappingDto` gained a `verificationStatus` string; frontend `CanonicalFieldMapping.verificationStatus: FieldVerificationStatus` (`'UNVERIFIED' \| 'VERIFIED' \| 'NEEDS_CHANGE'`) | `FieldMappingProfileServiceTest.everyFieldStartsUnverified_evenTheBuiltInDefault`; `FieldMappingSettingsControllerIntegrationTest.aFreshFieldStartsUnverifiedEvenOnTheBuiltInDefault`; `FieldMappingWorkspace.test.tsx` ("every field starts UNVERIFIED, even a built-in default candidate - DEFAULT_MAPPING != VERIFIED_MAPPING") |
+| MVER-2 | Verify is evidence-gated server-side — re-validates the field's CURRENT (saved) candidate against caller-supplied real samples using the same `FieldMappingValidationService` `/validate` already uses (never a duplicate check); rejects with 400 if unmapped or not found in any sample, never silently marks verified | `VERIFIED` | New endpoint `POST /api/v1/settings/field-mapping/fields/{field}/verify` (`FieldMappingSettingsController#verifyField`); new DTO `FieldMappingVerifyRequestDto(samples)`; new frontend client fn `verifyFieldMapping` | `FieldMappingSettingsControllerIntegrationTest.verifyingWithRealEvidenceSucceedsAndPersistsTheStatus`, `.verifyingWithoutEvidenceIsRejected_neverSilentlyMarkedVerified`, `.verifyingAnUnmappedFieldIsRejected`; `FieldMappingWorkspace.test.tsx` ("a successful Verify calls the real endpoint...", "a rejected Verify (no evidence found) shows the real server reason, never a silent 'verified'"); `frontend/e2e/phase-n-schema-scan-field-mapping.spec.ts` ("the built-in default mapping starts Unverified, and Verify against real evidence marks it Verified") — real browser, real backend, real `fixture` source |
+| MVER-3 | `NEEDS_CHANGE` is an explicit, no-evidence-required owner flag — never inferred, never silently promoted back to `VERIFIED` by a later save alone | `VERIFIED` | New endpoint `POST /api/v1/settings/field-mapping/fields/{field}/needs-change` (`FieldMappingSettingsController#markFieldNeedsChange`); `FieldMappingProfileService#markNeedsChange`; frontend `markFieldMappingNeedsChange` client fn, `FieldMappingWorkspace`'s "Mark needs change" button (hidden once already in that state, so it is never fired redundantly) | `FieldMappingProfileServiceTest.markVerifiedAndMarkNeedsChangeSetTheExpectedStatus`; `FieldMappingSettingsControllerIntegrationTest.markingNeedsChangeSetsTheStatusWithNoEvidenceRequired`; `FieldMappingWorkspace.test.tsx` ("Mark needs change calls the real endpoint...", "hides the 'Mark needs change' action for a field already in that state"); `frontend/e2e/phase-n-schema-scan-field-mapping.spec.ts` ("Mark needs change flags a field explicitly, and editing its candidate never silently promotes it back to Verified") |
+| MVER-4 | Editing a `VERIFIED` field's candidates reverts it to `UNVERIFIED` (never a silent keep); editing a `NEEDS_CHANGE` field leaves it `NEEDS_CHANGE` (not silently promoted to `VERIFIED` by the edit/save itself — a later, separate Verify remains required); a whole-profile reset clears every field's status back to `UNVERIFIED` | `VERIFIED` | `FieldMappingProfileService#updateCandidates` — reverts `VERIFIED`→`UNVERIFIED` on any candidate edit via `computeIfPresent`, leaves any other status untouched; `#resetToDefault` also resets every field's verification status | `FieldMappingProfileServiceTest.editingAVerifiedFieldsCandidatesRevertsItToUnverified`, `.editingANeedsChangeFieldsCandidatesDoesNotSilentlyPromoteItToVerified`, `.resettingTheProfileResetsEveryFieldsVerificationStatusToo`; `FieldMappingSettingsControllerIntegrationTest.editingAVerifiedFieldRevertsItToUnverified_viaTheRealHttpEndpoints` |
+| MVER-5 | Verification status is scoped identically to the mapping profile itself (same `MappingScopeKey`) — Docker: Compose-project-scoped; OpenShift: session-authoritative selected namespace/project-scoped; changing project/namespace reloads the correct statuses, never reuses another project's silently | `VERIFIED` | `verificationStatuses` lives inside the SAME per-scope `ScopeState` the candidates themselves live in — one map, one scope key, no separate scoping mechanism to drift out of sync; `FieldMappingWorkspace`'s `useEffect` on `[sourceId, project]` clears all local scan/draft/verify-error state on scope change (mirroring PSSS-7/PSSS-8's existing profile-reload discipline, unchanged) | `FieldMappingProfileServiceTest.verificationStatusIsFullyScopedAcrossProjects`; `FieldMappingSettingsControllerIntegrationTest.verificationStatusIsProjectScoped_neverLeaksAcrossProjects` |
+| MVER-6 | The Mapping Verification workspace is a real, dedicated full page — `FieldMappingWorkspace.tsx` — not a hidden popover; a mutually-exclusive `App.tsx` overlay slot (same pattern as `JourneyView`/`LiveTailPanel`), reached via a `Shell.tsx` trigger button (`state.openMappingWorkspace()`) | `VERIFIED` | New `useSearchState` state: `mappingWorkspaceOpen`/`openMappingWorkspace`/`closeMappingWorkspace`; `App.tsx` renders `<FieldMappingWorkspace>` (lazy-loaded, code-split — confirmed by its own production build chunk) with top priority in the main-slot conditional when open; old `FieldMappingSettingsPanel.tsx`/`.module.css`/its test file deleted, fully superseded | `FieldMappingWorkspace.test.tsx` ("is a real dedicated page, not a popover..."); `Shell.test.tsx` ("offers a trigger that opens the real dedicated workspace, never a popover of its own"); `App.mappingWorkspace.test.tsx` (real `<App/>` integration: opens as a full-page overlay replacing the results workspace, closes back to it); `frontend/e2e/phase-n-schema-scan-field-mapping.spec.ts` updated end to end for the new page shape |
+| MVER-7 | Per canonical field, the workspace shows: candidate path(s), whether each candidate was observed in the latest schema scan, verification status badge, Verify/Mark-needs-change actions, validation result, saved state | `VERIFIED` | `FieldMappingWorkspace.tsx`'s `FieldEditorRow`/`VerificationBadge` — `(observed in latest scan)`/`(not observed in latest scan)` note per candidate path (cross-referenced against the same scan's `discoveredSchema`, entirely client-side, no new backend endpoint needed); three visually AND textually distinct badges (never color alone, CLAUDE.md §7) | `FieldMappingWorkspace.test.tsx` ("marks a candidate path as observed or not observed in the latest scan", "shows a distinct VERIFIED/NEEDS_CHANGE badge...") |
+| MVER-8 | Discovered-but-unmapped fields remain visible (carried forward from PSSS-4/SSMP-4/5, re-confirmed unchanged); non-JSON/malformed noise stays diagnostics-only, never offered as a mapping OR verification candidate | `VERIFIED` | Unchanged from section 20/21 — `diagnosticNonJsonSamples` never contributes to `discoveredSchema`; the picker in `FieldMappingWorkspace` only ever offers `discoveredSchema` paths | Re-verified passing: `SchemaScanServiceTest.nonJsonLinesNeverBecomeTheRepresentativeMappingSample_onlyDiagnostics` et al. (section 21), `FieldMappingWorkspace.test.tsx` ("lists the Discovered Source Schema union..., never 'Original JSON'") |
+| MVER-9 | `SEARCH_READY` and `MAPPING_VERIFIED` are related but distinct concepts — a saved, technically-parseable default mapping can be `searchReady: true` while every field on it is still `UNVERIFIED` | `VERIFIED` | `FieldMappingProfileDto`'s own updated javadoc states this explicitly; `FieldMappingWorkspace.tsx`'s hint copy: "A saved mapping being search-ready is not the same as it being **verified**"; the two states are computed and stored completely independently (`isSearchReady(scope)` vs. `verificationStatus(scope, field)`) | `FieldMappingProfileServiceTest`/`FieldMappingSettingsControllerIntegrationTest` — every readiness test and every verification test exercises its own concept only, never conflated |
+| MVER-10 | Full regression for Part A | `VERIFIED` | Backend: `FieldVerificationStatus`/`FieldMappingProfileService`/`FieldMappingSettingsController` changes — 18/18 `FieldMappingProfileServiceTest` pass (6 new), 17/17 `FieldMappingSettingsControllerIntegrationTest` pass (7 new). Frontend: `FieldMappingWorkspace.test.tsx` 25/25 new tests pass, typecheck clean, production build succeeds (`FieldMappingWorkspace` its own lazy chunk) | See §"Full regression" below for the combined Part A + Part B totals |
+
+### Part B — Investigation Workspace
+
+**Product split, restated as the mission's own required invariant:**
+SEARCH/RESULTS finds events; INSPECTOR explains one selected event;
+INVESTIGATION WORKSPACE investigates relationships/context across
+multiple events. The Investigation Workspace is `JourneyView.tsx`
+(unchanged component identity from IMPLEMENTATION_PLAN.md "Phase I" —
+this mission extends it, never replaces it with something unrelated, per
+the mission's own "restore the intended capability" instruction and the
+precedent recorded in `legacy-app-docs/UX_SPEC.md` §Phase 6's
+`EventTimeline.tsx`/root anchoring/gap markers, already `WORKING` per
+`legacy-app-docs/audit/AUDIT-03-WORKFLOWS.md`).
+
+| ID | NAME | STATUS | EVIDENCE | NOTES |
+|---|---|---|---|---|
+| INVW-1 | The one generic `/api/v1/logs/journey` endpoint now serves all five investigation relationships (journeyId/correlationId/traceId/spanId/eventId) — never a duplicate source-specific endpoint | `VERIFIED` | `RequestMapper.JOURNEY_FIELDS` extended `{journeyId, correlationId, traceId, eventId}` → `{..., spanId}`; `toJourneyDomain`'s switch gained `case "spanId"`; frontend `JourneyField` type/`journeyFields.ts` extended identically | `RequestMapperTest.spanIdFieldMapsToTheSpanIdFilterOnly`; `JourneyApiIntegrationTest.filtersByCorrelationTraceSpanAndEventIdToo` |
+| INVW-2 | Five investigation entry actions with the mission's own exact required labels — "View Trace" / "View Span" / "Find same Correlation" / "Find same Journey" / "Find same Event" — available wherever the required identifier is present, never for a raw protected identifier | `VERIFIED` | New `journeyFields.ts` export `JOURNEY_ACTION_LABELS`; `RequestFlowSection.tsx`'s `JOURNEY_CLICKABLE_FIELDS` extended to include `spanId`; each action passes the launching event as the new optional root-event argument to `onOpenJourney`; `columnRegistry.tsx`'s Correlation/Trace cell button tooltip updated to the same labels and now also passes the root event | `journeyFields.test.ts` (`JOURNEY_ACTION_LABELS` exact-label test); `RequestFlowSection.test.tsx` ("lists all 5 identifiers... with an investigation action for each, including spanId", "'View Span' calls onOpenJourney with spanId and this event as root"); `ResultsTable.test.tsx` (root-event threading); real browser: `frontend/e2e/phase-investigation-workspace.spec.ts` ("View Span opens a real bounded span timeline...", "Find same Correlation opens a real bounded correlation timeline...") |
+| INVW-3 | Root event anchoring — the event that launched Trace/Span/Correlation/Journey never visually disappears: highlighted (`aria-current="location"` + a "Selected event" text badge, never color alone), auto-scrolled into view, with an explicit "Selected event: N of M" position; if the root event is genuinely absent from a bounded result, an honest notice is shown — never a silently-substituted highlight on a different event | `VERIFIED` | New `useSearchState` state `journeyRootEvent` (captured at `openJourney(field, value, rootEvent)` call time); `JourneyEntryRow.tsx`'s `isRoot`/`rootRef`/`.rootEntry` (mirrors `ResultsTable`'s pre-existing `contextRootIdentity`/`.contextRootRow` pattern exactly — same `eventIdentity()` content-based matching, never a second, differently-behaved mechanism); `JourneyView.tsx` computes `rootIndex` via `eventIdentity`, renders "Selected event: N of M" or the honest not-found notice | `JourneyView.test.tsx` ("highlights the root event, shows its position...", "honestly reports when the root event is not present..."); `JourneyEntryRow.test.tsx` ("a root entry gets aria-current=\"location\" and a visible 'Selected event' badge..."); real browser: `phase-investigation-workspace.spec.ts` (position text + `[aria-current="location"]` both asserted against real fixture data for View Span and Find same Correlation) |
+| INVW-4 | "Show Surroundings" is a separate concept from Trace/Span/Correlation/Journey — temporal/source-context only, exact required label, available in-timeline (from any Journey entry) as well as from Results/Inspector; never implies the nearby events caused the selected one | `VERIFIED` | `JourneyEntryRow.tsx` renders the SAME `ContextAction` component the Inspector header already uses (never a second, parallel confirm-and-run implementation) per entry, wired to `state.showContext`; label renamed everywhere per the named-conflict note above | `JourneyEntryRow.test.tsx`/`JourneyView.test.tsx` (Show-Surroundings wiring, omitted for a timestamp-less entry); real browser: `phase-investigation-workspace.spec.ts` ("Show Surroundings launched from inside a Trace view, then Back to Trace, restores that same trace timeline") |
+| INVW-5 | Investigation navigation/continuity — Surroundings launched from WITHIN a Trace/Span/Correlation/Journey view returns to THAT same view ("Back to Trace"/"Back to Span"/"Back to Correlation"/"Back to Journey") on close, preserving the original search underneath throughout; the Back button's own label says where it is actually going, never a generic claim | `VERIFIED` | New `useSearchState` state `journeySnapshotForSurroundings` — a second, deliberately single-level snapshot layered on top of the pre-existing `originalSnapshot` mechanism (UX-R5 §16/§24-26); `showContext` snapshots-and-clears the active journey view before running; `restoreOriginalSearch` always restores the underlying plain-search state first, then branches — restores the journey snapshot (`closeJourney` remains the one true exit that clears everything, including `originalSnapshot`); new derived value `restoreOriginalSearchLabel` (`"Back to Trace"` etc. vs. `"Back to original search"`), surfaced in `ResultsPanel`'s `Breadcrumb` | `useSearchState.contextReturn.test.ts` (new describe block: "the Back label says 'Back to Trace' while inside a trace...", "Show Surroundings launched from within a Trace view, then Back, restores that same Trace view (root event included)", "a genuine 'Back to original search' after that restored Trace view still works", "never silently switches source..."); real browser: `phase-investigation-workspace.spec.ts` (the full nested flow, against the real backend) |
+| INVW-6 | No silent source switch — every investigation mode queries only the currently active source | `VERIFIED` | `openJourney`/`showContext` both read `selectedSourceId` unconditionally, unchanged by this mission — no new source-selection code path was introduced anywhere in Part B | `useSearchState.contextReturn.test.ts.neverSilentlySwitchesSourceWhileResolvingSurroundingsLaunchedFromAJourneyView` |
+| INVW-7 | No fabricated causality — "Same Trace"/"Same Span"/"Same Correlation"/"Same Journey" mean exactly that relationship; "Surroundings" means nearby actual source/time context; chronological order is stated as timestamp order, never proof of cause | `VERIFIED` | `JourneyView.tsx`'s pre-existing causality disclaimer (Legacy Remediation Slice 6, unchanged: "Ordered by timestamp — this does not indicate causality between events") now also governs the new root-anchored/position-indicator copy, which was written to describe position/order only, never cause; `ContextAction.tsx`'s existing "Nearby chronological evidence... not a cause" copy, unchanged, now also governs its new in-timeline invocation site | Re-verified passing: `JourneyView.test.tsx`'s pre-existing causality-disclaimer tests; no new UI string anywhere in this mission's diff contains "caused by"/"because of"/"root cause" (checked by hand across every new/changed `.tsx` file) |
+| INVW-8 | Results workflow preservation — every row still inspectable, selected row still obvious, View Details/Show Surroundings still clear, sorting still truthful, no filter/column regression | `VERIFIED` | No behavioral change to `ResultsTable.tsx`'s selection/sort/column mechanics; `ActionsCell.tsx` only had its Show-Surroundings label renamed (behavior identical); `columnRegistry.tsx`'s Correlation/Trace cell gained a root-event argument and an updated tooltip, its click/filter behavior otherwise unchanged | Full pre-existing `ResultsTable.test.tsx`/`ActionsCell.test.tsx` suites re-verified passing unchanged (only the one test asserting the exact `onOpenJourney` call signature was updated for the new third argument); no filter/field was added, removed, or renamed |
+| INVW-9 | Full regression for Part B | `VERIFIED` | Frontend: `useSearchState.contextReturn.test.ts` 16/16 (5 new), `JourneyView.test.tsx` 19/19 (7 new), `JourneyEntryRow.test.tsx` 11/11 (6 new), `journeyFields.test.ts` 6/6 (2 new), `RequestFlowSection.test.tsx` 9/9 (3 new), `ResultsTable.test.tsx`/`ContextAction.test.tsx`/`ActionsCell.test.tsx` re-verified passing with updated labels/signatures. Backend: `RequestMapperTest` 16/16 (1 new), `JourneyApiIntegrationTest` 8/8 (extended, not net-new). E2E (real backend, real `fixture` source): `phase-i-journey-investigation.spec.ts` (13/13, 1 label fix), `phase-investigation-workspace.spec.ts` (new file, 3/3), plus 6 more pre-existing specs touched only for the "Show Surroundings" rename, all re-verified passing (157 tests total across those 6 files) | See §"Full regression" below for the combined Part A + Part B totals |
+
+**Full regression (both parts, this mission's own diff).** Backend:
+1277/1277 tests pass (full `./mvnw test`, 0 failures/errors/skipped —
+`FieldVerificationStatus`/`FieldMappingProfileService`/
+`FieldMappingSettingsController`/`RequestMapper`/`JourneyApiIntegrationTest`
+changes all included). Frontend: 922/922 unit tests pass (901 pre-existing
+this branch, net +21 after the new/updated test counts above and the
+deletion of `FieldMappingSettingsPanel.test.tsx`, fully superseded by
+`FieldMappingWorkspace.test.tsx`), typecheck clean,
+production build succeeds (`FieldMappingWorkspace`/`JourneyEntryRow`/
+`JourneyView` each their own lazy-loaded chunk). E2E: 180 tests across
+the 10 spec files this mission touched or added, all passing against the
+real backend (`SPRING_PROFILES_ACTIVE=dev`) and real frontend dev
+server — real rendered evidence, not inferred from source (CLAUDE.md §6).
+
+**Deferred/not re-run this pass (named explicitly, CLAUDE.md §3):** the
+full E2E suite (every spec file in `frontend/e2e/`, including the
+Windows/macOS desktop CI jobs and the OpenShift-specific specs with no
+behavioral overlap with this mission's diff) was not re-run in full
+locally — BLOCKED on local wall-clock/compute budget for a mission this
+size, not on any known failure. The 10 spec files actually touched by
+this mission's diff (renamed labels, extended `JourneyField`, the new
+Mapping Verification workspace, the two new investigation-workspace
+specs) were all re-run and pass; PR #55's own CI (Backend/Frontend/E2E/
+Windows/macOS, all required to be green before merge per this project's
+established discipline) remains the authoritative final gate before
+owner review, exactly as it has been for every prior section in this
+register.
+
+**Mapping Verification and Investigation Workspace pass (this section).**
+Part A turns the existing configurable-mapping foundation into a genuine
+verification workflow: every candidate — including the built-in default —
+starts `UNVERIFIED`, becomes `VERIFIED` only through an evidence-gated,
+server-checked action, and is never silently promoted by an edit or a
+save alone. Part B restores and formalizes the Investigation Workspace as
+its own product surface, distinct from Search/Results and the Inspector:
+five root-anchored, position-indicated relationship views (Trace/Span/
+Correlation/Journey/Event), plus a temporally-scoped Show Surroundings
+action available from within any of them, with navigation continuity
+("Back to Trace" etc.) layered on top of the pre-existing single-level
+detour mechanism rather than a second, parallel one.
+`MAPPING_VERIFICATION_PAGE_PRESENT=YES`,
+`DEFAULT_MAPPING_NOT_AUTO_VERIFIED=YES`, `PROJECT_SCOPED_VERIFICATION=PASS`,
+`CROSS_PROJECT_VERIFICATION_LEAK=NO`,
+`SEARCH_READY_DISTINCT_FROM_VERIFIED=PASS`,
+`TRACE_ACTION_PRESENT=YES`, `SPAN_ACTION_PRESENT=YES`,
+`CORRELATION_ACTION_PRESENT=YES`, `JOURNEY_ACTION_PRESENT=YES`,
+`SHOW_SURROUNDINGS_ACTION_PRESENT=YES`, `ROOT_ANCHORING=PASS`,
+`POSITION_INDICATOR_VISIBLE=YES`, `NO_SILENT_SOURCE_SWITCH=PASS`,
+`FABRICATED_CAUSALITY=NO`. `HISTORICAL_DECISIONS_PRESERVED=YES`.
+`UNTRACKED_OWNER_REQUIREMENTS=0`. `MERGE_AUTHORIZED=NO` — owner review of
+PR #55 required before merge.
+
+---

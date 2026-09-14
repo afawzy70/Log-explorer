@@ -154,12 +154,13 @@ describe('ResultsTable', () => {
     expect(within(row).getAllByRole('cell')[5].querySelector('button')).toBeNull();
   });
 
-  it('"supported click actions on non-sensitive IDs" (HANDOVER.md §17) - clicking the Correlation/Trace cell calls onOpenJourney with the right field and value', async () => {
+  it('"supported click actions on non-sensitive IDs" (HANDOVER.md §17) - clicking the Correlation/Trace cell calls onOpenJourney with the right field, value, and this event as root (owner mission "Mapping Verification and Investigation Workspace")', async () => {
     const user = userEvent.setup();
     const onOpenJourney = vi.fn();
-    render(<ResultsTable events={[event({ traceId: 'trace-abc' })]} onOpenJourney={onOpenJourney} />);
+    const theEvent = event({ traceId: 'trace-abc' });
+    render(<ResultsTable events={[theEvent]} onOpenJourney={onOpenJourney} />);
     await user.click(screen.getByRole('button', { name: /trace id:trace-abc/i }));
-    expect(onOpenJourney).toHaveBeenCalledWith('traceId', 'trace-abc');
+    expect(onOpenJourney).toHaveBeenCalledWith('traceId', 'trace-abc', theEvent);
   });
 
   it('renders rows in exactly the order given - no client-side reordering, no dropped/duplicated rows', () => {

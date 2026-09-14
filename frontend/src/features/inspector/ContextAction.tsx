@@ -15,13 +15,23 @@ const WINDOW_MS = 30_000;
  * computed here first and shown, then the caller only runs it once the
  * investigator explicitly confirms.
  *
- * <p><b>UX-R5 §15 - labelled "Show surrounding logs", not "Show ±30
- * seconds".</b> UX-R4 put that exact wording on the row Actions menu, and
- * one product must not name the same single action two different ways
- * depending on where you invoke it. The ±30s window has not been hidden -
- * it is stated exactly, with both bounds, in the confirm popover below,
- * which is where a bounded query belongs. The label says what the action
- * is *for*; the popover says what it will *do*.
+ * <p><b>UX-R5 §15 - labelled the same everywhere it is invoked, never "Show
+ * ±30 seconds".</b> One product must not name the same single action two
+ * different ways depending on where you invoke it. The ±30s window has not
+ * been hidden - it is stated exactly, with both bounds, in the confirm
+ * popover below, which is where a bounded query belongs. The label says
+ * what the action is *for*; the popover says what it will *do*.
+ *
+ * <p><b>Superseded by owner mission "Mapping Verification and Investigation
+ * Workspace":</b> the shared label is now exactly <b>"Show Surroundings"</b>
+ * (previously "Show surrounding logs", per UX-R5 §15 above - that decision's
+ * "one name everywhere" reasoning still holds and is why this rename
+ * touched every invocation site, not just this one). The rename reflects
+ * this action's place alongside the new View Trace / View Span / Find same
+ * Correlation / Find same Journey investigation actions: "Surroundings"
+ * names the temporal/source-context relationship precisely, distinct from
+ * those four identifier-based relationships, without the change in
+ * wording UX-R5 §15 originally forbade.
  */
 export function ContextAction({ event, onConfirm }: { event: LogEvent; onConfirm: () => void }) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -45,7 +55,7 @@ export function ContextAction({ event, onConfirm }: { event: LogEvent; onConfirm
         aria-expanded={popover.isOpen}
         onClick={() => (popover.isOpen ? popover.close() : popover.open())}
       >
-        Show surrounding logs
+        Show Surroundings
       </Button>
       {popover.isOpen ? (
         <div className={styles.preview} role="dialog" aria-label="Confirm surrounding-context search">

@@ -139,7 +139,7 @@ test.describe('Legacy Remediation Slice 7 — Conservative free-text sensitive-d
 
     await row.getByRole('button', { name: /actions for this event/i }).click();
     await page.getByRole('menuitem', { name: /view details/i }).click();
-    await page.getByRole('dialog', { name: /event details/i }).getByRole('button', { name: /show surrounding logs/i }).click();
+    await page.getByRole('dialog', { name: /event details/i }).getByRole('button', { name: /show surroundings/i }).click();
     await page.getByRole('button', { name: /^run$/i }).click();
     await expect(page.getByText(/back to original search/i)).toBeVisible({ timeout: 10_000 });
 
@@ -209,7 +209,7 @@ test.describe('Legacy Remediation Slice 7 — Conservative free-text sensitive-d
     const targetRow = page.locator('tbody tr').filter({ hasNot: page.locator('td:nth-child(2):text-is("—")') }).first();
     await targetRow.getByRole('button', { name: /actions for this event/i }).click();
     await page.getByRole('menuitem', { name: /view details/i }).click();
-    await page.getByRole('dialog', { name: /event details/i }).getByRole('button', { name: /show surrounding logs/i }).click();
+    await page.getByRole('dialog', { name: /event details/i }).getByRole('button', { name: /show surroundings/i }).click();
     await page.getByRole('button', { name: /^run$/i }).click();
     await expect(page.getByText(/back to original search/i)).toBeVisible({ timeout: 10_000 });
 

@@ -63,7 +63,7 @@ test.describe('UX-R6 §3 - the Inspector is a bounded, viewport-height column', 
     // results scrolled the Inspector's content away and left only its
     // sticky header.
     await expect(inspector(page).locator('section[aria-label="Overview"]')).toBeInViewport();
-    await expect(inspector(page).getByRole('button', { name: /show surrounding logs/i })).toBeInViewport();
+    await expect(inspector(page).getByRole('button', { name: /show surroundings/i })).toBeInViewport();
     expect(await rows(page).filter({ hasNotText: '__never__' }).count()).toBeGreaterThan(0);
     await captureScreenshot(page, PHASE, 'AFTER-B-results-and-inspector-1440');
   });
@@ -256,14 +256,14 @@ test.describe('UX-R6 §9/§12 - Live states and action language', () => {
   test('one canonical label per intent across Results and Inspector', async ({ page }) => {
     await search(page);
 
-    // "Show surrounding logs" is the row-menu wording...
+    // "Show Surroundings" is the row-menu wording...
     await page.getByRole('button', { name: 'Actions for this event' }).nth(3).click();
-    await expect(page.getByRole('menuitem', { name: /show surrounding logs/i })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: /show surroundings/i })).toBeVisible();
     await page.keyboard.press('Escape');
 
     // ...and the inspector must use the same words, not "Show ±30 seconds".
     await openInspectorAt(page, 3);
-    await expect(inspector(page).getByRole('button', { name: /show surrounding logs/i })).toBeVisible();
+    await expect(inspector(page).getByRole('button', { name: /show surroundings/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /±30 seconds/i })).toHaveCount(0);
   });
 });
@@ -280,7 +280,7 @@ test.describe('UX-R6 §15 - responsive matrix', () => {
       await expect(page.getByRole('button', { name: /^search$/i })).toBeVisible();
 
       await openInspectorAt(page, 3);
-      await expect(inspector(page).getByRole('button', { name: /show surrounding logs/i })).toBeVisible();
+      await expect(inspector(page).getByRole('button', { name: /show surroundings/i })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Close event inspector' })).toBeVisible();
       await assertNoHorizontalOverflow(page);
 
@@ -297,7 +297,7 @@ test.describe('UX-R6 §15 - responsive matrix', () => {
     await setZoom(page, 200);
 
     await expect(inspector(page)).toContainText(/Event \d+ of \d+ loaded/);
-    await expect(inspector(page).getByRole('button', { name: /show surrounding logs/i })).toBeVisible();
+    await expect(inspector(page).getByRole('button', { name: /show surroundings/i })).toBeVisible();
     await assertNoHorizontalOverflow(page);
     await captureScreenshot(page, PHASE, 'AFTER-L-zoom-200pct');
   });
@@ -343,7 +343,7 @@ test.describe('UX-R6 §17 - security regression pass', () => {
     expect(panelText).toMatch(/never revealed/i);
     expect(await inspector(page).getByRole('button', { name: /reveal|unmask|show raw/i }).count()).toBe(0);
 
-    await inspector(page).getByRole('button', { name: /show surrounding logs/i }).click();
+    await inspector(page).getByRole('button', { name: /show surroundings/i }).click();
     await page.getByRole('button', { name: /^run$/i }).click();
     await expect(page.getByRole('button', { name: /back to original search/i })).toBeVisible({ timeout: 15_000 });
 
@@ -384,7 +384,7 @@ test.describe('UX-R6 §19 - workspace evidence', () => {
     await setViewport(page, 1440, 900);
     await search(page);
     await openInspectorAt(page, 3);
-    await inspector(page).getByRole('button', { name: /show surrounding logs/i }).click();
+    await inspector(page).getByRole('button', { name: /show surroundings/i }).click();
     await page.getByRole('button', { name: /^run$/i }).click();
     await expect(page.getByRole('button', { name: /back to original search/i })).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('tbody tr[aria-current="location"]')).toHaveCount(1);

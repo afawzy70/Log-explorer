@@ -85,14 +85,14 @@ describe('UX-R5 §6 - Previous/Next bounds', () => {
 });
 
 describe('UX-R5 §14 - the inspector-level context action lives in the header', () => {
-  it('offers "Show surrounding logs" from the header, independent of any section', () => {
+  it('offers "Show Surroundings" from the header, independent of any section', () => {
     renderHeader();
-    expect(screen.getByRole('button', { name: /show surrounding logs/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /show surroundings/i })).toBeInTheDocument();
   });
 
   it('uses the same wording as the row Actions menu, so one action is not named two ways', () => {
     renderHeader();
-    // UX-R4 named this exact action "Show surrounding logs" on the results
+    // UX-R4 named this exact action "Show Surroundings" on the results
     // row; the inspector must not call it "Show ±30 seconds".
     expect(screen.queryByRole('button', { name: /±30 seconds/i })).not.toBeInTheDocument();
   });
@@ -102,7 +102,7 @@ describe('UX-R5 §14 - the inspector-level context action lives in the header', 
     const onShowContext = vi.fn();
     renderHeader({ onShowContext });
 
-    await user.click(screen.getByRole('button', { name: /show surrounding logs/i }));
+    await user.click(screen.getByRole('button', { name: /show surroundings/i }));
     expect(onShowContext).not.toHaveBeenCalled(); // a confirm step, never instant
 
     const preview = screen.getByRole('dialog', { name: /confirm surrounding-context search/i });
@@ -115,7 +115,7 @@ describe('UX-R5 §14 - the inspector-level context action lives in the header', 
 
   it('is omitted for an event with no timestamp - no window to centre on', () => {
     renderHeader({ event: { ...fullEvent(), timestamp: null } });
-    expect(screen.queryByRole('button', { name: /show surrounding logs/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /show surroundings/i })).not.toBeInTheDocument();
   });
 
   it('has no detectable accessibility violations', async () => {

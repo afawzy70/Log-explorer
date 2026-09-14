@@ -22,7 +22,12 @@ const DAY_MS = TIME_RANGE_PRESETS.find((p) => p.id === DEFAULT_PRESET_ID)!.durat
  * shown above the results in every state (loading/error/empty/results),
  * since a "find related logs" or "show context" detour can legitimately
  * land on any of them (e.g. a context search with zero results is still a
- * detour the investigator needs to back out of).
+ * detour the investigator needs to back out of). The button's label is
+ * dynamic (owner mission "Mapping Verification and Investigation
+ * Workspace" - "Investigation navigation/continuity"): Surroundings
+ * launched from within a Trace/Span/Correlation/Journey view says "Back to
+ * Trace"/etc, never the generic "Back to original search" it would
+ * otherwise falsely claim.
  */
 function Breadcrumb({ state }: { state: SearchState }) {
   if (!state.breadcrumbLabel) {
@@ -32,7 +37,7 @@ function Breadcrumb({ state }: { state: SearchState }) {
     <div className={styles.breadcrumb}>
       <span>{state.breadcrumbLabel}</span>
       <Button variant="ghost" onClick={state.restoreOriginalSearch}>
-        ← Back to original search
+        ← {state.restoreOriginalSearchLabel}
       </Button>
     </div>
   );

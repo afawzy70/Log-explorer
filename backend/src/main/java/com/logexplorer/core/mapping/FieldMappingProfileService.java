@@ -1,6 +1,7 @@
 package com.logexplorer.core.mapping;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -53,6 +54,16 @@ public class FieldMappingProfileService {
         new AtomicReference<>(DefaultFieldMappingProfile.build());
     private final AtomicBoolean modifiedFromDefault = new AtomicBoolean(false);
     private final AtomicBoolean validatedAndSaved = new AtomicBoolean(true);
+    /** Owner mission "Mapping Verification and Investigation Workspace" — every field starts {@link FieldVerificationStatus#UNVERIFIED}, regardless of whether it uses the built-in default or an edited candidate (DEFAULT_MAPPING != VERIFIED_MAPPING). {@link ConcurrentHashMap}, not {@link EnumMap}, for safe concurrent single-key updates without external synchronization. */
+    private final ConcurrentHashMap<CanonicalField, FieldVerificationStatus> verificationStatuses = freshUnverifiedMap();
+  }
+
+  private static ConcurrentHashMap<CanonicalField, FieldVerificationStatus> freshUnverifiedMap() {
+    ConcurrentHashMap<CanonicalField, FieldVerificationStatus> map = new ConcurrentHashMap<>();
+    for (CanonicalField field : CanonicalField.values()) {
+      map.put(field, FieldVerificationStatus.UNVERIFIED);
+    }
+    return map;
   }
 
   private final ConcurrentHashMap<MappingScopeKey, ScopeState> scopes = new ConcurrentHashMap<>();
@@ -67,12 +78,24 @@ public class FieldMappingProfileService {
     return stateFor(scope).activeProfile.get();
   }
 
-  /** Replaces one canonical field's candidate list on {@code scope}'s active profile. Un-readies search for THAT scope only until {@link #confirmSave}. */
+  /**
+   * Replaces one canonical field's candidate list on {@code scope}'s
+   * active profile. Un-readies search for THAT scope only until {@link
+   * #confirmSave}. Owner mission "Mapping Verification and Investigation
+   * Workspace" — if {@code field} was {@link FieldVerificationStatus#VERIFIED},
+   * editing its candidates reverts it to {@link
+   * FieldVerificationStatus#UNVERIFIED} (the evidence that justified
+   * {@code VERIFIED} no longer necessarily applies to the new candidate);
+   * {@code NEEDS_CHANGE} and {@code UNVERIFIED} are left exactly as they
+   * are — an edit does not itself count as re-verification.
+   */
   public FieldMappingProfile updateCandidates(MappingScopeKey scope, CanonicalField field, List<JsonPath> newCandidates) {
     ScopeState state = stateFor(scope);
     FieldMappingProfile updated = state.activeProfile.updateAndGet(p -> p.withCandidates(field, newCandidates));
     state.modifiedFromDefault.set(true);
     state.validatedAndSaved.set(false);
+    state.verificationStatuses.computeIfPresent(field,
+        (f, status) -> status == FieldVerificationStatus.VERIFIED ? FieldVerificationStatus.UNVERIFIED : status);
     return updated;
   }
 
@@ -82,13 +105,23 @@ public class FieldMappingProfileService {
     return isSearchReady(scope);
   }
 
-  /** Restores {@code scope}'s built-in default profile — always immediately {@code SEARCH_READY} again for that scope. */
+  /**
+   * Restores {@code scope}'s built-in default profile — always
+   * immediately {@code SEARCH_READY} again for that scope. Also resets
+   * every field's verification status back to {@link
+   * FieldVerificationStatus#UNVERIFIED} — a whole-profile reset discards
+   * any prior verification evidence along with the candidates it was
+   * evidence for.
+   */
   public FieldMappingProfile resetToDefault(MappingScopeKey scope) {
     FieldMappingProfile def = DefaultFieldMappingProfile.build();
     ScopeState state = stateFor(scope);
     state.activeProfile.set(def);
     state.modifiedFromDefault.set(false);
     state.validatedAndSaved.set(true);
+    for (CanonicalField field : CanonicalField.values()) {
+      state.verificationStatuses.put(field, FieldVerificationStatus.UNVERIFIED);
+    }
     return def;
   }
 
@@ -99,6 +132,37 @@ public class FieldMappingProfileService {
   public boolean isSearchReady(MappingScopeKey scope) {
     ScopeState state = stateFor(scope);
     return !state.modifiedFromDefault.get() || state.validatedAndSaved.get();
+  }
+
+  // ---------------------------------------------------------------- verification status (mission "Mapping Verification and Investigation Workspace")
+
+  /** {@code scope}'s current verification status for {@code field} — {@link FieldVerificationStatus#UNVERIFIED} until explicitly changed. */
+  public FieldVerificationStatus verificationStatus(MappingScopeKey scope, CanonicalField field) {
+    return stateFor(scope).verificationStatuses.getOrDefault(field, FieldVerificationStatus.UNVERIFIED);
+  }
+
+  /** Every field's current verification status for {@code scope}, for the mapping verification page's own table. */
+  public Map<CanonicalField, FieldVerificationStatus> allVerificationStatuses(MappingScopeKey scope) {
+    return Map.copyOf(stateFor(scope).verificationStatuses);
+  }
+
+  /**
+   * Sets {@code field} to {@link FieldVerificationStatus#VERIFIED} for
+   * {@code scope}. Deliberately a pure state setter with no evidence
+   * check of its own — the evidence gate (re-running {@code
+   * FieldMappingValidationService} against real samples and requiring
+   * {@code foundInAnySample()}) lives in {@code
+   * FieldMappingSettingsController}'s verify endpoint, the only
+   * production caller of this method, so verification is evidence-based
+   * by construction at the API boundary, not by convention here.
+   */
+  public void markVerified(MappingScopeKey scope, CanonicalField field) {
+    stateFor(scope).verificationStatuses.put(field, FieldVerificationStatus.VERIFIED);
+  }
+
+  /** Sets {@code field} to {@link FieldVerificationStatus#NEEDS_CHANGE} for {@code scope} — a deliberate user flag, no evidence required to set it. */
+  public void markNeedsChange(MappingScopeKey scope, CanonicalField field) {
+    stateFor(scope).verificationStatuses.put(field, FieldVerificationStatus.NEEDS_CHANGE);
   }
 
   /** Every scope this service currently holds any state for (diagnostics/testing only — never persisted, never exposed raw to the browser). */

@@ -30,6 +30,7 @@ import type { QueryAuthoringState } from '../features/search/QueryBuilder';
 import { DEFAULT_PRESET_ID, TIME_RANGE_PRESETS, CUSTOM_RANGE_ID } from '../shared/time/presets';
 import type { CommittedTimeRange } from '../features/timerange/types';
 import { formatUtcTimestamp } from '../features/inspector/timestampFormat';
+import { JOURNEY_FIELD_LABELS } from '../features/journey/journeyFields';
 
 /** Exported so "remove time range chip" / "Clear all" (UX-R1 §3/§4) can reset to the exact same fresh default this hook itself starts from - one definition, never a second copy that could drift. */
 export function defaultTimeRange(): CommittedTimeRange {
@@ -271,6 +272,35 @@ export function useSearchState() {
   const [journeyResult, setJourneyResult] = useState<SearchResponse | null>(null);
   const [journeyLoading, setJourneyLoading] = useState(false);
   const [journeyError, setJourneyError] = useState<string | null>(null);
+  /**
+   * Owner mission "Mapping Verification and Investigation Workspace" -
+   * "Root event anchoring": the exact event the investigator launched
+   * this Trace/Span/Correlation/Journey view FROM, captured once at
+   * launch time so the resulting (server-ordered) list can highlight it,
+   * show its position ("Selected event: N of M"), and honestly report
+   * when the backend result does not actually contain it (a bounded
+   * window/guardrail limit excluded it) - never silently highlight a
+   * different event instead.
+   */
+  const [journeyRootEvent, setJourneyRootEvent] = useState<LogEvent | null>(null);
+  /**
+   * Owner mission "Mapping Verification and Investigation Workspace" -
+   * "Investigation navigation/continuity": when Show Surroundings is
+   * launched from WITHIN a Trace/Span/Correlation/Journey view (not from
+   * plain Search), this snapshot lets `restoreOriginalSearch` bring that
+   * SAME view back on close ("Back to Trace"/"Back to Span"/...) instead
+   * of dropping all the way back to plain search - the underlying plain
+   * search state is still separately preserved in `originalSnapshot`
+   * (Surroundings always operates through that shared mechanism), which
+   * only gets restored to the visible screen once this snapshot is empty
+   * again (a real "Back to search results").
+   */
+  const [journeySnapshotForSurroundings, setJourneySnapshotForSurroundings] = useState<{
+    field: JourneyField;
+    value: string;
+    result: SearchResponse | null;
+    rootEvent: LogEvent | null;
+  } | null>(null);
 
   /**
    * "Cancelled" state (IMPLEMENTATION_PLAN.md "Phase G" scope item 11): a
@@ -318,6 +348,19 @@ export function useSearchState() {
    */
   const [fieldMappingProfile, setFieldMappingProfile] = useState<FieldMappingProfileDto | null>(null);
   const [fieldMappingProfileError, setFieldMappingProfileError] = useState<string | null>(null);
+
+  /**
+   * Owner mission "Mapping Verification and Investigation Workspace" -
+   * Part A: the Mapping Verification workspace is now a real, dedicated
+   * page (`FieldMappingWorkspace`), not a hidden popover - a mutually-
+   * exclusive overlay in `App.tsx`'s main slot, following the exact same
+   * pattern `journeyQuery`/`openJourney`/`closeJourney` already establish
+   * for `JourneyView`. Deliberately a plain boolean (unlike `journeyQuery`)
+   * - this workspace has no per-open query/result of its own to preserve.
+   */
+  const [mappingWorkspaceOpen, setMappingWorkspaceOpen] = useState(false);
+  const openMappingWorkspace = useCallback(() => setMappingWorkspaceOpen(true), []);
+  const closeMappingWorkspace = useCallback(() => setMappingWorkspaceOpen(false), []);
 
   /**
    * Owner mission "Project-Scoped Schema Scan" §7/§8 — scoped to a real
@@ -809,6 +852,21 @@ export function useSearchState() {
     setOriginalSnapshot((prev) => prev ?? snapshotCurrent());
   }, [snapshotCurrent]);
 
+  /**
+   * Owner mission "Mapping Verification and Investigation Workspace" -
+   * "Investigation navigation/continuity": the single Back action used by
+   * both plain Show-Surroundings ("Back to original search") and
+   * Show-Surroundings-launched-from-a-journey-view ("Back to Trace" / "Back
+   * to Span" / "Back to Correlation" / "Back to Journey"). The underlying
+   * plain-search workstation state is ALWAYS restored first from {@link
+   * originalSnapshot} exactly as before - Surroundings never touched it
+   * either way. What differs is what happens on top of that: if a journey
+   * view was open when Surroundings was launched (`journeySnapshotForSurroundings`
+   * set by `showContext`), that view is restored too and `originalSnapshot`
+   * is deliberately KEPT (not cleared) so a later, genuine "Back to
+   * original search" from within that restored journey view still works -
+   * only `closeJourney` (the one true exit back to plain search) clears it.
+   */
   const restoreOriginalSearch = useCallback(() => {
     const snapshot = originalSnapshot;
     if (!snapshot) {
@@ -838,11 +896,25 @@ export function useSearchState() {
       snapshot.selectedIndex != null && snapshot.selectedIndex < restoredEvents.length
         ? snapshot.selectedIndex
         : null;
-    setOriginalSnapshot(null);
     setBreadcrumbLabel(null);
-    setSelectedIndex(restorableIndex);
     setContextRootIdentity(null);
-  }, [originalSnapshot]);
+
+    if (journeySnapshotForSurroundings) {
+      setJourneyQuery({ field: journeySnapshotForSurroundings.field, value: journeySnapshotForSurroundings.value });
+      setJourneyResult(journeySnapshotForSurroundings.result);
+      setJourneyError(null);
+      setJourneyRootEvent(journeySnapshotForSurroundings.rootEvent);
+      setJourneySnapshotForSurroundings(null);
+      setSelectedIndex(null);
+      // `originalSnapshot` is intentionally left set here - the restored
+      // journey view still needs it for its own future "back to original
+      // search" (`closeJourney` clears it when that finally happens).
+      return;
+    }
+
+    setOriginalSnapshot(null);
+    setSelectedIndex(restorableIndex);
+  }, [originalSnapshot, journeySnapshotForSurroundings]);
 
   /**
    * "Find this trace / correlation / journey / event" (IMPLEMENTATION_PLAN.md
@@ -855,7 +927,7 @@ export function useSearchState() {
    * concrete, non-empty value it read off a rendered event.
    */
   const openJourney = useCallback(
-    (field: JourneyField, value: string) => {
+    (field: JourneyField, value: string, rootEvent?: LogEvent) => {
       if (!selectedSourceId || !value) {
         return;
       }
@@ -863,6 +935,7 @@ export function useSearchState() {
       setJourneyQuery({ field, value });
       setJourneyResult(null);
       setJourneyError(null);
+      setJourneyRootEvent(rootEvent ?? null);
 
       const controller = supersedeActiveRequest();
       setJourneyLoading(true);
@@ -893,11 +966,26 @@ export function useSearchState() {
     [selectedSourceId, timeRange, closeInspector, selectedComposeProject],
   );
 
-  /** "Preserves and restores the original search state": closing journey mode never had anything to restore - `searchResult`/the toolbar's filters were never touched while it was open. */
+  /**
+   * "Preserves and restores the original search state": closing journey
+   * mode never had anything to restore - `searchResult`/the toolbar's
+   * filters were never touched while it was open. Also clears any
+   * lingering Surroundings-detour snapshots (owner mission "Mapping
+   * Verification and Investigation Workspace"): this is the one true
+   * "Back to Search" exit point from any Trace/Span/Correlation/Journey
+   * view, so any in-progress "return to this view after Surroundings"
+   * state is no longer meaningful once the investigator leaves the view
+   * entirely - `restoreOriginalSearch` already restored the true original
+   * `searchResult`/toolbar state onto the screen before this can ever be
+   * reached with a non-null snapshot still pending.
+   */
   const closeJourney = useCallback(() => {
     setJourneyQuery(null);
     setJourneyResult(null);
     setJourneyError(null);
+    setJourneyRootEvent(null);
+    setJourneySnapshotForSurroundings(null);
+    setOriginalSnapshot(null);
   }, []);
 
   /**
@@ -913,6 +1001,25 @@ export function useSearchState() {
         return;
       }
       snapshotOriginalIfAbsent();
+      // Owner mission "Mapping Verification and Investigation Workspace" -
+      // "Investigation navigation/continuity": Show Surroundings launched
+      // from WITHIN a Trace/Span/Correlation/Journey view must return to
+      // THAT view on close, not drop all the way back to plain search.
+      // Snapshotting here (rather than requiring every caller to say
+      // where it was invoked from) means every existing and future
+      // Show-Surroundings entry point gets this for free just by reusing
+      // this one function - never a second, parallel implementation.
+      if (journeyQuery) {
+        setJourneySnapshotForSurroundings({
+          field: journeyQuery.field,
+          value: journeyQuery.value,
+          result: journeyResult,
+          rootEvent: journeyRootEvent,
+        });
+        setJourneyQuery(null);
+        setJourneyResult(null);
+        setJourneyError(null);
+      }
       closeInspector();
       const windowMs = 30_000;
       const centerMs = new Date(event.timestamp).getTime();
@@ -977,10 +1084,21 @@ export function useSearchState() {
           }
         });
     },
-    [selectedSourceId, snapshotOriginalIfAbsent, closeInspector, selectedComposeProject],
+    [selectedSourceId, snapshotOriginalIfAbsent, closeInspector, selectedComposeProject, journeyQuery, journeyResult, journeyRootEvent],
   );
 
   const selectedSource = sources.find((s) => s.id === selectedSourceId) ?? null;
+
+  /**
+   * Owner mission "Mapping Verification and Investigation Workspace" -
+   * "Investigation navigation/continuity": the Back button's label must
+   * say where it's actually going ("Back to Trace") rather than always
+   * claiming "Back to original search" when Surroundings was really
+   * launched from within a Trace/Span/Correlation/Journey view.
+   */
+  const restoreOriginalSearchLabel = journeySnapshotForSurroundings
+    ? `Back to ${JOURNEY_FIELD_LABELS[journeySnapshotForSurroundings.field]}`
+    : 'Back to original search';
 
   return {
     sources,
@@ -1043,11 +1161,13 @@ export function useSearchState() {
     breadcrumbLabel,
     contextRootIdentity,
     restoreOriginalSearch,
+    restoreOriginalSearchLabel,
     showContext,
     journeyQuery,
     journeyResult,
     journeyLoading,
     journeyError,
+    journeyRootEvent,
     openJourney,
     closeJourney,
     /** Configurable Log Field Mapping mission §15 — `null` while still loading on first mount; once loaded, `Toolbar` disables Search when `.searchReady` is `false`. */
@@ -1056,6 +1176,9 @@ export function useSearchState() {
     /** `true` only once loaded and ready — a still-loading/unknown state never silently permits Search (mission §15: "Do NOT fail silently"). */
     fieldMappingSearchReady: fieldMappingProfile?.searchReady === true,
     refreshFieldMappingProfile,
+    mappingWorkspaceOpen,
+    openMappingWorkspace,
+    closeMappingWorkspace,
   };
 }
 

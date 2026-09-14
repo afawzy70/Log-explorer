@@ -7,7 +7,9 @@ import com.logexplorer.api.dto.FieldMappingProfileDto;
 import com.logexplorer.api.dto.FieldMappingSaveRequestDto;
 import com.logexplorer.api.dto.FieldMappingValidationReportDto;
 import com.logexplorer.api.dto.FieldMappingValidationRequestDto;
+import com.logexplorer.api.dto.FieldMappingVerifyRequestDto;
 import com.logexplorer.core.mapping.FieldMappingProfileService;
+import com.logexplorer.core.mapping.MappingScopeKey;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -195,5 +197,100 @@ class FieldMappingSettingsControllerIntegrationTest {
     assertThat(reset.searchReady()).isTrue();
     var cif = reset.fields().stream().filter(f -> f.field().equals("cif")).findFirst().orElseThrow();
     assertThat(cif.candidatePaths()).containsExactly("mdc.cif");
+  }
+
+  // =====================================================================
+  // Owner mission "Mapping Verification and Investigation Workspace"
+  // =====================================================================
+
+  @Test
+  void aFreshFieldStartsUnverifiedEvenOnTheBuiltInDefault() {
+    FieldMappingProfileDto dto = webTestClient.get().uri("/api/v1/settings/field-mapping")
+        .exchange().expectStatus().isOk().expectBody(FieldMappingProfileDto.class).returnResult().getResponseBody();
+
+    assertThat(dto).isNotNull();
+    var cif = dto.fields().stream().filter(f -> f.field().equals("cif")).findFirst().orElseThrow();
+    assertThat(cif.verificationStatus())
+        .as("DEFAULT_MAPPING != VERIFIED_MAPPING")
+        .isEqualTo("UNVERIFIED");
+  }
+
+  @Test
+  void verifyingWithRealEvidenceSucceedsAndPersistsTheStatus() {
+    FieldMappingProfileDto verified = webTestClient.post().uri("/api/v1/settings/field-mapping/fields/cif/verify")
+        .bodyValue(new FieldMappingVerifyRequestDto(List.of("{\"mdc\":{\"cif\":\"2449\"}}")))
+        .exchange().expectStatus().isOk().expectBody(FieldMappingProfileDto.class).returnResult().getResponseBody();
+
+    assertThat(verified).isNotNull();
+    var cif = verified.fields().stream().filter(f -> f.field().equals("cif")).findFirst().orElseThrow();
+    assertThat(cif.verificationStatus()).isEqualTo("VERIFIED");
+
+    // Persisted - a fresh GET still reports VERIFIED.
+    FieldMappingProfileDto again = webTestClient.get().uri("/api/v1/settings/field-mapping")
+        .exchange().expectStatus().isOk().expectBody(FieldMappingProfileDto.class).returnResult().getResponseBody();
+    assertThat(again.fields().stream().filter(f -> f.field().equals("cif")).findFirst().orElseThrow().verificationStatus())
+        .isEqualTo("VERIFIED");
+  }
+
+  @Test
+  void verifyingWithoutEvidenceIsRejected_neverSilentlyMarkedVerified() {
+    webTestClient.post().uri("/api/v1/settings/field-mapping/fields/cif/verify")
+        .bodyValue(new FieldMappingVerifyRequestDto(List.of("{\"noCif\":true}")))
+        .exchange().expectStatus().isEqualTo(HttpStatus.BAD_REQUEST);
+
+    FieldMappingProfileDto dto = webTestClient.get().uri("/api/v1/settings/field-mapping")
+        .exchange().expectStatus().isOk().expectBody(FieldMappingProfileDto.class).returnResult().getResponseBody();
+    assertThat(dto.fields().stream().filter(f -> f.field().equals("cif")).findFirst().orElseThrow().verificationStatus())
+        .isEqualTo("UNVERIFIED");
+  }
+
+  @Test
+  void verifyingAnUnmappedFieldIsRejected() {
+    webTestClient.post().uri("/api/v1/settings/field-mapping/fields/journeyName/verify")
+        .bodyValue(new FieldMappingVerifyRequestDto(List.of("{\"anything\":true}")))
+        .exchange().expectStatus().isEqualTo(HttpStatus.BAD_REQUEST);
+  }
+
+  @Test
+  void markingNeedsChangeSetsTheStatusWithNoEvidenceRequired() {
+    FieldMappingProfileDto dto = webTestClient.post().uri("/api/v1/settings/field-mapping/fields/cif/needs-change")
+        .exchange().expectStatus().isOk().expectBody(FieldMappingProfileDto.class).returnResult().getResponseBody();
+
+    assertThat(dto).isNotNull();
+    assertThat(dto.fields().stream().filter(f -> f.field().equals("cif")).findFirst().orElseThrow().verificationStatus())
+        .isEqualTo("NEEDS_CHANGE");
+  }
+
+  @Test
+  void editingAVerifiedFieldRevertsItToUnverified_viaTheRealHttpEndpoints() {
+    webTestClient.post().uri("/api/v1/settings/field-mapping/fields/cif/verify")
+        .bodyValue(new FieldMappingVerifyRequestDto(List.of("{\"mdc\":{\"cif\":\"2449\"}}")))
+        .exchange().expectStatus().isOk();
+
+    FieldMappingProfileDto afterEdit = webTestClient.put().uri("/api/v1/settings/field-mapping/fields/cif")
+        .bodyValue(new FieldMappingCandidatesUpdateRequestDto(List.of("cif")))
+        .exchange().expectStatus().isOk().expectBody(FieldMappingProfileDto.class).returnResult().getResponseBody();
+
+    assertThat(afterEdit).isNotNull();
+    assertThat(afterEdit.fields().stream().filter(f -> f.field().equals("cif")).findFirst().orElseThrow().verificationStatus())
+        .isEqualTo("UNVERIFIED");
+  }
+
+  @Test
+  void verificationStatusIsProjectScoped_neverLeaksAcrossProjects() {
+    webTestClient.post().uri("/api/v1/settings/field-mapping/fields/cif/verify?sourceId=local-docker&project=project-a")
+        .bodyValue(new FieldMappingVerifyRequestDto(List.of("{\"mdc\":{\"cif\":\"2449\"}}")))
+        .exchange().expectStatus().isOk();
+
+    FieldMappingProfileDto projectB = webTestClient.get()
+        .uri("/api/v1/settings/field-mapping?sourceId=local-docker&project=project-b")
+        .exchange().expectStatus().isOk().expectBody(FieldMappingProfileDto.class).returnResult().getResponseBody();
+
+    assertThat(projectB).isNotNull();
+    assertThat(projectB.fields().stream().filter(f -> f.field().equals("cif")).findFirst().orElseThrow().verificationStatus())
+        .as("CROSS_PROJECT_VERIFICATION_LEAK=NO")
+        .isEqualTo("UNVERIFIED");
+
+    profileService.resetToDefault(MappingScopeKey.of("local-docker", "project-a"));
   }
 }

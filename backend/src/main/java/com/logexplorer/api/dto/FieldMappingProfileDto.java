@@ -9,6 +9,12 @@ import java.util.List;
  * sourceId}/{@code scopeLabel} echo back exactly which scope this profile
  * belongs to (mission §6-style transparency) — {@code scopeLabel} is
  * {@code null} for a source with no sub-project concept or none selected.
+ *
+ * <p>{@code verificationStatus} (owner mission "Mapping Verification and
+ * Investigation Workspace") is deliberately separate from {@code
+ * searchReady} — a field can be search-ready (its candidate resolves
+ * without a parse error) while still {@code UNVERIFIED} from the owner's
+ * mapping-verification perspective: DEFAULT_MAPPING != VERIFIED_MAPPING.
  */
 public record FieldMappingProfileDto(
     String sourceId,
@@ -22,7 +28,8 @@ public record FieldMappingProfileDto(
       String field,
       String displayName,
       boolean sensitive,
-      List<String> candidatePaths
+      List<String> candidatePaths,
+      String verificationStatus
   ) {
   }
 }

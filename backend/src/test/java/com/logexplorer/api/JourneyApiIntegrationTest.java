@@ -101,8 +101,11 @@ class JourneyApiIntegrationTest {
   }
 
   @Test
-  void filtersByCorrelationTraceAndEventIdToo() {
-    for (String field : new String[] {"correlationId", "traceId", "eventId"}) {
+  void filtersByCorrelationTraceSpanAndEventIdToo() {
+    // Owner mission "Mapping Verification and Investigation Workspace" -
+    // spanId added to the closed JOURNEY_FIELDS set (View Span reuses
+    // this exact generic endpoint, never a duplicate one).
+    for (String field : new String[] {"correlationId", "traceId", "spanId", "eventId"}) {
       String body = """
           {"sourceId":"journey-test-source","start":"2026-01-01T00:00:00Z","end":"2026-01-02T00:00:00Z","field":"%s","value":"whatever"}
           """.formatted(field);

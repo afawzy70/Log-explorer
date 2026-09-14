@@ -322,3 +322,26 @@ very low traffic may genuinely have few or none to show yet. This is
 shown honestly (a small or zero event count, and an empty Discovered
 Source Schema) rather than as an error when the source itself is fine but
 simply quiet.
+
+---
+
+### Verify says "not found in any of the given samples"
+
+**Likely cause:** this is not a bug — it's the verification evidence gate
+doing its job (see "Verifying your mapping" in §19 of the User Guide).
+Clicking **Verify** re-checks the field's currently saved candidate path
+against the real samples from your most recent Quick Schema Scan of the
+selected project/namespace, and only marks it Verified if it genuinely
+finds a value there. A rejection means the candidate doesn't actually
+resolve to anything in those samples right now — which can happen if the
+scan is stale (the field's real location changed since you last scanned),
+the field genuinely doesn't appear in the events the scan happened to see
+this time, or the candidate path itself is subtly wrong.
+
+**What to do:** click **Rescan** to get fresh samples for the current
+scope, then try **Verify** again. If it still fails, check the
+**Discovered Source Schema** table for the field's real path and add it
+as a candidate (or fix the existing one) via the picker, **Validate**,
+**Save**, then **Verify** once more. The Verify button itself stays
+disabled — with an explanation — until a scan has produced real samples
+and any pending edit for that field has been saved.

@@ -160,4 +160,89 @@ class FieldMappingProfileServiceTest {
     // A real, named scope is completely unaffected by the no-arg convenience.
     assertThat(service.isSearchReady(MappingScopeKey.of("local-docker", "project-a"))).isTrue();
   }
+
+  // =====================================================================
+  // Owner mission "Mapping Verification and Investigation Workspace"
+  // =====================================================================
+
+  @Test
+  void everyFieldStartsUnverified_evenTheBuiltInDefault() {
+    // DEFAULT_MAPPING != VERIFIED_MAPPING - the untouched built-in default
+    // (e.g. CIF -> mdc.cif) is a historically-known-good CANDIDATE, never
+    // auto-VERIFIED merely because it exists.
+    FieldMappingProfileService service = new FieldMappingProfileService();
+    MappingScopeKey scope = MappingScopeKey.of("local-docker", "project-a");
+
+    assertThat(service.verificationStatus(scope, CanonicalField.CIF)).isEqualTo(FieldVerificationStatus.UNVERIFIED);
+    assertThat(service.verificationStatus(scope, CanonicalField.CORRELATION_ID)).isEqualTo(FieldVerificationStatus.UNVERIFIED);
+    assertThat(service.allVerificationStatuses(scope).values())
+        .allMatch(status -> status == FieldVerificationStatus.UNVERIFIED);
+  }
+
+  @Test
+  void markVerifiedAndMarkNeedsChangeSetTheExpectedStatus() {
+    FieldMappingProfileService service = new FieldMappingProfileService();
+    MappingScopeKey scope = MappingScopeKey.of("local-docker", "project-a");
+
+    service.markVerified(scope, CanonicalField.CIF);
+    assertThat(service.verificationStatus(scope, CanonicalField.CIF)).isEqualTo(FieldVerificationStatus.VERIFIED);
+
+    service.markNeedsChange(scope, CanonicalField.TRACE_ID);
+    assertThat(service.verificationStatus(scope, CanonicalField.TRACE_ID)).isEqualTo(FieldVerificationStatus.NEEDS_CHANGE);
+  }
+
+  @Test
+  void editingAVerifiedFieldsCandidatesRevertsItToUnverified() {
+    FieldMappingProfileService service = new FieldMappingProfileService();
+    MappingScopeKey scope = MappingScopeKey.of("local-docker", "project-a");
+    service.markVerified(scope, CanonicalField.CIF);
+    assertThat(service.verificationStatus(scope, CanonicalField.CIF)).isEqualTo(FieldVerificationStatus.VERIFIED);
+
+    service.updateCandidates(scope, CanonicalField.CIF, List.of(JsonPath.parse("newPath")));
+
+    assertThat(service.verificationStatus(scope, CanonicalField.CIF))
+        .as("the evidence backing VERIFIED no longer applies to the new candidate")
+        .isEqualTo(FieldVerificationStatus.UNVERIFIED);
+  }
+
+  @Test
+  void editingANeedsChangeFieldsCandidatesDoesNotSilentlyPromoteItToVerified() {
+    FieldMappingProfileService service = new FieldMappingProfileService();
+    MappingScopeKey scope = MappingScopeKey.of("local-docker", "project-a");
+    service.markNeedsChange(scope, CanonicalField.CIF);
+
+    service.updateCandidates(scope, CanonicalField.CIF, List.of(JsonPath.parse("newPath")));
+
+    assertThat(service.verificationStatus(scope, CanonicalField.CIF))
+        .as("mission: do not silently promote NEEDS_CHANGE to VERIFIED after a save")
+        .isEqualTo(FieldVerificationStatus.NEEDS_CHANGE);
+  }
+
+  @Test
+  void resettingTheProfileResetsEveryFieldsVerificationStatusToo() {
+    FieldMappingProfileService service = new FieldMappingProfileService();
+    MappingScopeKey scope = MappingScopeKey.of("local-docker", "project-a");
+    service.markVerified(scope, CanonicalField.CIF);
+    service.markNeedsChange(scope, CanonicalField.TRACE_ID);
+
+    service.resetToDefault(scope);
+
+    assertThat(service.verificationStatus(scope, CanonicalField.CIF)).isEqualTo(FieldVerificationStatus.UNVERIFIED);
+    assertThat(service.verificationStatus(scope, CanonicalField.TRACE_ID)).isEqualTo(FieldVerificationStatus.UNVERIFIED);
+  }
+
+  @Test
+  void verificationStatusIsFullyScopedAcrossProjects() {
+    // PROJECT_SCOPED_VERIFICATION / CROSS_PROJECT_VERIFICATION_LEAK=NO.
+    FieldMappingProfileService service = new FieldMappingProfileService();
+    MappingScopeKey projectA = MappingScopeKey.of("local-docker", "project-a");
+    MappingScopeKey projectB = MappingScopeKey.of("local-docker", "project-b");
+
+    service.markVerified(projectA, CanonicalField.CIF);
+
+    assertThat(service.verificationStatus(projectA, CanonicalField.CIF)).isEqualTo(FieldVerificationStatus.VERIFIED);
+    assertThat(service.verificationStatus(projectB, CanonicalField.CIF))
+        .as("a field verified for project A must never leak into project B's own status")
+        .isEqualTo(FieldVerificationStatus.UNVERIFIED);
+  }
 }

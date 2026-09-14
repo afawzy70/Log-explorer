@@ -189,8 +189,8 @@ you don't yet know which specific pod is involved.
 ### Search, Inspector, Context, Correlation, Live
 
 Once a project (and optionally a narrower scope) is selected, Search,
-the Inspector, Context ("Show surrounding logs"), Correlation, and Live
-all work exactly as described in their own sections below (§9, §14–§17,
+the Inspector, Show Surroundings, the Investigation Workspace, and Live
+all work exactly as described in their own sections below (§9, §12–§17,
 §19) — OpenShift is the source with the fullest set of capabilities.
 
 **During a rolling update:** if a workload is being redeployed while you
@@ -211,7 +211,7 @@ way you'd select any other source.
 
 - No Project → Workload → Pod → Container scope selector — Loki search
   is scoped by label filters instead.
-- No Live tail and no "Show surrounding logs" context view currently.
+- No Live tail and no "Show Surroundings" context view currently.
 - A **Raw query** mode may be available if your administrator has
   enabled it, letting you write a LogQL query directly — this is
   strictly optional and off by default.
@@ -377,7 +377,7 @@ this order:
 
 1. **Overview** — the core facts: message, time, source, service, level, logger.
 2. **Actor & client** — who/what was involved (masked fields, device, language).
-3. **Request flow** — Trace/Span/Correlation/Journey/Event IDs, each with a Copy button, and a "Find this…" action where applicable (§13).
+3. **Request flow** — Trace/Span/Correlation/Journey/Event IDs, each with a Copy button, and an investigation action where the identifier is present (§13): **View Trace**, **View Span**, **Find same Correlation**, **Find same Journey**, or **Find same Event**.
 4. **Business / error** — business step, UI identifier, error code, and the full exception text if one exists.
 5. **Technical / all fields** — every field the event carries, including ones Log Explorer doesn't specifically recognize. A search box lets you filter a long field list; a **Canonical Event JSON** disclosure shows the complete underlying record — Log Explorer's own parsed, normalized representation of the event, not the untouched original source line (see §19 if you need the real original JSON).
 
@@ -403,13 +403,15 @@ exception, related identifiers) rather than inventing an explanation.
 
 ---
 
-## 12. Show surrounding logs
+## 12. Show Surroundings
 
-From an open event, click **Show surrounding logs** in the Inspector's
-header. It shows the exact ±30-second window before and after that
-event, from the **same execution context** — the same container, pod,
-or equivalent scope the original event came from, never silently
-widened to a different pod or service.
+From an open event, click **Show Surroundings** in the Inspector's
+header (it appears the same way, and does the same thing, from a
+result row's own Actions menu, and from inside an investigation
+timeline — see §13). It shows the exact ±30-second window before and
+after that event, from the **same execution context** — the same
+container, pod, or equivalent scope the original event came from, never
+silently widened to a different pod or service.
 
 - The event you started from is clearly marked — a visible highlight, a
   label, and it is automatically scrolled into view — so you never lose
@@ -419,41 +421,62 @@ widened to a different pod or service.
 - If the window is only partially available (e.g. you were looking at
   the very first or last event in the stream), Log Explorer says so
   rather than pretending the context is complete.
-- A **"Back to search"** action returns you to your original results,
-  filters and all, exactly as you left them.
+- A **Back** action returns you to wherever you actually launched it
+  from — your original results if you started from Search, or the same
+  investigation timeline (Trace/Span/Correlation/Journey) if you started
+  from inside one, exactly as you left it.
 
-![Show surrounding logs, with a detected gap](screenshots/04-surrounding-logs.png)
+![Show Surroundings, with a detected gap](screenshots/04-surrounding-logs.png)
 
-**This is not the same thing as Correlation** — surrounding logs answers
-"what happened right around this one event, in this one place," while
-Correlation (§13) answers "what other events across services share this
-request." Use surrounding logs when you want tight, local context; use
-Correlation when you're following one request across your system.
+**This is not the same thing as following a request** — Show
+Surroundings answers "what happened right around this one event, in this
+one place," while the Investigation Workspace (§13) answers "what other
+events, anywhere, share this request." Use Show Surroundings when you
+want tight, local context; use the Investigation Workspace when you're
+following one request across your system.
 
 ---
 
-## 13. Correlation, Trace, and Journey — following a request
+## 13. The Investigation Workspace — following a request
 
-Many events carry one or more of: a **Trace ID**, **Correlation ID**, or
-**Journey ID** — identifiers meant to tie related events together, even
-across different services.
+Many events carry one or more of: a **Trace ID**, **Span ID**,
+**Correlation ID**, **Journey ID**, or **Event ID** — identifiers meant
+to tie related events together, even across different services. Opening
+any of them replaces your results table with a dedicated **Investigation
+Workspace**: a distinct surface from Search/Results (which finds events)
+and the Inspector (which explains one event) — this one exists to
+investigate relationships and context *across* multiple events.
 
 A practical flow:
 
 1. Open an event in the Inspector and go to **Request flow**.
-2. If a **"Find this Trace/Correlation/Journey"** button appears next to
-   an identifier, click it to open a timeline of every event sharing
-   that identifier, across every service that logged one.
-3. Read the timeline in order to see the sequence: which service acted
+2. Click whichever investigation action is offered for the identifier you
+   want to follow: **View Trace**, **View Span**, **Find same
+   Correlation**, **Find same Journey**, or **Find same Event**. (The
+   same actions are also offered directly from the results table's
+   Correlation/Trace column, for the two most common cases.)
+3. The timeline that opens always tells you, up front, how many events it
+   found and — clearly marked — **which position the event you started
+   from is at** (e.g. "Selected event: 4 of 12"), so you never lose track
+   of where you came from. If your starting event genuinely isn't in the
+   returned window (a bounded search has limits), Log Explorer says so
+   honestly rather than marking a different event instead.
+4. Read the timeline in order to see the sequence: which service acted
    first, what happened next, and where (if anywhere) an error appears.
-4. Open any entry in that timeline for its own full Inspector detail.
-5. Return to your original results whenever you're done — nothing about
-   your original search is lost while you were following the journey.
+5. From any entry in that timeline, you can **Show Surroundings** (§12)
+   for tight local context around that specific entry, then **Back** to
+   return to the same timeline — or open the entry's own full Inspector
+   detail.
+6. Return to your original results whenever you're done — nothing about
+   your original search is lost while you were investigating.
 
 **Important:** this shows you the observed **order** of events — it does
 not prove that one event *caused* the next. Two events can be close in
 time without one being the reason for the other; Log Explorer only ever
-tells you what the timestamps and identifiers actually show.
+tells you what the timestamps and identifiers actually show. Each action
+also means exactly what it says: "View Trace"/"Find same Correlation"/
+etc. describe exactly that one relationship, and "Show Surroundings"
+means nearby time/place context only — never a stand-in for one another.
 
 ---
 
@@ -616,7 +639,10 @@ lets you tell it, without needing a code change.
 
 ### The workflow
 
-Open **Settings → Log Schema & Field Mapping**. The steps, in order:
+Click **Log schema & field mapping** in the top bar to open its own
+dedicated page (it replaces your results while open — click **← Back to
+search results** at any time to return to exactly what you had before).
+The steps, in order:
 
 1. **Connect** — make sure the source you want to configure is selected
    and connected (Docker, OpenShift, etc. — see their own sections
@@ -711,6 +737,40 @@ scope, and:
 
 Nothing about your saved mapping changes until you explicitly edit it
 and click Save.
+
+### Verifying your mapping
+
+A saved, search-ready mapping and a **verified** one are not the same
+thing. Every canonical field starts as **Unverified** — including one
+using the built-in default candidate — because Log Explorer has no
+actual evidence yet that the candidate is correct for *your* source, only
+that it parses without error. Each field shows one of exactly three
+statuses, for the selected project/namespace only:
+
+- **Unverified** — a candidate is set (maybe the built-in default, maybe
+  one you mapped yourself), but nobody has confirmed it against real
+  evidence yet.
+- **Verified** — you confirmed it, and Log Explorer checked it for real:
+  clicking **Verify** re-checks the field's current saved candidate
+  against the real samples from your last Quick Schema Scan, and only
+  turns the badge to Verified if it actually found a real value there.
+  If it didn't, you'll see exactly why (e.g. "not found in any of the
+  given samples") instead of a silent success. Verify needs a Quick
+  Schema Scan to have been run first, and is unavailable while you have
+  an unsaved edit pending for that field — save it first, so Verify
+  checks what's actually live.
+- **Needs change** — you reviewed a field and decided it's wrong, without
+  needing to prove why first. Click **Mark needs change** to flag it;
+  from there, edit its candidate path(s) (the Discovered Source Schema
+  picker works the same way here as anywhere else), validate, save, and
+  Verify again once you're confident.
+
+Each candidate path also shows whether it was **observed in your latest
+scan** — useful evidence when deciding whether to verify or change it.
+Editing a Verified field's candidates automatically reverts it to
+Unverified (the evidence that supported it no longer applies to the new
+candidate); a save alone never silently turns a field back to Verified —
+Verify is always its own explicit step.
 
 ### Why Search can be temporarily disabled
 

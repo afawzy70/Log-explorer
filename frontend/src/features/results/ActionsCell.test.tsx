@@ -125,7 +125,7 @@ describe('ActionsCell', () => {
    * UX-R4 §17/§18/§19 - every row must expose both investigation actions.
    */
   describe('UX-R4 - row investigation actions', () => {
-    it('offers "Show surrounding logs" alongside "View details"', async () => {
+    it('offers "Show Surroundings" alongside "View details"', async () => {
       const user = userEvent.setup();
       render(
         <ActionsCell
@@ -138,10 +138,10 @@ describe('ActionsCell', () => {
       await user.click(screen.getByRole('button', { name: /actions for this event/i }));
 
       expect(screen.getByRole('menuitem', { name: /view details/i })).toBeInTheDocument();
-      expect(screen.getByRole('menuitem', { name: /show surrounding logs/i })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: /show surroundings/i })).toBeInTheDocument();
     });
 
-    it('"Show surrounding logs" invokes the bounded context action and closes the menu', async () => {
+    it('"Show Surroundings" invokes the bounded context action and closes the menu', async () => {
       const user = userEvent.setup();
       const onShowContext = vi.fn();
       render(
@@ -153,7 +153,7 @@ describe('ActionsCell', () => {
       );
 
       await user.click(screen.getByRole('button', { name: /actions for this event/i }));
-      await user.click(screen.getByRole('menuitem', { name: /show surrounding logs/i }));
+      await user.click(screen.getByRole('menuitem', { name: /show surroundings/i }));
 
       expect(onShowContext).toHaveBeenCalledTimes(1);
       await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
@@ -173,18 +173,18 @@ describe('ActionsCell', () => {
       const labels = screen.getAllByRole('menuitem').map((i) => i.textContent);
 
       expect(labels[0]).toMatch(/view details/i);
-      expect(labels[1]).toMatch(/show surrounding logs/i);
+      expect(labels[1]).toMatch(/show surroundings/i);
       expect(labels.slice(2).every((l) => /^Copy /.test(l ?? ''))).toBe(true);
     });
 
-    it('omits "Show surrounding logs" for an event with no timestamp, rather than offering a dead action', async () => {
+    it('omits "Show Surroundings" for an event with no timestamp, rather than offering a dead action', async () => {
       const user = userEvent.setup();
       render(<ActionsCell event={event({ timestamp: null })} onInspect={vi.fn()} onShowContext={vi.fn()} />);
 
       await user.click(screen.getByRole('button', { name: /actions for this event/i }));
 
       expect(screen.getByRole('menuitem', { name: /view details/i })).toBeInTheDocument();
-      expect(screen.queryByRole('menuitem', { name: /show surrounding logs/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: /show surroundings/i })).not.toBeInTheDocument();
     });
 
     it('has no detectable accessibility violations with both investigation actions present', async () => {

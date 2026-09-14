@@ -19,8 +19,11 @@ function jsonResponse(body: unknown): Response {
  * fetch is intentionally excluded - it only fires on the settings
  * popover's own `open()`, never at mount (verified separately by that
  * component's own tests), so it must never appear in this count either.
- * `FieldMappingSettingsPanel`'s own sample-fetch is the same - only on
- * its own button click, never at mount. The field-mapping *readiness*
+ * `FieldMappingWorkspace`'s own sample-fetch is the same - only on
+ * its own button click, never at mount (and the workspace itself is never
+ * mounted at all unless `state.openMappingWorkspace()` was called - owner
+ * mission "Mapping Verification and Investigation Workspace"). The
+ * field-mapping *readiness*
  * check (`GET /api/v1/settings/field-mapping`, read by `useSearchState`
  * directly, not by that panel) is the one field-mapping-related call that
  * genuinely does fire at startup - it gates the Search button globally,

@@ -11,6 +11,7 @@ import {
   resolveUserOrCustomer,
 } from './columnMapping';
 import { MessageCell } from './MessageCell';
+import { JOURNEY_ACTION_LABELS } from '../journey/journeyFields';
 import styles from './ResultsTable.module.css';
 
 /**
@@ -70,7 +71,7 @@ export type ColumnId =
   | 'language';
 
 export interface ColumnRenderContext {
-  onOpenJourney?: (field: JourneyField, value: string) => void;
+  onOpenJourney?: (field: JourneyField, value: string, rootEvent?: LogEvent) => void;
 }
 
 export interface ColumnDefinition {
@@ -247,8 +248,8 @@ export const COLUMN_REGISTRY: ColumnDefinition[] = [
         <button
           type="button"
           className={styles.idLinkCell}
-          onClick={() => ctx.onOpenJourney!(correlationOrTrace.field, correlationOrTrace.value)}
-          title={`Find this ${correlationOrTrace.label}`}
+          onClick={() => ctx.onOpenJourney!(correlationOrTrace.field, correlationOrTrace.value, event)}
+          title={JOURNEY_ACTION_LABELS[correlationOrTrace.field]}
         >
           <span className={styles.idLabel}>{correlationOrTrace.label}:</span>
           {correlationOrTrace.value}

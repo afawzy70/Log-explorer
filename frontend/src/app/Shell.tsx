@@ -1,6 +1,5 @@
 import { SourceHealthBadge } from './SourceHealthBadge';
 import { DockerSettingsPanel } from '../features/settings/DockerSettingsPanel';
-import { FieldMappingSettingsPanel } from '../features/settings/fieldMapping/FieldMappingSettingsPanel';
 import { OpenShiftSettingsPanel, WORKLOAD_KIND_LABELS } from '../features/settings/OpenShiftSettingsPanel';
 import { PrivacyMaskingSettingsPanel } from '../features/settings/PrivacyMaskingSettingsPanel';
 import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
@@ -101,11 +100,13 @@ function ScopeTrail({ state, openShiftScope }: Pick<ShellProps, 'state' | 'openS
 /**
  * Owner mission "Project-Scoped Schema Scan" §1/§7/§8 — the exact same
  * scope resolution `ScopeTrail` already displays, reused as the real
- * scope value threaded into {@link FieldMappingSettingsPanel} so the
- * schema scan and the mapping profile it edits are always keyed to the
- * SAME project/namespace the header/trail shows the investigator.
+ * scope value threaded into `FieldMappingWorkspace` (rendered by
+ * `App.tsx`, not here — owner mission "Mapping Verification and
+ * Investigation Workspace" Part A) so the schema scan, mapping profile,
+ * and verification status it edits are always keyed to the SAME
+ * project/namespace the header/trail shows the investigator.
  */
-function resolveMappingProject(state: SearchState, openShiftScope: OpenShiftScopeSummary | null): string | null {
+export function resolveMappingProject(state: SearchState, openShiftScope: OpenShiftScopeSummary | null): string | null {
   if (!state.selectedSource) {
     return null;
   }
@@ -116,7 +117,6 @@ function resolveMappingProject(state: SearchState, openShiftScope: OpenShiftScop
 }
 
 export function Shell({ state, openShiftScope, onOpenShiftScopeChanged }: ShellProps) {
-  const mappingProject = resolveMappingProject(state, openShiftScope);
   return (
     <header className={styles.header}>
       <h1 className={styles.title}>Log Explorer</h1>
@@ -134,21 +134,16 @@ export function Shell({ state, openShiftScope, onOpenShiftScopeChanged }: ShellP
       <PrivacyMaskingSettingsPanel />
       {/*
        * Configurable Log Field Mapping mission §14, now project-scoped per
-       * owner mission "Project-Scoped Schema Scan" §7/§8 - sits beside
-       * Privacy & Masking rather than nested under a per-source panel, for
-       * the same reason as before. Operates on whichever source AND
-       * project/namespace is currently selected (`mappingProject`, above)
-       * for both its scan and its settings calls; `sourceSupportsSampling`
-       * is that source's own declared capability, never inferred.
+       * owner mission "Project-Scoped Schema Scan" §7/§8, and now a real
+       * dedicated page (owner mission "Mapping Verification and
+       * Investigation Workspace" - Part A: "not a hidden popover") - this
+       * is just the entry point, sitting beside Privacy & Masking for the
+       * same reason as before; `App.tsx` renders the actual workspace as a
+       * full-page overlay, exactly like `JourneyView`.
        */}
-      <FieldMappingSettingsPanel
-        sourceId={state.selectedSourceId}
-        project={mappingProject}
-        sourceSupportsSampling={state.selectedSource?.capabilities.originalSchemaSampling ?? false}
-        profile={state.fieldMappingProfile}
-        profileError={state.fieldMappingProfileError}
-        onProfileChanged={() => state.refreshFieldMappingProfile(mappingProject)}
-      />
+      <button type="button" className={styles.mappingWorkspaceTrigger} onClick={state.openMappingWorkspace}>
+        Log schema &amp; field mapping
+      </button>
       <DockerSettingsPanel />
       {/* OS-1A - the OpenShift connection lives beside Docker settings: both
           are source-connection concerns, and keeping them together is what

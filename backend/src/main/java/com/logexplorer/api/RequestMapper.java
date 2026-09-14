@@ -28,14 +28,17 @@ public class RequestMapper {
   static final Duration CONTEXT_WINDOW = Duration.ofSeconds(30);
 
   /**
-   * "Click actions on non-sensitive IDs: Find this trace / correlation /
-   * journey / event. Never create a raw customer-identifier click-search."
-   * (IMPLEMENTATION_PLAN.md "Phase I") — a closed set, checked in {@link
+   * "Click actions on non-sensitive IDs: Find this trace / span /
+   * correlation / journey / event. Never create a raw customer-identifier
+   * click-search." (IMPLEMENTATION_PLAN.md "Phase I", extended by owner
+   * mission "Mapping Verification and Investigation Workspace" §View
+   * Span — {@code spanId} added to this closed set rather than a
+   * parallel duplicate endpoint) — a closed set, checked in {@link
    * #toJourneyDomain}, so a request naming anything else (in particular
    * any of the five sensitive fields) is structurally rejected before it
    * ever reaches a {@code LogSource}.
    */
-  private static final Set<String> JOURNEY_FIELDS = Set.of("journeyId", "correlationId", "traceId", "eventId");
+  private static final Set<String> JOURNEY_FIELDS = Set.of("journeyId", "correlationId", "traceId", "spanId", "eventId");
 
   public SearchRequest toDomain(SearchRequestDto dto) {
     return SearchRequest.builder()
@@ -115,6 +118,7 @@ public class RequestMapper {
       case "journeyId" -> builder.journeyId(dto.value());
       case "correlationId" -> builder.correlationId(dto.value());
       case "traceId" -> builder.traceId(dto.value());
+      case "spanId" -> builder.spanId(dto.value());
       case "eventId" -> builder.eventId(dto.value());
       default -> throw new IllegalStateException("unreachable - already validated above");
     }

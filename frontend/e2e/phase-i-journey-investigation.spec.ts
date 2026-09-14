@@ -91,10 +91,12 @@ test('"Find this Journey ID" from the inspector opens a real, multi-trace, cross
   const dialog = page.getByRole('dialog', { name: /event details/i });
   await expect(dialog).toBeVisible();
 
-  // Pre-closure functional recovery (PCFR-1): "Find this Journey ID"
-  // lives in the Request flow tab, not visible until that tab is active.
+  // Pre-closure functional recovery (PCFR-1): "Find same Journey"
+  // (renamed from "Find this Journey ID" by owner mission "Mapping
+  // Verification and Investigation Workspace") lives in the Request flow
+  // tab, not visible until that tab is active.
   await openInspectorTab(dialog, page, /request flow/i);
-  const journeyButton = page.getByRole('button', { name: /find this journey id/i });
+  const journeyButton = page.getByRole('button', { name: /^find same journey$/i });
   await journeyButton.waitFor();
   await journeyButton.click();
 

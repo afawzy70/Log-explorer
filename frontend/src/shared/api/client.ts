@@ -490,6 +490,49 @@ export async function saveFieldMappingProfile(
 }
 
 /**
+ * Owner mission "Mapping Verification and Investigation Workspace" -
+ * evidence-gated: the backend re-validates this field's CURRENT candidate
+ * paths against `samples` (real Original Source JSON the caller already
+ * holds, e.g. from a Quick Schema Scan) and only marks it `VERIFIED` when
+ * that fresh check actually finds it - a 400 ({@link ApiError}) otherwise,
+ * never a silent "verified" on faith. `samples` never persists past this
+ * one call (mission §4/§20 - same rule as every other field-mapping call
+ * that carries real sample content).
+ */
+export async function verifyFieldMapping(
+  field: CanonicalFieldKey,
+  samples: string[],
+  sourceId?: string,
+  project?: string | null,
+  signal?: AbortSignal,
+): Promise<FieldMappingProfileDto> {
+  const response = await fetch(
+    `/api/v1/settings/field-mapping/fields/${encodeURIComponent(field)}/verify${scopeQuery(sourceId, project)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ samples }),
+      signal,
+    },
+  );
+  return parseJsonOrThrow<FieldMappingProfileDto>(response);
+}
+
+/** Owner mission "Mapping Verification and Investigation Workspace" - an explicit, no-evidence-required owner flag: "I have reviewed this and it needs to change." Never silently promoted back to `VERIFIED` by a later save alone. */
+export async function markFieldMappingNeedsChange(
+  field: CanonicalFieldKey,
+  sourceId?: string,
+  project?: string | null,
+  signal?: AbortSignal,
+): Promise<FieldMappingProfileDto> {
+  const response = await fetch(
+    `/api/v1/settings/field-mapping/fields/${encodeURIComponent(field)}/needs-change${scopeQuery(sourceId, project)}`,
+    { method: 'POST', signal },
+  );
+  return parseJsonOrThrow<FieldMappingProfileDto>(response);
+}
+
+/**
  * Original Source JSON samples (mission §3/§5) — bounded (1-50, default
  * 20), real, unmasked. The caller must hold the result only in ephemeral
  * component state, never `localStorage`/`sessionStorage`/a URL.

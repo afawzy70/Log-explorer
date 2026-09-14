@@ -5,10 +5,12 @@ import com.logexplorer.api.dto.FieldMappingProfileDto;
 import com.logexplorer.api.dto.FieldMappingSaveRequestDto;
 import com.logexplorer.api.dto.FieldMappingValidationReportDto;
 import com.logexplorer.api.dto.FieldMappingValidationRequestDto;
+import com.logexplorer.api.dto.FieldMappingVerifyRequestDto;
 import com.logexplorer.core.mapping.CanonicalField;
 import com.logexplorer.core.mapping.FieldMappingProfile;
 import com.logexplorer.core.mapping.FieldMappingProfileService;
 import com.logexplorer.core.mapping.FieldMappingValidationService;
+import com.logexplorer.core.mapping.FieldVerificationStatus;
 import com.logexplorer.core.mapping.InvalidJsonPathException;
 import com.logexplorer.core.mapping.JsonPath;
 import com.logexplorer.core.mapping.MappingScopeKey;
@@ -125,6 +127,60 @@ public class FieldMappingSettingsController {
     return toDto(scope, profileService.activeProfile(scope), profileService.isModifiedFromDefault(scope), profileService.isSearchReady(scope));
   }
 
+  /**
+   * Owner mission "Mapping Verification and Investigation Workspace" —
+   * evidence-gated: re-validates {@code field}'s CURRENT active candidate
+   * paths against the caller-supplied real samples, using the exact same
+   * {@link FieldMappingValidationService} the {@code /validate} endpoint
+   * uses (never a duplicate check), and only sets {@code VERIFIED} when
+   * that fresh check shows the candidate was actually found in at least
+   * one sample. An unmapped field, or one whose candidate resolves to
+   * nothing in the given samples, is rejected with a specific 400 reason
+   * rather than silently marked verified — "the system knows this mapping
+   * is correct" must never be claimed on inherited-default faith alone.
+   */
+  @PostMapping("/fields/{field}/verify")
+  public FieldMappingProfileDto verifyField(
+      @PathVariable String field,
+      @RequestParam(required = false) String sourceId,
+      @RequestParam(required = false) String project,
+      @RequestBody FieldMappingVerifyRequestDto request) {
+    MappingScopeKey scope = scopeResolver.resolve(sourceId, project);
+    CanonicalField canonicalField = resolveField(field);
+    FieldMappingProfile profile = profileService.activeProfile(scope);
+    List<String> candidatePaths = profile.candidates(canonicalField).stream().map(JsonPath::raw).toList();
+    if (candidatePaths.isEmpty()) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+          "Cannot verify '" + field + "' - it has no candidate path mapped yet.");
+    }
+    List<String> samples = request.samples() == null ? List.of() : request.samples();
+    FieldMappingValidationService.MappingValidationReport report = validationService.validate(
+        Map.of(canonicalField, candidatePaths), profile, samples);
+    FieldMappingValidationService.FieldValidation fieldResult = report.fields().stream()
+        .filter(f -> f.field() == canonicalField)
+        .findFirst()
+        .orElseThrow();
+    if (!fieldResult.foundInAnySample()) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+          "Cannot verify '" + field + "' - its candidate path was not found in any of the given samples. "
+              + "Run a Quick Schema Scan and confirm the path resolves before verifying.");
+    }
+    profileService.markVerified(scope, canonicalField);
+    return toDto(scope, profileService.activeProfile(scope), profileService.isModifiedFromDefault(scope), profileService.isSearchReady(scope));
+  }
+
+  /** Owner mission "Mapping Verification and Investigation Workspace" — an explicit, no-evidence-required user flag: "I have reviewed this and it needs to change." */
+  @PostMapping("/fields/{field}/needs-change")
+  public FieldMappingProfileDto markFieldNeedsChange(
+      @PathVariable String field,
+      @RequestParam(required = false) String sourceId,
+      @RequestParam(required = false) String project) {
+    MappingScopeKey scope = scopeResolver.resolve(sourceId, project);
+    CanonicalField canonicalField = resolveField(field);
+    profileService.markNeedsChange(scope, canonicalField);
+    return toDto(scope, profileService.activeProfile(scope), profileService.isModifiedFromDefault(scope), profileService.isSearchReady(scope));
+  }
+
   private CanonicalField resolveField(String key) {
     try {
       return CanonicalField.byKey(key);
@@ -153,9 +209,11 @@ public class FieldMappingSettingsController {
   private FieldMappingProfileDto toDto(MappingScopeKey scope, FieldMappingProfile profile, boolean modified, boolean ready) {
     List<FieldMappingProfileDto.CanonicalFieldMappingDto> fields = new ArrayList<>();
     for (CanonicalField field : CanonicalField.values()) {
+      FieldVerificationStatus status = profileService.verificationStatus(scope, field);
       fields.add(new FieldMappingProfileDto.CanonicalFieldMappingDto(
           field.key(), field.displayName(), field.sensitive(),
-          profile.candidates(field).stream().map(JsonPath::raw).toList()));
+          profile.candidates(field).stream().map(JsonPath::raw).toList(),
+          status.name()));
     }
     String reportedSourceId = scope == MappingScopeKey.UNSPECIFIED ? null : scope.sourceId();
     return new FieldMappingProfileDto(reportedSourceId, scope.displayScope(), fields, modified, ready);
