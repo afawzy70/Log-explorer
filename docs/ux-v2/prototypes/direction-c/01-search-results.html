@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Direction C — Search results</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div class="brand"><span class="mark">L</span> Log Explorer</div>
+    <div class="source-pill"><span class="dot"></span><b>OpenShift</b>&nbsp;·&nbsp;payments-prod
+      <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 3l3 3 3-3" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>
+    </div>
+    <div class="search-shell">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input value="" placeholder="Search messages, errors, users, or paste a trace/correlation ID…">
+      <span class="kbd">Ctrl+K</span>
+    </div>
+    <button class="pill-btn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Last 1 hour</button>
+    <button class="pill-btn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>All levels</button>
+    <button class="pill-btn active" title="More filters (2 active)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Filters <span style="background:var(--accent);color:#fff;border-radius:8px;font-size:10px;padding:0 5px;">2</span></button>
+    <button class="icon-btn" title="Columns"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 4v16M15 4v16" stroke="currentColor" stroke-width="1.6"/></svg></button>
+    <button class="icon-btn" title="Settings"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.6"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.9 2.9l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.6V21a2 2 0 11-4 0v-.2a1.7 1.7 0 00-1-1.5 1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.9-2.9l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.2a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.9-2.9l.1.1a1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.6V3a2 2 0 114 0v.2a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.9 2.9l-.1.1a1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.6 1H21a2 2 0 110 4h-.2a1.7 1.7 0 00-1.6 1z" stroke="currentColor" stroke-width="1.3"/></svg></button>
+    <button class="btn-primary live"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>Live</button>
+    <button class="btn-primary">Search</button>
+  </div>
+
+  <div class="filterstrip">
+    <span class="label">Active</span>
+    <span class="chip">Source: <b>OpenShift · payments-prod</b></span>
+    <span class="chip">Time: <b>Last 1 hour</b></span>
+    <span class="chip">Business step: <b>settle-transfer</b> <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></span>
+    <span class="chip">Device platform: <b>iOS</b> <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></span>
+    <span class="chip-clear">Clear all</span>
+  </div>
+
+  <div class="body-row">
+    <div class="main-col">
+      <div class="meta-row">
+        <span>247 events matched · showing first 100 · 210ms</span>
+        <div class="right">
+          <span>Density</span>
+          <select><option>Comfortable</option><option selected>Compact</option></select>
+        </div>
+      </div>
+      <div class="tablewrap">
+        <table class="results">
+          <colgroup><col class="c-time"><col class="c-level"><col class="c-service"><col class="c-msg"><col class="c-user"><col class="c-corr"><col class="c-actions"></colgroup>
+          <thead>
+            <tr>
+              <th>Time <span class="arrow">▼</span></th>
+              <th>Level</th>
+              <th>Service</th>
+              <th>What happened</th>
+              <th>User/Customer</th>
+              <th>Correlation/Trace</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="time">09:10:45.67</td><td><span class="lvl INFO">INFO</span></td><td>notification-worker</td><td class="msg">Notification worker processed unrecognized event shape</td><td class="masked">us***42</td><td class="corr">trace-b7e1d4</td><td><button class="row-actions-btn">⋯</button></td></tr>
+            <tr class="malformed"><td>—</td><td>—</td><td>gateway</td><td class="msg">NOT-JSON fixture-malformed-line service=gateway cycle=6 <span class="tag">malformed</span></td><td>—</td><td>—</td><td><button class="row-actions-btn">⋯</button></td></tr>
+            <tr><td class="time">09:10:43.67</td><td><span class="lvl INFO">INFO</span></td><td>gateway</td><td class="msg msg-empty">(empty message)</td><td class="masked">us***42</td><td class="corr">—</td><td><button class="row-actions-btn">⋯</button></td></tr>
+            <tr class="selected"><td class="time">09:10:42.67</td><td><span class="lvl ERROR">ERROR</span></td><td>payments-api</td><td class="msg">Payment authorization failed</td><td class="masked">us***42</td><td class="corr">trace-b7e1d4</td><td><button class="row-actions-btn">⋯</button></td></tr>
+            <tr><td class="time">09:10:41.67</td><td><span class="lvl INFO">INFO</span></td><td>accounts-api</td><td class="msg">Customer profile lookup completed</td><td class="masked">us***42</td><td class="corr">trace-a1f9c2</td><td><button class="row-actions-btn">⋯</button></td></tr>
+            <tr><td class="time">09:10:40.67</td><td><span class="lvl INFO">INFO</span></td><td>payments-api</td><td class="msg">Journey step 3: payments-api settled transfer under a new trace</td><td class="masked">us***42</td><td class="corr">trace-b7e1d4</td><td><button class="row-actions-btn">⋯</button></td></tr>
+            <tr><td class="time">09:10:39.67</td><td><span class="lvl INFO">INFO</span></td><td>accounts-api</td><td class="msg">Journey step 2: accounts-api validated balance</td><td class="masked">us***42</td><td class="corr">corr-a83f21</td><td><button class="row-actions-btn">⋯</button></td></tr>
+            <tr><td class="time">09:10:38.67</td><td><span class="lvl WARN">WARN</span></td><td>gateway</td><td class="msg">Journey step 1: gateway accepted transfer request</td><td class="masked">us***42</td><td class="corr">corr-a83f21</td><td><button class="row-actions-btn">⋯</button></td></tr>
+            <tr><td class="time">09:10:36.20</td><td><span class="lvl INFO">INFO</span></td><td>gateway</td><td class="msg">Applied rate limit check</td><td class="masked">us***18</td><td class="corr">trace-990ab2</td><td><button class="row-actions-btn">⋯</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="padding:10px 14px;border-top:1px solid var(--line);display:flex;justify-content:center">
+        <button class="btn-ghost" style="border:1px solid var(--line)">Load more (147 remaining)</button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

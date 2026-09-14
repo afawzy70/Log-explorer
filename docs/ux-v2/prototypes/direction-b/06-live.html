@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Log Explorer — Direction B — Live</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --surface:#ffffff; --surface-alt:#fafbfc; --surface-sunken:#f0f1f4;
+    --border:#e3e5ea; --border-strong:#cdd1d9;
+    --text:#181b20; --text-2:#454b57; --text-3:#5c6270;
+    --accent:#2145a8; --accent-soft:#eaf0fe; --accent-text:#1a3a8f;
+    --sev-error:#a92a20; --sev-warn:#7a5000; --sev-info:#2145a8; --sev-muted:#565d68;
+    --live-red:#c8372c;
+    --font-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    --font-mono:ui-monospace,"SF Mono","Cascadia Code","Roboto Mono",Consolas,monospace;
+    --radius-sm:4px;--radius-md:6px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:13px;line-height:1.45}
+  .app{display:flex;flex-direction:column;height:100vh;min-height:700px}
+  .shell{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;background:var(--surface);border-bottom:1px solid var(--border)}
+  .brand{font-weight:600;font-size:14.5px}
+  .badge{font-size:11px;font-weight:700;color:var(--text-3);background:var(--surface-sunken);border:1px solid var(--border);border-radius:3px;padding:2px 6px;margin-left:8px}
+
+  .live-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:var(--surface);border-bottom:1px solid var(--border)}
+  .live-left{display:flex;align-items:center;gap:14px}
+  .back-link{font-size:12.5px;font-weight:600;color:var(--accent-text)}
+  .live-pill{display:inline-flex;align-items:center;gap:6px;background:#fceceb;color:var(--live-red);font-weight:800;font-size:11px;letter-spacing:.04em;padding:4px 10px;border-radius:999px}
+  .pulse{width:7px;height:7px;border-radius:50%;background:var(--live-red)}
+  .live-name{font-weight:700;font-size:13.5px}
+  .live-actions{display:flex;gap:8px}
+  .live-btn{height:30px;padding:0 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);font-size:12.5px;font-weight:600;color:var(--text)}
+  .live-btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+  .live-note{padding:9px 20px;background:var(--warn-bg,#fbf1de);border-bottom:1px solid var(--border);font-size:11.5px;color:#7a5000}
+  .quick-sev{display:flex;gap:6px;padding:10px 20px;background:var(--surface-alt);border-bottom:1px solid var(--border)}
+  .qs-chip{height:26px;padding:0 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11.5px;color:var(--text-2);display:flex;align-items:center}
+  .qs-chip.on{border-color:var(--border-strong);color:var(--text);font-weight:700;background:var(--surface)}
+  .counts{margin-left:auto;font-size:12px;color:var(--text-2);display:flex;gap:16px;align-items:center}
+  .counts b{color:var(--text)}
+
+  .stream{flex:1;overflow:auto;padding:8px 20px 20px}
+  .live-row{display:flex;gap:12px;padding:8px 10px;border-bottom:1px solid var(--surface-sunken);align-items:baseline}
+  .live-row:first-child{background:var(--accent-soft);border-radius:var(--radius-sm)}
+  .lr-time{font-family:var(--font-mono);font-size:11.5px;color:var(--text-3);width:130px;flex-shrink:0}
+  .lr-svc{font-weight:700;font-size:12px;width:150px;flex-shrink:0}
+  .lr-svc.gw{color:#166b3e}
+  .lr-lvl{font-weight:700;font-size:11px;width:48px;flex-shrink:0}
+  .lr-lvl.info{color:var(--sev-info)} .lr-lvl.warn{color:var(--sev-warn)}
+  .lr-tag{font-size:10.5px;background:var(--surface-sunken);color:var(--text-3);border-radius:3px;padding:1px 6px;width:110px;flex-shrink:0;text-align:center}
+  .lr-msg{flex:1;font-size:12.5px}
+  .lr-ids{font-family:var(--font-mono);font-size:10.5px;color:var(--text-3);margin-top:2px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="shell"><div style="display:flex;align-items:center"><span class="brand">Log Explorer</span><span class="badge">DEV</span></div></header>
+
+  <div class="live-bar">
+    <div class="live-left">
+      <span class="back-link">← Back to search results</span>
+      <span class="live-pill"><span class="pulse"></span>LIVE (3/4 active)</span>
+      <span class="live-name">OpenShift · payments-prod · payments-api (all replicas)</span>
+    </div>
+    <div class="live-actions">
+      <button class="live-btn">Pause</button>
+      <button class="live-btn">Stop</button>
+      <button class="live-btn">Clear</button>
+    </div>
+  </div>
+
+  <div class="live-note">One replica (payments-api-7d9f-x2k1) is currently unreachable — showing events from the 3 replicas still connected. This is not a complete historical record; use Search for that.</div>
+
+  <div class="quick-sev">
+    <div class="qs-chip on">All</div>
+    <div class="qs-chip">Errors only</div>
+    <div class="qs-chip">Trace/Debug</div>
+    <div class="counts">Received: <b>184</b> · Visible: <b>184</b></div>
+  </div>
+
+  <div class="stream">
+    <div class="live-row">
+      <span class="lr-time">09:59:14.213 PM</span><span class="lr-svc">accounts-api</span><span class="lr-lvl info">INFO</span><span class="lr-tag">debit-account</span>
+      <div><div class="lr-msg">Loaded account summary</div><div class="lr-ids">trace: fixture-trace-000021 · corr: fixture-corr-000021</div></div>
+    </div>
+    <div class="live-row">
+      <span class="lr-time">09:59:13.913 PM</span><span class="lr-svc">accounts-api</span><span class="lr-lvl info">INFO</span><span class="lr-tag">credit-account</span>
+      <div><div class="lr-msg">Loaded account summary</div><div class="lr-ids">trace: fixture-trace-000020 · corr: fixture-corr-000020</div></div>
+    </div>
+    <div class="live-row">
+      <span class="lr-time">09:59:13.213 PM</span><span class="lr-svc gw">gateway</span><span class="lr-lvl info">INFO</span><span class="lr-tag">notify-customer</span>
+      <div><div class="lr-msg">Forwarded response to client</div><div class="lr-ids">trace: fixture-trace-000018 · corr: fixture-corr-000018</div></div>
+    </div>
+    <div class="live-row">
+      <span class="lr-time">09:59:12.980 PM</span><span class="lr-svc">notification-worker</span><span class="lr-lvl warn">WARN</span><span class="lr-tag">notify-customer</span>
+      <div><div class="lr-msg">Dispatched customer notification (retry)</div><div class="lr-ids">trace: fixture-trace-000017 · corr: fixture-corr-000017</div></div>
+    </div>
+    <div class="live-row">
+      <span class="lr-time">09:59:12.513 PM</span><span class="lr-svc">accounts-api</span><span class="lr-lvl info">INFO</span><span class="lr-tag">route-request</span>
+      <div><div class="lr-msg">Persisted account update</div><div class="lr-ids">trace: fixture-trace-000016 · corr: fixture-corr-000016</div></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

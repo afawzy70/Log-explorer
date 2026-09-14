@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Direction A — Surrounding Logs (Context)</title>
+<link rel="stylesheet" href="direction-a.css">
+</head>
+<body>
+<div class="shell">
+  <div class="topbar">
+    <div class="brand">Log Explorer<span class="brand-badge">DIRECTION A</span></div>
+    <div class="source-pill">OpenShift &middot; payments-prod</div>
+    <div class="topbar-spacer"></div>
+    <button class="icon-btn">Privacy &amp; masking</button>
+    <button class="icon-btn">OpenShift</button>
+    <div class="health"><span class="health-dot"></span>Healthy</div>
+  </div>
+
+  <div class="ctx-banner">
+    Context — <b>±30s</b> around Sep 13, 2026, 06:10:42.670 PM UTC &middot; same pod/container as the selected event
+    <a class="ctx-back">← Back to search results</a>
+  </div>
+  <div class="ctx-stats">
+    <div><b>7</b>events</div>
+    <div><b>1</b>services</div>
+    <div><b>1</b>errors</div>
+    <div><b>1</b>warnings</div>
+    <div><b>60s</b>window (±30s)</div>
+    <div><b>2</b>gaps detected</div>
+  </div>
+  <div class="filterstrip" style="border-bottom:none;">
+    <span style="color:var(--text-2);font-size:11px;">Sorted chronologically, oldest first — this order does not indicate causality between events. A detected gap means no event was observed in that interval; it is not evidence that anything failed.</span>
+  </div>
+
+  <div class="main">
+    <div class="tablewrap" style="border-right:none;">
+      <table>
+        <colgroup><col style="width:96px"><col style="width:82px"><col style="width:126px"><col></colgroup>
+        <thead><tr><th>Time</th><th>Level</th><th>Service</th><th>What happened</th></tr></thead>
+        <tbody>
+          <tr class="row"><td class="mono">09:10:12.67</td><td><span class="lvl INFO">INFO</span></td><td>payments-api</td><td>Loaded settlement policy for merchant</td></tr>
+          <tr class="row"><td class="mono">09:10:18.67</td><td><span class="lvl INFO">INFO</span></td><td>payments-api</td><td>Issuer authorization request sent</td></tr>
+          <tr><td colspan="4" class="gap-row">6s with no observed events — Sep 13, 09:10:18.67 PM → 09:10:24.67 PM</td></tr>
+          <tr class="row"><td class="mono">09:10:24.67</td><td><span class="lvl INFO">INFO</span></td><td>payments-api</td><td>Issuer response received</td></tr>
+          <tr><td colspan="4" class="gap-row">13s with no observed events — Sep 13, 09:10:24.67 PM → 09:10:37.67 PM</td></tr>
+          <tr class="row"><td class="mono">09:10:37.67</td><td><span class="lvl INFO">INFO</span></td><td>payments-api</td><td>Retry attempt 1 for settlement</td></tr>
+          <tr class="row root-row"><td class="mono">09:10:42.67</td><td><span class="lvl ERROR">ERROR</span></td><td>payments-api</td><td>Payment authorization failed<span class="root-badge">ORIGINAL EVENT</span></td></tr>
+          <tr class="row"><td class="mono">09:10:47.67</td><td><span class="lvl INFO">INFO</span></td><td>payments-api</td><td>Settlement marked for manual review</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</body>
+</html>

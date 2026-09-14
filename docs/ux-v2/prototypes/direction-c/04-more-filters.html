@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Direction C — More filters</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand"><span class="mark">L</span> Log Explorer</div>
+    <div class="source-pill"><span class="dot"></span><b>OpenShift</b>&nbsp;·&nbsp;payments-prod</div>
+    <div class="search-shell">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/></svg>
+      <input placeholder="Search messages, errors, users, or paste a trace/correlation ID…">
+    </div>
+    <button class="pill-btn">Last 1 hour</button>
+    <button class="pill-btn">All levels</button>
+    <button class="pill-btn active" style="border-color:var(--accent)">Filters</button>
+    <button class="btn-primary">Search</button>
+  </div>
+
+  <div class="body-row" style="position:relative">
+    <div class="main-col" style="filter:saturate(.7) opacity(.9)">
+      <div class="meta-row"><span>247 events matched · showing first 100 · 210ms</span></div>
+      <div class="tablewrap">
+        <table class="results">
+          <colgroup><col class="c-time"><col class="c-level"><col class="c-service"><col class="c-msg"><col class="c-user"><col class="c-corr"><col class="c-actions"></colgroup>
+          <thead><tr><th>Time <span class="arrow">▼</span></th><th>Level</th><th>Service</th><th>What happened</th><th>User/Customer</th><th>Correlation/Trace</th><th></th></tr></thead>
+          <tbody>
+            <tr><td class="time">09:10:45.67</td><td><span class="lvl INFO">INFO</span></td><td>notification-worker</td><td class="msg">Notification worker processed unrecognized event shape</td><td class="masked">us***42</td><td class="corr">trace-b7e1d4</td><td>⋯</td></tr>
+            <tr><td class="time">09:10:42.67</td><td><span class="lvl ERROR">ERROR</span></td><td>payments-api</td><td class="msg">Payment authorization failed</td><td class="masked">us***42</td><td class="corr">trace-b7e1d4</td><td>⋯</td></tr>
+            <tr><td class="time">09:10:41.67</td><td><span class="lvl INFO">INFO</span></td><td>accounts-api</td><td class="msg">Customer profile lookup completed</td><td class="masked">us***42</td><td class="corr">trace-a1f9c2</td><td>⋯</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="sheet" style="position:absolute">
+      <div class="panel">
+        <div class="sheet-head">
+          <div><h2>More filters</h2><div class="sub">Refine by what you're looking for. Applies on top of Service/Severity/Time.</div></div>
+          <button class="icon-btn">✕</button>
+        </div>
+        <div class="sheet-body">
+
+          <div class="filtergroup">
+            <h3><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="2"/><path d="M4 20c0-4 3.5-7 8-7s8 3 8 7" stroke="currentColor" stroke-width="2"/></svg> Who / client <span class="sensitive-note">🔒 masked by default</span></h3>
+            <div class="filtergrid">
+              <div class="f-field"><label>User name <span class="matchtag">CONTAINS</span></label><input placeholder="e.g. jsmith"></div>
+              <div class="f-field"><label>Customer ID <span class="matchtag">EXACT</span></label><input placeholder="e.g. C-88213"></div>
+              <div class="f-field"><label>CIF <span class="matchtag">EXACT</span></label><input placeholder="e.g. 10029384"></div>
+              <div class="f-field"><label>Device ID <span class="matchtag">EXACT</span></label><input placeholder="e.g. dev-3f9a"></div>
+              <div class="f-field"><label>Device IP <span class="matchtag">EXACT</span></label><input placeholder="e.g. 10.2.3.4"></div>
+              <div class="f-field"><label>Device platform</label><select><option>Any</option><option selected>iOS</option><option>Android</option><option>Web</option></select></div>
+            </div>
+          </div>
+
+          <div class="filtergroup">
+            <h3>Request flow</h3>
+            <div class="filtergrid">
+              <div class="f-field"><label>Trace ID <span class="matchtag">EXACT</span></label><input placeholder="e.g. b7e1d4-000250"></div>
+              <div class="f-field"><label>Span ID <span class="matchtag">EXACT</span></label><input placeholder="e.g. span-000250"></div>
+              <div class="f-field"><label>Correlation ID <span class="matchtag">EXACT</span></label><input placeholder="e.g. corr-a83f21"></div>
+              <div class="f-field"><label>Journey ID <span class="matchtag">EXACT</span></label><input placeholder="e.g. journey-0035"></div>
+              <div class="f-field"><label>Event ID <span class="matchtag">EXACT</span></label><input placeholder="e.g. evt-000250"></div>
+            </div>
+          </div>
+
+          <div class="filtergroup">
+            <h3>What happened</h3>
+            <div class="filtergrid">
+              <div class="f-field"><label>Error code <span class="matchtag">EXACT</span></label><input placeholder="e.g. AUTH_DECLINED" value="AUTH_DECLINED"></div>
+              <div class="f-field"><label>Business step <span class="matchtag">EXACT</span></label><input placeholder="e.g. settle-transfer" value="settle-transfer"></div>
+              <div class="f-field"><label>UI identifier <span class="matchtag">EXACT</span></label><input placeholder="e.g. pay-confirm-btn"></div>
+              <div class="f-field"><label>Logger / class <span class="matchtag">CONTAINS</span></label><input placeholder="e.g. SettlementService"></div>
+              <div class="f-field" style="grid-column:1/-1"><label>Message <span class="matchtag">CONTAINS</span></label><input placeholder="e.g. declined"></div>
+            </div>
+          </div>
+
+          <div class="filtergroup">
+            <h3>Advanced query</h3>
+            <div class="notice">Raw LogQL is available for OpenShift Loki only, when enabled by your administrator. Not applicable to this source.</div>
+          </div>
+        </div>
+        <div class="sheet-foot">
+          <button class="btn-ghost">Reset advanced filters</button>
+          <div style="display:flex;gap:8px">
+            <button class="btn-ghost" style="border:1px solid var(--line)">Cancel</button>
+            <button class="btn-primary">Apply filters (2 active)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

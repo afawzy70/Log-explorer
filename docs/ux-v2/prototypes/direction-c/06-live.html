@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Direction C — Live</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand"><span class="mark">L</span> Log Explorer</div>
+    <div class="source-pill"><span class="dot"></span><b>OpenShift</b>&nbsp;·&nbsp;payments-prod</div>
+    <div class="search-shell" style="opacity:.5">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/></svg>
+      <input placeholder="Filter displayed events…">
+    </div>
+    <button class="pill-btn">All levels</button>
+    <button class="btn-ghost">← Back to search results</button>
+  </div>
+
+  <div class="livebar">
+    <span class="badge"><span class="dot"></span>LIVE (2/4 active)</span>
+    <span class="stat">Received: 62 · Visible: 58</span>
+    <span class="stat">Buffered while paused: 0</span>
+    <span class="spacer"></span>
+    <button class="btn-ghost" style="border:1px solid #f3d3cf;background:#fff">⏸ Pause</button>
+    <button class="btn-ghost" style="border:1px solid #f3d3cf;background:#fff">Clear</button>
+    <button class="btn-primary" style="background:var(--ink-2);border-color:var(--ink-2)">■ Stop</button>
+  </div>
+  <div style="padding:6px 14px;font-size:11.5px;color:var(--ink-3);background:var(--panel-2);border-bottom:1px solid var(--line)">
+    Showing events received since Start — this is not a complete historical record. Use Search for that. Retained events are capped at 2,000; oldest evicted first. 2 of 4 replicas currently reachable — a rollout may be in progress.
+  </div>
+
+  <div class="livefeed">
+    <div class="liverow new"><span class="t">09:59:14.91</span><span class="svc" style="color:#33569c">accounts-api</span><span class="m">Loaded account summary</span><span class="ids">trace-000021</span></div>
+    <div class="liverow"><span class="t">09:59:13.91</span><span class="svc" style="color:#33569c">accounts-api</span><span class="m">Loaded account summary — debit-account</span><span class="ids">trace-000020</span></div>
+    <div class="liverow"><span class="t">09:59:13.21</span><span class="svc" style="color:#33569c">accounts-api</span><span class="m">Loaded account summary — credit-account</span><span class="ids">trace-000019</span></div>
+    <div class="liverow"><span class="t">09:59:13.21</span><span class="svc" style="color:#2a7a4d">gateway</span><span class="m">Forwarded response to client — notify-customer</span><span class="ids">trace-000018</span></div>
+    <div class="liverow"><span class="t">09:59:13.21</span><span class="svc">notification-worker</span><span class="m">[burst] Forwarded response to client</span><span class="ids">trace-000016</span></div>
+    <div class="liverow"><span class="t">09:59:13.21</span><span class="svc">notification-worker</span><span class="m">[burst] Dispatched customer notification</span><span class="ids">trace-000015</span></div>
+    <div class="liverow"><span class="t">09:59:12.51</span><span class="svc" style="color:#33569c">accounts-api</span><span class="m">Loaded account summary — notify-customer</span><span class="ids">trace-000014</span></div>
+    <div class="liverow"><span class="t">09:59:11.80</span><span class="svc" style="color:#2a7a4d">gateway</span><span class="m">Applied rate limit check</span><span class="ids">trace-000013</span></div>
+    <div class="liverow"><span class="t">09:59:10.02</span><span class="svc" style="color:#b3261e;font-weight:700">payments-api</span><span class="m"><span class="lvl ERROR" style="margin-right:6px">ERROR</span>Payment authorization failed</span><span class="ids">trace-000012</span></div>
+    <div class="liverow"><span class="t">09:59:09.44</span><span class="svc" style="color:#33569c">accounts-api</span><span class="m">Customer profile lookup completed</span><span class="ids">trace-000011</span></div>
+  </div>
+</div>
+</body>
+</html>

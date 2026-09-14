@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Direction C — Inspector</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div class="brand"><span class="mark">L</span> Log Explorer</div>
+    <div class="source-pill"><span class="dot"></span><b>OpenShift</b>&nbsp;·&nbsp;payments-prod</div>
+    <div class="search-shell">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input placeholder="Search messages, errors, users, or paste a trace/correlation ID…">
+      <span class="kbd">Ctrl+K</span>
+    </div>
+    <button class="pill-btn">Last 1 hour</button>
+    <button class="pill-btn">All levels</button>
+    <button class="pill-btn active">Filters <span style="background:var(--accent);color:#fff;border-radius:8px;font-size:11px;padding:1px 6px;">2</span></button>
+    <button class="icon-btn" title="Columns"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 4v16M15 4v16" stroke="currentColor" stroke-width="1.6"/></svg></button>
+    <button class="icon-btn" title="Settings"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.6"/></svg></button>
+    <button class="btn-primary live">Live</button>
+    <button class="btn-primary">Search</button>
+  </div>
+
+  <div class="body-row">
+    <div class="main-col">
+      <div class="meta-row"><span>247 events matched · showing first 100 · 210ms</span><span>Event 4 of 100</span></div>
+      <div class="tablewrap">
+        <table class="results">
+          <colgroup><col class="c-time"><col class="c-level"><col class="c-service"><col class="c-msg"><col class="c-user"><col class="c-corr"><col class="c-actions"></colgroup>
+          <thead><tr><th>Time <span class="arrow">▼</span></th><th>Level</th><th>Service</th><th>What happened</th><th>User/Customer</th><th>Correlation/Trace</th><th></th></tr></thead>
+          <tbody>
+            <tr><td class="time">09:10:45.67</td><td><span class="lvl INFO">INFO</span></td><td>notification-worker</td><td class="msg">Notification worker processed unrecognized event shape</td><td class="masked">us***42</td><td class="corr">trace-b7e1d4</td><td><button class="row-actions-btn">⋯</button></td></tr>
+            <tr class="malformed"><td>—</td><td>—</td><td>gateway</td><td class="msg">NOT-JSON fixture-malformed-line service=gateway cycle=6 <span class="tag">malformed</span></td><td>—</td><td>—</td><td><button class="row-actions-btn">⋯</button></td></tr>
+            <tr><td class="time">09:10:43.67</td><td><span class="lvl INFO">INFO</span></td><td>gateway</td><td class="msg msg-empty">(empty message)</td><td class="masked">us***42</td><td class="corr">—</td><td><button class="row-actions-btn">⋯</button></td></tr>
+            <tr class="selected"><td class="time">09:10:42.67</td><td><span class="lvl ERROR">ERROR</span></td><td>payments-api</td><td class="msg">Payment authorization failed</td><td class="masked">us***42</td><td class="corr">trace-b7e1d4</td><td><button class="row-actions-btn">⋯</button></td></tr>
+            <tr><td class="time">09:10:41.67</td><td><span class="lvl INFO">INFO</span></td><td>accounts-api</td><td class="msg">Customer profile lookup completed</td><td class="masked">us***42</td><td class="corr">trace-a1f9c2</td><td><button class="row-actions-btn">⋯</button></td></tr>
+            <tr><td class="time">09:10:40.67</td><td><span class="lvl INFO">INFO</span></td><td>payments-api</td><td class="msg">Journey step 3: payments-api settled transfer under a new trace</td><td class="masked">us***42</td><td class="corr">trace-b7e1d4</td><td><button class="row-actions-btn">⋯</button></td></tr>
+            <tr><td class="time">09:10:39.67</td><td><span class="lvl INFO">INFO</span></td><td>accounts-api</td><td class="msg">Journey step 2: accounts-api validated balance</td><td class="masked">us***42</td><td class="corr">corr-a83f21</td><td><button class="row-actions-btn">⋯</button></td></tr>
+            <tr><td class="time">09:10:38.67</td><td><span class="lvl WARN">WARN</span></td><td>gateway</td><td class="msg">Journey step 1: gateway accepted transfer request</td><td class="masked">us***42</td><td class="corr">corr-a83f21</td><td><button class="row-actions-btn">⋯</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="inspector">
+      <div class="insp-head">
+        <div>
+          <span class="lvl ERROR">ERROR</span>
+          <h2>Payment authorization failed</h2>
+          <div class="svc">payments-api · 09:10:42.67 PM · Asia/Kuwait (UTC+03:00)</div>
+        </div>
+        <div class="insp-nav">
+          <button class="icon-btn" title="Previous event (↑ / [)">↑</button>
+          <button class="icon-btn" title="Next event (↓ / ])">↓</button>
+          <button class="icon-btn" title="Close">✕</button>
+        </div>
+      </div>
+      <div class="insp-tabs">
+        <div class="insp-tab active">Overview</div>
+        <div class="insp-tab">Actor & client</div>
+        <div class="insp-tab">Request flow</div>
+        <div class="insp-tab">Business & error</div>
+        <div class="insp-tab">Technical / all fields</div>
+      </div>
+      <div class="insp-body">
+        <button class="btn-primary ctx-btn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Show surrounding logs</button>
+        <div style="height:14px"></div>
+        <div class="section-title">Overview</div>
+        <div class="field"><div class="k">Message</div><div class="v">Payment authorization failed</div></div>
+        <div class="field"><div class="k">Time</div><div class="v mono">Sep 13, 2026, 09:10:42.678 PM<br>Asia/Kuwait (UTC+03:00) · Sep 13, 2026, 06:10:42.678 PM UTC</div></div>
+        <div class="field"><div class="k">Source</div><div class="v">OpenShift · payments-prod</div></div>
+        <div class="field"><div class="k">Service</div><div class="v">payments-api</div></div>
+        <div class="field"><div class="k">Level</div><div class="v">ERROR</div></div>
+        <div class="field"><div class="k">Logger</div><div class="v mono">com.bank.payments.SettlementService</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Log Explorer — Direction B — Search &amp; Results</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --surface:#ffffff; --surface-alt:#fafbfc; --surface-sunken:#f0f1f4;
+    --border:#e3e5ea; --border-strong:#cdd1d9;
+    --text:#181b20; --text-2:#454b57; --text-3:#5c6270;
+    --accent:#2145a8; --accent-hover:#173583; --accent-soft:#eaf0fe; --accent-text:#1a3a8f;
+    --sev-error:#a92a20; --sev-error-bg:#fceceb; --sev-warn:#7a5000; --sev-warn-bg:#fbf1de;
+    --sev-info:#2145a8; --sev-info-bg:#eaf0fe; --sev-muted:#565d68; --sev-muted-bg:#eef0f3;
+    --radius-sm:4px; --radius-md:6px; --radius-lg:9px;
+    --font-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    --font-mono:ui-monospace,"SF Mono","Cascadia Code","Roboto Mono",Consolas,monospace;
+    --shadow-panel:0 1px 2px rgba(20,24,32,.04), 0 8px 24px rgba(20,24,32,.06);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .app{display:flex;flex-direction:column;height:100vh;min-height:700px}
+
+  /* Shell bar */
+  .shell{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;background:var(--surface);border-bottom:1px solid var(--border)}
+  .shell-left{display:flex;align-items:center;gap:10px}
+  .brand{font-weight:600;font-size:14.5px;letter-spacing:-.01em}
+  .badge{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--text-3);background:var(--surface-sunken);border:1px solid var(--border);border-radius:3px;padding:2px 6px}
+  .source-tag{font-size:12px;color:var(--text-2);padding-left:8px;border-left:1px solid var(--border)}
+  .source-tag b{color:var(--text);font-weight:600}
+  .shell-right{display:flex;align-items:center;gap:6px}
+  .icon-btn, .text-btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text-2);font-size:12.5px;font-weight:500;cursor:default}
+  .icon-btn:hover, .text-btn:hover{background:var(--surface-sunken);color:var(--text)}
+  .icon-btn{width:30px;padding:0;justify-content:center}
+  .health{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-2);padding-left:8px;margin-left:4px;border-left:1px solid var(--border)}
+  .dot{width:6px;height:6px;border-radius:50%;background:#1c8a4c}
+
+  /* Toolbar */
+  .toolbar{display:flex;align-items:center;gap:8px;padding:12px 20px;background:var(--surface-alt);border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .field{display:flex;align-items:center;height:32px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);padding:0 10px;color:var(--text);font-size:12.5px;gap:6px}
+  .field.select{padding-right:6px}
+  .field select{border:none;background:transparent;font:inherit;color:inherit;appearance:none;outline:none}
+  .chip-toggle{display:flex;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;height:32px}
+  .chip-toggle button{border:none;background:var(--surface);padding:0 12px;font-size:12.5px;color:var(--text-2);border-right:1px solid var(--border);cursor:default}
+  .chip-toggle button:last-child{border-right:none}
+  .chip-toggle button.active{background:var(--accent-soft);color:var(--accent-text);font-weight:600}
+  .sev-chip{height:32px;padding:0 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);font-size:12.5px;color:var(--text-2);display:flex;align-items:center;gap:6px}
+  .sev-chip.on{background:var(--surface);border-color:var(--border-strong);color:var(--text);font-weight:600}
+  .sev-chip .swatch{width:7px;height:7px;border-radius:50%}
+  .search-box{flex:1;min-width:220px;display:flex;align-items:center;height:32px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);padding:0 10px;gap:8px;color:var(--text-3)}
+  .search-box input{border:none;outline:none;flex:1;font:inherit;color:var(--text);background:transparent}
+  .btn{height:32px;padding:0 14px;border-radius:var(--radius-sm);border:1px solid transparent;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;cursor:default}
+  .btn-primary{background:var(--accent);color:#fff}
+  .btn-primary:hover{background:var(--accent-hover)}
+  .btn-ghost{background:var(--surface);border-color:var(--border);color:var(--text-2)}
+  .btn-ghost:hover{border-color:var(--border-strong);color:var(--text)}
+  .btn-live{background:var(--surface);border-color:var(--border);color:var(--sev-error);font-weight:700}
+
+  /* Active filters row */
+  .active-filters{display:flex;align-items:center;gap:8px;padding:8px 20px;background:var(--surface);border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap}
+  .af-label{color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.04em;font-size:11px}
+  .af-chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface-sunken);border:1px solid var(--border);border-radius:999px;padding:5px 6px 5px 12px;color:var(--text-2);font-size:12px}
+  .af-chip b{color:var(--text);font-weight:600}
+  .af-chip .x{width:14px;height:14px;border-radius:50%;background:var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:var(--text-2)}
+  .af-clear{color:var(--accent-text);font-weight:600;cursor:default;margin-left:4px}
+
+  /* Meta row */
+  .meta-row{display:flex;align-items:center;justify-content:space-between;padding:8px 20px;color:var(--text-3);font-size:12px}
+  .meta-right{display:flex;align-items:center;gap:14px}
+  .meta-btn{display:inline-flex;align-items:center;gap:6px;color:var(--text-2);font-weight:600;font-size:12px}
+
+  /* Table */
+  .table-wrap{flex:1;overflow:auto;padding:0 20px 20px}
+  table{width:100%;border-collapse:collapse;table-layout:fixed;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden}
+  col.c-time{width:150px} col.c-level{width:76px} col.c-service{width:130px}
+  col.c-what{width:auto} col.c-user{width:100px} col.c-corr{width:150px} col.c-actions{width:44px}
+  thead th{position:sticky;top:0;background:var(--surface-alt);text-align:left;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-3);padding:10px 12px;border-bottom:1px solid var(--border)}
+  thead th.sortable{cursor:default}
+  thead th .arrow{margin-left:4px;color:var(--accent)}
+  tbody td{padding:8px 12px;border-bottom:1px solid var(--border);font-size:12.5px;color:var(--text);vertical-align:top}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover td{background:var(--surface-alt)}
+  .mono{font-family:var(--font-mono);font-size:12px;color:var(--text-2)}
+  .lvl{display:inline-flex;align-items:center;gap:5px;font-weight:700;font-size:11px;letter-spacing:.02em}
+  .lvl .dot{width:6px;height:6px;border-radius:50%}
+  .lvl.error{color:var(--sev-error)} .lvl.error .dot{background:var(--sev-error)}
+  .lvl.warn{color:var(--sev-warn)} .lvl.warn .dot{background:var(--sev-warn)}
+  .lvl.info{color:var(--sev-info)} .lvl.info .dot{background:var(--sev-info)}
+  .lvl.muted{color:var(--sev-muted)} .lvl.muted .dot{background:var(--sev-muted)}
+  .masked{color:var(--text-3);font-family:var(--font-mono)}
+  .row-empty td{color:var(--text-3);font-style:italic}
+  .row-malformed td{color:var(--text-3);font-family:var(--font-mono);font-size:12px}
+  .row-malformed .malf-tag{background:var(--surface-sunken);border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-size:11px;font-weight:700;letter-spacing:.03em;color:var(--text-3);margin-left:8px}
+  tr.selected td{background:var(--accent-soft)}
+  tr.selected{box-shadow:inset 3px 0 0 var(--accent)}
+  .row-actions{color:var(--text-3);cursor:default;text-align:center}
+  td.truncate{max-width:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="shell">
+    <div class="shell-left">
+      <span class="brand">Log Explorer</span>
+      <span class="badge">DEV</span>
+      <span class="source-tag">Source: <b>OpenShift</b> · payments-prod</span>
+    </div>
+    <div class="shell-right">
+      <button class="text-btn">Privacy &amp; masking</button>
+      <button class="text-btn">OpenShift</button>
+      <button class="icon-btn" title="Keyboard shortcuts">⌘</button>
+      <span class="health"><span class="dot"></span>Healthy</span>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <div class="field select"><select><option>OpenShift</option></select></div>
+    <div class="field"><span>⏱</span> Last 1 hour</div>
+    <div class="chip-toggle">
+      <button class="active">All</button>
+      <button>Errors only</button>
+    </div>
+    <div class="sev-chip"><span class="swatch" style="background:var(--sev-muted)"></span>Trace/Debug</div>
+    <div class="search-box"><span>⌕</span><input placeholder="Search messages, errors, users, or paste an ID" value=""></div>
+    <button class="btn btn-primary">Search</button>
+    <button class="btn btn-live">● Live</button>
+    <button class="btn btn-ghost">More filters</button>
+  </div>
+
+  <div class="active-filters">
+    <span class="af-label">Active</span>
+    <span class="af-chip">Time range: <b>Last 1 hour</b><span class="x">×</span></span>
+    <span class="af-chip">Project: <b>payments-prod</b><span class="x">×</span></span>
+    <span class="af-clear">Clear all</span>
+  </div>
+
+  <div class="meta-row">
+    <span>Showing 9 of 9 events — Sep 13, 09:10–09:11 PM (Asia/Kuwait, UTC+03:00)</span>
+    <div class="meta-right">
+      <span class="meta-btn">⇅ Sort: Time, newest first</span>
+      <span class="meta-btn">▤ Columns</span>
+      <span class="meta-btn">↻ Refresh</span>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <colgroup>
+        <col class="c-time"><col class="c-level"><col class="c-service"><col class="c-what"><col class="c-user"><col class="c-corr"><col class="c-actions">
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="sortable">Time <span class="arrow">▾</span></th>
+          <th>Level</th><th>Service</th><th>What happened</th><th>User/Customer</th><th>Correlation/Trace</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="mono">09:10:45.67 PM</td><td><span class="lvl info"><span class="dot"></span>INFO</span></td><td>notification-worker</td><td class="truncate">Notification worker processed unrecognized event shape</td><td class="masked">us***11</td><td class="mono">fixture-tra…</td><td class="row-actions">⋯</td></tr>
+        <tr class="row-malformed"><td>—</td><td>—</td><td>—</td><td>NOT-JSON fixture-malformed-line service=gateway cycle=6 <span class="malf-tag">MALFORMED</span></td><td>—</td><td>—</td><td class="row-actions">⋯</td></tr>
+        <tr class="row-empty"><td class="mono">09:10:43.67 PM</td><td><span class="lvl info"><span class="dot"></span>INFO</span></td><td>gateway</td><td>(empty message)</td><td class="masked">—</td><td class="mono">—</td><td class="row-actions">⋯</td></tr>
+        <tr class="selected"><td class="mono">09:10:42.67 PM</td><td><span class="lvl error"><span class="dot"></span>ERROR</span></td><td>payments-api</td><td class="truncate">Payment authorization failed</td><td class="masked">us***42</td><td class="mono">b7e1d4-0002…</td><td class="row-actions">⋯</td></tr>
+        <tr><td class="mono">09:10:41.67 PM</td><td><span class="lvl info"><span class="dot"></span>INFO</span></td><td>accounts-api</td><td class="truncate">Customer profile lookup completed</td><td class="masked">us***42</td><td class="mono">—</td><td class="row-actions">⋯</td></tr>
+        <tr><td class="mono">09:10:40.67 PM</td><td><span class="lvl info"><span class="dot"></span>INFO</span></td><td>payments-api</td><td class="truncate">Journey step 3: payments-api settled transfer under a new trace</td><td class="masked">us***42</td><td class="mono">b7e1d4-0002…</td><td class="row-actions">⋯</td></tr>
+        <tr><td class="mono">09:10:39.67 PM</td><td><span class="lvl info"><span class="dot"></span>INFO</span></td><td>accounts-api</td><td class="truncate">Journey step 2: accounts-api validated balance</td><td class="masked">us***42</td><td class="mono">a1f9c2-0002…</td><td class="row-actions">⋯</td></tr>
+        <tr><td class="mono">09:10:38.67 PM</td><td><span class="lvl warn"><span class="dot"></span>WARN</span></td><td>gateway</td><td class="truncate">Journey step 1: gateway accepted transfer request</td><td class="masked">us***42</td><td class="mono">a1f9c2-0002…</td><td class="row-actions">⋯</td></tr>
+        <tr><td class="mono">09:10:36.67 PM</td><td><span class="lvl muted"><span class="dot"></span>DEBUG</span></td><td>gateway</td><td class="truncate">Applied rate limit check</td><td class="masked">us***12</td><td class="mono">—</td><td class="row-actions">⋯</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+</body>
+</html>

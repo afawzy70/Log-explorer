@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Direction A — More Filters</title>
+<link rel="stylesheet" href="direction-a.css">
+</head>
+<body>
+<div class="shell">
+  <div class="topbar">
+    <div class="brand">Log Explorer<span class="brand-badge">DIRECTION A</span></div>
+    <div class="source-pill">OpenShift &middot; payments-prod</div>
+    <div class="topbar-spacer"></div>
+    <button class="icon-btn">Privacy &amp; masking</button>
+    <button class="icon-btn">OpenShift</button>
+    <div class="health"><span class="health-dot"></span>Healthy</div>
+  </div>
+  <div class="toolbar">
+    <select class="field" aria-label="Source"><option>OpenShift</option></select>
+    <button class="field" aria-label="Time range">🕐 Last 1 hour</button>
+    <button class="chip-btn">All</button>
+    <button class="chip-btn active">Info</button>
+    <input class="search-input" placeholder="Search messages, errors, users or paste an ID">
+    <button class="btn btn-primary">Search</button>
+    <button class="btn">Live</button>
+    <button class="btn" style="border-color:var(--accent);color:var(--accent);background:var(--accent-bg);">More filters (4) ▲</button>
+  </div>
+  <div class="metaline">
+    <span>Toolbar stays primary — advanced filters open in a side drawer, never covering Search/Time/Severity/Live</span>
+  </div>
+
+  <div class="main">
+    <div class="tablewrap">
+      <table>
+        <colgroup><col style="width:96px"><col style="width:82px"><col style="width:106px"><col></colgroup>
+        <thead><tr><th>Time</th><th>Level</th><th>Service</th><th>What happened</th></tr></thead>
+        <tbody>
+          <tr class="row warn"><td class="mono">09:10:38.67</td><td><span class="lvl WARN">WARN</span></td><td>gateway</td><td>Journey step 1: gateway accepted transfer request</td></tr>
+          <tr class="row"><td class="mono">09:10:39.67</td><td><span class="lvl INFO">INFO</span></td><td>accounts-api</td><td>Journey step 2: accounts-api validated balance</td></tr>
+          <tr class="row"><td class="mono">09:10:40.67</td><td><span class="lvl INFO">INFO</span></td><td>payments-api</td><td>Journey step 3: payments-api settled transfer under a new trace</td></tr>
+          <tr class="row err"><td class="mono">09:10:42.67</td><td><span class="lvl ERROR">ERROR</span></td><td>payments-api</td><td>Payment authorization failed</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="drawer">
+      <div class="drawer-head"><span class="drawer-title">More filters</span><span class="drawer-close">✕ Close</span></div>
+
+      <div class="grp">
+        <div class="grp-title">Who / customer <span class="match-tag">masked by default</span></div>
+        <div class="grp-field"><label>User name <span class="match-tag">contains</span></label><input placeholder="e.g. jdoe"></div>
+        <div class="grp-field"><label>Customer ID <span class="match-tag">exact</span></label><input placeholder="e.g. CUST-88213"></div>
+        <div class="grp-field"><label>CIF <span class="match-tag">exact</span></label><input></div>
+        <div class="grp-field"><label>Device ID <span class="match-tag">exact</span></label><input></div>
+        <div class="grp-field"><label>Device IP <span class="match-tag">exact</span></label><input></div>
+      </div>
+
+      <div class="grp">
+        <div class="grp-title">Request flow</div>
+        <div class="grp-field"><label>Trace ID <span class="match-tag">exact</span></label><input placeholder="e.g. b7e1d4-000250"></div>
+        <div class="grp-field"><label>Span ID <span class="match-tag">exact</span></label><input></div>
+        <div class="grp-field"><label>Correlation ID <span class="match-tag">exact</span></label><input value="corr-a83f21"></div>
+        <div class="grp-field"><label>Journey ID <span class="match-tag">exact</span></label><input></div>
+        <div class="grp-field"><label>Event ID <span class="match-tag">exact</span></label><input></div>
+      </div>
+
+      <div class="grp">
+        <div class="grp-title">What happened</div>
+        <div class="grp-field"><label>Error code <span class="match-tag">exact</span></label><input placeholder="e.g. AUTH_DECLINED"></div>
+        <div class="grp-field"><label>Business step <span class="match-tag">exact</span></label><input></div>
+        <div class="grp-field"><label>UI identifier <span class="match-tag">exact</span></label><input></div>
+        <div class="grp-field"><label>Logger / class <span class="match-tag">contains</span></label><input></div>
+        <div class="grp-field"><label>Message <span class="match-tag">contains</span></label><input></div>
+      </div>
+
+      <div class="grp">
+        <div class="grp-title">Client context</div>
+        <div class="grp-field"><label>Device platform</label><select><option>Any</option><option selected>iOS</option><option>Android</option><option>Web</option></select></div>
+        <div class="grp-field"><label>Language</label><input placeholder="e.g. en-US"></div>
+      </div>
+
+      <div class="grp" style="border-bottom:none;">
+        <div class="grp-title">Advanced query</div>
+        <div class="notice">Raw query mode is available on OpenShift Loki only, when enabled by your administrator. Not available for this source (OpenShift Direct).</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

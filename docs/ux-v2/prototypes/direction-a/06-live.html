@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Direction A — Live</title>
+<link rel="stylesheet" href="direction-a.css">
+</head>
+<body>
+<div class="shell">
+  <div class="topbar">
+    <div class="brand">Log Explorer<span class="brand-badge">DIRECTION A</span></div>
+    <div class="source-pill">OpenShift &middot; payments-prod</div>
+    <div class="topbar-spacer"></div>
+    <div class="health"><span class="health-dot"></span>Healthy</div>
+  </div>
+
+  <div class="live-toolbar">
+    <a class="ctx-back" style="margin-left:0;">← Back to search results</a>
+    <div class="live-status"><span class="live-dot"></span>LIVE (3/4 active)</div>
+    <div class="live-counts">Received: 128 &middot; Visible: 122 &middot; Buffered while paused: 0</div>
+    <div class="topbar-spacer"></div>
+    <button class="navbtn">Pause</button>
+    <button class="navbtn">Clear</button>
+    <button class="btn" style="border-color:var(--error-line);color:var(--error);">Stop</button>
+  </div>
+  <div class="metaline">
+    <span>Following payments-api (4 replicas — 1 currently unreachable, mid-rollout) &middot; filters remain active on the live stream</span>
+  </div>
+
+  <div class="live-feed">
+    <div class="live-row"><span class="t mono">09:22:01.204</span><span class="svc">payments-api</span><span class="msg">Loaded account summary</span><span class="id">trace-000512</span></div>
+    <div class="live-row"><span class="t mono">09:22:01.980</span><span class="svc">accounts-api</span><span class="msg">Journey step 2: accounts-api validated balance</span><span class="id">journey-0091</span></div>
+    <div class="live-row"><span class="t mono">09:22:02.114</span><span class="svc">gateway</span><span class="msg">Applied rate limit check</span><span class="id">trace-000513</span></div>
+    <div class="live-row" style="background:var(--error-bg);"><span class="t mono">09:22:02.550</span><span class="svc">payments-api</span><span class="msg" style="color:var(--error);font-weight:600;">Payment authorization failed</span><span class="id">trace-000514</span></div>
+    <div class="live-row"><span class="t mono">09:22:03.017</span><span class="svc">notification-worker</span><span class="msg">Dispatched customer notification</span><span class="id">trace-000513</span></div>
+    <div class="live-row"><span class="t mono">09:22:03.402</span><span class="svc">accounts-api</span><span class="msg">Loaded account summary</span><span class="id">trace-000515</span></div>
+    <div class="live-row"><span class="t mono">09:22:03.881</span><span class="svc">payments-api</span><span class="msg">Processed payment authorization</span><span class="id">trace-000516</span></div>
+    <div class="live-row"><span class="t mono">09:22:04.229</span><span class="svc">gateway</span><span class="msg">Forwarded response to client</span><span class="id">trace-000513</span></div>
+  </div>
+</div>
+</body>
+</html>

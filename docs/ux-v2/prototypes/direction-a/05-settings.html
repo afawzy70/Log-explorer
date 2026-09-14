@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Direction A — Settings</title>
+<link rel="stylesheet" href="direction-a.css">
+</head>
+<body>
+<div class="shell">
+  <div class="topbar">
+    <div class="brand">Log Explorer<span class="brand-badge">DIRECTION A</span></div>
+    <div class="source-pill">Settings</div>
+    <div class="topbar-spacer"></div>
+    <div class="health"><span class="health-dot"></span>Healthy</div>
+  </div>
+
+  <div class="settings-body">
+    <div class="settings-card">
+      <div class="hd">Privacy &amp; masking<span class="scope"><span class="tag">Global</span> — applies to every source</span></div>
+      <div class="bd">
+        <div class="chk-row"><input type="checkbox" checked id="cif"><label class="name" for="cif">CIF</label><span class="state">MASKED</span></div>
+        <div class="chk-row"><input type="checkbox" checked id="un"><label class="name" for="un">Username</label><span class="state">MASKED</span></div>
+        <div class="chk-row"><input type="checkbox" checked id="cust"><label class="name" for="cust">Customer ID</label><span class="state">MASKED</span></div>
+        <div class="chk-row"><input type="checkbox" checked id="dev"><label class="name" for="dev">Device ID</label><span class="state">MASKED</span></div>
+        <div class="chk-row"><input type="checkbox" checked id="ip"><label class="name" for="ip">Device IP</label><span class="state">MASKED</span></div>
+        <div class="notice">Masked fields are replaced with a safe marker on the server before any response reaches the browser — there is no reveal action for an already-masked value. Unchecking a field allows it to appear in new results going forward only.</div>
+      </div>
+    </div>
+
+    <div class="settings-card">
+      <div class="hd">Docker<span class="scope"><span class="tag">Source-specific</span></span></div>
+      <div class="bd">
+        <div class="grp-field"><label>Mode</label><select><option>Local</option><option selected>Remote</option></select></div>
+        <div class="grp-field"><label>Host</label><input value="10.20.4.18"></div>
+        <div class="grp-field"><label>Port</label><input value="2375"></div>
+        <div class="chk-row" style="border-bottom:none;"><input type="checkbox" id="tls"><label class="name" for="tls">Use TLS</label></div>
+        <div class="notice">Remote Docker often does not require TLS, but when enabled, certificate verification is always fully enforced — there is no way to disable verification while TLS is on.</div>
+      </div>
+    </div>
+
+    <div class="settings-card">
+      <div class="hd">OpenShift<span class="scope"><span class="tag">Source-specific</span></span></div>
+      <div class="bd">
+        <div class="grp-field"><label>Connection status</label><div class="status-ok">● Connected — api.payments-cluster.example:6443</div></div>
+        <div class="grp-title" style="margin-top:10px;">Proxy</div>
+        <div class="radio-row"><input type="radio" name="px" id="px1" checked><label for="px1">System proxy (HTTPS_PROXY / HTTP_PROXY / NO_PROXY)</label></div>
+        <div class="radio-row"><input type="radio" name="px" id="px2"><label for="px2">Direct connection</label></div>
+        <div class="radio-row"><input type="radio" name="px" id="px3"><label for="px3">Custom proxy</label></div>
+        <div class="notice">Proxy mode applies identically to OpenShift and OpenShift Loki — never independently configured.</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
