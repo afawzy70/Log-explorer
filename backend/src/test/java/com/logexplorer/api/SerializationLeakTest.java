@@ -33,11 +33,25 @@ class SerializationLeakTest {
   @Autowired
   private ObjectMapper objectMapper;
 
-  // Pre-closure functional recovery (§12): a fresh MaskingPolicyService
-  // always starts fully masked (its own safe default) - this test's own
-  // "never leaks a raw value" guarantee is exercised under exactly that
-  // default policy, unchanged from before configurability existed.
-  private final EventMapper eventMapper = new EventMapper(new MaskingService(new MaskingPolicyService()), new TextRedactor());
+  // Mission "Field Mapping Schema Scan + Masking Policy Extension" §B:
+  // the fresh/default MaskingPolicyService state is now unmasked (owner
+  // supersession — see that class's own javadoc for the full history).
+  // This file's "never leaks a raw value" guarantee is specifically about
+  // what happens WHEN masking is enabled, so the shared fixture below
+  // explicitly forces every protected field to masked=true, preserving
+  // every existing assertion's exact prior meaning. A dedicated test
+  // further down (maskingOff...) separately proves the new default's own
+  // real, intended behavior — raw values ARE visible when masking is off,
+  // which is by owner design, not a leak.
+  private static MaskingPolicyService allMaskedPolicy() {
+    MaskingPolicyService policy = new MaskingPolicyService();
+    for (com.logexplorer.core.mask.ProtectedField field : com.logexplorer.core.mask.ProtectedField.values()) {
+      policy.setMasked(field, true);
+    }
+    return policy;
+  }
+
+  private final EventMapper eventMapper = new EventMapper(new MaskingService(allMaskedPolicy()), new TextRedactor());
 
   @Test
   void serializedEventDtoNeverContainsAnyRawSensitiveValue() throws Exception {
@@ -69,6 +83,26 @@ class SerializationLeakTest {
 
     assertThat(json).doesNotContain(RAW_CIF, RAW_USERNAME, RAW_CUSTOMER_ID, RAW_DEVICE_ID, RAW_DEVICE_IP);
     assertThat(json).contains("harmlessExtra", "harmlessMdcExtra");
+  }
+
+  @Test
+  void withTheFreshDefaultPolicy_sensitiveValuesAreVisibleByOwnerDesign_notALeak() {
+    // Mission §B - DEFAULT_MASKING_STATE=DISABLED. A fresh, untouched
+    // MaskingPolicyService (not the all-masked fixture above) genuinely
+    // returns raw sensitive values - this is the explicit, owner-approved
+    // fresh-install default, proven here so it is never mistaken for a
+    // regression of the "never leaks" guarantee tested above (that
+    // guarantee is conditional on masking being enabled, always was).
+    EventMapper freshDefaultMapper = new EventMapper(new MaskingService(new MaskingPolicyService()), new TextRedactor());
+    CanonicalLogEvent event = fullyPopulatedEvent();
+
+    EventDto dto = freshDefaultMapper.toDto(event);
+
+    assertThat(dto.protectedFields().cif()).isEqualTo(RAW_CIF);
+    assertThat(dto.protectedFields().userName()).isEqualTo(RAW_USERNAME);
+    assertThat(dto.protectedFields().customerId()).isEqualTo(RAW_CUSTOMER_ID);
+    assertThat(dto.protectedFields().deviceId()).isEqualTo(RAW_DEVICE_ID);
+    assertThat(dto.protectedFields().deviceIp()).isEqualTo(RAW_DEVICE_IP);
   }
 
   // -----------------------------------------------------------------

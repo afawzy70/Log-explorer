@@ -6,6 +6,8 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.logexplorer.core.mask.MaskingPolicyService;
+import com.logexplorer.core.mask.ProtectedField;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.RawSensitiveFields;
 import com.logexplorer.core.model.SourceCapabilities;
@@ -45,7 +47,7 @@ class CursorLeakTest {
     @Bean
     StubLogSource cursorLeakTestSource() {
       StubLogSource stub = new StubLogSource("cursor-leak-test-source", "Cursor Leak Test Source",
-          new SourceCapabilities(true, false, false, false, false, false, false));
+          new SourceCapabilities(true, false, false, false, false, false, false, true));
       List<CanonicalLogEvent> events = IntStream.range(0, 5)
           .mapToObj(i -> CanonicalLogEvent.builder()
               .timestamp(Instant.parse("2026-01-01T00:00:00Z").minusSeconds(i))
@@ -61,6 +63,9 @@ class CursorLeakTest {
   @Autowired
   private WebTestClient webTestClient;
 
+  @Autowired
+  private MaskingPolicyService maskingPolicy;
+
   private Logger rootLogger;
   private Level originalLevel;
   private ListAppender<ILoggingEvent> appender;
@@ -74,12 +79,20 @@ class CursorLeakTest {
     appender.list = new CopyOnWriteArrayList<>();
     appender.start();
     rootLogger.addAppender(appender);
+    // Mission "Field Mapping Schema Scan + Masking Policy Extension" §B:
+    // the fresh/default masking state is now OFF - this file is
+    // specifically about cursor safety, not the protectedFields display,
+    // so masking is explicitly enabled for the two fields this test
+    // exercises to keep that assertion meaningful and unconfounded.
+    maskingPolicy.setMasked(ProtectedField.CIF, true);
+    maskingPolicy.setMasked(ProtectedField.CUSTOMER_ID, true);
   }
 
   @AfterEach
   void detachCapturingAppender() {
     rootLogger.detachAppender(appender);
     rootLogger.setLevel(originalLevel);
+    maskingPolicy.resetToDefaults();
   }
 
   @Test

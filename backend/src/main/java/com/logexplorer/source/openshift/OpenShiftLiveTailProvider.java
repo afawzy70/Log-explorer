@@ -2,6 +2,7 @@ package com.logexplorer.source.openshift;
 
 import com.logexplorer.config.DirectPodLogProperties;
 import com.logexplorer.config.OpenShiftLiveProperties;
+import com.logexplorer.core.mapping.MappingScopeKey;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.LiveFollowResult;
 import com.logexplorer.core.model.LiveSourceStatus;
@@ -536,7 +537,9 @@ public class OpenShiftLiveTailProvider {
     Instant sourceTimestamp = DirectPodLogProvider.extractTimestamp(rawLine, Instant.now());
     String content = DirectPodLogProvider.stripTimestamp(rawLine);
     String serviceHint = target.workload() != null ? target.workload().name() : null;
-    return parser.parse(content, serviceHint).toBuilder()
+    // Project-Scoped Schema Scan mission §3/§8 - see DirectPodLogProvider's matching comment.
+    MappingScopeKey scope = MappingScopeKey.of(SOURCE_ID, namespace);
+    return parser.parse(content, serviceHint, scope).toBuilder()
         .sourceId(SOURCE_ID)
         .namespace(namespace)
         .pod(target.podName())

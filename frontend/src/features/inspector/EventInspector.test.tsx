@@ -33,6 +33,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     queryStatistics: false,
     contextView: true,
     composeProjectScoping: false,
+    originalSchemaSampling: true,
   };
   return {
     sources: [{ id: 'local-docker', displayName: 'Local Docker', capabilities: caps }],
@@ -85,13 +86,22 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     breadcrumbLabel: null,
     contextRootIdentity: null,
     restoreOriginalSearch: vi.fn(),
+    restoreOriginalSearchLabel: 'Back to original search',
     showContext: vi.fn(),
     journeyQuery: null,
     journeyResult: null,
     journeyLoading: false,
     journeyError: null,
+    journeyRootEvent: null,
     openJourney: vi.fn(),
     closeJourney: vi.fn(),
+    fieldMappingProfile: null,
+    fieldMappingProfileError: null,
+    fieldMappingSearchReady: true,
+    refreshFieldMappingProfile: vi.fn(),
+    mappingWorkspaceOpen: false,
+    openMappingWorkspace: vi.fn(),
+    closeMappingWorkspace: vi.fn(),
     ...overrides,
   };
 }
@@ -458,7 +468,7 @@ describe('EventInspector', () => {
       // Pre-closure functional recovery (§4): "All fields" (which owns the
       // raw JSON disclosure) is now its own tab - switch to it first.
       await user.click(screen.getByRole('tab', { name: /technical \/ all fields/i }));
-      await user.click(screen.getByText('Raw JSON'));
+      await user.click(screen.getByText('Canonical Event JSON'));
       const rawJson = screen.getByText(/"message"/).closest('pre')!;
       expect(rawJson.textContent).toContain('[REDACTED]');
       expect(rawJson.textContent).toContain('[REDACTED_CARD]');

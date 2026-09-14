@@ -33,7 +33,7 @@ class ContextApiIntegrationTest {
     @Bean
     StubLogSource contextTestSource() {
       StubLogSource stub = new StubLogSource("context-test-source", "Context Test Source",
-          new SourceCapabilities(true, false, false, false, false, true, false));
+          new SourceCapabilities(true, false, false, false, false, true, false, true));
       stub.withSearchFlux(Flux.just(
           CanonicalLogEvent.builder()
               .timestamp(EVENT_TIME)

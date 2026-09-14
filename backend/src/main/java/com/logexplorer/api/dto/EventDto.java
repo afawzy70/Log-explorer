@@ -28,6 +28,8 @@ public record EventDto(
     String traceId,
     String spanId,
     String journeyId,
+    /** New canonical field (mission "Configurable Log Field Mapping" §9) — see {@code core.model.CanonicalLogEvent#journeyName}'s own javadoc for why it is distinct from {@link #journeyId}. */
+    String journeyName,
     String eventId,
     String businessStep,
     String uiIdentifier,

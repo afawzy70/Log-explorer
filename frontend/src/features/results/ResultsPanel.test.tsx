@@ -66,6 +66,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     queryStatistics: false,
     contextView: false,
     composeProjectScoping: false,
+    originalSchemaSampling: true,
   };
   return {
     sources: [{ id: 'fixture', displayName: 'Fixture', capabilities: caps }],
@@ -118,13 +119,22 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     breadcrumbLabel: null,
     contextRootIdentity: null,
     restoreOriginalSearch: vi.fn(),
+    restoreOriginalSearchLabel: 'Back to original search',
     showContext: vi.fn(),
     journeyQuery: null,
     journeyResult: null,
     journeyLoading: false,
     journeyError: null,
+    journeyRootEvent: null,
     openJourney: vi.fn(),
     closeJourney: vi.fn(),
+    fieldMappingProfile: null,
+    fieldMappingProfileError: null,
+    fieldMappingSearchReady: true,
+    refreshFieldMappingProfile: vi.fn(),
+    mappingWorkspaceOpen: false,
+    openMappingWorkspace: vi.fn(),
+    closeMappingWorkspace: vi.fn(),
     ...overrides,
   };
 }

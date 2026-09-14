@@ -64,7 +64,7 @@ async function openInspectorAndShowContext(page: Page) {
   const targetRow = page.locator('tbody tr').filter({ hasNot: page.locator('td:nth-child(2):text-is("—")') }).first();
   await targetRow.getByRole('button', { name: /actions for this event/i }).click();
   await page.getByRole('menuitem', { name: /view details/i }).click();
-  await page.getByRole('dialog', { name: /event details/i }).getByRole('button', { name: /show surrounding logs/i }).click();
+  await page.getByRole('dialog', { name: /event details/i }).getByRole('button', { name: /show surroundings/i }).click();
   await page.getByRole('button', { name: /^run$/i }).click();
   await expect(page.getByText(/back to original search/i)).toBeVisible({ timeout: 10_000 });
 }
@@ -259,11 +259,13 @@ test.describe('Legacy Remediation Slice 6 — Investigation depth, gap visibilit
     }
     await row.getByRole('button', { name: /actions for this event/i }).click();
     await page.getByRole('menuitem', { name: /view details/i }).click();
-    // Pre-closure functional recovery (PCFR-1): "Find this Journey ID"
-    // lives in the Request flow tab, not visible until that tab is active.
+    // Pre-closure functional recovery (PCFR-1): "Find same Journey"
+    // (renamed from "Find this Journey ID" by owner mission "Mapping
+    // Verification and Investigation Workspace") lives in the Request
+    // flow tab, not visible until that tab is active.
     const dialog = page.getByRole('dialog', { name: /event details/i });
     await openInspectorTab(dialog, page, /request flow/i);
-    await page.getByRole('button', { name: /find this journey id/i }).click();
+    await page.getByRole('button', { name: /^find same journey$/i }).click();
 
     const journeyView = page.getByTestId('journey-view');
     await expect(journeyView).toBeVisible({ timeout: 10_000 });

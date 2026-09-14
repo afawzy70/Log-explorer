@@ -3,6 +3,7 @@ package com.logexplorer.core.parse;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.logexplorer.core.mapping.FieldMappingProfileService;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
@@ -11,7 +12,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 
 class LogLineParserTest {
 
-  private final LogLineParser parser = new LogLineParser(new ObjectMapper());
+  private final LogLineParser parser = new LogLineParser(new ObjectMapper(), new FieldMappingProfileService());
 
   // --- canonical top-level field mapping (HANDOVER.md §5.1) ------------------
 

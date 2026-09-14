@@ -43,6 +43,21 @@ test('clicking Live immediately streams real, masked events from the fixture sou
   page,
 }) => {
   await selectFixtureSource(page);
+
+  // Mission "Field Mapping Schema Scan + Masking Policy Extension" §B:
+  // the fresh/default masking state is now OFF - this test is
+  // specifically about the MASKED-display guarantee, so it explicitly
+  // enables CIF masking first (the real, current owner-facing workflow).
+  // Reset at the end so this shared-singleton backend policy never leaks
+  // into a later test in the same run.
+  await page.getByRole('button', { name: /privacy & masking/i }).click();
+  const maskingDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+  await expect(maskingDialog).toBeVisible();
+  if (!(await maskingDialog.getByLabel('CIF').isChecked())) {
+    await maskingDialog.getByLabel('CIF').click();
+  }
+  await page.getByRole('button', { name: /^close$/i }).click();
+
   await page.getByRole('button', { name: /^live$/i }).click();
 
   const panel = panelOf(page);
@@ -59,6 +74,16 @@ test('clicking Live immediately streams real, masked events from the fixture sou
   expect(bodyText).not.toMatch(/cif[":]\s*[^*\s][^*]{2,}/i);
 
   await captureScreenshot(page, 'j', 'live-tail-streaming-1280px');
+
+  // Restore the fresh default (unmasked) so this shared-singleton
+  // backend policy never leaks into a later test in the same run.
+  await page.getByRole('button', { name: /privacy & masking/i }).click();
+  const cleanupDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+  await expect(cleanupDialog).toBeVisible();
+  if (await cleanupDialog.getByLabel('CIF').isChecked()) {
+    await cleanupDialog.getByLabel('CIF').click();
+  }
+  await page.getByRole('button', { name: /^close$/i }).click();
 });
 
 test('Pause diverts new events into a buffered count without changing the visible list; Resume flushes them', async ({

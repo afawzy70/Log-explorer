@@ -1,6 +1,7 @@
 package com.logexplorer.source.openshift;
 
 import com.logexplorer.config.DirectPodLogProperties;
+import com.logexplorer.core.mapping.MappingScopeKey;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.RawToken;
 import com.logexplorer.core.model.SearchRequest;
@@ -634,7 +635,13 @@ public class DirectPodLogProvider {
         Instant sourceTimestamp = extractTimestamp(rawLine, fetchedAt);
         String content = stripTimestamp(rawLine);
         String serviceHint = attempt.target().workload() != null ? attempt.target().workload().name() : null;
-        CanonicalLogEvent event = parser.parse(content, serviceHint).toBuilder()
+        // Project-Scoped Schema Scan mission §3/§8 - the real namespace
+        // THIS event came from, never the request's own (nonexistent)
+        // namespace field - matches OpenShiftLogSource#resolveMappingScopeLabel
+        // exactly for a search whose events all resolve to the session's
+        // one currently-selected project.
+        MappingScopeKey scope = MappingScopeKey.of(SOURCE_ID, attempt.target().namespace());
+        CanonicalLogEvent event = parser.parse(content, serviceHint, scope).toBuilder()
             .sourceId(SOURCE_ID)
             .namespace(attempt.target().namespace())
             .pod(attempt.target().podName())

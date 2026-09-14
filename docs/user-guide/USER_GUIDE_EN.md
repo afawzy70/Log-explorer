@@ -189,8 +189,8 @@ you don't yet know which specific pod is involved.
 ### Search, Inspector, Context, Correlation, Live
 
 Once a project (and optionally a narrower scope) is selected, Search,
-the Inspector, Context ("Show surrounding logs"), Correlation, and Live
-all work exactly as described in their own sections below (§9, §14–§17,
+the Inspector, Show Surroundings, the Investigation Workspace, and Live
+all work exactly as described in their own sections below (§9, §12–§17,
 §19) — OpenShift is the source with the fullest set of capabilities.
 
 **During a rolling update:** if a workload is being redeployed while you
@@ -211,7 +211,7 @@ way you'd select any other source.
 
 - No Project → Workload → Pod → Container scope selector — Loki search
   is scoped by label filters instead.
-- No Live tail and no "Show surrounding logs" context view currently.
+- No Live tail and no "Show Surroundings" context view currently.
 - A **Raw query** mode may be available if your administrator has
   enabled it, letting you write a LogQL query directly — this is
   strictly optional and off by default.
@@ -278,7 +278,7 @@ direction, never two disagreeing controls.
 
 Opens a set of fields grouped by the question they answer:
 
-**Who / customer** (masked by default — see §16)
+**Who / customer** (protected — masking is configurable per field, see §15)
 - User name, Customer ID, CIF, Device ID, Device IP
 
 **Request flow**
@@ -323,7 +323,7 @@ Each row is one log event. Default columns:
 | Level | Severity (Trace/Debug/Info/Warn/Error) |
 | Service | Which application/service produced it |
 | What happened | The log message |
-| User/Customer | Who was involved (masked by default) |
+| User/Customer | Who was involved (masked or not, per your current Privacy & masking settings — see §15) |
 | Correlation/Trace | The request-flow identifier, if any |
 | Actions | A "…" menu with row-level actions |
 
@@ -377,9 +377,9 @@ this order:
 
 1. **Overview** — the core facts: message, time, source, service, level, logger.
 2. **Actor & client** — who/what was involved (masked fields, device, language).
-3. **Request flow** — Trace/Span/Correlation/Journey/Event IDs, each with a Copy button, and a "Find this…" action where applicable (§13).
+3. **Request flow** — Trace/Span/Correlation/Journey/Event IDs, each with a Copy button, and an investigation action where the identifier is present (§13): **View Trace**, **View Span**, **Find same Correlation**, **Find same Journey**, or **Find same Event**.
 4. **Business / error** — business step, UI identifier, error code, and the full exception text if one exists.
-5. **Technical / all fields** — every field the event carries, including ones Log Explorer doesn't specifically recognize. A search box lets you filter a long field list; a **Raw JSON** disclosure shows the complete underlying record.
+5. **Technical / all fields** — every field the event carries, including ones Log Explorer doesn't specifically recognize. A search box lets you filter a long field list; a **Canonical Event JSON** disclosure shows the complete underlying record — Log Explorer's own parsed, normalized representation of the event, not the untouched original source line (see §19 if you need the real original JSON).
 
 **All five tabs are always there, for every event — this is deliberate.**
 If an event genuinely has no actor/client data, that tab still appears
@@ -403,13 +403,15 @@ exception, related identifiers) rather than inventing an explanation.
 
 ---
 
-## 12. Show surrounding logs
+## 12. Show Surroundings
 
-From an open event, click **Show surrounding logs** in the Inspector's
-header. It shows the exact ±30-second window before and after that
-event, from the **same execution context** — the same container, pod,
-or equivalent scope the original event came from, never silently
-widened to a different pod or service.
+From an open event, click **Show Surroundings** in the Inspector's
+header (it appears the same way, and does the same thing, from a
+result row's own Actions menu, and from inside an investigation
+timeline — see §13). It shows the exact ±30-second window before and
+after that event, from the **same execution context** — the same
+container, pod, or equivalent scope the original event came from, never
+silently widened to a different pod or service.
 
 - The event you started from is clearly marked — a visible highlight, a
   label, and it is automatically scrolled into view — so you never lose
@@ -419,41 +421,62 @@ widened to a different pod or service.
 - If the window is only partially available (e.g. you were looking at
   the very first or last event in the stream), Log Explorer says so
   rather than pretending the context is complete.
-- A **"Back to search"** action returns you to your original results,
-  filters and all, exactly as you left them.
+- A **Back** action returns you to wherever you actually launched it
+  from — your original results if you started from Search, or the same
+  investigation timeline (Trace/Span/Correlation/Journey) if you started
+  from inside one, exactly as you left it.
 
-![Show surrounding logs, with a detected gap](screenshots/04-surrounding-logs.png)
+![Show Surroundings, with a detected gap](screenshots/04-surrounding-logs.png)
 
-**This is not the same thing as Correlation** — surrounding logs answers
-"what happened right around this one event, in this one place," while
-Correlation (§13) answers "what other events across services share this
-request." Use surrounding logs when you want tight, local context; use
-Correlation when you're following one request across your system.
+**This is not the same thing as following a request** — Show
+Surroundings answers "what happened right around this one event, in this
+one place," while the Investigation Workspace (§13) answers "what other
+events, anywhere, share this request." Use Show Surroundings when you
+want tight, local context; use the Investigation Workspace when you're
+following one request across your system.
 
 ---
 
-## 13. Correlation, Trace, and Journey — following a request
+## 13. The Investigation Workspace — following a request
 
-Many events carry one or more of: a **Trace ID**, **Correlation ID**, or
-**Journey ID** — identifiers meant to tie related events together, even
-across different services.
+Many events carry one or more of: a **Trace ID**, **Span ID**,
+**Correlation ID**, **Journey ID**, or **Event ID** — identifiers meant
+to tie related events together, even across different services. Opening
+any of them replaces your results table with a dedicated **Investigation
+Workspace**: a distinct surface from Search/Results (which finds events)
+and the Inspector (which explains one event) — this one exists to
+investigate relationships and context *across* multiple events.
 
 A practical flow:
 
 1. Open an event in the Inspector and go to **Request flow**.
-2. If a **"Find this Trace/Correlation/Journey"** button appears next to
-   an identifier, click it to open a timeline of every event sharing
-   that identifier, across every service that logged one.
-3. Read the timeline in order to see the sequence: which service acted
+2. Click whichever investigation action is offered for the identifier you
+   want to follow: **View Trace**, **View Span**, **Find same
+   Correlation**, **Find same Journey**, or **Find same Event**. (The
+   same actions are also offered directly from the results table's
+   Correlation/Trace column, for the two most common cases.)
+3. The timeline that opens always tells you, up front, how many events it
+   found and — clearly marked — **which position the event you started
+   from is at** (e.g. "Selected event: 4 of 12"), so you never lose track
+   of where you came from. If your starting event genuinely isn't in the
+   returned window (a bounded search has limits), Log Explorer says so
+   honestly rather than marking a different event instead.
+4. Read the timeline in order to see the sequence: which service acted
    first, what happened next, and where (if anywhere) an error appears.
-4. Open any entry in that timeline for its own full Inspector detail.
-5. Return to your original results whenever you're done — nothing about
-   your original search is lost while you were following the journey.
+5. From any entry in that timeline, you can **Show Surroundings** (§12)
+   for tight local context around that specific entry, then **Back** to
+   return to the same timeline — or open the entry's own full Inspector
+   detail.
+6. Return to your original results whenever you're done — nothing about
+   your original search is lost while you were investigating.
 
 **Important:** this shows you the observed **order** of events — it does
 not prove that one event *caused* the next. Two events can be close in
 time without one being the reason for the other; Log Explorer only ever
-tells you what the timestamps and identifiers actually show.
+tells you what the timestamps and identifiers actually show. Each action
+also means exactly what it says: "View Trace"/"Find same Correlation"/
+etc. describe exactly that one relationship, and "Show Surroundings"
+means nearby time/place context only — never a stand-in for one another.
 
 ---
 
@@ -502,10 +525,30 @@ using (Fixture, Docker, OpenShift, or Loki).
 Five fields are protected: **CIF, Username, Customer ID, Device ID,
 Device IP**. Each has its own checkbox:
 
-- **Checked (the default)** — the field is masked. The server never
-  sends the real value to your browser at all for this field.
-- **Unchecked** — you have explicitly chosen to allow this field to
-  appear in **new** search results and events going forward.
+- **Checked** — the field is masked. The server never sends the real
+  value to your browser at all for this field.
+- **Unchecked (the current default on a fresh installation)** — this
+  field's real value is allowed to appear in search results and events.
+
+**On a fresh installation, all five fields start unchecked (unmasked).**
+This is a deliberate, owner-approved default — see the note below if
+you remember an earlier version of Log Explorer starting masked. You can
+check any field's box at any time to turn masking on for it; the change
+applies immediately to new results going forward.
+
+> **Historical note (superseded).** An earlier version of Log Explorer
+> shipped with every field masked by default, requiring an explicit
+> action to unmask anything. The owner later changed this default so a
+> fresh installation starts fully unmasked instead — the checkbox
+> control, the "no reveal action" guarantee, and every other behavior on
+> this screen are unchanged; only the starting value of the five
+> checkboxes moved. Like every other setting in Log Explorer, this
+> policy lives only for as long as the application is running — it is
+> never written to disk, so restarting the server always returns to the
+> current default (now unmasked). While the server keeps running,
+> nothing but an explicit click on one of these checkboxes ever changes
+> the policy — an edit you make elsewhere (mapping, connection settings,
+> and so on) never silently touches it.
 
 A few things to understand clearly:
 
@@ -539,6 +582,7 @@ only affect one source:
 | **Privacy & masking** | Global — the same policy applies to every source |
 | **Docker settings** | Only affects the Docker source (local/remote connection) |
 | **OpenShift** (connection + proxy) | Only affects OpenShift and OpenShift Loki |
+| **Log Schema & Field Mapping** | Applies to how logs from any source are interpreted — see §19 |
 
 Changing a source-specific setting never affects a different source —
 switching your Docker connection, for example, has no effect on your
@@ -571,3 +615,194 @@ top bar.
 See **[TROUBLESHOOTING_EN.md](TROUBLESHOOTING_EN.md)** for specific
 symptoms and fixes. It covers connection failures, TLS/certificate
 errors, proxy issues, permission errors, Live disconnects, and more.
+
+---
+
+## 19. Log Schema & Field Mapping
+
+This is an advanced, occasional-use setting — most people never need to
+open it, because Log Explorer already understands the log format its
+built-in default mapping was designed for. You need it only if you
+connect a source whose logs put fields (like the customer identifier or
+a trace ID) in different places than Log Explorer expects by default —
+for example, a field at the top level of the JSON instead of nested
+under `mdc`.
+
+**Why this exists:** every canonical field Log Explorer understands (CIF,
+Username, Trace ID, Business Step, and so on) has to be found somewhere
+in your actual log JSON. The built-in default mapping covers the
+structure Log Explorer already knows. If your real logs use a different
+structure, a field can be genuinely present in your data and still not
+show up correctly in search or filtering — not because it's missing, but
+because Log Explorer was never told where to look for it. This setting
+lets you tell it, without needing a code change.
+
+### The workflow
+
+Click **Log schema & field mapping** in the top bar to open its own
+dedicated page (it replaces your results while open — click **← Back to
+search results** at any time to return to exactly what you had before).
+The steps, in order:
+
+1. **Connect** — make sure the source you want to configure is selected
+   and connected (Docker, OpenShift, etc. — see their own sections
+   above).
+2. **Select the project/namespace** — for a source with a real
+   sub-project concept (a Docker Compose project, an OpenShift project/
+   namespace), pick the specific one you want to configure using that
+   source's own scope selector (the same selector you already use to
+   scope search itself). **The scan and the mapping you save both apply
+   to that exact scope only** — a different project on the same source
+   has its own completely separate mapping, never silently shared with
+   this one. A source with no sub-project concept (Fixture, Loki) skips
+   this step.
+3. **Run a Quick Schema Scan** — click to scan a bounded batch of real,
+   recent events **from the selected project/namespace only** (not the
+   whole source, and never mixed with another project's events). Unlike a
+   single sample, the scan deliberately looks for *diversity* — different
+   severities (INFO/WARN/ERROR/...), different services within that same
+   project, and different JSON shapes — because different kinds of events
+   often carry different fields (an error event's stack trace field, for
+   example, may never appear on an INFO event). The scan is bounded (by
+   default up to 200 events, a few seconds, and a few megabytes) and
+   always tells you truthfully if a limit was hit before it finished. The
+   summary line shows the selected scope, which services were observed
+   inside it, how many events were structured JSON versus non-JSON/
+   infrastructure noise (e.g. a proxy's own access-log line), and how
+   many distinct JSON shapes (structural variants) were found.
+4. **Review Original Event Samples** — a small set of the real,
+   structured-JSON events the scan actually saw **in that scope**, shown
+   exactly as your source sent them, before Log Explorer changes
+   anything. This is different from the Inspector's "Canonical Event
+   JSON" (§11) — that one shows Log Explorer's own normalized version of
+   an event; this one shows the untouched original. Non-JSON/
+   infrastructure lines never appear here — they are excluded from field
+   mapping entirely and, when present, are shown separately under a
+   collapsed "non-JSON/malformed lines (diagnostics only)" section, purely
+   so you can see why they were excluded — never usable as a mapping
+   sample.
+5. **Review the Discovered Source Schema** — a table of every JSON path
+   the scan found across all the structured events it inspected in this
+   scope, with how many events had it and what type of value it held.
+   Real field names and nesting are exactly what they are in your source
+   — `cif`, `cifId`, `customer.cif`, `mdc.cif` are all shown as genuinely
+   distinct paths, never blurred together. This table is labeled
+   **observed**, not complete — a scan can only report what it actually
+   saw; it is not a mathematical proof that no other shape exists in this
+   scope.
+6. **Map fields** — for each canonical field Log Explorer understands
+   (CIF, Username, Customer ID, Trace ID, Journey Name, and so on), pick
+   a path directly from the Discovered Source Schema using the dropdown
+   picker next to each field — the normal way to map a field now, no
+   typing required. You can add more than one path per field, in
+   priority order; Log Explorer tries them in that order and uses the
+   first one that actually has a value for a given event. This is what
+   fixes the "field is there but doesn't show up" problem: if your logs
+   sometimes use `cif` and sometimes `mdc.cif`, add both. An "Advanced:
+   enter a path manually" option remains available for a path the scan
+   didn't happen to discover.
+7. **Validate** — run your mapping against the samples the scan
+   collected for this scope. You'll see, per field, whether it was
+   actually found, what real value it resolved to, and whether any path
+   has a mistake in it.
+8. **Save** — commits your mapping **for the selected project/namespace
+   only**. You can only save after a validation that found no path
+   mistakes.
+9. **Search becomes available again** — if Search was temporarily
+   disabled because this scope's own mapping needed attention (see
+   below), saving a valid mapping turns it back on immediately, for that
+   scope. Switching to a different project/namespace immediately
+   recalculates whether Search is ready **for that other scope's own
+   saved mapping** — it is never silently treated as ready or blocked
+   because of what you just did somewhere else.
+
+A **Reset to defaults** action is always available if you want to
+discard your changes for the currently selected scope and go back to the
+built-in mapping.
+
+### Rescanning
+
+If your source's log shape changes later, click **Rescan** to run the
+scan again at any time, for the currently selected project/namespace.
+Rescanning never changes your saved mapping by itself — it only refreshes
+the Original Event Samples and Discovered Source Schema for that same
+scope, and:
+
+- Highlights any path that's **newly discovered** since your last scan.
+- Highlights any path that was seen before but is **no longer
+  observed**.
+- Warns you if one of your **saved mapping's own paths** wasn't seen in
+  this scan, so you know to check whether that field's real location
+  changed.
+
+Nothing about your saved mapping changes until you explicitly edit it
+and click Save.
+
+### Verifying your mapping
+
+A saved, search-ready mapping and a **verified** one are not the same
+thing. Every canonical field starts as **Unverified** — including one
+using the built-in default candidate — because Log Explorer has no
+actual evidence yet that the candidate is correct for *your* source, only
+that it parses without error. Each field shows one of exactly three
+statuses, for the selected project/namespace only:
+
+- **Unverified** — a candidate is set (maybe the built-in default, maybe
+  one you mapped yourself), but nobody has confirmed it against real
+  evidence yet.
+- **Verified** — you confirmed it, and Log Explorer checked it for real:
+  clicking **Verify** re-checks the field's current saved candidate
+  against the real samples from your last Quick Schema Scan, and only
+  turns the badge to Verified if it actually found a real value there.
+  If it didn't, you'll see exactly why (e.g. "not found in any of the
+  given samples") instead of a silent success. Verify needs a Quick
+  Schema Scan to have been run first, and is unavailable while you have
+  an unsaved edit pending for that field — save it first, so Verify
+  checks what's actually live.
+- **Needs change** — you reviewed a field and decided it's wrong, without
+  needing to prove why first. Click **Mark needs change** to flag it;
+  from there, edit its candidate path(s) (the Discovered Source Schema
+  picker works the same way here as anywhere else), validate, save, and
+  Verify again once you're confident.
+
+Each candidate path also shows whether it was **observed in your latest
+scan** — useful evidence when deciding whether to verify or change it.
+Editing a Verified field's candidates automatically reverts it to
+Unverified (the evidence that supported it no longer applies to the new
+candidate); a save alone never silently turns a field back to Verified —
+Verify is always its own explicit step.
+
+### Why Search can be temporarily disabled
+
+If you've started editing your field mapping but haven't yet validated
+and saved it, Log Explorer disables Search for that data rather than
+running it against a mapping it can't yet vouch for — you'll see a clear
+message explaining why, instead of a search that silently comes back
+empty or wrong. This only happens while you're actively mid-edit; the
+built-in default mapping is always ready to search with, and finishing
+the validate-and-save steps above turns Search back on right away.
+
+### A note on privacy for this one screen
+
+The five protected fields (CIF, Username, Customer ID, Device ID, Device
+IP) may or may not currently be masked elsewhere in Log Explorer,
+depending on your current Privacy & masking settings (§15). This screen
+is unaffected by that setting either way: because you need to see your
+*real* field names and values to set up the mapping correctly, the
+Original Event Samples and validation results on this screen always show
+real, unmasked values, regardless of whether masking is currently on or
+off for normal search results. This is why it matters to treat this
+screen carefully:
+
+- Sample data and validation results are **never saved anywhere** — not
+  to your browser's local storage, not to a file, not anywhere on the
+  server. They exist only while this screen is open, in your browser's
+  own memory, and disappear the moment you close the panel or reload the
+  page.
+- This does not change how normal search results behave anywhere else
+  in the app — masking there is completely unaffected. This one setup
+  screen is the only place unmasked values are ever shown, and only
+  because you specifically opened it to configure the mapping.
+- Treat anything you see on this screen (screenshots, screen shares) with
+  the same care you'd give the original system's own raw data — because
+  that is exactly what it is.

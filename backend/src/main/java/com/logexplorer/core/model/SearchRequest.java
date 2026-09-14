@@ -41,6 +41,8 @@ public record SearchRequest(
     String spanId,
     String correlationId,
     String journeyId,
+    /** Exact-match filter on the human-readable journey name (e.g. {@code "SIGN_IN"}) — plain filter field, NOT part of the Trace/Correlation/Journey/Event ID "Find this…" mechanism (see {@code api.RequestMapper#JOURNEY_FIELDS}'s own javadoc for that distinct, narrower set). */
+    String journeyName,
     String eventId,
     String errorCode,
     String businessStep,
@@ -123,7 +125,7 @@ public record SearchRequest(
   public SearchRequest withPageBoundary(Instant boundary) {
     return new SearchRequest(
         sourceId, start, end, direction, limit, services, levels, text,
-        traceId, spanId, correlationId, journeyId, eventId, errorCode,
+        traceId, spanId, correlationId, journeyId, journeyName, eventId, errorCode,
         businessStep, uiIdentifier, loggerContains, devicePlatform, language,
         containerId, pod, containerName, contextTargetProof, sensitiveFilters, query, rawLogQl, cursor, boundary,
         composeProject);
@@ -143,6 +145,7 @@ public record SearchRequest(
         + ", spanId=" + spanId
         + ", correlationId=" + correlationId
         + ", journeyId=" + journeyId
+        + ", journeyName=" + journeyName
         + ", eventId=" + eventId
         + ", errorCode=" + errorCode
         + ", businessStep=" + businessStep
@@ -180,6 +183,7 @@ public record SearchRequest(
     private String spanId;
     private String correlationId;
     private String journeyId;
+    private String journeyName;
     private String eventId;
     private String errorCode;
     private String businessStep;
@@ -210,6 +214,7 @@ public record SearchRequest(
     public Builder spanId(String v) { this.spanId = v; return this; }
     public Builder correlationId(String v) { this.correlationId = v; return this; }
     public Builder journeyId(String v) { this.journeyId = v; return this; }
+    public Builder journeyName(String v) { this.journeyName = v; return this; }
     public Builder eventId(String v) { this.eventId = v; return this; }
     public Builder errorCode(String v) { this.errorCode = v; return this; }
     public Builder businessStep(String v) { this.businessStep = v; return this; }
@@ -266,7 +271,7 @@ public record SearchRequest(
     public SearchRequest build() {
       return new SearchRequest(
           sourceId, start, end, direction, limit, services, levels, text,
-          traceId, spanId, correlationId, journeyId, eventId, errorCode,
+          traceId, spanId, correlationId, journeyId, journeyName, eventId, errorCode,
           businessStep, uiIdentifier, loggerContains, devicePlatform, language,
           containerId, pod, containerName, contextTargetProof, sensitiveFilters, query, rawLogQl, cursor,
           pageBoundary, composeProject);

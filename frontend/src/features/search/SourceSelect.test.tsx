@@ -13,6 +13,7 @@ const CAPS = {
   queryStatistics: false,
   contextView: false,
   composeProjectScoping: false,
+  originalSchemaSampling: true,
 };
 const SOURCES: SourceInfo[] = [
   { id: 'fixture', displayName: 'Fixture', capabilities: CAPS },

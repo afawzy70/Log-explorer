@@ -9,15 +9,25 @@ function jsonResponse(body: unknown): Response {
 /**
  * Legacy Remediation Slice 8 §16 "network behavior" - startup must fire
  * exactly one request per endpoint (sources, `/actuator/info` for
- * `EnvironmentBadge`, services, health - four total), never an accidental
- * duplicate. This is a regression test for the audit finding in
- * `docs/verification/SLICE_8_FRONTEND_PERFORMANCE_REPORT.md`: nothing in
- * Slice 8 (the shared shortcut registry, JourneyView/LiveTailPanel code
- * splitting) touches startup data-fetching, and this proves it stayed that
- * way. `DockerSettingsPanel`'s own connection-summary fetch is intentionally
- * excluded - it only fires on the settings popover's own `open()`, never at
- * mount (verified separately by that component's own tests), so it must
- * never appear in this count either.
+ * `EnvironmentBadge`, services, health, and — since the Configurable Log
+ * Field Mapping mission — the field-mapping readiness check, five total),
+ * never an accidental duplicate. This is a regression test for the audit
+ * finding in `docs/verification/SLICE_8_FRONTEND_PERFORMANCE_REPORT.md`:
+ * nothing in Slice 8 (the shared shortcut registry, JourneyView/
+ * LiveTailPanel code splitting) touches startup data-fetching, and this
+ * proves it stayed that way. `DockerSettingsPanel`'s own connection-summary
+ * fetch is intentionally excluded - it only fires on the settings
+ * popover's own `open()`, never at mount (verified separately by that
+ * component's own tests), so it must never appear in this count either.
+ * `FieldMappingWorkspace`'s own sample-fetch is the same - only on
+ * its own button click, never at mount (and the workspace itself is never
+ * mounted at all unless `state.openMappingWorkspace()` was called - owner
+ * mission "Mapping Verification and Investigation Workspace"). The
+ * field-mapping *readiness*
+ * check (`GET /api/v1/settings/field-mapping`, read by `useSearchState`
+ * directly, not by that panel) is the one field-mapping-related call that
+ * genuinely does fire at startup - it gates the Search button globally,
+ * so it must be known before the very first Search is possible.
  */
 describe('startup network requests', () => {
   let calls: string[];
@@ -54,6 +64,9 @@ describe('startup network requests', () => {
         if (url.endsWith('/actuator/info')) {
           return jsonResponse({});
         }
+        if (url.includes('/api/v1/settings/field-mapping')) {
+          return jsonResponse({ sourceId: 'fixture', scopeLabel: null, fields: [], modifiedFromDefault: false, searchReady: true });
+        }
         throw new Error(`Unexpected fetch in startup-network test: ${url}`);
       }),
     );
@@ -63,22 +76,28 @@ describe('startup network requests', () => {
     vi.unstubAllGlobals();
   });
 
-  it('fires exactly one request each for sources, environment info, services, and health - no accidental duplicates', async () => {
+  it('fires exactly one request each for sources, environment info, services, health, and field-mapping readiness - no accidental duplicates', async () => {
     render(<App />);
     await waitFor(() => expect(screen.getByRole('combobox')).toHaveValue('fixture'));
     await waitFor(() => expect(calls.some((u) => u.includes('/services'))).toBe(true));
     await waitFor(() => expect(calls.some((u) => u.includes('/health'))).toBe(true));
     await waitFor(() => expect(calls.some((u) => u.endsWith('/actuator/info'))).toBe(true));
+    await waitFor(() => expect(calls.some((u) => u.includes('/api/v1/settings/field-mapping'))).toBe(true));
 
     const sourcesCalls = calls.filter((u) => u.endsWith('/api/v1/sources'));
     const infoCalls = calls.filter((u) => u.endsWith('/actuator/info'));
     const servicesCalls = calls.filter((u) => u.includes('/services'));
     const healthCalls = calls.filter((u) => u.includes('/health'));
+    // Owner mission "Project-Scoped Schema Scan" §7/§8 - this call now
+    // always carries `?sourceId=...` (and `project` once a project is
+    // selected), never a bare, scope-less URL.
+    const fieldMappingCalls = calls.filter((u) => u.includes('/api/v1/settings/field-mapping'));
 
     expect(sourcesCalls).toHaveLength(1);
     expect(infoCalls).toHaveLength(1);
     expect(servicesCalls).toHaveLength(1);
     expect(healthCalls).toHaveLength(1);
-    expect(calls).toHaveLength(4); // nothing else fires at startup - in particular, no Docker connection-summary call
+    expect(fieldMappingCalls).toHaveLength(1);
+    expect(calls).toHaveLength(5); // nothing else fires at startup - in particular, no Docker connection-summary call, no field-mapping sample fetch
   });
 });

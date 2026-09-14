@@ -74,7 +74,7 @@ export interface ResultsTableProps {
    * when it isn't provided, never a dead control.
    */
   onShowContext?: (event: LogEvent) => void;
-  onOpenJourney?: (field: JourneyField, value: string) => void;
+  onOpenJourney?: (field: JourneyField, value: string, rootEvent?: LogEvent) => void;
   /** Every non-"actions" column id, in display order (visible or hidden) - defaults to the registry's own default order. */
   columnOrder?: ColumnId[];
   /** Subset of `columnOrder` currently hidden - defaults to every optional column (i.e. exactly the seven-column default). */

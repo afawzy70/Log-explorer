@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.logexplorer.config.DirectPodLogProperties;
 import com.logexplorer.core.model.RawToken;
 import com.logexplorer.core.model.SourceHealth;
+import com.logexplorer.core.mapping.FieldMappingProfileService;
 import com.logexplorer.core.parse.LogLineParser;
 import com.logexplorer.core.search.ContextTargetProofCodec;
 import java.net.URI;
@@ -171,7 +172,7 @@ class OpenShiftSecurityBoundariesTest {
   private static OpenShiftLogSource logSource(OpenShiftSession session) {
     OpenShiftApiClient client = new OpenShiftApiClient(Map.of());
     DirectPodLogProperties properties = new DirectPodLogProperties();
-    LogLineParser parser = new LogLineParser(new ObjectMapper());
+    LogLineParser parser = new LogLineParser(new ObjectMapper(), new FieldMappingProfileService());
     DirectPodLogProvider provider = new DirectPodLogProvider(
         client, session, parser, properties, new ContextTargetProofCodec(new ObjectMapper()));
     OpenShiftLiveTailProvider liveTailProvider = new OpenShiftLiveTailProvider(

@@ -1,8 +1,13 @@
 import type {
+  CanonicalFieldKey,
   ContextRequestBody,
   DockerConnectionCandidate,
   DockerConnectionSummary,
   EnvironmentInfo,
+  FieldMappingProfileDto,
+  FieldMappingSampleResponse,
+  FieldMappingValidationReport,
+  SchemaScanResponse,
   JourneyRequestBody,
   MaskingSettings,
   ProblemDetail,
@@ -377,4 +382,199 @@ export function openShiftFailureReason(error: unknown): OpenShiftFailureReason |
     return (reason as OpenShiftFailureReason | undefined) ?? null;
   }
   return null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Configurable Log Field Mapping + Original JSON Sampling             */
+/* ------------------------------------------------------------------ */
+
+/** True when `error` is the backend's `MAPPING_NOT_READY` guardrail rejection ({@code GuardrailViolationException.Reason.MAPPING_NOT_READY}) — the same `.problem.reason` convention {@link openShiftFailureReason} already uses. */
+export function isMappingNotReadyError(error: unknown): boolean {
+  return error instanceof ApiError && (error.problem as { reason?: string } | undefined)?.reason === 'MAPPING_NOT_READY';
+}
+
+/**
+ * Owner mission "Project-Scoped Schema Scan" §7/§8 — every field-mapping
+ * settings call is scoped to a real source + selected project/namespace
+ * (Compose project for Docker, the resolved OpenShift project for
+ * OpenShift, `undefined` for a source with no sub-project concept).
+ * Omitting both falls back to the backend's legacy/global scope.
+ */
+function scopeQuery(sourceId?: string, project?: string | null): string {
+  const params = new URLSearchParams();
+  if (sourceId) {
+    params.set('sourceId', sourceId);
+  }
+  if (project) {
+    params.set('project', project);
+  }
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+export async function fetchFieldMappingProfile(
+  sourceId?: string,
+  project?: string | null,
+  signal?: AbortSignal,
+): Promise<FieldMappingProfileDto> {
+  const response = await fetch(`/api/v1/settings/field-mapping${scopeQuery(sourceId, project)}`, { signal });
+  return parseJsonOrThrow<FieldMappingProfileDto>(response);
+}
+
+export async function updateFieldMappingCandidates(
+  field: CanonicalFieldKey,
+  candidatePaths: string[],
+  sourceId?: string,
+  project?: string | null,
+  signal?: AbortSignal,
+): Promise<FieldMappingProfileDto> {
+  const response = await fetch(
+    `/api/v1/settings/field-mapping/fields/${encodeURIComponent(field)}${scopeQuery(sourceId, project)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidatePaths }),
+      signal,
+    },
+  );
+  return parseJsonOrThrow<FieldMappingProfileDto>(response);
+}
+
+export async function resetFieldMappingProfile(
+  sourceId?: string,
+  project?: string | null,
+  signal?: AbortSignal,
+): Promise<FieldMappingProfileDto> {
+  const response = await fetch(`/api/v1/settings/field-mapping/reset${scopeQuery(sourceId, project)}`, {
+    method: 'POST',
+    signal,
+  });
+  return parseJsonOrThrow<FieldMappingProfileDto>(response);
+}
+
+/**
+ * `samples` are real, unmasked Original Source JSON strings the caller
+ * already fetched and is holding in its own component state — never
+ * re-persisted here, this is a stateless pass-through call (mission §4/§20).
+ */
+export async function validateFieldMapping(
+  proposedCandidates: Partial<Record<CanonicalFieldKey, string[]>>,
+  samples: string[],
+  sourceId?: string,
+  project?: string | null,
+  signal?: AbortSignal,
+): Promise<FieldMappingValidationReport> {
+  const response = await fetch(`/api/v1/settings/field-mapping/validate${scopeQuery(sourceId, project)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ proposedCandidates, samples }),
+    signal,
+  });
+  return parseJsonOrThrow<FieldMappingValidationReport>(response);
+}
+
+/** `validationPassed` must be the real `passed` value from the most recent {@link validateFieldMapping} call — never hardcoded `true`. */
+export async function saveFieldMappingProfile(
+  validationPassed: boolean,
+  sourceId?: string,
+  project?: string | null,
+  signal?: AbortSignal,
+): Promise<FieldMappingProfileDto> {
+  const response = await fetch(`/api/v1/settings/field-mapping/save${scopeQuery(sourceId, project)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ validationPassed }),
+    signal,
+  });
+  return parseJsonOrThrow<FieldMappingProfileDto>(response);
+}
+
+/**
+ * Owner mission "Mapping Verification and Investigation Workspace" -
+ * evidence-gated: the backend re-validates this field's CURRENT candidate
+ * paths against `samples` (real Original Source JSON the caller already
+ * holds, e.g. from a Quick Schema Scan) and only marks it `VERIFIED` when
+ * that fresh check actually finds it - a 400 ({@link ApiError}) otherwise,
+ * never a silent "verified" on faith. `samples` never persists past this
+ * one call (mission §4/§20 - same rule as every other field-mapping call
+ * that carries real sample content).
+ */
+export async function verifyFieldMapping(
+  field: CanonicalFieldKey,
+  samples: string[],
+  sourceId?: string,
+  project?: string | null,
+  signal?: AbortSignal,
+): Promise<FieldMappingProfileDto> {
+  const response = await fetch(
+    `/api/v1/settings/field-mapping/fields/${encodeURIComponent(field)}/verify${scopeQuery(sourceId, project)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ samples }),
+      signal,
+    },
+  );
+  return parseJsonOrThrow<FieldMappingProfileDto>(response);
+}
+
+/** Owner mission "Mapping Verification and Investigation Workspace" - an explicit, no-evidence-required owner flag: "I have reviewed this and it needs to change." Never silently promoted back to `VERIFIED` by a later save alone. */
+export async function markFieldMappingNeedsChange(
+  field: CanonicalFieldKey,
+  sourceId?: string,
+  project?: string | null,
+  signal?: AbortSignal,
+): Promise<FieldMappingProfileDto> {
+  const response = await fetch(
+    `/api/v1/settings/field-mapping/fields/${encodeURIComponent(field)}/needs-change${scopeQuery(sourceId, project)}`,
+    { method: 'POST', signal },
+  );
+  return parseJsonOrThrow<FieldMappingProfileDto>(response);
+}
+
+/**
+ * Original Source JSON samples (mission §3/§5) — bounded (1-50, default
+ * 20), real, unmasked. The caller must hold the result only in ephemeral
+ * component state, never `localStorage`/`sessionStorage`/a URL.
+ */
+export async function fetchFieldMappingSamples(
+  sourceId: string,
+  limit?: number,
+  signal?: AbortSignal,
+): Promise<FieldMappingSampleResponse> {
+  const query = limit != null ? `?limit=${encodeURIComponent(limit)}` : '';
+  const response = await fetch(`/api/v1/sources/${encodeURIComponent(sourceId)}/field-mapping/samples${query}`, {
+    method: 'POST',
+    signal,
+  });
+  return parseJsonOrThrow<FieldMappingSampleResponse>(response);
+}
+
+/**
+ * Quick Schema Scan (owner mission "Field Mapping Schema Scan + Masking
+ * Policy Extension" §A) — bounded, severity/structure-diverse scan
+ * returning both real Original Event Samples and the generated Discovered
+ * Source Schema union. The caller must hold the result only in ephemeral
+ * component state, never `localStorage`, exactly like {@link
+ * fetchFieldMappingSamples}.
+ */
+export async function fetchFieldMappingSchemaScan(
+  sourceId: string,
+  project?: string | null,
+  maxEvents?: number,
+  signal?: AbortSignal,
+): Promise<SchemaScanResponse> {
+  const params = new URLSearchParams();
+  if (project) {
+    params.set('project', project);
+  }
+  if (maxEvents != null) {
+    params.set('maxEvents', String(maxEvents));
+  }
+  const qs = params.toString();
+  const response = await fetch(
+    `/api/v1/sources/${encodeURIComponent(sourceId)}/field-mapping/schema-scan${qs ? `?${qs}` : ''}`,
+    { method: 'POST', signal },
+  );
+  return parseJsonOrThrow<SchemaScanResponse>(response);
 }

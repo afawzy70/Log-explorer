@@ -97,6 +97,25 @@ function ScopeTrail({ state, openShiftScope }: Pick<ShellProps, 'state' | 'openS
   );
 }
 
+/**
+ * Owner mission "Project-Scoped Schema Scan" §1/§7/§8 — the exact same
+ * scope resolution `ScopeTrail` already displays, reused as the real
+ * scope value threaded into `FieldMappingWorkspace` (rendered by
+ * `App.tsx`, not here — owner mission "Mapping Verification and
+ * Investigation Workspace" Part A) so the schema scan, mapping profile,
+ * and verification status it edits are always keyed to the SAME
+ * project/namespace the header/trail shows the investigator.
+ */
+export function resolveMappingProject(state: SearchState, openShiftScope: OpenShiftScopeSummary | null): string | null {
+  if (!state.selectedSource) {
+    return null;
+  }
+  if (state.selectedSource.id === 'openshift') {
+    return openShiftScope?.selectedProject ?? null;
+  }
+  return state.selectedSource.capabilities.composeProjectScoping ? state.selectedComposeProject : null;
+}
+
 export function Shell({ state, openShiftScope, onOpenShiftScopeChanged }: ShellProps) {
   return (
     <header className={styles.header}>
@@ -113,6 +132,18 @@ export function Shell({ state, openShiftScope, onOpenShiftScopeChanged }: ShellP
        * connect a source?".
        */}
       <PrivacyMaskingSettingsPanel />
+      {/*
+       * Configurable Log Field Mapping mission §14, now project-scoped per
+       * owner mission "Project-Scoped Schema Scan" §7/§8, and now a real
+       * dedicated page (owner mission "Mapping Verification and
+       * Investigation Workspace" - Part A: "not a hidden popover") - this
+       * is just the entry point, sitting beside Privacy & Masking for the
+       * same reason as before; `App.tsx` renders the actual workspace as a
+       * full-page overlay, exactly like `JourneyView`.
+       */}
+      <button type="button" className={styles.mappingWorkspaceTrigger} onClick={state.openMappingWorkspace}>
+        Log schema &amp; field mapping
+      </button>
       <DockerSettingsPanel />
       {/* OS-1A - the OpenShift connection lives beside Docker settings: both
           are source-connection concerns, and keeping them together is what

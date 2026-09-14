@@ -89,10 +89,12 @@ const SOURCES_RESPONSE = [
 describe('UX-R5 - context detour state', () => {
   let searchCalls: Array<{ body: string; resolve: (r: Response) => void }>;
   let contextCalls: Array<{ body: string; resolve: (r: Response) => void }>;
+  let journeyCalls: Array<{ body: string; resolve: (r: Response) => void }>;
 
   beforeEach(() => {
     searchCalls = [];
     contextCalls = [];
+    journeyCalls = [];
     vi.stubGlobal(
       'fetch',
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -115,6 +117,14 @@ describe('UX-R5 - context detour state', () => {
               reject(new DOMException('aborted', 'AbortError')),
             );
             contextCalls.push({ body: String(init?.body), resolve });
+          });
+        }
+        if (url.endsWith('/api/v1/logs/journey')) {
+          return new Promise<Response>((resolve, reject) => {
+            (init?.signal as AbortSignal | undefined)?.addEventListener('abort', () =>
+              reject(new DOMException('aborted', 'AbortError')),
+            );
+            journeyCalls.push({ body: String(init?.body), resolve });
           });
         }
         throw new Error(`Unexpected fetch: ${url}`);
@@ -326,5 +336,99 @@ describe('UX-R5 - context detour state', () => {
 
     const body = JSON.parse(contextCalls[contextCalls.length - 1].body) as { contextTargetProof?: string };
     expect(body.contextTargetProof).toBeUndefined();
+  });
+
+  /**
+   * Owner mission "Mapping Verification and Investigation Workspace" -
+   * "Investigation navigation/continuity": Show Surroundings launched from
+   * WITHIN a Trace/Span/Correlation/Journey view must return to that same
+   * view ("Back to Trace"), not silently drop all the way to plain Search.
+   * These tests pin the generalized `journeySnapshotForSurroundings`
+   * mechanism in `showContext`/`restoreOriginalSearch`/`closeJourney`.
+   */
+  describe('owner mission "Mapping Verification and Investigation Workspace" - Surroundings launched from within a journey view', () => {
+    async function openedJourney(result: Awaited<ReturnType<typeof searchedState>>, rootEvent = event('trace-root', '2026-01-01T00:00:05Z')) {
+      await act(async () => result.current.openJourney('traceId', 't-1', rootEvent));
+      await act(async () => {
+        journeyCalls[journeyCalls.length - 1].resolve(
+          jsonResponse({
+            events: [event('trace-earlier', '2026-01-01T00:00:00Z'), rootEvent],
+            counts: { returned: 2, total: null, estimated: false, truncated: false },
+            nextCursor: null,
+            queryPlan: EMPTY_QUERY_PLAN,
+          }),
+        );
+      });
+      expect(result.current.journeyQuery).toEqual({ field: 'traceId', value: 't-1' });
+      return rootEvent;
+    }
+
+    it('the Back label says "Back to Trace" while inside a trace, and "Back to original search" otherwise', async () => {
+      const result = await searchedState();
+      expect(result.current.restoreOriginalSearchLabel).toBe('Back to original search');
+
+      const rootEvent = await openedJourney(result);
+      await act(async () => result.current.showContext(rootEvent));
+      await settleContext(result);
+
+      expect(result.current.restoreOriginalSearchLabel).toBe('Back to Trace');
+    });
+
+    it('Show Surroundings launched from within a Trace view, then Back, restores that same Trace view (root event included)', async () => {
+      const result = await searchedState();
+      const rootEvent = await openedJourney(result);
+
+      await act(async () => result.current.showContext(rootEvent));
+      await settleContext(result);
+
+      // The journey overlay is closed while Surroundings is showing - App.tsx renders ResultsPanel, not JourneyView.
+      expect(result.current.journeyQuery).toBeNull();
+
+      await act(async () => result.current.restoreOriginalSearch());
+
+      expect(result.current.journeyQuery).toEqual({ field: 'traceId', value: 't-1' });
+      expect(result.current.journeyResult!.events.map((e) => e.message)).toEqual(['trace-earlier', 'trace-root']);
+      expect(result.current.journeyRootEvent).toEqual(rootEvent);
+      // The underlying plain search must never have been silently re-run or lost either.
+      expect(result.current.searchResult!.events.map((e) => e.message)).toEqual(['first', 'second', 'third']);
+    });
+
+    it('a genuine "Back to original search" after that restored Trace view still works (closeJourney clears everything)', async () => {
+      const result = await searchedState();
+      const rootEvent = await openedJourney(result);
+      await act(async () => result.current.showContext(rootEvent));
+      await settleContext(result);
+      await act(async () => result.current.restoreOriginalSearch());
+      expect(result.current.journeyQuery).not.toBeNull();
+
+      await act(async () => result.current.closeJourney());
+
+      expect(result.current.journeyQuery).toBeNull();
+      expect(result.current.journeyRootEvent).toBeNull();
+      expect(result.current.restoreOriginalSearchLabel).toBe('Back to original search');
+    });
+
+    it('never silently switches source while resolving Surroundings launched from a journey view', async () => {
+      const result = await searchedState();
+      const rootEvent = await openedJourney(result);
+      const sourceBefore = result.current.selectedSourceId;
+
+      await act(async () => result.current.showContext(rootEvent));
+      await settleContext(result);
+      await act(async () => result.current.restoreOriginalSearch());
+
+      expect(result.current.selectedSourceId).toBe(sourceBefore);
+    });
+
+    it('Find same Journey directly from Search, then Back to original search, requires no re-search (context restored from snapshot)', async () => {
+      const result = await searchedState();
+      const searchesBefore = searchCalls.length;
+      await openedJourney(result);
+
+      await act(async () => result.current.closeJourney());
+
+      expect(result.current.searchResult!.events.map((e) => e.message)).toEqual(['first', 'second', 'third']);
+      expect(searchCalls).toHaveLength(searchesBefore);
+    });
   });
 });

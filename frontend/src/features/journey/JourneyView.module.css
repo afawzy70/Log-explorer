@@ -28,6 +28,14 @@
   font-size: var(--font-size-sm);
 }
 
+/* Owner mission "Mapping Verification and Investigation Workspace" - "Selected event: N of M loaded", mirroring InspectorHeader's own position-indicator wording style. */
+.position {
+  margin: 0 0 var(--space-2) 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
 .disclaimer {
   margin: 0 0 var(--space-3) 0;
   padding: var(--space-2) var(--space-3);

@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { JourneyEntryRow } from './JourneyEntryRow';
 import { fullEvent, sparseEvent } from '../inspector/testEventFixture';
 
@@ -51,6 +52,62 @@ describe('JourneyEntryRow', () => {
     for (const sensitive of ['cif', 'username', 'customerid', 'deviceid', 'deviceip']) {
       expect(text).not.toContain(sensitive);
     }
+  });
+
+  describe('root event anchoring (owner mission "Mapping Verification and Investigation Workspace")', () => {
+    it('a root entry gets aria-current="location" and a visible "Selected event" badge - never color alone', () => {
+      render(
+        <ol>
+          <JourneyEntryRow event={fullEvent()} isRoot />
+        </ol>,
+      );
+      expect(screen.getByRole('listitem')).toHaveAttribute('aria-current', 'location');
+      expect(screen.getByText('Selected event')).toBeInTheDocument();
+    });
+
+    it('a non-root entry has no aria-current and no badge', () => {
+      render(
+        <ol>
+          <JourneyEntryRow event={fullEvent()} />
+        </ol>,
+      );
+      expect(screen.getByRole('listitem')).not.toHaveAttribute('aria-current');
+      expect(screen.queryByText('Selected event')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Show Surroundings action (owner mission "Mapping Verification and Investigation Workspace")', () => {
+    it('a timestamped entry with onShowContext wired offers "Show Surroundings" and invokes it with this exact event', async () => {
+      const user = userEvent.setup();
+      const onShowContext = vi.fn();
+      const event = fullEvent();
+      render(
+        <ol>
+          <JourneyEntryRow event={event} onShowContext={onShowContext} />
+        </ol>,
+      );
+      await user.click(screen.getByRole('button', { name: /^show surroundings$/i }));
+      await user.click(screen.getByRole('button', { name: /^run$/i }));
+      expect(onShowContext).toHaveBeenCalledWith(event);
+    });
+
+    it('omits the action entirely when onShowContext is not wired', () => {
+      render(
+        <ol>
+          <JourneyEntryRow event={fullEvent()} />
+        </ol>,
+      );
+      expect(screen.queryByRole('button', { name: /show surroundings/i })).not.toBeInTheDocument();
+    });
+
+    it('omits the action for an event with no timestamp, even when onShowContext is wired', () => {
+      render(
+        <ol>
+          <JourneyEntryRow event={fullEvent({ timestamp: null })} onShowContext={vi.fn()} />
+        </ol>,
+      );
+      expect(screen.queryByRole('button', { name: /show surroundings/i })).not.toBeInTheDocument();
+    });
   });
 
   describe('free-text redaction display (Legacy Remediation Slice 7 - shared by Journey view and Live tail)', () => {

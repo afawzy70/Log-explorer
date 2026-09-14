@@ -38,7 +38,7 @@ class JourneyApiIntegrationTest {
       // applies EventFilters itself), so it cannot honestly demonstrate
       // an empty result.
       return new StubLogSource("journey-empty-test-source", "Journey Empty Test Source",
-          new SourceCapabilities(true, false, false, false, false, false, false));
+          new SourceCapabilities(true, false, false, false, false, false, false, true));
     }
 
     @Bean
@@ -47,7 +47,7 @@ class JourneyApiIntegrationTest {
       // from journeyTestSource so this doesn't need to mutate (and then
       // restore) that shared singleton's flux.
       StubLogSource stub = new StubLogSource("journey-truncation-test-source", "Journey Truncation Test Source",
-          new SourceCapabilities(true, false, false, false, false, false, false));
+          new SourceCapabilities(true, false, false, false, false, false, false, true));
       java.util.List<CanonicalLogEvent> many = new java.util.ArrayList<>();
       for (int i = 0; i < 201; i++) {
         many.add(CanonicalLogEvent.builder()
@@ -64,7 +64,7 @@ class JourneyApiIntegrationTest {
     @Bean
     StubLogSource journeyTestSource() {
       StubLogSource stub = new StubLogSource("journey-test-source", "Journey Test Source",
-          new SourceCapabilities(true, false, false, false, false, false, false));
+          new SourceCapabilities(true, false, false, false, false, false, false, true));
       // Deliberately out of order (newest first, like every real source
       // this project has - FixtureLogSource/DockerLogSource both always
       // sort that way regardless of `direction`) plus one malformed event
@@ -101,8 +101,11 @@ class JourneyApiIntegrationTest {
   }
 
   @Test
-  void filtersByCorrelationTraceAndEventIdToo() {
-    for (String field : new String[] {"correlationId", "traceId", "eventId"}) {
+  void filtersByCorrelationTraceSpanAndEventIdToo() {
+    // Owner mission "Mapping Verification and Investigation Workspace" -
+    // spanId added to the closed JOURNEY_FIELDS set (View Span reuses
+    // this exact generic endpoint, never a duplicate one).
+    for (String field : new String[] {"correlationId", "traceId", "spanId", "eventId"}) {
       String body = """
           {"sourceId":"journey-test-source","start":"2026-01-01T00:00:00Z","end":"2026-01-02T00:00:00Z","field":"%s","value":"whatever"}
           """.formatted(field);

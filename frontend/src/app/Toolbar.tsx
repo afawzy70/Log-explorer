@@ -59,6 +59,13 @@ export function Toolbar({ state, onStartLive, openShiftScope }: ToolbarProps) {
   const openShiftMissingRequiredScope =
     state.selectedSourceId === 'openshift' && openShiftScope != null && openShiftScope.selectedProject == null;
   const openShiftScopeHint = openShiftScope?.discoveryApi === 'NAMESPACES' ? 'a Namespace' : 'a Project';
+  // Configurable Log Field Mapping mission §15 - proactively disabled, not
+  // just an error shown after a failed click (mission: "Do NOT fail
+  // silently with zero results"). `undefined` (the field-mapping profile
+  // hasn't loaded yet on first mount) never silently permits Search - only
+  // an explicit `true` does.
+  const mappingNotReady = state.fieldMappingSearchReady !== true;
+  const MAPPING_NOT_READY_MESSAGE = 'Configure and validate log field mapping before searching this source.';
 
   function removeAdvancedField(key: keyof AdvancedFilterValues) {
     state.applyAdvancedFilters({ ...state.advancedFilters, text: state.searchText, [key]: '' });
@@ -97,8 +104,14 @@ export function Toolbar({ state, onStartLive, openShiftScope }: ToolbarProps) {
         <Button
           variant="primary"
           onClick={() => state.runSearch()}
-          disabled={state.searchLoading || openShiftMissingRequiredScope}
-          title={openShiftMissingRequiredScope ? `Select ${openShiftScopeHint} to search OpenShift` : undefined}
+          disabled={state.searchLoading || openShiftMissingRequiredScope || mappingNotReady}
+          title={
+            mappingNotReady
+              ? MAPPING_NOT_READY_MESSAGE
+              : openShiftMissingRequiredScope
+                ? `Select ${openShiftScopeHint} to search OpenShift`
+                : undefined
+          }
         >
           {state.searchLoading ? 'Searching…' : 'Search'}
         </Button>
@@ -115,7 +128,11 @@ export function Toolbar({ state, onStartLive, openShiftScope }: ToolbarProps) {
             Live
           </Button>
         ) : null}
-        {openShiftMissingRequiredScope ? (
+        {mappingNotReady ? (
+          <span className={styles.scopeRequiredHint} role="status">
+            {MAPPING_NOT_READY_MESSAGE}
+          </span>
+        ) : openShiftMissingRequiredScope ? (
           <span className={styles.scopeRequiredHint} role="status">
             Select {openShiftScopeHint} to search OpenShift
           </span>

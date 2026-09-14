@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef } from 'react';
-import { Shell } from './Shell';
+import { Shell, resolveMappingProject } from './Shell';
 import { Toolbar } from './Toolbar';
 import { ResultsPanel } from '../features/results/ResultsPanel';
 import { EventInspector } from '../features/inspector/EventInspector';
@@ -25,6 +25,14 @@ import styles from './App.module.css';
  */
 const JourneyView = lazy(() => import('../features/journey/JourneyView').then((m) => ({ default: m.JourneyView })));
 const LiveTailPanel = lazy(() => import('../features/live/LiveTailPanel').then((m) => ({ default: m.LiveTailPanel })));
+/**
+ * Owner mission "Mapping Verification and Investigation Workspace" - a
+ * real, dedicated page (not a hidden popover), lazy-loaded on the same
+ * "only after an explicit user action" basis as the two views above.
+ */
+const FieldMappingWorkspace = lazy(() =>
+  import('../features/settings/fieldMapping/FieldMappingWorkspace').then((m) => ({ default: m.FieldMappingWorkspace })),
+);
 
 /** Local, non-blocking loading state (§9) - matches `ResultsPanel`'s own `.loading` convention, never a full-screen spinner. */
 function SectionLoadingFallback({ label }: { label: string }) {
@@ -73,6 +81,28 @@ function AppContent() {
   // after every scope mutation it commits.
   const openShiftScopeState = useOpenShiftScopeSummary(state.selectedSourceId === 'openshift');
   useProductivityShortcuts(state);
+
+  // Owner mission "Project-Scoped Schema Scan" §8 - `useSearchState`'s own
+  // refresh effect already reacts to `selectedSourceId`/`selectedComposeProject`
+  // (Docker's own request-scoped selection), but has no knowledge of
+  // OpenShift's session-based scope (owned by `useOpenShiftScopeSummary`,
+  // lifted here for the same reason as `openShiftScopeState` itself) - so
+  // this source's own project/namespace CHANGE must explicitly recalculate
+  // the field-mapping readiness gate too, never silently keep showing a
+  // previous project's stale readiness.
+  useEffect(() => {
+    if (state.selectedSourceId === 'openshift') {
+      state.refreshFieldMappingProfile(openShiftScopeState.scope?.selectedProject ?? null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.selectedSourceId, openShiftScopeState.scope?.selectedProject]);
+
+  // Owner mission "Mapping Verification and Investigation Workspace" - the
+  // exact same scope resolution `Shell`'s own trigger button context uses,
+  // reused here (never a second, independently-derived truth) since the
+  // workspace itself needs it too now that it is rendered here, not inside
+  // `Shell`.
+  const mappingProject = resolveMappingProject(state, openShiftScopeState.scope);
 
   const liveModeActive = live.connectionState !== 'idle';
   useLiveKeyboardShortcuts(live, liveModeActive);
@@ -137,7 +167,19 @@ function AppContent() {
       </div>
       <div className={styles.mainRow}>
         <div className={styles.resultsColumn}>
-          {liveModeActive ? (
+          {state.mappingWorkspaceOpen ? (
+            <Suspense fallback={<SectionLoadingFallback label="Loading mapping verification…" />}>
+              <FieldMappingWorkspace
+                sourceId={state.selectedSourceId}
+                project={mappingProject}
+                sourceSupportsSampling={state.selectedSource?.capabilities.originalSchemaSampling ?? false}
+                profile={state.fieldMappingProfile}
+                profileError={state.fieldMappingProfileError}
+                onProfileChanged={() => state.refreshFieldMappingProfile(mappingProject)}
+                onClose={state.closeMappingWorkspace}
+              />
+            </Suspense>
+          ) : liveModeActive ? (
             <Suspense fallback={<SectionLoadingFallback label="Loading Live…" />}>
               <LiveTailPanel
                 live={live}

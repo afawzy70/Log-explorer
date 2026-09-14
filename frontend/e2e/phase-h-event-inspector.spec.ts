@@ -53,6 +53,26 @@ test('opening the inspector shows every section with real, fully-populated fixtu
 });
 
 test('masked fields in the inspector always look masked, never raw - real backend response', async ({ page }) => {
+  // Mission "Field Mapping Schema Scan + Masking Policy Extension" §B:
+  // the fresh/default masking state is now OFF - this test is
+  // specifically about the MASKED-display guarantee, so it explicitly
+  // enables masking for all five protected fields first. This MUST
+  // happen before the search below: masking is applied server-side at
+  // fetch time, so a row already fetched before the toggle stays
+  // whatever it was fetched as. Reset at the end so this
+  // shared-singleton backend policy never leaks into a later test.
+  await page.goto('/');
+  const protectedLabels = ['CIF', 'Username', 'Customer ID', 'Device ID', 'Device IP'];
+  await page.getByRole('button', { name: /privacy & masking/i }).click();
+  const maskingDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+  await expect(maskingDialog).toBeVisible();
+  for (const label of protectedLabels) {
+    if (!(await maskingDialog.getByLabel(label).isChecked())) {
+      await maskingDialog.getByLabel(label).click();
+    }
+  }
+  await page.getByRole('button', { name: /^close$/i }).click();
+
   await runRealSearch(page);
   await openInspectorOnRow(page, 0);
 
@@ -61,6 +81,19 @@ test('masked fields in the inspector always look masked, never raw - real backen
   const actorSection = dialog.locator('section[aria-label="Actor & client"]');
   const text = await actorSection.textContent();
   expect(text).toMatch(/\*/); // every fixture protected field is masked with '*'
+
+  // Restore the fresh default (unmasked) so this shared-singleton
+  // backend policy never leaks into a later test in the same run.
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: /privacy & masking/i }).click();
+  const cleanupDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+  await expect(cleanupDialog).toBeVisible();
+  for (const label of protectedLabels) {
+    if (await cleanupDialog.getByLabel(label).isChecked()) {
+      await cleanupDialog.getByLabel(label).click();
+    }
+  }
+  await page.getByRole('button', { name: /^close$/i }).click();
 });
 
 test('the selected row stays visually identifiable while the inspector is open', async ({ page }) => {
@@ -106,7 +139,7 @@ test('"Show ±30 seconds" previews the bounded window before running, then repla
   await openInspectorOnRow(page, 0);
   const dialog = page.getByRole('dialog', { name: /event details/i });
 
-  await dialog.getByRole('button', { name: /show surrounding logs/i }).click();
+  await dialog.getByRole('button', { name: /show surroundings/i }).click();
   await expect(page.getByRole('dialog', { name: /confirm surrounding-context search/i })).toBeVisible();
   await page.getByRole('button', { name: /^run$/i }).click();
 

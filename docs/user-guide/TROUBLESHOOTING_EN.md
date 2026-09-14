@@ -12,7 +12,11 @@ genuinely has nothing matching, or the range is too narrow.
 **What to do:** click the **"Search last 1 day"** shortcut Log Explorer
 offers on an empty result, or widen your time range. Double-check any
 "exact match" filter (§9 of the User Guide) — a small typo in an exact
-field returns zero results rather than a partial match.
+field returns zero results rather than a partial match. If you're
+filtering by a field like CIF, Username, or Trace ID and you're certain
+the value is genuinely present in your logs, see **"A filter finds
+nothing even though the value is in the log"** below — this is usually a
+field-mapping issue, not a search issue.
 
 ---
 
@@ -250,3 +254,94 @@ developer cannot be verified," because this build is not notarized.
 in the dialog that follows — this only needs to be done once. Always
 verify you downloaded the app from the project's own official GitHub
 Releases page first.
+
+---
+
+### A filter finds nothing even though the value is in the log
+
+**Likely cause:** the field's real location in your source JSON doesn't
+match where Log Explorer's current mapping looks for it. A value can be
+completely present in your logs and still not be searchable if Log
+Explorer was never told which JSON path it lives at for your specific
+source's log format — this is the exact defect that motivated **Settings
+→ Log Schema & Field Mapping** (§19 of the User Guide) to exist.
+
+**What to do:** open **Settings → Log Schema & Field Mapping**. If the
+source has a real project/namespace concept (Docker Compose, OpenShift),
+make sure you have the *same* project/namespace selected there that you
+were searching in — a mapping saved for one project never silently
+applies to another. Run a **Quick Schema Scan** against that scope, and
+check the **Discovered Source Schema** table — find the field's real path
+(it might be a top-level key, or nested differently than the default
+mapping expects). Add that path as an additional candidate for the
+relevant canonical field directly from the discovered-paths picker, then
+Validate and Save. You do not need to remove the existing default path —
+you can list several candidate paths for one field, and Log Explorer
+tries them in order.
+
+---
+
+### Search is disabled with a "configure field mapping" message
+
+**Likely cause:** you (or someone else using this installation) started
+editing the field mapping in **Settings → Log Schema & Field Mapping**
+for the currently selected project/namespace but haven't finished
+validating and saving it yet. Log Explorer disables Search for that
+specific scope on purpose, rather than running it against a mapping it
+can't yet vouch for — see §19 of the User Guide. Only that project's own
+Search is affected; other projects on the same source keep whatever
+readiness their own saved mapping already has.
+
+**What to do:** open **Settings → Log Schema & Field Mapping**, either
+finish the Validate → Save steps for your in-progress edit, or click
+**Reset to defaults** if you want to discard the edit and go back to the
+built-in mapping. Search re-enables immediately once the mapping is
+valid and saved. If Search is unexpectedly disabled right after switching
+projects/namespaces, this is expected the first time you touch a new
+scope's mapping — it starts on the always-ready built-in default, so this
+message should only appear if that scope's mapping was itself left
+mid-edit.
+
+---
+
+### The Quick Schema Scan fails or finds nothing
+
+**Likely cause:** the source itself is unreachable (check its own
+connection status first — Docker/OpenShift settings), the source
+genuinely has no recent events to scan right now, or — for a source with
+a project/namespace concept — the currently selected project/namespace
+specifically has no recent events, even if other projects on the same
+source do.
+
+**What to do:** confirm the source shows as connected/healthy elsewhere
+in the app first, and double-check which project/namespace is actually
+selected (the scan is always scoped to it, never the whole source). If
+the source and scope are both fine, try again after a moment — the scan
+reads only real, recent events from that exact scope, so a project with
+very low traffic may genuinely have few or none to show yet. This is
+shown honestly (a small or zero event count, and an empty Discovered
+Source Schema) rather than as an error when the source itself is fine but
+simply quiet.
+
+---
+
+### Verify says "not found in any of the given samples"
+
+**Likely cause:** this is not a bug — it's the verification evidence gate
+doing its job (see "Verifying your mapping" in §19 of the User Guide).
+Clicking **Verify** re-checks the field's currently saved candidate path
+against the real samples from your most recent Quick Schema Scan of the
+selected project/namespace, and only marks it Verified if it genuinely
+finds a value there. A rejection means the candidate doesn't actually
+resolve to anything in those samples right now — which can happen if the
+scan is stale (the field's real location changed since you last scanned),
+the field genuinely doesn't appear in the events the scan happened to see
+this time, or the candidate path itself is subtly wrong.
+
+**What to do:** click **Rescan** to get fresh samples for the current
+scope, then try **Verify** again. If it still fails, check the
+**Discovered Source Schema** table for the field's real path and add it
+as a candidate (or fix the existing one) via the picker, **Validate**,
+**Save**, then **Verify** once more. The Verify button itself stays
+disabled — with an explanation — until a scan has produced real samples
+and any pending edit for that field has been saved.

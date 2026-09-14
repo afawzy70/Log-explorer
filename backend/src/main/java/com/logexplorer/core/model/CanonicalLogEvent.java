@@ -63,6 +63,19 @@ public record CanonicalLogEvent(
     String traceId,
     String spanId,
     String journeyId,
+    /**
+     * Owner mission "Configurable Log Field Mapping" §9 — a human-readable
+     * journey name (e.g. {@code "SIGN_IN"}), deliberately distinct from
+     * {@link #journeyId}: a journey ID is an opaque correlation identifier
+     * for one journey *instance*, while a journey name identifies which
+     * journey *kind* it is. Audited against the pre-existing model and
+     * found genuinely absent — never silently equated with {@code
+     * journeyId}. Null for every event until a {@code
+     * core.mapping.FieldMappingProfile} maps it to a real source path (the
+     * built-in default profile ships with no candidate for this field —
+     * see {@code core.mapping.DefaultFieldMappingProfile}'s own javadoc).
+     */
+    String journeyName,
     String eventId,
     String businessStep,
     String uiIdentifier,
@@ -77,6 +90,30 @@ public record CanonicalLogEvent(
     Map<String, Object> unknownMdcFields,
     boolean malformed,
     String rawLine,
+    /**
+     * Owner mission "Configurable Log Field Mapping + Original JSON
+     * Sampling" §3/§4 — the exact, untouched raw source line/JSON text this
+     * event was parsed from, for EVERY event ({@code malformed} or not) —
+     * unlike {@link #rawLine} (populated only when {@code malformed}, and
+     * already wired into the normal {@code /search} response via {@code
+     * api.dto.EventDto#rawLine}). This field is set by {@code
+     * core.parse.LogLineParser} for source-neutral, real original-JSON
+     * sampling.
+     *
+     * <p><b>Security boundary (mission §4/§18 —
+     * {@code MAPPING_CANNOT_BYPASS_MASKING}): this field must NEVER be
+     * added to {@code api.dto.EventDto} or read anywhere in the {@code api}
+     * package's normal search/context/journey/live response construction
+     * (see {@code api.EventMapper}, the sole {@code CanonicalLogEvent}→DTO
+     * boundary). It exists solely for {@code
+     * core.mapping.sample.FieldMappingSampleService}'s dedicated, separate,
+     * bounded, never-persisted sample-fetch endpoint — a privileged
+     * mapping-setup surface, never the normal masked search path
+     * ({@code ORIGINAL_MAPPING_SAMPLE != NORMAL_SEARCH_RESPONSE}). An
+     * ArchUnit-style test enforces {@code EventDto} never gains a field
+     * populated from this one.
+     */
+    String originalRawJson,
     String sourceId,
     String composeProject,
     String composeService,
@@ -151,6 +188,7 @@ public record CanonicalLogEvent(
         .traceId(traceId)
         .spanId(spanId)
         .journeyId(journeyId)
+        .journeyName(journeyName)
         .eventId(eventId)
         .businessStep(businessStep)
         .uiIdentifier(uiIdentifier)
@@ -165,6 +203,7 @@ public record CanonicalLogEvent(
         .unknownMdcFields(unknownMdcFields)
         .malformed(malformed)
         .rawLine(rawLine)
+        .originalRawJson(originalRawJson)
         .sourceId(sourceId)
         .composeProject(composeProject)
         .composeService(composeService)
@@ -193,6 +232,7 @@ public record CanonicalLogEvent(
     private String traceId;
     private String spanId;
     private String journeyId;
+    private String journeyName;
     private String eventId;
     private String businessStep;
     private String uiIdentifier;
@@ -207,6 +247,7 @@ public record CanonicalLogEvent(
     private Map<String, Object> unknownMdcFields = Map.of();
     private boolean malformed;
     private String rawLine;
+    private String originalRawJson;
     private String sourceId;
     private String composeProject;
     private String composeService;
@@ -232,6 +273,7 @@ public record CanonicalLogEvent(
     public Builder traceId(String v) { this.traceId = v; return this; }
     public Builder spanId(String v) { this.spanId = v; return this; }
     public Builder journeyId(String v) { this.journeyId = v; return this; }
+    public Builder journeyName(String v) { this.journeyName = v; return this; }
     public Builder eventId(String v) { this.eventId = v; return this; }
     public Builder businessStep(String v) { this.businessStep = v; return this; }
     public Builder uiIdentifier(String v) { this.uiIdentifier = v; return this; }
@@ -246,6 +288,7 @@ public record CanonicalLogEvent(
     public Builder unknownMdcFields(Map<String, Object> v) { this.unknownMdcFields = v; return this; }
     public Builder malformed(boolean v) { this.malformed = v; return this; }
     public Builder rawLine(String v) { this.rawLine = v; return this; }
+    public Builder originalRawJson(String v) { this.originalRawJson = v; return this; }
     public Builder sourceId(String v) { this.sourceId = v; return this; }
     public Builder composeProject(String v) { this.composeProject = v; return this; }
     public Builder composeService(String v) { this.composeService = v; return this; }
@@ -262,10 +305,10 @@ public record CanonicalLogEvent(
       return new CanonicalLogEvent(
           timestamp, timestampRaw, schemaVersion, service, serviceSourceHint,
           severity, severityNumber, message, logger, thread, exception,
-          traceId, spanId, journeyId, eventId, businessStep, uiIdentifier,
+          traceId, spanId, journeyId, journeyName, eventId, businessStep, uiIdentifier,
           errorCode, correlationId, sensitive, devicePlatformType, language,
           serverIp, serverHost, unknownTopLevelFields, unknownMdcFields,
-          malformed, rawLine, sourceId, composeProject, composeService, containerId, containerName, stream,
+          malformed, rawLine, originalRawJson, sourceId, composeProject, composeService, containerId, containerName, stream,
           namespace, pod, sourceTimestamp, contextTargetProof);
     }
   }

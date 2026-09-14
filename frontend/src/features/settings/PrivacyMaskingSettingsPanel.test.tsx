@@ -18,6 +18,20 @@ function allMasked(overrides: Partial<MaskingSettings> = {}): MaskingSettings {
   return { cif: true, userName: true, customerId: true, deviceId: true, deviceIp: true, ...overrides };
 }
 
+/**
+ * The real backend's fresh/default state (mission "Field Mapping Schema
+ * Scan + Masking Policy Extension" §B — `DEFAULT_MASKING_STATE=DISABLED`).
+ * This component itself never hardcodes either direction — it always
+ * renders exactly what {@link fetchMaskingSettings} returns — so most
+ * tests below deliberately mock `allMasked()` to keep the widest possible
+ * assertion coverage independent of which way the real default points;
+ * this fixture exists specifically to prove the component also renders
+ * the actual current real-world default state correctly.
+ */
+function allUnmasked(overrides: Partial<MaskingSettings> = {}): MaskingSettings {
+  return { cif: false, userName: false, customerId: false, deviceId: false, deviceIp: false, ...overrides };
+}
+
 async function open(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: /privacy & masking/i }));
 }
@@ -35,7 +49,7 @@ describe('PrivacyMaskingSettingsPanel', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it('fetches the real policy fresh on open and shows all five protected fields, masked by default', async () => {
+  it('fetches the real policy fresh on open and renders all five protected fields exactly as the server reports them', async () => {
     const user = userEvent.setup();
     render(<PrivacyMaskingSettingsPanel />);
     await open(user);
@@ -44,6 +58,23 @@ describe('PrivacyMaskingSettingsPanel', () => {
       const checkbox = screen.getByLabelText(label);
       expect(checkbox).toBeChecked();
     }
+  });
+
+  it('renders the real current fresh-install default (all five fields unmasked) correctly, unchecked', async () => {
+    // Mission §B: DEFAULT_MASKING_STATE=DISABLED — proves this component
+    // is purely data-driven and correctly reflects that real state too,
+    // not just the all-masked fixture most other tests in this file use.
+    const user = userEvent.setup();
+    mockFetch.mockResolvedValue(allUnmasked());
+    render(<PrivacyMaskingSettingsPanel />);
+    await open(user);
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+    for (const label of ['CIF', 'Username', 'Customer ID', 'Device ID', 'Device IP']) {
+      expect(screen.getByLabelText(label)).not.toBeChecked();
+    }
+    // Fresh-default unmasked state must surface the same warning an
+    // explicitly-unmasked field would - nothing here is silent.
+    expect(screen.getByText(/may show real, unmasked values/i)).toBeInTheDocument();
   });
 
   it('unchecking a field calls the real server update endpoint for exactly that field, and reflects the server-returned policy', async () => {

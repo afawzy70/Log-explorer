@@ -18,6 +18,11 @@ import org.springframework.test.web.reactive.server.WebTestClient;
  * against a real dev-mode Spring context — never mocked, since this
  * endpoint's whole point is proving the real server-side enforcement
  * boundary.
+ *
+ * <p>Mission "Field Mapping Schema Scan + Masking Policy Extension" §B:
+ * the fresh/default policy is now unmasked (owner supersession — see
+ * {@code MaskingPolicyService}'s own javadoc for the full history). Every
+ * assertion below reflects that current default.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class MaskingSettingsControllerIntegrationTest {
@@ -37,7 +42,7 @@ class MaskingSettingsControllerIntegrationTest {
   }
 
   @Test
-  void defaultPolicyMasksAllFiveProtectedFields() {
+  void defaultPolicyLeavesAllFiveProtectedFieldsUnmasked() {
     MaskingSettingsDto dto = webTestClient
         .get()
         .uri("/api/v1/settings/masking")
@@ -48,29 +53,29 @@ class MaskingSettingsControllerIntegrationTest {
         .returnResult()
         .getResponseBody();
     assertThat(dto).isNotNull();
-    assertThat(dto.cif()).isTrue();
-    assertThat(dto.userName()).isTrue();
-    assertThat(dto.customerId()).isTrue();
-    assertThat(dto.deviceId()).isTrue();
-    assertThat(dto.deviceIp()).isTrue();
+    assertThat(dto.cif()).isFalse();
+    assertThat(dto.userName()).isFalse();
+    assertThat(dto.customerId()).isFalse();
+    assertThat(dto.deviceId()).isFalse();
+    assertThat(dto.deviceIp()).isFalse();
   }
 
   @Test
-  void togglingOneFieldOffIsReflectedImmediatelyInTheNextGetAndLeavesOthersUnchanged() {
+  void togglingOneFieldOnIsReflectedImmediatelyInTheNextGetAndLeavesOthersUnchanged() {
     webTestClient
         .put()
         .uri("/api/v1/settings/masking")
-        .bodyValue(new MaskingFieldUpdateRequestDto("cif", false))
+        .bodyValue(new MaskingFieldUpdateRequestDto("cif", true))
         .exchange()
         .expectStatus()
         .isOk()
         .expectBody(MaskingSettingsDto.class)
         .value(dto -> {
-          assertThat(dto.cif()).isFalse();
-          assertThat(dto.userName()).isTrue();
-          assertThat(dto.customerId()).isTrue();
-          assertThat(dto.deviceId()).isTrue();
-          assertThat(dto.deviceIp()).isTrue();
+          assertThat(dto.cif()).isTrue();
+          assertThat(dto.userName()).isFalse();
+          assertThat(dto.customerId()).isFalse();
+          assertThat(dto.deviceId()).isFalse();
+          assertThat(dto.deviceIp()).isFalse();
         });
 
     webTestClient
@@ -80,19 +85,19 @@ class MaskingSettingsControllerIntegrationTest {
         .expectStatus()
         .isOk()
         .expectBody(MaskingSettingsDto.class)
-        .value(dto -> assertThat(dto.cif()).isFalse());
+        .value(dto -> assertThat(dto.cif()).isTrue());
   }
 
   @Test
-  void togglingAFieldBackOnRestoresMasking() {
-    webTestClient.put().uri("/api/v1/settings/masking").bodyValue(new MaskingFieldUpdateRequestDto("deviceIp", false)).exchange().expectStatus().isOk();
+  void togglingAFieldOffAgainRestoresTheUnmaskedDefault() {
     webTestClient.put().uri("/api/v1/settings/masking").bodyValue(new MaskingFieldUpdateRequestDto("deviceIp", true)).exchange().expectStatus().isOk();
+    webTestClient.put().uri("/api/v1/settings/masking").bodyValue(new MaskingFieldUpdateRequestDto("deviceIp", false)).exchange().expectStatus().isOk();
     webTestClient
         .get()
         .uri("/api/v1/settings/masking")
         .exchange()
         .expectBody(MaskingSettingsDto.class)
-        .value(dto -> assertThat(dto.deviceIp()).isTrue());
+        .value(dto -> assertThat(dto.deviceIp()).isFalse());
   }
 
   @Test
@@ -123,7 +128,7 @@ class MaskingSettingsControllerIntegrationTest {
       webTestClient
           .put()
           .uri("/api/v1/settings/masking")
-          .bodyValue(new MaskingFieldUpdateRequestDto(key, false))
+          .bodyValue(new MaskingFieldUpdateRequestDto(key, true))
           .exchange()
           .expectStatus()
           .isOk();

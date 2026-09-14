@@ -19,6 +19,7 @@ const COMPOSE_LIVE_SOURCE = {
     queryStatistics: false,
     contextView: false,
     composeProjectScoping: true,
+    originalSchemaSampling: true,
   },
 };
 

@@ -20,6 +20,7 @@ function health(overrides: Partial<SourceHealthDetail> = {}): SourceHealthDetail
       queryStatistics: false,
       contextView: false,
       composeProjectScoping: false,
+      originalSchemaSampling: true,
     },
     ...overrides,
   };

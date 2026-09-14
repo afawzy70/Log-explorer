@@ -12,6 +12,7 @@ import com.logexplorer.core.model.SourceSearchOutcome;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -29,6 +30,10 @@ public class StubLogSource implements LogSource {
   private final SourceCapabilities capabilities;
 
   private Flux<CanonicalLogEvent> searchFlux = Flux.empty();
+  /** Project-Scoped Schema Scan mission — when set, takes priority over {@link #searchFlux} and lets a test return DIFFERENT events depending on the real request (e.g. composeProject), simulating real per-scope source isolation without a real adapter. */
+  private Function<SearchRequest, Flux<CanonicalLogEvent>> searchFluxFn;
+  /** Project-Scoped Schema Scan mission — when set, overrides the default {@code resolveMappingScopeLabel} echo, simulating a session-scoped source (OpenShift-style) that ignores the request's own composeProject. */
+  private Function<SearchRequest, String> resolveMappingScopeLabelFn;
   private Flux<CanonicalLogEvent> followFlux = Flux.empty();
   /** OS-1E final terminal-status-delivery fix — lets tests script a {@link LiveSourceStatus} sequence (e.g. RUNNING then a terminal state) without a real OpenShift adapter. */
   private Flux<LiveSourceStatus> statusFlux = Flux.just(LiveSourceStatus.NOMINAL);
@@ -50,7 +55,7 @@ public class StubLogSource implements LogSource {
   public volatile SearchRequest lastRequest;
 
   public StubLogSource(String id) {
-    this(id, id, new SourceCapabilities(true, false, false, true, false, false, false));
+    this(id, id, new SourceCapabilities(true, false, false, true, false, false, false, true));
   }
 
   public StubLogSource(String id, String displayName, SourceCapabilities capabilities) {
@@ -61,6 +66,18 @@ public class StubLogSource implements LogSource {
 
   public StubLogSource withSearchFlux(Flux<CanonicalLogEvent> flux) {
     this.searchFlux = flux;
+    return this;
+  }
+
+  /** Project-Scoped Schema Scan mission — see the field's own javadoc. */
+  public StubLogSource withSearchFluxFn(Function<SearchRequest, Flux<CanonicalLogEvent>> fn) {
+    this.searchFluxFn = fn;
+    return this;
+  }
+
+  /** Project-Scoped Schema Scan mission — see the field's own javadoc. */
+  public StubLogSource withResolveMappingScopeLabelFn(Function<SearchRequest, String> fn) {
+    this.resolveMappingScopeLabelFn = fn;
     return this;
   }
 
@@ -143,7 +160,8 @@ public class StubLogSource implements LogSource {
   public Flux<CanonicalLogEvent> search(SearchRequest request) {
     subscriptions.incrementAndGet();
     lastRequest = request;
-    return searchFlux.doOnCancel(() -> cancelled.set(true));
+    Flux<CanonicalLogEvent> flux = searchFluxFn != null ? searchFluxFn.apply(request) : searchFlux;
+    return flux.doOnCancel(() -> cancelled.set(true));
   }
 
   @Override
@@ -155,5 +173,11 @@ public class StubLogSource implements LogSource {
   @Override
   public Mono<LiveFollowResult> followWithStatus(FollowRequest request) {
     return Mono.just(new LiveFollowResult(follow(request), statusFlux));
+  }
+
+  /** Project-Scoped Schema Scan mission — defaults to {@link LogSource}'s own echo behavior unless {@link #withResolveMappingScopeLabelFn} overrides it. */
+  @Override
+  public String resolveMappingScopeLabel(SearchRequest request) {
+    return resolveMappingScopeLabelFn != null ? resolveMappingScopeLabelFn.apply(request) : LogSource.super.resolveMappingScopeLabel(request);
   }
 }

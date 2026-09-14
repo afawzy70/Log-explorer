@@ -11,6 +11,7 @@ import com.logexplorer.core.guard.LiveTailGuard;
 import com.logexplorer.core.guard.TooManyConcurrentLiveTailsException;
 import com.logexplorer.core.mask.MaskingPolicyService;
 import com.logexplorer.core.mask.MaskingService;
+import com.logexplorer.core.mask.ProtectedField;
 import com.logexplorer.core.mask.TextRedactor;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.LiveSourceStatus;
@@ -38,9 +39,9 @@ class LiveTailServiceTest {
 
   private static final Instant NOW = Instant.parse("2026-01-01T12:00:00Z");
   private static final SourceCapabilities LIVE_CAPABLE =
-      new SourceCapabilities(true, true, false, false, false, false, false);
+      new SourceCapabilities(true, true, false, false, false, false, false, true);
   private static final SourceCapabilities LIVE_INCAPABLE =
-      new SourceCapabilities(true, false, false, false, false, false, false);
+      new SourceCapabilities(true, false, false, false, false, false, false, true);
 
   /** Polls a condition on a background heartbeat scheduler thread until true or the timeout elapses - no new test dependency (Awaitility) needed for this file's small number of async waits. */
   private void waitUntil(java.util.function.BooleanSupplier condition, Duration timeout) {
@@ -60,7 +61,16 @@ class LiveTailServiceTest {
 
   private LiveTailService newService(StubLogSource stub, LiveTailProperties properties) {
     LiveTailGuard guard = new LiveTailGuard(properties);
-    EventMapper eventMapper = new EventMapper(new MaskingService(new MaskingPolicyService()), new TextRedactor());
+    // Mission "Field Mapping Schema Scan + Masking Policy Extension" §B:
+    // the fresh/default masking state is now OFF - everyEmittedLogEventIsMaskedBeforeItEverReachesTheStream
+    // below is specifically about the MASKED guarantee, so every
+    // protected field is explicitly forced on here (the only test in
+    // this file that touches sensitive fields at all).
+    MaskingPolicyService maskingPolicy = new MaskingPolicyService();
+    for (ProtectedField field : ProtectedField.values()) {
+      maskingPolicy.setMasked(field, true);
+    }
+    EventMapper eventMapper = new EventMapper(new MaskingService(maskingPolicy), new TextRedactor());
     LogSourceRegistry registry = new LogSourceRegistry(List.of(stub), new SourcesProperties());
     return new LiveTailService(registry, guard, properties, eventMapper);
   }

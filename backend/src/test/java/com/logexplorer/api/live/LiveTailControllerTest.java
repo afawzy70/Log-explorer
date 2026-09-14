@@ -2,12 +2,15 @@ package com.logexplorer.api.live;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.logexplorer.core.mask.MaskingPolicyService;
+import com.logexplorer.core.mask.ProtectedField;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.RawSensitiveFields;
 import com.logexplorer.core.model.SourceCapabilities;
 import com.logexplorer.source.StubLogSource;
 import java.time.Duration;
 import java.time.Instant;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -37,7 +40,7 @@ class LiveTailControllerTest {
     @Bean
     StubLogSource liveCapableTestSource() {
       StubLogSource stub = new StubLogSource("live-capable-source", "Live Capable Source",
-          new SourceCapabilities(true, true, false, false, false, false, false));
+          new SourceCapabilities(true, true, false, false, false, false, false, true));
       stub.withFollowFlux(Flux.just(
           CanonicalLogEvent.builder()
               .timestamp(NOW)
@@ -51,15 +54,29 @@ class LiveTailControllerTest {
     @Bean
     StubLogSource liveIncapableTestSource() {
       return new StubLogSource("live-incapable-source", "Live Incapable Source",
-          new SourceCapabilities(true, false, false, false, false, false, false));
+          new SourceCapabilities(true, false, false, false, false, false, false, true));
     }
   }
 
   @Autowired
   private WebTestClient webTestClient;
 
+  @Autowired
+  private MaskingPolicyService maskingPolicy;
+
+  @AfterEach
+  void resetMaskingPolicy() {
+    maskingPolicy.resetToDefaults();
+  }
+
   @Test
   void streamsRealMaskedLogEventsAsServerSentEvents() {
+    // Mission "Field Mapping Schema Scan + Masking Policy Extension" §B:
+    // the fresh/default masking state is now OFF - this test is
+    // specifically about the MASKED guarantee holding over the live SSE
+    // wire, so it explicitly enables CIF masking first.
+    maskingPolicy.setMasked(ProtectedField.CIF, true);
+
     FluxExchangeResult<String> result = webTestClient.get()
         .uri("/api/v1/logs/live?sourceId=live-capable-source")
         .accept(MediaType.TEXT_EVENT_STREAM)

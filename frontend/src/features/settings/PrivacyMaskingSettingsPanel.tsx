@@ -21,15 +21,29 @@ const FIELD_LABELS: ReadonlyArray<{ key: ProtectedFieldKey; label: string }> = [
  * under Docker Settings (masking applies identically to every source:
  * Fixture/Docker/OpenShift/Loki).
  *
- * <p>The five protected fields (CIF, Username, Customer ID, Device ID,
- * Device IP) remain masked by default (`MASKED=YES`) - this SUPERSEDES the
- * historical "permanently masked, no configurability" rule (recorded,
- * with the supersession made explicit, in the requirements register), not
- * a silent removal of it. Unchecking a field calls the real server-side
- * policy endpoint immediately; the server is the sole authority on
- * whether a value is masked (CLAUDE.md §2 rule 1's masking boundary is
- * unchanged - this control only flips a policy switch that boundary now
- * consults, it does not move enforcement into the browser).
+ * <p><b>Mission "Field Mapping Schema Scan + Masking Policy Extension"
+ * §B — SUPERSEDES the paragraph immediately below.</b> The owner has
+ * explicitly changed the fresh/default state: all five protected fields
+ * (CIF, Username, Customer ID, Device ID, Device IP) start **unmasked**
+ * (`MASKED=NO`) on a fresh install / fresh default state. The user may
+ * explicitly enable masking per field here. This is a code-level default
+ * only — this component itself has no hardcoded assumption about which
+ * way the checkboxes start; it always renders exactly what {@link
+ * fetchMaskingSettings} returns.
+ *
+ * <p><i>Historical (SUPERSEDED) — Pre-closure functional recovery
+ * (§11/§12/§13):</i> the five protected fields remained masked by default
+ * (`MASKED=YES`) - this SUPERSEDED the historical "permanently masked, no
+ * configurability" rule (recorded, with the supersession made explicit,
+ * in the requirements register), not a silent removal of it. Preserved
+ * here, not deleted, per this project's own "never erase a historical
+ * decision" discipline.
+ *
+ * <p>Unchecking/checking a field calls the real server-side policy
+ * endpoint immediately; the server is the sole authority on whether a
+ * value is masked (CLAUDE.md §2 rule 1's masking boundary is unchanged -
+ * this control only flips a policy switch that boundary now consults, it
+ * does not move enforcement into the browser).
  *
  * <p>Deliberately NOT a per-row "Reveal" button (§13: "Do NOT implement a
  * casual per-row Reveal button") - this is a policy control that affects

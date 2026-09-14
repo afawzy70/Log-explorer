@@ -25,14 +25,17 @@ import styles from './ActionsCell.module.css';
  *   exact same `onInspect` the row click calls (§18: "single semantic
  *   action, multiple entry paths"), never a second details
  *   implementation.</li>
- *   <li><b>Show surrounding logs</b> - the existing bounded ±30s context
- *   mechanism, previously reachable *only* from the inspector's Request
- *   Flow section, i.e. only after already opening an event. Surfacing it
- *   on the row removes a whole detour from the investigation loop. It is
- *   rendered only when a caller actually wired `onShowContext` **and**
- *   the event has a timestamp to centre a window on - an event with no
- *   parsed timestamp (a malformed line) has no ±30s window to show, and
- *   a disabled-looking dead entry would be worse than its absence.</li>
+ *   <li><b>Show Surroundings</b> (renamed from "Show surrounding logs" by
+ *   owner mission "Mapping Verification and Investigation Workspace" - see
+ *   `ContextAction.tsx` for the full naming history) - the existing bounded
+ *   ±30s context mechanism, previously reachable *only* from the
+ *   inspector's Request Flow section, i.e. only after already opening an
+ *   event. Surfacing it on the row removes a whole detour from the
+ *   investigation loop. It is rendered only when a caller actually wired
+ *   `onShowContext` **and** the event has a timestamp to centre a window
+ *   on - an event with no parsed timestamp (a malformed line) has no ±30s
+ *   window to show, and a disabled-looking dead entry would be worse than
+ *   its absence.</li>
  * </ul>
  *
  * <p>The action deliberately means "show me the nearby chronological
@@ -101,7 +104,7 @@ export function ActionsCell({
                 onShowContext();
               }}
             >
-              Show surrounding logs
+              Show Surroundings
             </button>
           ) : null}
           {identifiers.length > 0 ? <div className={styles.separator} role="separator" /> : null}

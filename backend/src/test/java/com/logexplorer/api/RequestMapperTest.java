@@ -105,6 +105,16 @@ class RequestMapperTest {
   }
 
   @Test
+  void spanIdFieldMapsToTheSpanIdFilterOnly() {
+    // Owner mission "Mapping Verification and Investigation Workspace" -
+    // View Span reuses this exact generic endpoint.
+    SearchRequest request = mapper.toJourneyDomain(new JourneyRequestDto("local-docker", START, END, "spanId", "s-1", null));
+    assertThat(request.spanId()).isEqualTo("s-1");
+    assertThat(request.journeyId()).isNull();
+    assertThat(request.traceId()).isNull();
+  }
+
+  @Test
   void eventIdFieldMapsToTheEventIdFilterOnly() {
     SearchRequest request = mapper.toJourneyDomain(new JourneyRequestDto("local-docker", START, END, "eventId", "e-1", null));
     assertThat(request.eventId()).isEqualTo("e-1");

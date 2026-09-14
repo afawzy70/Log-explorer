@@ -213,7 +213,7 @@ test.describe('UX-R5 §14 - the context action is reachable from anywhere in the
     await runRealSearch(page);
     await openInspectorAt(page, 3);
 
-    const contextButton = inspector(page).getByRole('button', { name: /show surrounding logs/i });
+    const contextButton = inspector(page).getByRole('button', { name: /show surroundings/i });
     await expect(contextButton).toBeVisible();
 
     // Pre-closure functional recovery (PCFR-1): "sections" are now tabs -
@@ -232,7 +232,7 @@ test.describe('UX-R5 §14 - the context action is reachable from anywhere in the
   test('there is exactly ONE context action in the inspector, never one per section', async ({ page }) => {
     await runRealSearch(page);
     await openInspectorAt(page, 3);
-    await expect(inspector(page).getByRole('button', { name: /show surrounding logs/i })).toHaveCount(1);
+    await expect(inspector(page).getByRole('button', { name: /show surroundings/i })).toHaveCount(1);
   });
 });
 
@@ -240,7 +240,7 @@ test.describe('UX-R5 §16-§24 - the context view', () => {
   test('K/L/M/N: context from the inspector - root marked, summary, gaps', async ({ page }) => {
     await runRealSearch(page);
     await openInspectorAt(page, 3);
-    await inspector(page).getByRole('button', { name: /show surrounding logs/i }).click();
+    await inspector(page).getByRole('button', { name: /show surroundings/i }).click();
     await page.getByRole('button', { name: /^run$/i }).click();
     await expect(page.getByRole('button', { name: /back to original search/i })).toBeVisible({ timeout: 15_000 });
     await captureScreenshot(page, PHASE, 'AFTER-K-context-view-from-inspector');
@@ -266,7 +266,7 @@ test.describe('UX-R5 §16-§24 - the context view', () => {
   test('§20 - the context view is ascending chronological order', async ({ page }) => {
     await runRealSearch(page);
     await openInspectorAt(page, 3);
-    await inspector(page).getByRole('button', { name: /show surrounding logs/i }).click();
+    await inspector(page).getByRole('button', { name: /show surroundings/i }).click();
     await page.getByRole('button', { name: /^run$/i }).click();
     await expect(page.getByRole('button', { name: /back to original search/i })).toBeVisible({ timeout: 15_000 });
 
@@ -281,7 +281,7 @@ test.describe('UX-R5 §16-§24 - the context view', () => {
   test('§18 - the context summary reports only what the data supports', async ({ page }) => {
     await runRealSearch(page);
     await openInspectorAt(page, 3);
-    await inspector(page).getByRole('button', { name: /show surrounding logs/i }).click();
+    await inspector(page).getByRole('button', { name: /show surroundings/i }).click();
     await page.getByRole('button', { name: /^run$/i }).click();
     await expect(page.getByRole('button', { name: /back to original search/i })).toBeVisible({ timeout: 15_000 });
 
@@ -296,7 +296,7 @@ test.describe('UX-R5 §16-§24 - the context view', () => {
     await openInspectorAt(page, 3);
     const identity = await inspector(page).locator('h1').innerText();
 
-    await inspector(page).getByRole('button', { name: /show surrounding logs/i }).click();
+    await inspector(page).getByRole('button', { name: /show surroundings/i }).click();
     await page.getByRole('button', { name: /^run$/i }).click();
     await expect(page.getByRole('button', { name: /back to original search/i })).toBeVisible({ timeout: 15_000 });
     await captureScreenshot(page, PHASE, 'AFTER-O-return-action');
@@ -313,7 +313,7 @@ test.describe('UX-R5 §16-§24 - the context view', () => {
   test('§25 - returning from the ROW-ACTION path does not conjure an inspector', async ({ page }) => {
     await runRealSearch(page);
     await page.getByRole('button', { name: 'Actions for this event' }).nth(3).click();
-    await page.getByRole('menuitem', { name: /show surrounding logs/i }).click();
+    await page.getByRole('menuitem', { name: /show surroundings/i }).click();
     await expect(page.getByRole('button', { name: /back to original search/i })).toBeVisible({ timeout: 15_000 });
 
     await page.getByRole('button', { name: /back to original search/i }).click();
@@ -350,6 +350,28 @@ test.describe('UX-R5 §29 - accessibility', () => {
 
 test.describe('UX-R5 §28 - security', () => {
   test('inspector and context never expose raw protected values, and persist nothing', async ({ page }) => {
+    // Mission "Field Mapping Schema Scan + Masking Policy Extension" §B:
+    // the fresh/default masking state is now OFF - this test is
+    // specifically about the MASKED-display guarantee, so it explicitly
+    // enables masking for all five protected fields first (the real,
+    // current owner-facing workflow). This MUST happen before the search
+    // below: masking is applied server-side at fetch time, so an
+    // already-loaded row's data stays whatever it was when it was
+    // fetched - toggling the policy afterward never retroactively masks
+    // rows already on screen. Reset at the end so this shared-singleton
+    // backend policy never leaks into a later test.
+    await page.goto('/');
+    const protectedLabels = ['CIF', 'Username', 'Customer ID', 'Device ID', 'Device IP'];
+    await page.getByRole('button', { name: /privacy & masking/i }).click();
+    const maskingDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+    await expect(maskingDialog).toBeVisible();
+    for (const label of protectedLabels) {
+      if (!(await maskingDialog.getByLabel(label).isChecked())) {
+        await maskingDialog.getByLabel(label).click();
+      }
+    }
+    await page.getByRole('button', { name: /^close$/i }).click();
+
     await runRealSearch(page);
     await openInspectorAt(page, 3);
 
@@ -367,7 +389,7 @@ test.describe('UX-R5 §28 - security', () => {
     // No reveal/unmask affordance anywhere in the inspector.
     expect(await inspector(page).getByRole('button', { name: /reveal|unmask|show raw/i }).count()).toBe(0);
 
-    await inspector(page).getByRole('button', { name: /show surrounding logs/i }).click();
+    await inspector(page).getByRole('button', { name: /show surroundings/i }).click();
     await page.getByRole('button', { name: /^run$/i }).click();
     await expect(page.getByRole('button', { name: /back to original search/i })).toBeVisible({ timeout: 15_000 });
 
@@ -379,6 +401,19 @@ test.describe('UX-R5 §28 - security', () => {
     expect(stored.local).not.toMatch(/fixture-trace|fixture-corr|Payment authorization/i);
     expect(stored.session).not.toMatch(/fixture-trace|fixture-corr|Payment authorization/i);
     expect(stored.url).not.toMatch(/trace|cif|customer|payment/i);
+
+    // Restore the fresh default (unmasked) so this shared-singleton
+    // backend policy never leaks into a later test in the same run.
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: /privacy & masking/i }).click();
+    const cleanupDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+    await expect(cleanupDialog).toBeVisible();
+    for (const label of protectedLabels) {
+      if (await cleanupDialog.getByLabel(label).isChecked()) {
+        await cleanupDialog.getByLabel(label).click();
+      }
+    }
+    await page.getByRole('button', { name: /^close$/i }).click();
   });
 });
 
@@ -413,7 +448,7 @@ test.describe('UX-R5 §30/§31 - responsive and zoom', () => {
       await runRealSearch(page);
       await setViewport(page, width, 900);
       await openInspectorAt(page, 3);
-      await expect(inspector(page).getByRole('button', { name: /show surrounding logs/i })).toBeVisible();
+      await expect(inspector(page).getByRole('button', { name: /show surroundings/i })).toBeVisible();
       await assertNoHorizontalOverflow(page);
       await captureScreenshot(page, PHASE, name);
     });
@@ -425,7 +460,7 @@ test.describe('UX-R5 §30/§31 - responsive and zoom', () => {
     await openInspectorAt(page, 3);
     await setZoom(page, 200);
 
-    await expect(inspector(page).getByRole('button', { name: /show surrounding logs/i })).toBeVisible();
+    await expect(inspector(page).getByRole('button', { name: /show surroundings/i })).toBeVisible();
     await expect(inspector(page)).toContainText(/Event \d+ of \d+ loaded/);
     await assertNoHorizontalOverflow(page);
     await captureScreenshot(page, PHASE, 'AFTER-U-zoom-200pct');

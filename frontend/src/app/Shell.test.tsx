@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Shell } from './Shell';
 import type { SearchState } from './useSearchState';
 import { emptyAdvancedFilterValues } from '../features/search/advancedFilterFields';
@@ -20,6 +21,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     queryStatistics: false,
     contextView: false,
     composeProjectScoping: false,
+    originalSchemaSampling: true,
   };
   return {
     sources: [{ id: 'fixture', displayName: 'Fixture', capabilities: caps }],
@@ -72,16 +74,40 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     breadcrumbLabel: null,
     contextRootIdentity: null,
     restoreOriginalSearch: vi.fn(),
+    restoreOriginalSearchLabel: 'Back to original search',
     showContext: vi.fn(),
     journeyQuery: null,
     journeyResult: null,
     journeyLoading: false,
     journeyError: null,
+    journeyRootEvent: null,
     openJourney: vi.fn(),
     closeJourney: vi.fn(),
+    fieldMappingProfile: null,
+    fieldMappingProfileError: null,
+    fieldMappingSearchReady: true,
+    refreshFieldMappingProfile: vi.fn(),
+    mappingWorkspaceOpen: false,
+    openMappingWorkspace: vi.fn(),
+    closeMappingWorkspace: vi.fn(),
     ...overrides,
   };
 }
+
+describe('Shell - Mapping Verification workspace entry point (owner mission "Mapping Verification and Investigation Workspace")', () => {
+  it('offers a trigger that opens the real dedicated workspace, never a popover of its own', async () => {
+    const user = userEvent.setup();
+    const openMappingWorkspace = vi.fn();
+    render(
+      <Shell state={baseState({ openMappingWorkspace })} openShiftScope={null} onOpenShiftScopeChanged={vi.fn()} />,
+    );
+    const trigger = screen.getByRole('button', { name: /log schema & field mapping/i });
+    await user.click(trigger);
+    expect(openMappingWorkspace).toHaveBeenCalledTimes(1);
+    // Unlike the old popover implementation, clicking it renders no dialog/panel here at all.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
 
 describe('Shell - active Compose scope visibility (UX-R3 §12)', () => {
   afterEach(() => {
@@ -105,6 +131,7 @@ describe('Shell - active Compose scope visibility (UX-R3 §12)', () => {
       queryStatistics: false,
       contextView: false,
       composeProjectScoping: true,
+      originalSchemaSampling: true,
     };
     render(
       <Shell
@@ -130,6 +157,7 @@ describe('Shell - active Compose scope visibility (UX-R3 §12)', () => {
       queryStatistics: false,
       contextView: false,
       composeProjectScoping: true,
+      originalSchemaSampling: true,
     };
     render(
       <Shell
@@ -159,6 +187,7 @@ describe('Shell - OpenShift ScopeTrail (OS-1F §6)', () => {
     queryStatistics: false,
     contextView: true,
     composeProjectScoping: false,
+    originalSchemaSampling: true,
   };
 
   function renderWithOpenShiftScope(scope: Parameters<typeof Shell>[0]['openShiftScope']) {

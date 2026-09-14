@@ -4,17 +4,39 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.RawSensitiveFields;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Mission "Field Mapping Schema Scan + Masking Policy Extension" §B —
+ * the owner's fresh/default masking state is now OFF (unmasked), superseding
+ * the prior masked-by-default policy — see {@link MaskingPolicyService}'s
+ * own javadoc for the full, preserved history of this decision.
+ *
+ * <p>Most tests in this file exist to verify the MASKING TRANSFORMATION
+ * shape itself (strong/partial/IP masking) — those explicitly force the
+ * field under test to {@code masked=true} in {@link #forceAllMasked()} so
+ * their assertions are completely unaffected by which way the default
+ * points. The tests specifically about DEFAULT policy behavior (the final
+ * section of this file) are rewritten for the new default direction —
+ * never silently left asserting the old, now-false premise.
+ */
 class MaskingServiceTest {
 
-  // Pre-closure functional recovery (§12): every test in this file
-  // exercises the DEFAULT policy (masked=true for all five fields) unless
-  // it explicitly says otherwise - a fresh MaskingPolicyService always
-  // starts fully masked (its own safe default), so this preserves every
-  // existing assertion's exact prior meaning unchanged.
   private final MaskingPolicyService policy = new MaskingPolicyService();
   private final MaskingService service = new MaskingService(policy);
+
+  /** Forces every protected field to masked=true — used by every test that verifies transformation shape, not default policy. */
+  private void forceAllMasked() {
+    for (ProtectedField field : ProtectedField.values()) {
+      policy.setMasked(field, true);
+    }
+  }
+
+  @BeforeEach
+  void maskEverythingByDefaultForShapeTests() {
+    forceAllMasked();
+  }
 
   private MaskedSensitiveFields mask(RawSensitiveFields raw) {
     CanonicalLogEvent event = CanonicalLogEvent.builder().sensitive(raw).build();
@@ -162,21 +184,14 @@ class MaskingServiceTest {
     assertThat(str).isEqualTo("RawSensitiveFields[REDACTED]");
   }
 
-  // --- pre-closure functional recovery (§12/§13/§16) - configurable masking policy ---
-
-  @Test
-  void allFiveFieldsAreMaskedByDefaultEvenBeforeAnyPolicyChange() {
-    RawSensitiveFields raw = new RawSensitiveFields("CIF-1", "user-1", "cust-1", "dev-1", "10.0.0.1");
-    MaskedSensitiveFields masked = mask(raw);
-    assertThat(masked.cif()).isEqualTo("****");
-    assertThat(masked.userName()).isNotEqualTo("user-1");
-    assertThat(masked.customerId()).isNotEqualTo("cust-1");
-    assertThat(masked.deviceId()).isNotEqualTo("dev-1");
-    assertThat(masked.deviceIp()).isNotEqualTo("10.0.0.1");
-  }
+  // --- configurable masking policy — transformation still shape-correct regardless of toggling ---
 
   @Test
   void disablingMaskingForOneFieldReturnsItsRawValueButLeavesTheOtherFourMasked() {
+    // Starts from forceAllMasked() (this file's @BeforeEach) - proves the
+    // toggle-OFF direction still works correctly regardless of the new
+    // default (a user may always choose to mask something the fresh
+    // default leaves unmasked, and later choose to unmask it again).
     policy.setMasked(ProtectedField.CIF, false);
     RawSensitiveFields raw = new RawSensitiveFields("CIF-RAW-VALUE", "user-1", "cust-1", "dev-1", "10.0.0.1");
     MaskedSensitiveFields masked = mask(raw);
@@ -196,39 +211,145 @@ class MaskingServiceTest {
   }
 
   @Test
-  void everyProtectedFieldCanBeIndividuallyUnmaskedWithoutAffectingTheOthers() {
+  void everyProtectedFieldCanBeIndividuallyMaskedWithoutAffectingTheOthers() {
     for (ProtectedField field : ProtectedField.values()) {
       MaskingPolicyService freshPolicy = new MaskingPolicyService();
-      freshPolicy.setMasked(field, false);
+      freshPolicy.setMasked(field, true);
       MaskingService freshService = new MaskingService(freshPolicy);
       RawSensitiveFields raw = new RawSensitiveFields("cif-v", "user-v", "cust-v", "dev-v", "10.0.0.9");
       CanonicalLogEvent event = CanonicalLogEvent.builder().sensitive(raw).build();
       MaskedSensitiveFields masked = freshService.mask(event);
-      // Exactly the one field toggled off is raw; every other field stays masked.
-      assertThat(masked.cif().equals("cif-v")).isEqualTo(field == ProtectedField.CIF);
-      assertThat(masked.userName().equals("user-v")).isEqualTo(field == ProtectedField.USER_NAME);
-      assertThat(masked.customerId().equals("cust-v")).isEqualTo(field == ProtectedField.CUSTOMER_ID);
-      assertThat(masked.deviceId().equals("dev-v")).isEqualTo(field == ProtectedField.DEVICE_ID);
-      assertThat(masked.deviceIp().equals("10.0.0.9")).isEqualTo(field == ProtectedField.DEVICE_IP);
+      // Exactly the one field toggled ON is masked; every other field stays raw (the fresh default).
+      assertThat(masked.cif().equals("cif-v")).isEqualTo(field != ProtectedField.CIF);
+      assertThat(masked.userName().equals("user-v")).isEqualTo(field != ProtectedField.USER_NAME);
+      assertThat(masked.customerId().equals("cust-v")).isEqualTo(field != ProtectedField.CUSTOMER_ID);
+      assertThat(masked.deviceId().equals("dev-v")).isEqualTo(field != ProtectedField.DEVICE_ID);
+      assertThat(masked.deviceIp().equals("10.0.0.9")).isEqualTo(field != ProtectedField.DEVICE_IP);
     }
   }
 
   @Test
-  void resetToDefaultsRestoresFullMaskingAfterFieldsWereDisabled() {
-    policy.setMasked(ProtectedField.CIF, false);
-    policy.setMasked(ProtectedField.DEVICE_IP, false);
+  void resetToDefaultsRestoresUnmaskedStateAfterFieldsWereEnabled() {
+    policy.setMasked(ProtectedField.CIF, true);
+    policy.setMasked(ProtectedField.DEVICE_IP, true);
     policy.resetToDefaults();
     RawSensitiveFields raw = new RawSensitiveFields("CIF-1", null, null, null, "10.0.0.1");
     MaskedSensitiveFields masked = mask(raw);
-    assertThat(masked.cif()).isEqualTo("****");
-    assertThat(masked.deviceIp()).isNotEqualTo("10.0.0.1");
+    assertThat(masked.cif()).isEqualTo("CIF-1");
+    assertThat(masked.deviceIp()).isEqualTo("10.0.0.1");
+  }
+
+  // --- fresh/default state itself (mission §B — DEFAULT_MASKING_STATE=DISABLED) ---
+
+  @Test
+  void aFreshMaskingPolicyServiceStartsFullyUnmaskedTheCurrentOwnerApprovedDefault() {
+    MaskingPolicyService freshPolicy = new MaskingPolicyService();
+    for (ProtectedField field : ProtectedField.values()) {
+      assertThat(freshPolicy.isMasked(field)).isFalse();
+    }
   }
 
   @Test
-  void aFreshMaskingPolicyServiceAlwaysStartsFullyMaskedTheSafeDefault() {
+  void freshStateCifMaskingIsOff() {
+    assertThat(new MaskingPolicyService().isMasked(ProtectedField.CIF)).isFalse();
+  }
+
+  @Test
+  void freshStateUsernameMaskingIsOff() {
+    assertThat(new MaskingPolicyService().isMasked(ProtectedField.USER_NAME)).isFalse();
+  }
+
+  @Test
+  void freshStateCustomerIdMaskingIsOff() {
+    assertThat(new MaskingPolicyService().isMasked(ProtectedField.CUSTOMER_ID)).isFalse();
+  }
+
+  @Test
+  void freshStateDeviceIdMaskingIsOff() {
+    assertThat(new MaskingPolicyService().isMasked(ProtectedField.DEVICE_ID)).isFalse();
+  }
+
+  @Test
+  void freshStateDeviceIpMaskingIsOff() {
+    assertThat(new MaskingPolicyService().isMasked(ProtectedField.DEVICE_IP)).isFalse();
+  }
+
+  @Test
+  void allFiveFieldsAreUnmaskedByDefaultOnAFreshServiceEvenBeforeAnyPolicyChange() {
     MaskingPolicyService freshPolicy = new MaskingPolicyService();
-    for (ProtectedField field : ProtectedField.values()) {
-      assertThat(freshPolicy.isMasked(field)).isTrue();
-    }
+    MaskingService freshService = new MaskingService(freshPolicy);
+    RawSensitiveFields raw = new RawSensitiveFields("CIF-1", "user-1", "cust-1", "dev-1", "10.0.0.1");
+    CanonicalLogEvent event = CanonicalLogEvent.builder().sensitive(raw).build();
+    MaskedSensitiveFields masked = freshService.mask(event);
+    assertThat(masked.cif()).isEqualTo("CIF-1");
+    assertThat(masked.userName()).isEqualTo("user-1");
+    assertThat(masked.customerId()).isEqualTo("cust-1");
+    assertThat(masked.deviceId()).isEqualTo("dev-1");
+    assertThat(masked.deviceIp()).isEqualTo("10.0.0.1");
+  }
+
+  @Test
+  void cifVisibleWhenMaskingOff_maskedWhenOn() {
+    MaskingPolicyService freshPolicy = new MaskingPolicyService();
+    MaskingService freshService = new MaskingService(freshPolicy);
+    RawSensitiveFields raw = new RawSensitiveFields("CIF-2449", null, null, null, null);
+    CanonicalLogEvent event = CanonicalLogEvent.builder().sensitive(raw).build();
+
+    assertThat(freshService.mask(event).cif()).isEqualTo("CIF-2449");
+
+    freshPolicy.setMasked(ProtectedField.CIF, true);
+    assertThat(freshService.mask(event).cif()).isEqualTo("****");
+  }
+
+  @Test
+  void usernameVisibleWhenMaskingOff_maskedWhenOn() {
+    MaskingPolicyService freshPolicy = new MaskingPolicyService();
+    MaskingService freshService = new MaskingService(freshPolicy);
+    RawSensitiveFields raw = new RawSensitiveFields(null, "jane.doe", null, null, null);
+    CanonicalLogEvent event = CanonicalLogEvent.builder().sensitive(raw).build();
+
+    assertThat(freshService.mask(event).userName()).isEqualTo("jane.doe");
+
+    freshPolicy.setMasked(ProtectedField.USER_NAME, true);
+    assertThat(freshService.mask(event).userName()).isEqualTo("ja***oe");
+  }
+
+  @Test
+  void customerIdVisibleWhenMaskingOff_maskedWhenOn() {
+    MaskingPolicyService freshPolicy = new MaskingPolicyService();
+    MaskingService freshService = new MaskingService(freshPolicy);
+    RawSensitiveFields raw = new RawSensitiveFields(null, null, "CUST789012", null, null);
+    CanonicalLogEvent event = CanonicalLogEvent.builder().sensitive(raw).build();
+
+    assertThat(freshService.mask(event).customerId()).isEqualTo("CUST789012");
+
+    freshPolicy.setMasked(ProtectedField.CUSTOMER_ID, true);
+    assertThat(freshService.mask(event).customerId()).isEqualTo("CU***12");
+  }
+
+  @Test
+  void deviceIdVisibleWhenMaskingOff_maskedWhenOn() {
+    MaskingPolicyService freshPolicy = new MaskingPolicyService();
+    MaskingService freshService = new MaskingService(freshPolicy);
+    RawSensitiveFields raw = new RawSensitiveFields(null, null, null, "DEVICE-98765", null);
+    CanonicalLogEvent event = CanonicalLogEvent.builder().sensitive(raw).build();
+
+    assertThat(freshService.mask(event).deviceId()).isEqualTo("DEVICE-98765");
+
+    freshPolicy.setMasked(ProtectedField.DEVICE_ID, true);
+    assertThat(freshService.mask(event).deviceId()).isEqualTo("DE***65");
+  }
+
+  @Test
+  void deviceIpVisibleWhenMaskingOff_maskedWhenOn() {
+    MaskingPolicyService freshPolicy = new MaskingPolicyService();
+    MaskingService freshService = new MaskingService(freshPolicy);
+    RawSensitiveFields raw = new RawSensitiveFields(null, null, null, null, "10.20.30.40");
+    CanonicalLogEvent event = CanonicalLogEvent.builder().sensitive(raw).build();
+
+    assertThat(freshService.mask(event).deviceIp()).isEqualTo("10.20.30.40");
+
+    freshPolicy.setMasked(ProtectedField.DEVICE_IP, true);
+    assertThat(freshService.mask(event).deviceIp()).isEqualTo("10.20.30.***");
   }
 }

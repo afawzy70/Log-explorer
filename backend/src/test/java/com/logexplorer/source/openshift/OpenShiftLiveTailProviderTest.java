@@ -17,6 +17,7 @@ import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.LiveFollowResult;
 import com.logexplorer.core.model.LiveSourceStatus;
 import com.logexplorer.core.model.RawToken;
+import com.logexplorer.core.mapping.FieldMappingProfileService;
 import com.logexplorer.core.parse.LogLineParser;
 import com.logexplorer.core.search.ContextTargetProofCodec;
 import java.net.URI;
@@ -80,7 +81,7 @@ class OpenShiftLiveTailProviderTest {
     client = mock(OpenShiftApiClient.class);
     session = new OpenShiftSession();
     searchProperties = new DirectPodLogProperties();
-    LogLineParser parser = new LogLineParser(new ObjectMapper());
+    LogLineParser parser = new LogLineParser(new ObjectMapper(), new FieldMappingProfileService());
     directPodLogProvider = new DirectPodLogProvider(
         client, session, parser, searchProperties, new ContextTargetProofCodec(new ObjectMapper()));
     liveProperties = new OpenShiftLiveProperties();

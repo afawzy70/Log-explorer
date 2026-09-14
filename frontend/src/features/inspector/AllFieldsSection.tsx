@@ -7,12 +7,23 @@ import styles from './AllFieldsSection.module.css';
 
 /**
  * "All fields" (HANDOVER.md §16.6): searchable key/value view, canonical
- * first, unknown after, raw JSON behind a further `<details>` disclosure.
- * Text rendering only throughout - `<pre>{JSON.stringify(...)}</pre>` is
- * a single text node, never `dangerouslySetInnerHTML` (CLAUDE.md §2 rule
- * 3). Masked values stay masked because `event` itself only ever carries
- * already-masked sensitive fields (see `LogEvent`'s own type comment) -
- * `JSON.stringify(event)` cannot leak anything raw the event doesn't have.
+ * first, unknown after, a re-serialized dump of this already-parsed/masked
+ * event behind a further `<details>` disclosure. Text rendering only
+ * throughout - `<pre>{JSON.stringify(...)}</pre>` is a single text node,
+ * never `dangerouslySetInnerHTML` (CLAUDE.md §2 rule 3). Masked values stay
+ * masked because `event` itself only ever carries already-masked sensitive
+ * fields (see `LogEvent`'s own type comment) - `JSON.stringify(event)`
+ * cannot leak anything raw the event doesn't have.
+ *
+ * <p><b>Terminology (owner mission "Configurable Log Field Mapping +
+ * Original JSON Sampling" §19):</b> this disclosure is labeled "Canonical
+ * Event JSON," never "Raw JSON" — `event` is Log Explorer's own parsed,
+ * normalized, masked representation, not the untouched source log line as
+ * originally ingested. The distinct, genuinely-original source JSON (used
+ * only in the privileged Log Schema & Field Mapping settings workflow, and
+ * never masked there by owner design) lives in
+ * `features/settings/fieldMapping/` — "Original Source JSON" is that
+ * feature's own, deliberately different, term.
  *
  * <p><b>UX-R5 §13 - starts collapsed.</b> This is the canonical escape
  * hatch, not a primary investigation surface: it was 47% of the
@@ -58,7 +69,7 @@ export function AllFieldsSection({ event, sources }: { event: LogEvent; sources:
         </>
       )}
       <details className={styles.rawJson}>
-        <summary>Raw JSON</summary>
+        <summary>Canonical Event JSON</summary>
         <pre className={styles.rawJsonBody}>{JSON.stringify(event, null, 2)}</pre>
       </details>
     </CollapsibleInspectorSection>

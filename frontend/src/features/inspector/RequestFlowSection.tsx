@@ -3,32 +3,37 @@ import { Button } from '../../shared/ui/Button';
 import { copyToClipboard } from '../../shared/browser/clipboard';
 import { buildRequestFlowIdentifiers } from './sections';
 import { EmptySectionNote, InspectorSection } from './InspectorSection';
+import { JOURNEY_ACTION_LABELS } from '../journey/journeyFields';
 import styles from './RequestFlowSection.module.css';
 
 export interface RequestFlowSectionProps {
   event: LogEvent;
-  onOpenJourney: (field: JourneyField, value: string) => void;
+  onOpenJourney: (field: JourneyField, value: string, rootEvent?: LogEvent) => void;
 }
 
 /**
  * "Journey" click actions on non-sensitive IDs (IMPLEMENTATION_PLAN.md
- * "Phase I" scope item 1) are exactly these four - never spanId, which
- * has no "Find this Span" action in the plan's own scope; it still gets
- * Copy like every other identifier here.
+ * "Phase I" scope item 1, extended to spanId by owner mission "Mapping
+ * Verification and Investigation Workspace" - "Investigation Entry
+ * Actions": View Span is a first-class action alongside View Trace / Find
+ * same Correlation / Find same Journey / Find same Event, all five backed
+ * by the one generic `/journey` endpoint, never a duplicate one).
  */
 const JOURNEY_CLICKABLE_FIELDS: ReadonlySet<string> = new Set<JourneyField>([
   'journeyId',
   'correlationId',
   'traceId',
+  'spanId',
   'eventId',
 ]);
 
 /**
  * "Request flow" (HANDOVER.md §16.4): journeyId/correlationId/traceId/
  * spanId/eventId, each with copy (non-sensitive IDs only - every field
- * here already is one) and, for the four Phase I owns ("Find this trace /
- * correlation / journey / event" - HANDOVER.md §17), a click action that
- * opens the journey timeline.
+ * here already is one) and, for all five ("View Trace"/"View Span"/"Find
+ * same Correlation"/"Find same Journey"/"Find same Event" - owner mission
+ * "Mapping Verification and Investigation Workspace"), a click action that
+ * launches the Investigation Workspace, with this event as its root.
  *
  * <p><b>UX-R5 §14 - the "Show surrounding logs" action no longer lives
  * here.</b> It was previously the last control in this section, which
@@ -68,8 +73,11 @@ export function RequestFlowSection({ event, onOpenJourney }: RequestFlowSectionP
                 */}
               <span className={styles.rowActions}>
                 {JOURNEY_CLICKABLE_FIELDS.has(id.field) ? (
-                  <Button variant="ghost" onClick={() => onOpenJourney(id.field as JourneyField, id.value)}>
-                    Find this {id.label}
+                  <Button
+                    variant="ghost"
+                    onClick={() => onOpenJourney(id.field as JourneyField, id.value, event)}
+                  >
+                    {JOURNEY_ACTION_LABELS[id.field as JourneyField]}
                   </Button>
                 ) : null}
                 <Button variant="ghost" onClick={() => void copyToClipboard(id.value)}>

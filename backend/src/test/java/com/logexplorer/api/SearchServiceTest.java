@@ -37,7 +37,7 @@ class SearchServiceTest {
     SearchGuardrails guardrails = new SearchGuardrails(properties);
     ConcurrencyGuard concurrencyGuard = new ConcurrencyGuard(properties);
     LogSourceRegistry registry = new LogSourceRegistry(List.of(stub), new SourcesProperties());
-    return new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()));
+    return new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()), new com.logexplorer.core.mapping.FieldMappingProfileService());
   }
 
   private SearchRequest.Builder baseRequest() {
@@ -155,12 +155,12 @@ class SearchServiceTest {
   @Test
   void rawLogQlIsAllowedForASourceThatAdvertisesTheCapability() {
     StubLogSource lokiLike = new StubLogSource(
-        "openshift-loki", "OpenShift Loki", new SourceCapabilities(true, false, true, false, false, false, false));
+        "openshift-loki", "OpenShift Loki", new SourceCapabilities(true, false, true, false, false, false, false, true));
     lokiLike.withSearchFlux(Flux.fromIterable(events(1)));
     SearchGuardrails guardrails = new SearchGuardrails(properties);
     ConcurrencyGuard concurrencyGuard = new ConcurrencyGuard(properties);
     LogSourceRegistry registry = new LogSourceRegistry(List.of(lokiLike), new SourcesProperties());
-    SearchService service = new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()));
+    SearchService service = new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()), new com.logexplorer.core.mapping.FieldMappingProfileService());
 
     SearchRequest request = SearchRequest.builder()
         .sourceId("openshift-loki").start(NOW.minusSeconds(60)).end(NOW)
@@ -251,7 +251,7 @@ class SearchServiceTest {
     ConcurrencyGuard concurrencyGuard = new ConcurrencyGuard(properties);
     LogSourceRegistry registry = new LogSourceRegistry(List.of(sourceA, sourceB), new SourcesProperties());
     SearchService service =
-        new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()));
+        new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()), new com.logexplorer.core.mapping.FieldMappingProfileService());
 
     SearchRequest requestA = SearchRequest.builder().sourceId("source-a").start(NOW.minusSeconds(60)).end(NOW).build();
     SearchRequest requestB = SearchRequest.builder().sourceId("source-b").start(NOW.minusSeconds(60)).end(NOW).build();

@@ -3,6 +3,7 @@ package com.logexplorer.source.fixture;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.logexplorer.core.mapping.FieldMappingProfileService;
 import com.logexplorer.core.parse.LogLineParser;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -30,8 +31,13 @@ class FixtureLogSourceProfileGatingTest {
     }
 
     @Bean
-    LogLineParser logLineParser(ObjectMapper objectMapper) {
-      return new LogLineParser(objectMapper);
+    FieldMappingProfileService fieldMappingProfileService() {
+      return new FieldMappingProfileService();
+    }
+
+    @Bean
+    LogLineParser logLineParser(ObjectMapper objectMapper, FieldMappingProfileService fieldMappingProfileService) {
+      return new LogLineParser(objectMapper, fieldMappingProfileService);
     }
   }
 

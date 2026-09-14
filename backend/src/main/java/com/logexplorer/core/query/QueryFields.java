@@ -38,6 +38,7 @@ final class QueryFields {
       Map.entry("spanid", CanonicalLogEvent::spanId),
       Map.entry("correlationid", CanonicalLogEvent::correlationId),
       Map.entry("journeyid", CanonicalLogEvent::journeyId),
+      Map.entry("journeyname", CanonicalLogEvent::journeyName),
       Map.entry("eventid", CanonicalLogEvent::eventId),
       Map.entry("errorcode", CanonicalLogEvent::errorCode),
       Map.entry("businessstep", CanonicalLogEvent::businessStep),

@@ -58,6 +58,7 @@ public class EventMapper {
         event.traceId(),
         event.spanId(),
         event.journeyId(),
+        event.journeyName(),
         event.eventId(),
         event.businessStep(),
         event.uiIdentifier(),

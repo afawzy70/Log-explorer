@@ -35,6 +35,30 @@ logging:
     # log search values ... via request/access logs").
     reactor.netty: INFO
     io.netty: INFO
+    # Mission "Configurable Log Field Mapping + Original JSON Sampling" §29
+    # security review finding: Spring's codec/handler classes share one
+    # marker logger (org.springframework.web.HttpLogging - used by
+    # CharSequenceEncoder/StringDecoder and others) for a "Writing"/
+    # "Decoded" DEBUG summary of the raw, pre-parse request/response body
+    # bytes - the wire JSON itself, before any DTO's own toString()
+    # redaction ever runs - truncated to a fixed length, not suppressed.
+    # LogLeakTest's existing sentinel values happen to sit past that
+    # truncation point in its own request shape, so it passed without this
+    # ever being exercised - but a shorter body (e.g. the field-mapping
+    # settings endpoints' own request/response shapes, which legitimately
+    # carry real, unmasked Original Source JSON content by owner design -
+    # mission §4) is not truncated before the sensitive value, and would
+    # log it verbatim. Pinned to INFO for the same reason reactor.netty/
+    # io.netty are: this is a real wire-bytes-logging category, not a
+    # DTO-level concern any redacted toString() could fix on its own. See
+    # FieldMappingSettingsLeakTest.
+    org.springframework.web.HttpLogging: INFO
+    # Different call sites (CharSequenceEncoder direct vs. the shared
+    # HttpLogging marker logger above) route through different logger
+    # names depending on the exact codec path taken - empirically observed
+    # to vary run-to-run for the identical code path, so both are pinned
+    # rather than assuming either alone is sufficient.
+    org.springframework.core.codec: INFO
 
 management:
   endpoints:
