@@ -1959,3 +1959,65 @@ superseded. `HISTORICAL_DECISIONS_PRESERVED=YES`.
 PR #55 required before merge.
 
 ---
+
+## 21. Project-Scoped Schema Scan
+
+`PROJECT_SCOPED_SCHEMA_SCAN` mission — owner clarification received after
+section 20 shipped: the Quick Schema Scan and its saved field-mapping
+profile must never operate on "a whole source" indiscriminately — both
+must be scoped to the exact logical project/namespace/workload the
+investigator selected, on the SAME branch
+(`feature/configurable-log-field-mapping`) and SAME PR (#55), never
+merged into `ux/v2-professional-redesign` (PR #54, untouched).
+
+**Named conflict, applied per CLAUDE.md §5:** SSMP-1's original
+description ("malformed events... excluded from the schema union") is
+refined by this section — a malformed/non-JSON event was still eligible
+to become a `representativeEvents` entry in section 20's design (only
+excluded from `discoveredSchema` itself). This mission tightens that:
+malformed/non-JSON events now belong to their own, separate, diagnostics-
+only list (`diagnosticNonJsonSamples`) and can never appear in
+`representativeEvents` at all (mission §5, PSSS-4 below) — SSMP-1's core
+claim (never pollutes the schema union) remains true and unchanged; only
+the representative-sample eligibility rule tightened.
+
+| ID | NAME | STATUS | EVIDENCE | NOTES |
+|---|---|---|---|---|
+| PSSS-1 | Explicit scan scope — the backend scan request carries/resolves the selected project/workload scope explicitly; never a silent whole-source scan | `VERIFIED` | `core.mapping.MappingScopeKey` (new, `(sourceId, scopeId)` value object, `UNSCOPED`/`UNSPECIFIED` sentinels); `LogSource#resolveMappingScopeLabel(SearchRequest)` (new default interface method — echoes `composeProject` for a request-scoped source, overridden by `OpenShiftLogSource` to defer to the session's own `selectedProject()` instead); `SchemaScanService.scan(sourceId, composeProject, maxEvents)` (new `composeProject` parameter, threaded onto the built `SearchRequest` exactly like a normal search); `FieldMappingSchemaScanController` accepts a new `project` query parameter | `SchemaScanServiceTest.theScanRequestCarriesTheExplicitlySelectedProjectScope`; `FieldMappingSchemaScanControllerIntegrationTest.theProjectQueryParamScopesTheScanAndIsEchoedBackAsTheScopeLabel` |
+| PSSS-2 | Docker project scope — scanning a selected Compose project inspects only that project's own containers/events; other projects are never mixed in | `VERIFIED` | `source.docker.DockerLogSource`'s existing `relevantContainers` filtering (pre-existing, unchanged) already enforces this for real search; `emitFollowedLine`/`searchBlocking` now additionally resolve each event's own `MappingScopeKey` from that CONTAINER's real Compose-project label (`ComposeLabels.project(labels)`), not the request's filter value alone — so even an unfiltered ("all projects") search correctly attributes each event to its own real project's mapping profile, never one global profile | `DockerLogSourceTest.eachContainersOwnRealComposeProjectDrivesWhichFieldMappingProfileParsesItsEvents` (a saved mapping edit for project-a's own scope applies ONLY to project-a's events, even when project-b's events are read in the same unfiltered search); `SchemaScanServiceTest.twoDockerComposeProjectsWithDifferentSchemasDoNotMix`/`.representativeEventsBelongOnlyToTheSelectedScope`; ad hoc real-Docker verification against this sandbox's own live Docker daemon (`POST .../local-docker/field-mapping/schema-scan?project=sofra` returned a real, correctly-scoped result) — see NOTES below on why this is not a committed CI test |
+| PSSS-3 | OpenShift project/namespace scope — scanning uses only the selected project/namespace; namespaces are never mixed | `VERIFIED` | `OpenShiftLogSource#resolveMappingScopeLabel` always defers to `OpenShiftSession#selectedProject()` — server-side session truth, ignoring any client-supplied value entirely (mirrors the pre-existing "session is authoritative, never the request" contract `DirectPodLogProvider`/`OpenShiftLiveTailProvider` already had for real target resolution); both providers now also resolve each parsed event's own `MappingScopeKey` from the real per-target `namespace`, not a single fixed value | `OpenShiftLogSourceTest` (2 tests: resolves the session's real selected project, ignoring a client-supplied `composeProject`; no connection resolves a null scope); `SchemaScanServiceTest.twoOpenShiftNamespacesDoNotMix` (simulated session-scope switch via `StubLogSource#withResolveMappingScopeLabelFn`) |
+| PSSS-4 | Structured vs. noise classification — every scanned event is classified `STRUCTURED_JSON_APPLICATION_EVENT` or `NON_JSON_OR_MALFORMED_EVENT`; only structured events reach the Discovered Source Schema or become a representative mapping sample; non-JSON/infrastructure lines are diagnostics-only and can never become "the" representative sample | `VERIFIED` | `core.mapping.scan.EventClassification` (new enum); `SchemaScanResult`/`SchemaScanResponseDto` now carry TWO separate sample lists — `representativeEvents` (structured only) and `diagnosticNonJsonSamples` (non-JSON/malformed only, capped at `SchemaScanBounds.MAX_DIAGNOSTIC_NON_JSON_SAMPLES=5`) — never merged | `SchemaScanServiceTest.nonJsonLinesNeverBecomeTheRepresentativeMappingSample_onlyDiagnostics`, `.nonJsonMalformedLinesNeverAddFieldsToTheDiscoveredSchema`, `.structuredAndNonJsonLinesInTheSameProjectAreClassifiedAndSeparated`; `FieldMappingSettingsPanel.test.tsx` ("never lets a diagnostic non-JSON sample become a representative mapping sample") |
+| PSSS-5 | Service diversity within the selected project — services observed strictly inside the selected project, never crossing project boundaries | `VERIFIED` | `SchemaScanResult#servicesObserved` — the distinct, sorted set of `CanonicalLogEvent#service()` values among structured events only, accumulated per-scan (naturally bounded to the selected scope, since the scan never reads outside it) | `SchemaScanServiceTest.multipleServicesInsideTheSameProjectAreAllIncluded` |
+| PSSS-6 | Scan summary — selected scope, services observed, events inspected, structured/non-JSON counts, structural variants, discovered paths, all shown clearly | `VERIFIED` | `FieldMappingSettingsPanel.tsx` scan-stats section: "Selected scope: X. Services observed: a, b, c." / "Observed N events (M structured JSON, K non-JSON/malformed excluded..., V structural variants)." | `FieldMappingSettingsPanel.test.tsx` ("shows the selected scope and services observed in the scan summary"); `phase-n-schema-scan-field-mapping.spec.ts` ("the scan summary reports the selected scope truthfully for a source with no project concept") — real browser |
+| PSSS-7 | Project-scoped mapping profile — profiles are associated with `(source, project/namespace)`, never one global mapping forced across unrelated projects | `VERIFIED` | `FieldMappingProfileService` rewritten from a single `AtomicReference<FieldMappingProfile>` to a `ConcurrentHashMap<MappingScopeKey, ScopeState>` — every method (`activeProfile`, `updateCandidates`, `confirmSave`, `resetToDefault`, `isModifiedFromDefault`, `isSearchReady`) now takes a `MappingScopeKey`; no-arg convenience overloads kept, operating on `MappingScopeKey.UNSPECIFIED` only, for the ~15 pre-existing unit tests that exercise mapping mechanics independent of scoping (never used by real production traffic); `FieldMappingSettingsController`'s five endpoints (`GET`/`PUT fields/{field}`/`POST reset`/`POST validate`/`POST save`) all accept optional `sourceId`/`project` query params, resolved via the new `core.mapping.MappingScopeResolver` (defers to `LogSource#resolveMappingScopeLabel`, never a bare client-trusted label) | `FieldMappingProfileServiceTest` (+5 scope-isolation tests); `FieldMappingSettingsControllerIntegrationTest` (+2: scope params echoed back and isolate correctly; omitting both falls back to the legacy scope); `SchemaScanServiceTest.mappingSavedForProjectAIsNotSilentlyReusedForProjectB`/`.mappedPathsNotObservedIsCrossReferencedAgainstTheScannedScopeOwnProfile_notAnotherScope` |
+| PSSS-8 | Search readiness recalculates on project/namespace change; never silently reuses another project's readiness | `VERIFIED` | `api.SearchService#resolveScopeKey` (new) resolves the request's real `MappingScopeKey` (source resolution moved ahead of the readiness check — a deliberate, named-conflict reordering of the old "before the source is even resolved" comment, needed so an OpenShift-style source's session scope can be read) and gates on `isSearchReady(scope)`, not a global flag; frontend `useSearchState#refreshFieldMappingProfile` now scopes to `(selectedSourceId, selectedComposeProject)` and re-fires on either changing; `App.tsx` additionally re-fires it with the resolved OpenShift project whenever `useOpenShiftScopeSummary`'s own scope changes (that hook is lifted above `useSearchState` and owns no field-mapping knowledge of its own) | `FieldMappingReadinessGateTest` (rewritten to resolve real per-source scope, +1 new cross-project-isolation test); `SchemaScanServiceTest.projectChangeChangesActiveMappingAndReadiness` |
+| PSSS-9 | Full regression re-verified after this mission | `VERIFIED` | Backend: 1257/1257 tests pass (1227 pre-existing this branch + 30 new — `MappingScopeKeyTest` 7, `OpenShiftLogSourceTest` 2, `FieldMappingProfileServiceTest` +5, `FieldMappingReadinessGateTest` +1, `SchemaScanServiceTest` +9 net, `FieldMappingSettingsControllerIntegrationTest` +2, `FieldMappingSchemaScanControllerIntegrationTest` +1, `DockerLogSourceTest` +1, plus fixes to 2 pre-existing frontend network-mock tests whose fetch stubs used a now-too-strict `endsWith` match against a URL that legitimately grew query params). Frontend: 901/901 unit tests pass, typecheck clean, production build succeeds. E2E: `phase-n-schema-scan-field-mapping.spec.ts` re-verified (5 tests, one new: scope-truthfulness for an unscoped source) against the real backend `fixture` source | `DESIGN_BRANCH_TOUCHED=NO`, `PR54_TOUCHED=NO` — re-verified: `ux/v2-professional-redesign` and PR #54 SHA unchanged throughout |
+
+**Deferred/blocked, named explicitly (CLAUDE.md §3):** a real, committed
+CI end-to-end test proving "two Docker Compose projects on a live daemon
+never mix" was **not** added — this sandbox's own Docker daemon happens
+to have exactly one real, unrelated Compose project (`sofra`) running,
+which is incidental host state, not a portable fixture; a permanent test
+hardcoded to it would fail in CI or any other environment. The ad hoc
+manual verification against it (recorded under PSSS-2 above) confirms the
+real wiring works end to end, but the durable, portable proof of Docker/
+OpenShift project isolation is the mocked-adapter-level tests
+(`DockerLogSourceTest`, `SchemaScanServiceTest`'s simulated-adapter tests,
+`OpenShiftLogSourceTest`) — exactly the same "real live-cluster
+verification is BLOCKED, mocked-adapter verification is the durable
+evidence" pattern this project's earlier OpenShift missions already
+established.
+
+**Project-Scoped Schema Scan pass (this section).** The Quick Schema Scan
+and the field-mapping profile it feeds are now both scoped to the exact
+project/namespace the investigator selected — never an indiscriminate
+whole-source scan, never one mapping silently shared across unrelated
+projects. `PROJECT_SCOPED_SCHEMA_SCAN=PASS`, `DOCKER_PROJECT_ISOLATION=PASS`,
+`OPENSHIFT_NAMESPACE_ISOLATION=PASS`, `CROSS_PROJECT_SCHEMA_MIXING=NO`,
+`NON_JSON_NOISE_EXCLUDED_FROM_MAPPING_SCHEMA=YES`,
+`PROJECT_SCOPED_MAPPING_PROFILE=PASS`,
+`PROJECT_CHANGE_RECALCULATES_READINESS=YES`.
+`HISTORICAL_DECISIONS_PRESERVED=YES`. `UNTRACKED_OWNER_REQUIREMENTS=0`.
+`MERGE_AUTHORIZED=NO` — owner review of PR #55 required before merge.
+
+---

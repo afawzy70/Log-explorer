@@ -74,6 +74,21 @@ function AppContent() {
   const openShiftScopeState = useOpenShiftScopeSummary(state.selectedSourceId === 'openshift');
   useProductivityShortcuts(state);
 
+  // Owner mission "Project-Scoped Schema Scan" §8 - `useSearchState`'s own
+  // refresh effect already reacts to `selectedSourceId`/`selectedComposeProject`
+  // (Docker's own request-scoped selection), but has no knowledge of
+  // OpenShift's session-based scope (owned by `useOpenShiftScopeSummary`,
+  // lifted here for the same reason as `openShiftScopeState` itself) - so
+  // this source's own project/namespace CHANGE must explicitly recalculate
+  // the field-mapping readiness gate too, never silently keep showing a
+  // previous project's stale readiness.
+  useEffect(() => {
+    if (state.selectedSourceId === 'openshift') {
+      state.refreshFieldMappingProfile(openShiftScopeState.scope?.selectedProject ?? null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.selectedSourceId, openShiftScopeState.scope?.selectedProject]);
+
   const liveModeActive = live.connectionState !== 'idle';
   useLiveKeyboardShortcuts(live, liveModeActive);
 

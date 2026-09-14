@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../../shared/ui/Button';
 import { useDismissableLayer } from '../../../shared/ui/useDismissableLayer';
 import { usePopoverTrigger } from '../../../shared/ui/usePopoverTrigger';
@@ -20,12 +20,22 @@ import styles from './FieldMappingSettingsPanel.module.css';
 export interface FieldMappingSettingsPanelProps {
   /** The currently selected source's id, or `null` when none is selected yet. */
   sourceId: string | null;
+  /**
+   * Owner mission "Project-Scoped Schema Scan" §1/§7/§8 — the currently
+   * selected Compose project (Docker) or resolved OpenShift project/
+   * namespace, or `null` for a source with no sub-project concept or none
+   * selected yet. Threaded onto every scan/settings call so the scan and
+   * the mapping profile it edits are always the SAME scope — never an
+   * indiscriminate whole-source scan, never a silently-reused mapping
+   * from a different project.
+   */
+  project: string | null;
   /** `SourceCapabilities.originalSchemaSampling` for the currently selected source — never inferred from id/name. */
   sourceSupportsSampling: boolean;
-  /** The already-loaded field-mapping profile (fetched once, app-wide — see `useSearchState`'s `fieldMappingProfile`). */
+  /** The already-loaded field-mapping profile for this exact scope (fetched app-wide — see `useSearchState`'s `fieldMappingProfile`). */
   profile: FieldMappingProfileDto | null;
   profileError: string | null;
-  /** Re-fetches the app-wide profile/readiness state — called after any edit/save/reset here so `Toolbar`'s Search gate reflects it immediately, without a page reload. */
+  /** Re-fetches the app-wide profile/readiness state for the current scope — called after any edit/save/reset here so `Toolbar`'s Search gate reflects it immediately, without a page reload. */
   onProfileChanged: () => void;
 }
 
@@ -60,6 +70,7 @@ const DEFAULT_SCAN_MAX_EVENTS = 200;
  */
 export function FieldMappingSettingsPanel({
   sourceId,
+  project,
   sourceSupportsSampling,
   profile,
   profileError,
@@ -103,6 +114,25 @@ export function FieldMappingSettingsPanel({
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Mission §8: changing the selected project/namespace means every
+  // scan/draft/validation result belongs to a scope that no longer
+  // applies - never silently carry a scan or an in-progress edit from one
+  // project's context into another's.
+  useEffect(() => {
+    setScanResult(null);
+    setScanError(null);
+    setSelectedSampleIndex(0);
+    previousScanPathsRef.current = null;
+    setNewlyDiscoveredPaths([]);
+    setDisappearedPaths([]);
+    setDrafts({});
+    setNewCandidateText({});
+    setPickerSelection({});
+    setValidationReport(null);
+    setActionError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceId, project]);
 
   useDismissableLayer(wrapperRef, popover.isOpen, close);
 
@@ -169,7 +199,7 @@ export function FieldMappingSettingsPanel({
     }
     setScanning(true);
     setScanError(null);
-    fetchFieldMappingSchemaScan(sourceId, DEFAULT_SCAN_MAX_EVENTS)
+    fetchFieldMappingSchemaScan(sourceId, project, DEFAULT_SCAN_MAX_EVENTS)
       .then((result) => {
         const previousPaths = previousScanPathsRef.current;
         const currentPaths = new Set(result.discoveredSchema.map((d) => d.path));
@@ -193,7 +223,7 @@ export function FieldMappingSettingsPanel({
     setValidating(true);
     setActionError(null);
     const rawSamples = (scanResult?.representativeEvents ?? []).map((s) => s.originalJson);
-    validateFieldMapping(drafts, rawSamples)
+    validateFieldMapping(drafts, rawSamples, sourceId ?? undefined, project)
       .then(setValidationReport)
       .catch((error: unknown) => setActionError(error instanceof Error ? error.message : 'Validation failed'))
       .finally(() => setValidating(false));
@@ -205,7 +235,7 @@ export function FieldMappingSettingsPanel({
     }
     setSaving(true);
     setActionError(null);
-    saveFieldMappingProfile(validationReport.passed)
+    saveFieldMappingProfile(validationReport.passed, sourceId ?? undefined, project)
       .then(() => {
         setDrafts({});
         setValidationReport(null);
@@ -218,7 +248,7 @@ export function FieldMappingSettingsPanel({
   function runReset() {
     setResetting(true);
     setActionError(null);
-    resetFieldMappingProfile()
+    resetFieldMappingProfile(sourceId ?? undefined, project)
       .then(() => {
         setDrafts({});
         setValidationReport(null);
@@ -288,13 +318,22 @@ export function FieldMappingSettingsPanel({
                     {scanResult ? (
                       <>
                         <p className={styles.scanStats}>
-                          Observed {scanResult.totalEventsInspected} event
-                          {scanResult.totalEventsInspected === 1 ? '' : 's'}
-                          {scanResult.malformedEventsInspected > 0
-                            ? ` (${scanResult.malformedEventsInspected} malformed, excluded from the schema below)`
+                          Selected scope: <strong>{scanResult.scopeLabel ?? 'All (no project selected)'}</strong>.
+                          {scanResult.servicesObserved.length > 0
+                            ? ` Services observed: ${scanResult.servicesObserved.join(', ')}.`
                             : ''}
-                          . This is the <strong>observed</strong> schema from this scan, not a guaranteed-complete one —
-                          a source may still emit shapes this scan didn't happen to see.
+                        </p>
+                        <p className={styles.scanStats}>
+                          Observed {scanResult.totalEventsInspected} event
+                          {scanResult.totalEventsInspected === 1 ? '' : 's'} ({scanResult.structuredJsonEventCount}{' '}
+                          structured JSON
+                          {scanResult.nonJsonEventCount > 0
+                            ? `, ${scanResult.nonJsonEventCount} non-JSON/malformed excluded from the schema below`
+                            : ''}
+                          , {scanResult.structuralVariantCount} structural variant
+                          {scanResult.structuralVariantCount === 1 ? '' : 's'}). This is the{' '}
+                          <strong>observed</strong> schema from this scan, not a guaranteed-complete one — a source may
+                          still emit shapes this scan didn't happen to see.
                         </p>
                         {scanResult.eventLimitReached || scanResult.byteLimitReached || scanResult.durationLimitReached ? (
                           <p className={styles.scanBoundNotice}>
@@ -346,7 +385,6 @@ export function FieldMappingSettingsPanel({
                               {scanResult.representativeEvents.map((sample, index) => (
                                 <option key={index} value={index}>
                                   Sample {index + 1} — {sample.severity}
-                                  {sample.malformed ? ' (malformed)' : ''}
                                 </option>
                               ))}
                             </select>
@@ -354,6 +392,23 @@ export function FieldMappingSettingsPanel({
                               {formatJson(scanResult.representativeEvents[selectedSampleIndex]?.originalJson ?? '')}
                             </pre>
                           </div>
+                        ) : null}
+
+                        {scanResult.diagnosticNonJsonSamples.length > 0 ? (
+                          <details className={styles.advancedEntry}>
+                            <summary>
+                              {scanResult.diagnosticNonJsonSamples.length} non-JSON/malformed line
+                              {scanResult.diagnosticNonJsonSamples.length === 1 ? '' : 's'} (diagnostics only — never
+                              used for field mapping)
+                            </summary>
+                            <ul className={styles.discoveredList}>
+                              {scanResult.diagnosticNonJsonSamples.map((sample, index) => (
+                                <li key={index} className={styles.discoveredRow}>
+                                  <code>{sample.originalJson}</code>
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
                         ) : null}
                       </>
                     ) : (

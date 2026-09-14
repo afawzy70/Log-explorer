@@ -393,27 +393,62 @@ export function isMappingNotReadyError(error: unknown): boolean {
   return error instanceof ApiError && (error.problem as { reason?: string } | undefined)?.reason === 'MAPPING_NOT_READY';
 }
 
-export async function fetchFieldMappingProfile(signal?: AbortSignal): Promise<FieldMappingProfileDto> {
-  const response = await fetch('/api/v1/settings/field-mapping', { signal });
+/**
+ * Owner mission "Project-Scoped Schema Scan" §7/§8 — every field-mapping
+ * settings call is scoped to a real source + selected project/namespace
+ * (Compose project for Docker, the resolved OpenShift project for
+ * OpenShift, `undefined` for a source with no sub-project concept).
+ * Omitting both falls back to the backend's legacy/global scope.
+ */
+function scopeQuery(sourceId?: string, project?: string | null): string {
+  const params = new URLSearchParams();
+  if (sourceId) {
+    params.set('sourceId', sourceId);
+  }
+  if (project) {
+    params.set('project', project);
+  }
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+export async function fetchFieldMappingProfile(
+  sourceId?: string,
+  project?: string | null,
+  signal?: AbortSignal,
+): Promise<FieldMappingProfileDto> {
+  const response = await fetch(`/api/v1/settings/field-mapping${scopeQuery(sourceId, project)}`, { signal });
   return parseJsonOrThrow<FieldMappingProfileDto>(response);
 }
 
 export async function updateFieldMappingCandidates(
   field: CanonicalFieldKey,
   candidatePaths: string[],
+  sourceId?: string,
+  project?: string | null,
   signal?: AbortSignal,
 ): Promise<FieldMappingProfileDto> {
-  const response = await fetch(`/api/v1/settings/field-mapping/fields/${encodeURIComponent(field)}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ candidatePaths }),
-    signal,
-  });
+  const response = await fetch(
+    `/api/v1/settings/field-mapping/fields/${encodeURIComponent(field)}${scopeQuery(sourceId, project)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidatePaths }),
+      signal,
+    },
+  );
   return parseJsonOrThrow<FieldMappingProfileDto>(response);
 }
 
-export async function resetFieldMappingProfile(signal?: AbortSignal): Promise<FieldMappingProfileDto> {
-  const response = await fetch('/api/v1/settings/field-mapping/reset', { method: 'POST', signal });
+export async function resetFieldMappingProfile(
+  sourceId?: string,
+  project?: string | null,
+  signal?: AbortSignal,
+): Promise<FieldMappingProfileDto> {
+  const response = await fetch(`/api/v1/settings/field-mapping/reset${scopeQuery(sourceId, project)}`, {
+    method: 'POST',
+    signal,
+  });
   return parseJsonOrThrow<FieldMappingProfileDto>(response);
 }
 
@@ -425,9 +460,11 @@ export async function resetFieldMappingProfile(signal?: AbortSignal): Promise<Fi
 export async function validateFieldMapping(
   proposedCandidates: Partial<Record<CanonicalFieldKey, string[]>>,
   samples: string[],
+  sourceId?: string,
+  project?: string | null,
   signal?: AbortSignal,
 ): Promise<FieldMappingValidationReport> {
-  const response = await fetch('/api/v1/settings/field-mapping/validate', {
+  const response = await fetch(`/api/v1/settings/field-mapping/validate${scopeQuery(sourceId, project)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ proposedCandidates, samples }),
@@ -437,8 +474,13 @@ export async function validateFieldMapping(
 }
 
 /** `validationPassed` must be the real `passed` value from the most recent {@link validateFieldMapping} call — never hardcoded `true`. */
-export async function saveFieldMappingProfile(validationPassed: boolean, signal?: AbortSignal): Promise<FieldMappingProfileDto> {
-  const response = await fetch('/api/v1/settings/field-mapping/save', {
+export async function saveFieldMappingProfile(
+  validationPassed: boolean,
+  sourceId?: string,
+  project?: string | null,
+  signal?: AbortSignal,
+): Promise<FieldMappingProfileDto> {
+  const response = await fetch(`/api/v1/settings/field-mapping/save${scopeQuery(sourceId, project)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ validationPassed }),
@@ -475,13 +517,21 @@ export async function fetchFieldMappingSamples(
  */
 export async function fetchFieldMappingSchemaScan(
   sourceId: string,
+  project?: string | null,
   maxEvents?: number,
   signal?: AbortSignal,
 ): Promise<SchemaScanResponse> {
-  const query = maxEvents != null ? `?maxEvents=${encodeURIComponent(maxEvents)}` : '';
-  const response = await fetch(`/api/v1/sources/${encodeURIComponent(sourceId)}/field-mapping/schema-scan${query}`, {
-    method: 'POST',
-    signal,
-  });
+  const params = new URLSearchParams();
+  if (project) {
+    params.set('project', project);
+  }
+  if (maxEvents != null) {
+    params.set('maxEvents', String(maxEvents));
+  }
+  const qs = params.toString();
+  const response = await fetch(
+    `/api/v1/sources/${encodeURIComponent(sourceId)}/field-mapping/schema-scan${qs ? `?${qs}` : ''}`,
+    { method: 'POST', signal },
+  );
   return parseJsonOrThrow<SchemaScanResponse>(response);
 }

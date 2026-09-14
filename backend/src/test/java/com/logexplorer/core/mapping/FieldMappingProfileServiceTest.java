@@ -84,4 +84,80 @@ class FieldMappingProfileServiceTest {
         .extracting(JsonPath::raw)
         .containsExactly("cif", "cifId");
   }
+
+  // =====================================================================
+  // Owner mission "Project-Scoped Schema Scan" §7/§8 - scope-aware API
+  // =====================================================================
+
+  @Test
+  void eachScopeStartsSearchReadyOnItsOwnUntouchedBuiltInDefault() {
+    FieldMappingProfileService service = new FieldMappingProfileService();
+    MappingScopeKey scopeA = MappingScopeKey.of("local-docker", "project-a");
+    MappingScopeKey scopeB = MappingScopeKey.of("local-docker", "project-b");
+
+    assertThat(service.isSearchReady(scopeA)).isTrue();
+    assertThat(service.isSearchReady(scopeB)).isTrue();
+    assertThat(service.activeProfile(scopeA).id()).isEqualTo(DefaultFieldMappingProfile.ID);
+  }
+
+  @Test
+  void editingOneScopeNeverAffectsAnotherScopeOnTheSameSource() {
+    FieldMappingProfileService service = new FieldMappingProfileService();
+    MappingScopeKey scopeA = MappingScopeKey.of("local-docker", "project-a");
+    MappingScopeKey scopeB = MappingScopeKey.of("local-docker", "project-b");
+
+    service.updateCandidates(scopeA, CanonicalField.CIF, List.of(JsonPath.parse("cif")));
+
+    assertThat(service.isModifiedFromDefault(scopeA)).isTrue();
+    assertThat(service.isSearchReady(scopeA)).isFalse();
+    assertThat(service.isModifiedFromDefault(scopeB))
+        .as("mission §7: do not force one global mapping across unrelated projects")
+        .isFalse();
+    assertThat(service.isSearchReady(scopeB)).isTrue();
+  }
+
+  @Test
+  void twoDifferentSourcesWithTheSameProjectNameAreStillTwoDistinctScopes() {
+    FieldMappingProfileService service = new FieldMappingProfileService();
+    MappingScopeKey dockerScope = MappingScopeKey.of("local-docker", "shared-name");
+    MappingScopeKey openshiftScope = MappingScopeKey.of("openshift", "shared-name");
+
+    service.updateCandidates(dockerScope, CanonicalField.CIF, List.of(JsonPath.parse("cif")));
+
+    assertThat(service.isModifiedFromDefault(dockerScope)).isTrue();
+    assertThat(service.isModifiedFromDefault(openshiftScope)).isFalse();
+  }
+
+  @Test
+  void confirmSaveAndResetAreFullyScoped() {
+    FieldMappingProfileService service = new FieldMappingProfileService();
+    MappingScopeKey scopeA = MappingScopeKey.of("local-docker", "project-a");
+    MappingScopeKey scopeB = MappingScopeKey.of("local-docker", "project-b");
+
+    service.updateCandidates(scopeA, CanonicalField.CIF, List.of(JsonPath.parse("cif")));
+    service.updateCandidates(scopeB, CanonicalField.CIF, List.of(JsonPath.parse("cifId")));
+    service.confirmSave(scopeA, true);
+
+    assertThat(service.isSearchReady(scopeA)).isTrue();
+    assertThat(service.isSearchReady(scopeB))
+        .as("scope B's own save was never confirmed - it stays blocked regardless of scope A's save")
+        .isFalse();
+
+    FieldMappingProfile resetB = service.resetToDefault(scopeB);
+    assertThat(service.isSearchReady(scopeB)).isTrue();
+    assertThat(resetB.candidates(CanonicalField.CIF)).extracting(JsonPath::raw).containsExactly("mdc.cif");
+    // Scope A's own already-saved, already-ready profile is untouched by resetting scope B.
+    assertThat(service.activeProfile(scopeA).candidates(CanonicalField.CIF)).extracting(JsonPath::raw).containsExactly("cif");
+  }
+
+  @Test
+  void theNoArgConvenienceMethodsOperateOnTheUnspecifiedScopeOnly() {
+    FieldMappingProfileService service = new FieldMappingProfileService();
+    service.updateCandidates(CanonicalField.CIF, List.of(JsonPath.parse("cif")));
+
+    assertThat(service.isSearchReady()).isFalse();
+    assertThat(service.isSearchReady(MappingScopeKey.UNSPECIFIED)).isFalse();
+    // A real, named scope is completely unaffected by the no-arg convenience.
+    assertThat(service.isSearchReady(MappingScopeKey.of("local-docker", "project-a"))).isTrue();
+  }
 }

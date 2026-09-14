@@ -13,6 +13,7 @@ import com.logexplorer.core.guard.SearchGuardrails;
 import com.logexplorer.core.mapping.CanonicalField;
 import com.logexplorer.core.mapping.FieldMappingProfileService;
 import com.logexplorer.core.mapping.JsonPath;
+import com.logexplorer.core.mapping.MappingScopeKey;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.search.PageCursorCodec;
 import com.logexplorer.source.LogSourceRegistry;
@@ -24,12 +25,26 @@ import org.junit.jupiter.api.Test;
 /**
  * Mission §15/§28 — Search must never silently run against an
  * un-validated, edited mapping profile. Covers every required transition:
- * default→ready, invalid-edit→blocked, fixed→ready-again, reset→ready,
- * source-change is irrelevant (the gate is global, not per-source, in this
- * mission's minimum-viable scope — see {@code FieldMappingProfileService}'s
- * own javadoc §13 scope note).
+ * default→ready, invalid-edit→blocked, fixed→ready-again, reset→ready.
+ *
+ * <p><b>Superseded scope note (CLAUDE.md §5 named conflict, owner mission
+ * "Project-Scoped Schema Scan" §8):</b> this file's own earlier comment
+ * said "the gate is global, not per-source" — that is no longer true. The
+ * readiness gate is now evaluated per {@link MappingScopeKey} (source +
+ * selected project/namespace), exactly the same scope {@code
+ * source.docker.DockerLogSource}/{@code source.openshift.OpenShiftLogSource}
+ * resolve for real parsing (see {@code SearchService#resolveScopeKey}).
+ * {@link StubLogSource} has no real project concept (its default {@link
+ * com.logexplorer.source.LogSource#resolveMappingScopeLabel} echoes
+ * {@link SearchRequest#composeProject()}, always {@code null} here), so
+ * every test below resolves to the one stable scope {@link #SCOPE} — used
+ * explicitly, not the {@code MappingScopeKey.UNSPECIFIED} no-arg
+ * convenience, so this file proves the REAL production scope-resolution
+ * path, not a test-only shortcut.
  */
 class FieldMappingReadinessGateTest {
+
+  private static final MappingScopeKey SCOPE = MappingScopeKey.of("stub-source", null);
 
   private SearchService buildService(FieldMappingProfileService mappingService) {
     SearchGuardrailsProperties properties = new SearchGuardrailsProperties();
@@ -57,7 +72,7 @@ class FieldMappingReadinessGateTest {
   @Test
   void invalidRequiredMapping_searchIsBlocked_withAnExplicitReason() {
     FieldMappingProfileService mappingService = new FieldMappingProfileService();
-    mappingService.updateCandidates(CanonicalField.CIF, List.of(JsonPath.parse("cif")));
+    mappingService.updateCandidates(SCOPE, CanonicalField.CIF, List.of(JsonPath.parse("cif")));
     // Deliberately not confirmed/validated yet.
     SearchService service = buildService(mappingService);
 
@@ -70,23 +85,23 @@ class FieldMappingReadinessGateTest {
   @Test
   void mappingFixed_searchEnabledAgain() {
     FieldMappingProfileService mappingService = new FieldMappingProfileService();
-    mappingService.updateCandidates(CanonicalField.CIF, List.of(JsonPath.parse("cif")));
-    mappingService.confirmSave(true);
+    mappingService.updateCandidates(SCOPE, CanonicalField.CIF, List.of(JsonPath.parse("cif")));
+    mappingService.confirmSave(SCOPE, true);
     SearchService service = buildService(mappingService);
 
     service.search(baseRequest().build()).block(); // does not throw
-    assertThat(mappingService.isSearchReady()).isTrue();
+    assertThat(mappingService.isSearchReady(SCOPE)).isTrue();
   }
 
   @Test
   void profileReset_readinessRecalculatedCorrectly() {
     FieldMappingProfileService mappingService = new FieldMappingProfileService();
-    mappingService.updateCandidates(CanonicalField.CIF, List.of(JsonPath.parse("cif")));
-    assertThat(mappingService.isSearchReady()).isFalse();
+    mappingService.updateCandidates(SCOPE, CanonicalField.CIF, List.of(JsonPath.parse("cif")));
+    assertThat(mappingService.isSearchReady(SCOPE)).isFalse();
 
-    mappingService.resetToDefault();
+    mappingService.resetToDefault(SCOPE);
 
-    assertThat(mappingService.isSearchReady()).isTrue();
+    assertThat(mappingService.isSearchReady(SCOPE)).isTrue();
     SearchService service = buildService(mappingService);
     service.search(baseRequest().build()).block(); // does not throw
   }
@@ -94,11 +109,34 @@ class FieldMappingReadinessGateTest {
   @Test
   void failedValidationKeepsSearchBlockedEvenAfterConfirmSaveIsCalled() {
     FieldMappingProfileService mappingService = new FieldMappingProfileService();
-    mappingService.updateCandidates(CanonicalField.CIF, List.of(JsonPath.parse("cif")));
-    mappingService.confirmSave(false); // the frontend's own validate call failed
+    mappingService.updateCandidates(SCOPE, CanonicalField.CIF, List.of(JsonPath.parse("cif")));
+    mappingService.confirmSave(SCOPE, false); // the frontend's own validate call failed
     SearchService service = buildService(mappingService);
 
     assertThatThrownBy(() -> service.search(baseRequest().build()).block())
         .isInstanceOf(GuardrailViolationException.class);
+  }
+
+  @Test
+  void aDifferentProjectOnTheSameSourceIsNotAffectedByAnEditedMapping() {
+    // Owner mission "Project-Scoped Schema Scan" §7/§8 - "Do not reuse a
+    // mapping from another project silently." A Docker-style source with
+    // a real project concept would resolve a DIFFERENT MappingScopeKey
+    // for a different composeProject; this proves the underlying gate
+    // mechanism keyed on scope, not just source, using two explicit keys
+    // on the same sourceId (StubLogSource itself has no composeProject
+    // filtering of its own - the point here is the gate's own data
+    // structure, not Docker-specific filtering, which is covered
+    // separately in SchemaScanServiceTest).
+    MappingScopeKey projectA = MappingScopeKey.of("stub-source", "project-a");
+    MappingScopeKey projectB = MappingScopeKey.of("stub-source", "project-b");
+    FieldMappingProfileService mappingService = new FieldMappingProfileService();
+
+    mappingService.updateCandidates(projectA, CanonicalField.CIF, List.of(JsonPath.parse("cif")));
+
+    assertThat(mappingService.isSearchReady(projectA)).isFalse();
+    assertThat(mappingService.isSearchReady(projectB))
+        .as("mission §7/§8: project B's own mapping is untouched by an edit to project A's")
+        .isTrue();
   }
 }

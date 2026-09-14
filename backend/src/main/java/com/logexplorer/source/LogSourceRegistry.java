@@ -4,6 +4,7 @@ import com.logexplorer.config.SourcesProperties;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.stereotype.Component;
 
 /**
@@ -47,5 +48,18 @@ public class LogSourceRegistry {
       throw new UnknownSourceException(id);
     }
     return source;
+  }
+
+  /**
+   * Owner mission "Project-Scoped Schema Scan" §7 — a non-throwing lookup
+   * for best-effort, no-network-I/O callers (currently only {@code
+   * core.mapping.MappingScopeResolver}, resolving a field-mapping scope
+   * key) that must never fail just because a caller names a source id this
+   * registry doesn't currently know about — unlike {@link #require}, never
+   * distinguishes "unknown" from "disabled," since neither case should
+   * ever surface as a 404/error for a purely local, no-I/O profile lookup.
+   */
+  public Optional<LogSource> find(String id) {
+    return Optional.ofNullable(sources.get(id));
   }
 }

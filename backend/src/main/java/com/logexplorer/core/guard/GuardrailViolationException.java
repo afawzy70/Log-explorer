@@ -33,10 +33,13 @@ public class GuardrailViolationException extends RuntimeException {
     INVALID_CONTEXT_TARGET,
     /**
      * Owner mission "Configurable Log Field Mapping + Original JSON
-     * Sampling" §15 — the active {@code core.mapping.FieldMappingProfile}
-     * has been edited away from the built-in default but not yet
-     * successfully validated-and-saved ({@code
-     * core.mapping.FieldMappingProfileService#isSearchReady()} is false).
+     * Sampling" §15, now evaluated per selected project/namespace scope
+     * (mission "Project-Scoped Schema Scan" §8) — the active {@code
+     * core.mapping.FieldMappingProfile} for the request's own resolved
+     * {@code core.mapping.MappingScopeKey} has been edited away from the
+     * built-in default but not yet successfully validated-and-saved
+     * ({@code core.mapping.FieldMappingProfileService#isSearchReady(MappingScopeKey)}
+     * is false for that scope).
      * Search must never silently run against an unverified mapping and
      * return a truncated/empty-looking result — it is rejected outright,
      * with a message the frontend surfaces directly ("Configure and

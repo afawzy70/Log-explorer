@@ -7,6 +7,7 @@ import com.logexplorer.core.mapping.FieldMappingProfile;
 import com.logexplorer.core.mapping.FieldMappingProfileService;
 import com.logexplorer.core.mapping.FieldMappingResolver;
 import com.logexplorer.core.mapping.JsonPath;
+import com.logexplorer.core.mapping.MappingScopeKey;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.RawSensitiveFields;
 import java.time.Instant;
@@ -80,6 +81,20 @@ public class LogLineParser {
    *     adapter has nothing to add (true for every caller until Phase C/D).
    */
   public CanonicalLogEvent parse(String line, String serviceSourceHint) {
+    return parse(line, serviceSourceHint, MappingScopeKey.UNSPECIFIED);
+  }
+
+  /**
+   * Owner mission "Project-Scoped Schema Scan" §7/§8 — resolves the
+   * active {@link FieldMappingProfile} for the exact scope ({@code
+   * sourceId} + Compose project/OpenShift namespace/logical workload)
+   * this line was actually read from, rather than one global profile.
+   * Every real adapter (Docker, OpenShift, Loki, Fixture) resolves and
+   * passes its own real {@link MappingScopeKey} here; the two shorter
+   * overloads above exist only for scope-agnostic callers (mapping-
+   * mechanics unit tests) and use {@link MappingScopeKey#UNSPECIFIED}.
+   */
+  public CanonicalLogEvent parse(String line, String serviceSourceHint, MappingScopeKey scope) {
     if (line == null) {
       return malformed(null, serviceSourceHint);
     }
@@ -94,7 +109,7 @@ public class LogLineParser {
     if (root == null) {
       return malformed(line, serviceSourceHint);
     }
-    return parseObject(root, line, serviceSourceHint);
+    return parseObject(root, line, serviceSourceHint, scope);
   }
 
   private CanonicalLogEvent malformed(String rawLine, String serviceSourceHint) {
@@ -107,9 +122,9 @@ public class LogLineParser {
   }
 
   @SuppressWarnings("unchecked")
-  private CanonicalLogEvent parseObject(Map<String, Object> root, String rawLine, String serviceSourceHint) {
+  private CanonicalLogEvent parseObject(Map<String, Object> root, String rawLine, String serviceSourceHint, MappingScopeKey scope) {
     CanonicalLogEvent.Builder builder = CanonicalLogEvent.builder();
-    FieldMappingProfile profile = mappingProfileService.activeProfile();
+    FieldMappingProfile profile = mappingProfileService.activeProfile(scope);
     Map<CanonicalField, String> resolved = FieldMappingResolver.resolveAll(root, profile);
 
     String timestampRaw = resolved.get(CanonicalField.TIMESTAMP);

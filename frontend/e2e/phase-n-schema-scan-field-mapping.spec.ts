@@ -75,7 +75,21 @@ test('malformed fixture lines are counted truthfully and excluded from the schem
   const panel = await openMappingPanel(page);
 
   await panel.getByRole('button', { name: /run quick schema scan/i }).click();
-  await expect(panel.getByText(/malformed, excluded from the schema below/i)).toBeVisible({ timeout: 10_000 });
+  await expect(panel.getByText(/non-JSON\/malformed excluded from the schema below/i)).toBeVisible({ timeout: 10_000 });
+
+  await resetMappingProfile(page);
+});
+
+test('the scan summary reports the selected scope truthfully for a source with no project concept', async ({ page }) => {
+  // Owner mission "Project-Scoped Schema Scan" §1/§6: fixture has no
+  // Compose-project/namespace concept, so the scan is unscoped and must
+  // say so honestly, never fabricate a project name.
+  await selectFixtureSource(page);
+  const panel = await openMappingPanel(page);
+
+  await panel.getByRole('button', { name: /run quick schema scan/i }).click();
+  await expect(panel.getByText(/selected scope/i)).toBeVisible({ timeout: 10_000 });
+  await expect(panel.getByText(/all \(no project selected\)/i)).toBeVisible();
 
   await resetMappingProfile(page);
 });

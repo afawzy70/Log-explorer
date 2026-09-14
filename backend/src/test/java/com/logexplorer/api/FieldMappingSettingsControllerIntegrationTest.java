@@ -121,6 +121,66 @@ class FieldMappingSettingsControllerIntegrationTest {
   }
 
   @Test
+  void aSourceIdAndProjectQueryParamScopeTheProfileAndAreEchoedBack() {
+    // Owner mission "Project-Scoped Schema Scan" §7/§8.
+    FieldMappingProfileDto projectA = webTestClient.put()
+        .uri("/api/v1/settings/field-mapping/fields/cif?sourceId=local-docker&project=project-a")
+        .bodyValue(new FieldMappingCandidatesUpdateRequestDto(List.of("cif")))
+        .exchange().expectStatus().isOk().expectBody(FieldMappingProfileDto.class).returnResult().getResponseBody();
+
+    assertThat(projectA).isNotNull();
+    assertThat(projectA.sourceId()).isEqualTo("local-docker");
+    assertThat(projectA.scopeLabel()).isEqualTo("project-a");
+    assertThat(projectA.searchReady()).isFalse();
+
+    // A different project on the SAME source is completely unaffected.
+    FieldMappingProfileDto projectB = webTestClient.get()
+        .uri("/api/v1/settings/field-mapping?sourceId=local-docker&project=project-b")
+        .exchange().expectStatus().isOk().expectBody(FieldMappingProfileDto.class).returnResult().getResponseBody();
+
+    assertThat(projectB).isNotNull();
+    assertThat(projectB.scopeLabel()).isEqualTo("project-b");
+    assertThat(projectB.searchReady())
+        .as("mission: never reuse a mapping from another project silently")
+        .isTrue();
+    var cif = projectB.fields().stream().filter(f -> f.field().equals("cif")).findFirst().orElseThrow();
+    assertThat(cif.candidatePaths()).containsExactly("mdc.cif");
+
+    // Cleanup: this test's own scope is unique to it, but the shared
+    // singleton FieldMappingProfileService bean must never leak edited
+    // scope state into a later test in the same Spring context.
+    webTestClient.post().uri("/api/v1/settings/field-mapping/reset?sourceId=local-docker&project=project-a")
+        .exchange().expectStatus().isOk();
+  }
+
+  @Test
+  void anUnrecognizedSourceIdNeverFailsTheReadinessCheck_realRegressionFoundByE2E() {
+    // A source id the backend genuinely doesn't know about (e.g. one an
+    // E2E test mocks entirely client-side, never registered here) must
+    // never make this endpoint throw/404 - that would make Search look
+    // permanently "mapping not ready" for a reason that has nothing to do
+    // with the mapping itself.
+    FieldMappingProfileDto dto = webTestClient.get()
+        .uri("/api/v1/settings/field-mapping?sourceId=totally-unknown-source&project=whatever")
+        .exchange().expectStatus().isOk().expectBody(FieldMappingProfileDto.class).returnResult().getResponseBody();
+
+    assertThat(dto).isNotNull();
+    assertThat(dto.sourceId()).isEqualTo("totally-unknown-source");
+    assertThat(dto.scopeLabel()).isEqualTo("whatever");
+    assertThat(dto.searchReady()).isTrue();
+  }
+
+  @Test
+  void omittingSourceIdAndProjectFallsBackToTheLegacyUnscopedProfile() {
+    FieldMappingProfileDto dto = webTestClient.get().uri("/api/v1/settings/field-mapping")
+        .exchange().expectStatus().isOk().expectBody(FieldMappingProfileDto.class).returnResult().getResponseBody();
+
+    assertThat(dto).isNotNull();
+    assertThat(dto.sourceId()).isNull();
+    assertThat(dto.scopeLabel()).isNull();
+  }
+
+  @Test
   void resetRestoresTheBuiltInDefaultAndSearchReadiness() {
     webTestClient.put().uri("/api/v1/settings/field-mapping/fields/cif")
         .bodyValue(new FieldMappingCandidatesUpdateRequestDto(List.of("cif")))

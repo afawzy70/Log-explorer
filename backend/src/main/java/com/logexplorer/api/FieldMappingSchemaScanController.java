@@ -18,19 +18,32 @@ import reactor.core.publisher.Mono;
 
 /**
  * Quick Schema Scan (owner mission "Field Mapping Schema Scan + Masking
- * Policy Extension" §A) — nested under {@code /sources/{sourceId}}, same
+ * Policy Extension" §A, project-scoped per owner mission "Project-Scoped
+ * Schema Scan" §1) — nested under {@code /sources/{sourceId}}, same
  * convention as {@link FieldMappingSampleController}, and {@code POST} for
  * the same reason (a real bounded read against the live source).
  *
- * <p>New mapping-setup workflow (mission §A, §C): Connect Source → Quick
- * Schema Scan (this endpoint) → Review Original Event Samples → Review
- * Discovered Source Schema → Map Fields ({@link FieldMappingSettingsController})
- * → Validate → Save → Search. The pre-existing {@code /samples} endpoint on
- * {@link FieldMappingSampleController} is left unchanged for backward
- * compatibility (mission §23-style discipline: never remove a working
- * surface) but the new frontend workflow uses this endpoint instead, since
- * it returns both the bounded raw representative samples AND the
- * discovered path union together.
+ * <p><b>Explicit scope</b> (mission §1 — "SCAN_SCOPE_EXPLICIT"): {@code
+ * project} is the caller-selected Compose project (Docker) or OpenShift
+ * project/namespace context — threaded straight to {@link
+ * SchemaScanService#scan}, which resolves the source's own authoritative
+ * scope via {@code LogSource#resolveMappingScopeLabel} rather than trusting
+ * this parameter blindly for a source (OpenShift) whose real scope is
+ * server-side session state. {@code null}/omitted means "this source's
+ * default scope" (no project filter for Docker; whatever OpenShift's
+ * session currently has selected).
+ *
+ * <p>New mapping-setup workflow (mission "Field Mapping Schema Scan..."
+ * §A/§C, extended by "Project-Scoped Schema Scan"): Select Source → Select
+ * Project/Namespace → Quick Schema Scan (this endpoint) → Review Original
+ * Event Samples → Review Discovered Source Schema (for that scope only) →
+ * Map Fields ({@link FieldMappingSettingsController}) → Validate → Save
+ * (that scope's own profile) → Search Ready. The pre-existing {@code
+ * /samples} endpoint on {@link FieldMappingSampleController} is left
+ * unchanged for backward compatibility (mission §23-style discipline:
+ * never remove a working surface) but the new frontend workflow uses this
+ * endpoint instead, since it returns both the bounded raw representative
+ * samples AND the discovered path union together.
  *
  * <p>Stateless — see {@link SchemaScanService}'s own javadoc.
  */
@@ -46,12 +59,17 @@ public class FieldMappingSchemaScanController {
 
   @PostMapping("/schema-scan")
   public Mono<SchemaScanResponseDto> scan(
-      @PathVariable String sourceId, @RequestParam(required = false) Integer maxEvents) {
-    return scanService.scan(sourceId, maxEvents).map(this::toDto);
+      @PathVariable String sourceId,
+      @RequestParam(required = false) String project,
+      @RequestParam(required = false) Integer maxEvents) {
+    return scanService.scan(sourceId, project, maxEvents).map(this::toDto);
   }
 
   private SchemaScanResponseDto toDto(SchemaScanResult result) {
     List<OriginalEventSampleDto> samples = result.representativeEvents().stream()
+        .map(this::toDto)
+        .toList();
+    List<OriginalEventSampleDto> diagnostics = result.diagnosticNonJsonSamples().stream()
         .map(this::toDto)
         .toList();
     List<DiscoveredPathEntryDto> schema = result.discoveredSchema().stream()
@@ -59,19 +77,24 @@ public class FieldMappingSchemaScanController {
         .toList();
     return new SchemaScanResponseDto(
         result.sourceId(),
+        result.scopeLabel(),
+        result.servicesObserved(),
         result.totalEventsInspected(),
-        result.malformedEventsInspected(),
+        result.structuredJsonEventCount(),
+        result.nonJsonEventCount(),
+        result.structuralVariantCount(),
         result.totalBytesInspected(),
         result.eventLimitReached(),
         result.byteLimitReached(),
         result.durationLimitReached(),
         samples,
+        diagnostics,
         schema,
         result.mappedPathsNotObserved());
   }
 
   private OriginalEventSampleDto toDto(OriginalEventSample sample) {
-    return new OriginalEventSampleDto(sample.originalJson(), sample.severity(), sample.malformed());
+    return new OriginalEventSampleDto(sample.originalJson(), sample.severity(), sample.classification().name());
   }
 
   private DiscoveredPathEntryDto toDto(DiscoveredPathEntry entry) {

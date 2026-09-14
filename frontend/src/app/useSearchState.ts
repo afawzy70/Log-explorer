@@ -319,16 +319,34 @@ export function useSearchState() {
   const [fieldMappingProfile, setFieldMappingProfile] = useState<FieldMappingProfileDto | null>(null);
   const [fieldMappingProfileError, setFieldMappingProfileError] = useState<string | null>(null);
 
-  const refreshFieldMappingProfile = useCallback(() => {
-    fetchFieldMappingProfile()
-      .then((result) => {
-        setFieldMappingProfile(result);
+  /**
+   * Owner mission "Project-Scoped Schema Scan" §7/§8 — scoped to a real
+   * source + selected project/namespace so the readiness gate reflects
+   * THAT scope's own saved mapping, never a single global one.
+   * `overrideProject`, when passed, wins over `selectedComposeProject`
+   * (Docker's own request-scoped selection) — used by `App.tsx` to pass
+   * the resolved OpenShift project instead, since this hook has no
+   * knowledge of OpenShift scope itself (owned by `useOpenShiftScopeSummary`).
+   */
+  const refreshFieldMappingProfile = useCallback(
+    (overrideProject?: string | null) => {
+      if (!selectedSourceId) {
+        setFieldMappingProfile(null);
         setFieldMappingProfileError(null);
-      })
-      .catch((error: unknown) =>
-        setFieldMappingProfileError(error instanceof Error ? error.message : 'Failed to load log field mapping settings'),
-      );
-  }, []);
+        return;
+      }
+      const project = overrideProject !== undefined ? overrideProject : selectedComposeProject;
+      fetchFieldMappingProfile(selectedSourceId, project)
+        .then((result) => {
+          setFieldMappingProfile(result);
+          setFieldMappingProfileError(null);
+        })
+        .catch((error: unknown) =>
+          setFieldMappingProfileError(error instanceof Error ? error.message : 'Failed to load log field mapping settings'),
+        );
+    },
+    [selectedSourceId, selectedComposeProject],
+  );
 
   useEffect(() => {
     refreshFieldMappingProfile();

@@ -25,6 +25,8 @@ const mockValidate = vi.mocked(validateFieldMapping);
 
 function baseProfile(overrides: Partial<FieldMappingProfileDto> = {}): FieldMappingProfileDto {
   return {
+    sourceId: 'fixture',
+    scopeLabel: null,
     fields: [
       { field: 'cif', displayName: 'CIF', sensitive: true, candidatePaths: ['mdc.cif'] },
       { field: 'journeyName', displayName: 'Journey Name', sensitive: false, candidatePaths: [] },
@@ -39,13 +41,18 @@ function baseProfile(overrides: Partial<FieldMappingProfileDto> = {}): FieldMapp
 function scanResult(overrides: Partial<SchemaScanResponse> = {}): SchemaScanResponse {
   return {
     sourceId: 'fixture',
+    scopeLabel: null,
+    servicesObserved: [],
     totalEventsInspected: 1,
-    malformedEventsInspected: 0,
+    structuredJsonEventCount: 1,
+    nonJsonEventCount: 0,
+    structuralVariantCount: 1,
     totalBytesInspected: 20,
     eventLimitReached: false,
     byteLimitReached: false,
     durationLimitReached: false,
-    representativeEvents: [{ originalJson: '{"cif":"2449"}', severity: 'INFO', malformed: false }],
+    representativeEvents: [{ originalJson: '{"cif":"2449"}', severity: 'INFO', classification: 'STRUCTURED_JSON_APPLICATION_EVENT' }],
+    diagnosticNonJsonSamples: [],
     discoveredSchema: [{ path: 'cif', observedTypes: ['STRING'], occurrenceCount: 1, coveragePercentage: 100 }],
     mappedPathsNotObserved: [],
     ...overrides,
@@ -57,6 +64,7 @@ function renderPanel(overrides: Partial<Parameters<typeof FieldMappingSettingsPa
   const utils = render(
     <FieldMappingSettingsPanel
       sourceId="fixture"
+      project={null}
       sourceSupportsSampling
       profile={baseProfile()}
       profileError={null}
@@ -138,7 +146,7 @@ describe('FieldMappingSettingsPanel', () => {
 
     await runScan(user);
 
-    await waitFor(() => expect(mockScan).toHaveBeenCalledWith('fixture', 200));
+    await waitFor(() => expect(mockScan).toHaveBeenCalledWith('fixture', null, 200));
     await waitFor(() => expect(screen.getAllByText(/2449/).length).toBeGreaterThan(0));
     expect(screen.getByText(/observed 1 event/i)).toBeInTheDocument();
     expect(screen.getByText(/representative original event sample/i)).toBeInTheDocument();
@@ -163,12 +171,13 @@ describe('FieldMappingSettingsPanel', () => {
     expect(screen.queryByText(/^original json$/i)).not.toBeInTheDocument();
   });
 
-  it('reports malformed events and scan-bound notices truthfully', async () => {
+  it('reports structured/non-JSON classification and scan-bound notices truthfully', async () => {
     const user = userEvent.setup();
     mockScan.mockResolvedValue(
       scanResult({
         totalEventsInspected: 5,
-        malformedEventsInspected: 2,
+        structuredJsonEventCount: 3,
+        nonJsonEventCount: 2,
         eventLimitReached: true,
       }),
     );
@@ -176,8 +185,40 @@ describe('FieldMappingSettingsPanel', () => {
     await open(user);
     await runScan(user);
 
-    expect(screen.getByText(/2 malformed/i)).toBeInTheDocument();
+    expect(screen.getByText(/2 non-JSON\/malformed excluded/i)).toBeInTheDocument();
     expect(screen.getByText(/event limit reached/i)).toBeInTheDocument();
+  });
+
+  it('shows the selected scope and services observed in the scan summary', async () => {
+    const user = userEvent.setup();
+    mockScan.mockResolvedValue(scanResult({ scopeLabel: 'boubyan-platform', servicesObserved: ['gateway', 'iam'] }));
+    renderPanel({ project: 'boubyan-platform' });
+    await open(user);
+    await runScan(user);
+
+    expect(mockScan).toHaveBeenCalledWith('fixture', 'boubyan-platform', 200);
+    expect(screen.getByText('boubyan-platform', { exact: false })).toBeInTheDocument();
+    expect(screen.getByText(/gateway, iam/i)).toBeInTheDocument();
+  });
+
+  it('never lets a diagnostic non-JSON sample become a representative mapping sample', async () => {
+    const user = userEvent.setup();
+    mockScan.mockResolvedValue(
+      scanResult({
+        diagnosticNonJsonSamples: [
+          { originalJson: 'NOT-JSON some infra line', severity: 'UNKNOWN', classification: 'NON_JSON_OR_MALFORMED_EVENT' },
+        ],
+      }),
+    );
+    renderPanel();
+    await open(user);
+    await runScan(user);
+
+    expect(screen.getByText(/non-JSON\/malformed line/i)).toBeInTheDocument();
+    expect(screen.getByText(/diagnostics only.*never used for field mapping/i)).toBeInTheDocument();
+    // The diagnostic sample's text is never selectable as a representative Original Event Sample.
+    const sampleSelect = screen.getByLabelText(/representative original event sample/i);
+    expect(within(sampleSelect).queryByText(/NOT-JSON/i)).not.toBeInTheDocument();
   });
 
   it('rescan diffs discovered paths against the previous scan without touching the saved mapping', async () => {
@@ -361,7 +402,7 @@ describe('FieldMappingSettingsPanel', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /save mapping/i })).toBeEnabled());
 
     await user.click(screen.getByRole('button', { name: /save mapping/i }));
-    await waitFor(() => expect(mockSave).toHaveBeenCalledWith(false));
+    await waitFor(() => expect(mockSave).toHaveBeenCalledWith(false, 'fixture', null));
   });
 
   it('a successful save calls onProfileChanged so the app-wide readiness state re-syncs', async () => {

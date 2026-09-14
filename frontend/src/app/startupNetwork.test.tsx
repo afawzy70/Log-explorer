@@ -61,8 +61,8 @@ describe('startup network requests', () => {
         if (url.endsWith('/actuator/info')) {
           return jsonResponse({});
         }
-        if (url.endsWith('/api/v1/settings/field-mapping')) {
-          return jsonResponse({ fields: [], modifiedFromDefault: false, searchReady: true });
+        if (url.includes('/api/v1/settings/field-mapping')) {
+          return jsonResponse({ sourceId: 'fixture', scopeLabel: null, fields: [], modifiedFromDefault: false, searchReady: true });
         }
         throw new Error(`Unexpected fetch in startup-network test: ${url}`);
       }),
@@ -79,13 +79,16 @@ describe('startup network requests', () => {
     await waitFor(() => expect(calls.some((u) => u.includes('/services'))).toBe(true));
     await waitFor(() => expect(calls.some((u) => u.includes('/health'))).toBe(true));
     await waitFor(() => expect(calls.some((u) => u.endsWith('/actuator/info'))).toBe(true));
-    await waitFor(() => expect(calls.some((u) => u.endsWith('/api/v1/settings/field-mapping'))).toBe(true));
+    await waitFor(() => expect(calls.some((u) => u.includes('/api/v1/settings/field-mapping'))).toBe(true));
 
     const sourcesCalls = calls.filter((u) => u.endsWith('/api/v1/sources'));
     const infoCalls = calls.filter((u) => u.endsWith('/actuator/info'));
     const servicesCalls = calls.filter((u) => u.includes('/services'));
     const healthCalls = calls.filter((u) => u.includes('/health'));
-    const fieldMappingCalls = calls.filter((u) => u.endsWith('/api/v1/settings/field-mapping'));
+    // Owner mission "Project-Scoped Schema Scan" §7/§8 - this call now
+    // always carries `?sourceId=...` (and `project` once a project is
+    // selected), never a bare, scope-less URL.
+    const fieldMappingCalls = calls.filter((u) => u.includes('/api/v1/settings/field-mapping'));
 
     expect(sourcesCalls).toHaveLength(1);
     expect(infoCalls).toHaveLength(1);

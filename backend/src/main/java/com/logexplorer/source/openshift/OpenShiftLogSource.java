@@ -186,4 +186,22 @@ public class OpenShiftLogSource implements LogSource {
   public Mono<LiveFollowResult> followWithStatus(FollowRequest request) {
     return Mono.fromSupplier(liveTailProvider::follow);
   }
+
+  /**
+   * Owner mission "Project-Scoped Schema Scan" §3/§8 — this source's real
+   * scope is always the session's currently connected/selected OpenShift
+   * project (mission §5: "this source always reads live target identity
+   * from {@code OpenShiftSession#scope()} itself... never from
+   * caller-supplied fields"), never anything the client could pass on
+   * {@code request} — {@code SearchRequest} has no OpenShift-namespace
+   * field at all, deliberately. Both {@link DirectPodLogProvider} and
+   * {@link OpenShiftLiveTailProvider} resolve this exact same value
+   * per-target when they build each {@code CanonicalLogEvent} (their own
+   * {@code namespace} field), so a scan/search here and the mapping
+   * profile it reads are always keyed identically.
+   */
+  @Override
+  public String resolveMappingScopeLabel(SearchRequest request) {
+    return session.selectedProject();
+  }
 }

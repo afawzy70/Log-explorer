@@ -476,15 +476,26 @@ export interface CanonicalFieldMapping {
   candidatePaths: string[];
 }
 
-/** `GET/PUT/POST` response shape for every `/api/v1/settings/field-mapping` endpoint. */
+/**
+ * `GET/PUT/POST` response shape for every `/api/v1/settings/field-mapping`
+ * endpoint. `sourceId`/`scopeLabel` (owner mission "Project-Scoped Schema
+ * Scan" §7/§8) echo back exactly which source + Compose project/OpenShift
+ * namespace this profile belongs to — `null` for the legacy/global scope
+ * (no `sourceId`/`project` query params supplied) or a source with no
+ * sub-project concept.
+ */
 export interface FieldMappingProfileDto {
+  sourceId: string | null;
+  scopeLabel: string | null;
   fields: CanonicalFieldMapping[];
   modifiedFromDefault: boolean;
   /**
-   * Whether `/api/v1/logs/search` will currently accept a request for ANY
-   * source - `false` the moment a field is edited, until a validate-and-
-   * save round trip with a passing report completes. See `useSearchState`'s
-   * `fieldMappingSearchReady` state, which mirrors this value app-wide.
+   * Whether `/api/v1/logs/search` will currently accept a request for THIS
+   * scope - `false` the moment a field is edited, until a validate-and-
+   * save round trip with a passing report completes. Recalculated per
+   * scope (mission §8): changing the selected project/namespace changes
+   * this value. See `useSearchState`'s `fieldMappingSearchReady` state,
+   * which mirrors this value app-wide for the currently selected scope.
    */
   searchReady: boolean;
 }
@@ -525,17 +536,24 @@ export interface FieldMappingSampleResponse {
   samples: string[];
 }
 
+/** Owner mission "Project-Scoped Schema Scan" §5 — the two classification buckets every scanned event falls into. */
+export type EventClassification = 'STRUCTURED_JSON_APPLICATION_EVENT' | 'NON_JSON_OR_MALFORMED_EVENT';
+
 /**
  * Owner mission "Field Mapping Schema Scan + Masking Policy Extension" §A
  * — one bounded, real, unmasked Original Event Sample from a Quick Schema
  * Scan. Never called "Original JSON" in the UI when referring to the
  * *union* — this type is the real per-event sample; {@link
  * DiscoveredSchemaPathEntry} is the generated union (mission §A5).
+ * `classification` (owner mission "Project-Scoped Schema Scan" §5)
+ * determines whether this sample can ever appear as a `representativeEvents`
+ * entry (`STRUCTURED_JSON_APPLICATION_EVENT` only) or only a
+ * `diagnosticNonJsonSamples` entry.
  */
 export interface OriginalEventSample {
   originalJson: string;
   severity: string;
-  malformed: boolean;
+  classification: EventClassification;
 }
 
 /** One row of the "Discovered Source Schema" union (mission §A4/§A7) — schema metadata only, never a raw value. */
@@ -548,21 +566,33 @@ export interface DiscoveredSchemaPathEntry {
 
 /**
  * `POST /api/v1/sources/{id}/field-mapping/schema-scan` response (mission
- * §A). `representativeEvents` are real, unmasked Original Event Samples —
- * hold only in component state, never `localStorage`, exactly like {@link
- * FieldMappingSampleResponse}. The `*LimitReached` flags say truthfully
- * which bound (if any) ended the scan early — the UI must present this
- * schema as "Observed," never "Complete/Guaranteed" (mission §A11).
+ * §A, project-scoped per owner mission "Project-Scoped Schema Scan" §1/§6).
+ * `scopeLabel` is the real, resolved Compose project/OpenShift namespace
+ * this scan ran against — `null` for a source with no sub-project concept
+ * or none selected. `servicesObserved` is the distinct set of services
+ * seen strictly inside that scope (mission §4/§6). `representativeEvents`
+ * are real, unmasked Original Event Samples, structured JSON only — hold
+ * only in component state, never `localStorage`, exactly like {@link
+ * FieldMappingSampleResponse}. `diagnosticNonJsonSamples` are non-JSON/
+ * malformed lines shown for diagnostics only — never used for field
+ * mapping (mission §5). The `*LimitReached` flags say truthfully which
+ * bound (if any) ended the scan early — the UI must present this schema as
+ * "Observed," never "Complete/Guaranteed" (mission §A11).
  */
 export interface SchemaScanResponse {
   sourceId: string;
+  scopeLabel: string | null;
+  servicesObserved: string[];
   totalEventsInspected: number;
-  malformedEventsInspected: number;
+  structuredJsonEventCount: number;
+  nonJsonEventCount: number;
+  structuralVariantCount: number;
   totalBytesInspected: number;
   eventLimitReached: boolean;
   byteLimitReached: boolean;
   durationLimitReached: boolean;
   representativeEvents: OriginalEventSample[];
+  diagnosticNonJsonSamples: OriginalEventSample[];
   discoveredSchema: DiscoveredSchemaPathEntry[];
   /** Saved mapping candidate paths (mission §A9) that this scan did not observe anywhere in the current source data. */
   mappedPathsNotObserved: string[];

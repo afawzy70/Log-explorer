@@ -69,8 +69,8 @@ describe('persistence: nothing ever written to localStorage/sessionStorage/the U
           capturedSearchBody = String(init.body);
           return jsonResponse({ events: [], counts: { estimatedTotal: 0, returned: 0, visible: 0, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN });
         }
-        if (url.endsWith('/api/v1/settings/field-mapping')) {
-          return jsonResponse({ fields: [], modifiedFromDefault: false, searchReady: true });
+        if (url.includes('/api/v1/settings/field-mapping')) {
+          return jsonResponse({ sourceId: 'fixture', scopeLabel: null, fields: [], modifiedFromDefault: false, searchReady: true });
         }
         throw new Error(`Unexpected fetch: ${url}`);
       }),
@@ -213,8 +213,8 @@ describe('persistence: nothing ever written to localStorage/sessionStorage/the U
             queryPlan: EMPTY_QUERY_PLAN,
           });
         }
-        if (url.endsWith('/api/v1/settings/field-mapping')) {
-          return jsonResponse({ fields: [], modifiedFromDefault: false, searchReady: true });
+        if (url.includes('/api/v1/settings/field-mapping')) {
+          return jsonResponse({ sourceId: 'fixture', scopeLabel: null, fields: [], modifiedFromDefault: false, searchReady: true });
         }
         throw new Error(`Unexpected fetch: ${url}`);
       }),

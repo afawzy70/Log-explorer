@@ -45,6 +45,16 @@ public final class SchemaScanBounds {
   /** Maximum number of actual raw original-JSON events retained as representative samples. */
   public static final int MAX_REPRESENTATIVE_EVENTS = 20;
 
+  /**
+   * Owner mission "Project-Scoped Schema Scan" §5 — maximum non-JSON/
+   * malformed (infrastructure noise) lines retained for diagnostics only.
+   * Deliberately much smaller than {@link #MAX_REPRESENTATIVE_EVENTS}:
+   * these are never used for schema discovery or field mapping, only shown
+   * so a user can see WHY a line was excluded, not to be inspected in
+   * depth.
+   */
+  public static final int MAX_DIAGNOSTIC_NON_JSON_SAMPLES = 5;
+
   /** Maximum object-nesting depth the structural walker descends into for any one event. */
   public static final int MAX_WALK_DEPTH = 8;
 

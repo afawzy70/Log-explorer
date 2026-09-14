@@ -48,6 +48,21 @@ class FieldMappingSchemaScanControllerIntegrationTest {
       stub.withSearchFlux(Flux.empty());
       return stub;
     }
+
+    /** Owner mission "Project-Scoped Schema Scan" §1/§2 — simulates a real Docker-style multi-project source. */
+    @Bean
+    StubLogSource multiProjectSchemaScanTestSource() {
+      StubLogSource stub = new StubLogSource("schema-scan-multi-project-source", "Schema Scan Multi-Project Source",
+          new SourceCapabilities(true, false, false, false, false, false, true, true));
+      stub.withSearchFluxFn(request -> "boubyan-platform".equals(request.composeProject())
+          ? Flux.just(CanonicalLogEvent.builder().timestamp(Instant.parse("2026-01-01T00:00:00Z"))
+              .sourceTimestamp(Instant.parse("2026-01-01T00:00:00Z")).severity("INFO")
+              .originalRawJson("{\"iamField\":\"1\"}").build())
+          : Flux.just(CanonicalLogEvent.builder().timestamp(Instant.parse("2026-01-01T00:00:00Z"))
+              .sourceTimestamp(Instant.parse("2026-01-01T00:00:00Z")).severity("INFO")
+              .originalRawJson("{\"otherField\":\"1\"}").build()));
+      return stub;
+    }
   }
 
   @Autowired
@@ -81,5 +96,25 @@ class FieldMappingSchemaScanControllerIntegrationTest {
   void unknownSourceReturns4xx() {
     webTestClient.post().uri("/api/v1/sources/does-not-exist/field-mapping/schema-scan")
         .exchange().expectStatus().is4xxClientError();
+  }
+
+  @Test
+  void theProjectQueryParamScopesTheScanAndIsEchoedBackAsTheScopeLabel() {
+    SchemaScanResponseDto boubyan = webTestClient.post()
+        .uri("/api/v1/sources/schema-scan-multi-project-source/field-mapping/schema-scan?project=boubyan-platform")
+        .exchange().expectStatus().isOk().expectBody(SchemaScanResponseDto.class).returnResult().getResponseBody();
+    SchemaScanResponseDto other = webTestClient.post()
+        .uri("/api/v1/sources/schema-scan-multi-project-source/field-mapping/schema-scan?project=other-project")
+        .exchange().expectStatus().isOk().expectBody(SchemaScanResponseDto.class).returnResult().getResponseBody();
+
+    assertThat(boubyan).isNotNull();
+    assertThat(boubyan.scopeLabel()).isEqualTo("boubyan-platform");
+    assertThat(boubyan.discoveredSchema()).extracting(SchemaScanResponseDto.DiscoveredPathEntryDto::path)
+        .containsExactly("iamField");
+
+    assertThat(other).isNotNull();
+    assertThat(other.scopeLabel()).isEqualTo("other-project");
+    assertThat(other.discoveredSchema()).extracting(SchemaScanResponseDto.DiscoveredPathEntryDto::path)
+        .containsExactly("otherField");
   }
 }

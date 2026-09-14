@@ -170,4 +170,30 @@ public interface LogSource {
   default List<String> describeScopeWarnings(SearchRequest request) {
     return List.of();
   }
+
+  /**
+   * Owner mission "Project-Scoped Schema Scan" §1/§8 — the real logical
+   * scope (Compose project, OpenShift namespace/project, or {@code null}
+   * for "no project"/no sub-project concept) THIS source will actually
+   * resolve and parse {@code request}'s events against — the authoritative
+   * value a caller (the search-readiness gate, the Quick Schema Scan) uses
+   * to build a {@code core.mapping.MappingScopeKey}, so a scan/search and
+   * the mapping profile it reads are always keyed identically.
+   *
+   * <p>The default simply echoes {@link SearchRequest#composeProject()} —
+   * correct for every source whose real scope genuinely IS whatever the
+   * client requested (Docker; see {@code
+   * source.docker.DockerLogSource#relevantContainers} for the matching
+   * real filter), and harmlessly {@code null} for a source with no project
+   * concept at all (Fixture, Loki). Only {@code
+   * source.openshift.OpenShiftLogSource} overrides this, because its real
+   * scope is resolved from server-side session state (the currently
+   * connected/selected OpenShift project), never from anything a client
+   * can pass on {@code request} — the same reason {@code composeProject}
+   * was never given an OpenShift equivalent field on {@link SearchRequest}
+   * in the first place.
+   */
+  default String resolveMappingScopeLabel(SearchRequest request) {
+    return request.composeProject();
+  }
 }

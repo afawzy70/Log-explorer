@@ -24,7 +24,10 @@ import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.SearchResult;
 import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceHealth;
+import com.logexplorer.core.mapping.CanonicalField;
 import com.logexplorer.core.mapping.FieldMappingProfileService;
+import com.logexplorer.core.mapping.JsonPath;
+import com.logexplorer.core.mapping.MappingScopeKey;
 import com.logexplorer.core.parse.LogLineParser;
 import com.logexplorer.core.search.PageCursorCodec;
 import com.logexplorer.config.DockerRemoteAllowlistProperties;
@@ -52,6 +55,7 @@ class DockerLogSourceTest {
   private DockerProperties properties;
   private DockerLogSource source;
   private RemoteHostGuard remoteHostGuard;
+  private FieldMappingProfileService mappingProfileService;
 
   @BeforeEach
   void setUp() throws Exception {
@@ -63,7 +67,8 @@ class DockerLogSourceTest {
     DockerClientFactory factory = mock(DockerClientFactory.class);
     when(factory.create(properties)).thenReturn(mockClient);
 
-    LogLineParser parser = new LogLineParser(new ObjectMapper(), new FieldMappingProfileService());
+    mappingProfileService = new FieldMappingProfileService();
+    LogLineParser parser = new LogLineParser(new ObjectMapper(), mappingProfileService);
     remoteHostGuard = new RemoteHostGuard(new DockerRemoteAllowlistProperties(), InetAddress::getAllByName);
     source = new DockerLogSource(factory, properties, parser, remoteHostGuard);
   }
@@ -667,6 +672,40 @@ class DockerLogSourceTest {
         .collectList().block();
     assertThat(fromB).extracting(CanonicalLogEvent::message).containsExactly("MARKER-PROJECT-B-ONLY");
     assertThat(fromB).extracting(CanonicalLogEvent::composeProject).containsOnly("project-b");
+  }
+
+  @Test
+  void eachContainersOwnRealComposeProjectDrivesWhichFieldMappingProfileParsesItsEvents() {
+    // Owner mission "Project-Scoped Schema Scan" §2/§7/§8 - a saved
+    // mapping edit for project-a's own scope must apply to project-a's
+    // events and MUST NOT leak into project-b's events read in the SAME,
+    // unfiltered (no composeProject requested) search - each event is
+    // keyed by its OWN container's real Compose project label, never a
+    // single global profile.
+    MappingScopeKey scopeA = MappingScopeKey.of("local-docker", "project-a");
+    mappingProfileService.updateCandidates(scopeA, CanonicalField.CIF, List.of(JsonPath.parse("topLevelCif")));
+
+    Container projectAApi = container("a1", "project-a-api-1", "project-a", "api", "running");
+    Container projectBApi = container("b1", "project-b-api-1", "project-b", "api", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(projectAApi, projectBApi));
+    String lineWithTopLevelCif = "2026-01-01T00:00:00.000000000Z "
+        + "{\"@timestamp\":\"2026-01-01T00:00:00.000000000Z\",\"message\":\"m\",\"application\":\"api\","
+        + "\"topLevelCif\":\"RAW-CIF-A\",\"mdc\":{}}\n";
+    stubLogs("a1", lineWithTopLevelCif);
+    stubLogs("b1", lineWithTopLevelCif);
+
+    // No composeProject filter - both containers' events are returned together.
+    List<CanonicalLogEvent> events = source.search(wideOpenRequest().build()).collectList().block();
+
+    CanonicalLogEvent fromProjectA = events.stream().filter(e -> "project-a".equals(e.composeProject())).findFirst().orElseThrow();
+    CanonicalLogEvent fromProjectB = events.stream().filter(e -> "project-b".equals(e.composeProject())).findFirst().orElseThrow();
+
+    assertThat(fromProjectA.sensitive().cif())
+        .as("project-a's own saved mapping (topLevelCif) resolves CIF for project-a's event")
+        .isEqualTo("RAW-CIF-A");
+    assertThat(fromProjectB.sensitive().cif())
+        .as("project-b's event is untouched by project-a's mapping edit - still the untouched default (mdc.cif), which this line doesn't have")
+        .isNull();
   }
 
   @Test

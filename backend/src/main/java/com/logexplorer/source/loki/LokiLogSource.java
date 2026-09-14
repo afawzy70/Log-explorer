@@ -1,6 +1,7 @@
 package com.logexplorer.source.loki;
 
 import com.logexplorer.config.LokiProperties;
+import com.logexplorer.core.mapping.MappingScopeKey;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.ServiceInfo;
@@ -208,7 +209,12 @@ public class LokiLogSource implements LogSource {
           continue;
         }
         String line = value.get(1);
-        CanonicalLogEvent parsed = parser.parse(line, serviceHint);
+        // Project-Scoped Schema Scan mission §3 - Loki's own configured
+        // stream namespace is a fixed, source-level scope (not a
+        // per-request user selection today), so one stable key per source
+        // is correct and already isolation-safe (there is only ever one).
+        MappingScopeKey scope = MappingScopeKey.of(id(), properties.getNamespace());
+        CanonicalLogEvent parsed = parser.parse(line, serviceHint, scope);
         CanonicalLogEvent enriched = parsed.toBuilder()
             .sourceId(id())
             .namespace(labels == null ? null : labels.get(properties.getNamespaceLabelKey()))

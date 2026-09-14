@@ -621,29 +621,50 @@ Open **Settings → Log Schema & Field Mapping**. The steps, in order:
 1. **Connect** — make sure the source you want to configure is selected
    and connected (Docker, OpenShift, etc. — see their own sections
    above).
-2. **Run a Quick Schema Scan** — click to scan a bounded batch of real,
-   recent events directly from your source (not a full search). Unlike a
+2. **Select the project/namespace** — for a source with a real
+   sub-project concept (a Docker Compose project, an OpenShift project/
+   namespace), pick the specific one you want to configure using that
+   source's own scope selector (the same selector you already use to
+   scope search itself). **The scan and the mapping you save both apply
+   to that exact scope only** — a different project on the same source
+   has its own completely separate mapping, never silently shared with
+   this one. A source with no sub-project concept (Fixture, Loki) skips
+   this step.
+3. **Run a Quick Schema Scan** — click to scan a bounded batch of real,
+   recent events **from the selected project/namespace only** (not the
+   whole source, and never mixed with another project's events). Unlike a
    single sample, the scan deliberately looks for *diversity* — different
-   severities (INFO/WARN/ERROR/...) and different JSON shapes — because
-   different kinds of events in the same source often carry different
-   fields (an error event's stack trace field, for example, may never
-   appear on an INFO event). The scan is bounded (by default up to 200
-   events, a few seconds, and a few megabytes) and always tells you
-   truthfully if a limit was hit before it finished.
-3. **Review Original Event Samples** — a small set of the real events the
-   scan actually saw, shown exactly as your source sent them, before Log
-   Explorer changes anything. This is different from the Inspector's
-   "Canonical Event JSON" (§11) — that one shows Log Explorer's own
-   normalized version of an event; this one shows the untouched original.
-4. **Review the Discovered Source Schema** — a table of every JSON path
-   the scan found across all the events it inspected, with how many
-   events had it and what type of value it held. Real field names and
-   nesting are exactly what they are in your source — `cif`, `cifId`,
-   `customer.cif`, `mdc.cif` are all shown as genuinely distinct paths,
-   never blurred together. This table is labeled **observed**, not
-   complete — a scan can only report what it actually saw; it is not a
-   mathematical proof that no other shape exists in your source.
-5. **Map fields** — for each canonical field Log Explorer understands
+   severities (INFO/WARN/ERROR/...), different services within that same
+   project, and different JSON shapes — because different kinds of events
+   often carry different fields (an error event's stack trace field, for
+   example, may never appear on an INFO event). The scan is bounded (by
+   default up to 200 events, a few seconds, and a few megabytes) and
+   always tells you truthfully if a limit was hit before it finished. The
+   summary line shows the selected scope, which services were observed
+   inside it, how many events were structured JSON versus non-JSON/
+   infrastructure noise (e.g. a proxy's own access-log line), and how
+   many distinct JSON shapes (structural variants) were found.
+4. **Review Original Event Samples** — a small set of the real,
+   structured-JSON events the scan actually saw **in that scope**, shown
+   exactly as your source sent them, before Log Explorer changes
+   anything. This is different from the Inspector's "Canonical Event
+   JSON" (§11) — that one shows Log Explorer's own normalized version of
+   an event; this one shows the untouched original. Non-JSON/
+   infrastructure lines never appear here — they are excluded from field
+   mapping entirely and, when present, are shown separately under a
+   collapsed "non-JSON/malformed lines (diagnostics only)" section, purely
+   so you can see why they were excluded — never usable as a mapping
+   sample.
+5. **Review the Discovered Source Schema** — a table of every JSON path
+   the scan found across all the structured events it inspected in this
+   scope, with how many events had it and what type of value it held.
+   Real field names and nesting are exactly what they are in your source
+   — `cif`, `cifId`, `customer.cif`, `mdc.cif` are all shown as genuinely
+   distinct paths, never blurred together. This table is labeled
+   **observed**, not complete — a scan can only report what it actually
+   saw; it is not a mathematical proof that no other shape exists in this
+   scope.
+6. **Map fields** — for each canonical field Log Explorer understands
    (CIF, Username, Customer ID, Trace ID, Journey Name, and so on), pick
    a path directly from the Discovered Source Schema using the dropdown
    picker next to each field — the normal way to map a field now, no
@@ -654,24 +675,32 @@ Open **Settings → Log Schema & Field Mapping**. The steps, in order:
    sometimes use `cif` and sometimes `mdc.cif`, add both. An "Advanced:
    enter a path manually" option remains available for a path the scan
    didn't happen to discover.
-6. **Validate** — run your mapping against the samples the scan
-   collected. You'll see, per field, whether it was actually found, what
-   real value it resolved to, and whether any path has a mistake in it.
-7. **Save** — commits your mapping. You can only save after a validation
-   that found no path mistakes.
-8. **Search becomes available again** — if Search was temporarily
-   disabled because your mapping needed attention (see below), saving a
-   valid mapping turns it back on immediately.
+7. **Validate** — run your mapping against the samples the scan
+   collected for this scope. You'll see, per field, whether it was
+   actually found, what real value it resolved to, and whether any path
+   has a mistake in it.
+8. **Save** — commits your mapping **for the selected project/namespace
+   only**. You can only save after a validation that found no path
+   mistakes.
+9. **Search becomes available again** — if Search was temporarily
+   disabled because this scope's own mapping needed attention (see
+   below), saving a valid mapping turns it back on immediately, for that
+   scope. Switching to a different project/namespace immediately
+   recalculates whether Search is ready **for that other scope's own
+   saved mapping** — it is never silently treated as ready or blocked
+   because of what you just did somewhere else.
 
 A **Reset to defaults** action is always available if you want to
-discard your changes and go back to the built-in mapping.
+discard your changes for the currently selected scope and go back to the
+built-in mapping.
 
 ### Rescanning
 
 If your source's log shape changes later, click **Rescan** to run the
-scan again at any time. Rescanning never changes your saved mapping by
-itself — it only refreshes the Original Event Samples and Discovered
-Source Schema, and:
+scan again at any time, for the currently selected project/namespace.
+Rescanning never changes your saved mapping by itself — it only refreshes
+the Original Event Samples and Discovered Source Schema for that same
+scope, and:
 
 - Highlights any path that's **newly discovered** since your last scan.
 - Highlights any path that was seen before but is **no longer

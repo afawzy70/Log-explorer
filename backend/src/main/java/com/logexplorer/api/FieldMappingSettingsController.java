@@ -11,6 +11,8 @@ import com.logexplorer.core.mapping.FieldMappingProfileService;
 import com.logexplorer.core.mapping.FieldMappingValidationService;
 import com.logexplorer.core.mapping.InvalidJsonPathException;
 import com.logexplorer.core.mapping.JsonPath;
+import com.logexplorer.core.mapping.MappingScopeKey;
+import com.logexplorer.core.mapping.MappingScopeResolver;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -35,6 +38,16 @@ import org.springframework.web.server.ResponseStatusException;
  * controller's own doc comment) — the person running the backend and the
  * person using the browser are the same person on the same machine.
  *
+ * <p><b>Project-scoped</b> (owner mission "Project-Scoped Schema Scan"
+ * §7/§8): every endpoint now accepts optional {@code sourceId}/{@code
+ * project} query parameters, resolved via {@link MappingScopeResolver} into
+ * the exact same {@link MappingScopeKey} real search/scan traffic uses —
+ * never a client-trusted label alone for a source (OpenShift) whose real
+ * scope is server-side session state. Omitting both falls back to {@link
+ * MappingScopeKey#UNSPECIFIED} (the legacy/global scope) — a caller that
+ * doesn't know its scope yet still gets a safe, working default rather than
+ * an error, but every real frontend call now always supplies both.
+ *
  * <p>All request/response bodies here — including {@link
  * FieldMappingValidationRequestDto#samples} and {@link
  * FieldMappingValidationReportDto}'s example values — carry real, unmasked
@@ -47,35 +60,49 @@ public class FieldMappingSettingsController {
 
   private final FieldMappingProfileService profileService;
   private final FieldMappingValidationService validationService;
+  private final MappingScopeResolver scopeResolver;
 
   public FieldMappingSettingsController(
-      FieldMappingProfileService profileService, FieldMappingValidationService validationService) {
+      FieldMappingProfileService profileService, FieldMappingValidationService validationService,
+      MappingScopeResolver scopeResolver) {
     this.profileService = profileService;
     this.validationService = validationService;
+    this.scopeResolver = scopeResolver;
   }
 
   @GetMapping
-  public FieldMappingProfileDto current() {
-    return toDto(profileService.activeProfile(), profileService.isModifiedFromDefault(), profileService.isSearchReady());
+  public FieldMappingProfileDto current(
+      @RequestParam(required = false) String sourceId, @RequestParam(required = false) String project) {
+    MappingScopeKey scope = scopeResolver.resolve(sourceId, project);
+    return toDto(scope, profileService.activeProfile(scope), profileService.isModifiedFromDefault(scope), profileService.isSearchReady(scope));
   }
 
   @PutMapping("/fields/{field}")
   public FieldMappingProfileDto updateField(
-      @PathVariable String field, @RequestBody FieldMappingCandidatesUpdateRequestDto request) {
+      @PathVariable String field,
+      @RequestParam(required = false) String sourceId,
+      @RequestParam(required = false) String project,
+      @RequestBody FieldMappingCandidatesUpdateRequestDto request) {
+    MappingScopeKey scope = scopeResolver.resolve(sourceId, project);
     CanonicalField canonicalField = resolveField(field);
     List<JsonPath> candidates = parseCandidatesOrReject(request.candidatePaths());
-    profileService.updateCandidates(canonicalField, candidates);
-    return toDto(profileService.activeProfile(), profileService.isModifiedFromDefault(), profileService.isSearchReady());
+    profileService.updateCandidates(scope, canonicalField, candidates);
+    return toDto(scope, profileService.activeProfile(scope), profileService.isModifiedFromDefault(scope), profileService.isSearchReady(scope));
   }
 
   @PostMapping("/reset")
-  public FieldMappingProfileDto reset() {
-    FieldMappingProfile def = profileService.resetToDefault();
-    return toDto(def, profileService.isModifiedFromDefault(), profileService.isSearchReady());
+  public FieldMappingProfileDto reset(
+      @RequestParam(required = false) String sourceId, @RequestParam(required = false) String project) {
+    MappingScopeKey scope = scopeResolver.resolve(sourceId, project);
+    FieldMappingProfile def = profileService.resetToDefault(scope);
+    return toDto(scope, def, profileService.isModifiedFromDefault(scope), profileService.isSearchReady(scope));
   }
 
   @PostMapping("/validate")
-  public FieldMappingValidationReportDto validate(@RequestBody FieldMappingValidationRequestDto request) {
+  public FieldMappingValidationReportDto validate(
+      @RequestParam(required = false) String sourceId, @RequestParam(required = false) String project,
+      @RequestBody FieldMappingValidationRequestDto request) {
+    MappingScopeKey scope = scopeResolver.resolve(sourceId, project);
     Map<CanonicalField, List<String>> proposed = new EnumMap<>(CanonicalField.class);
     if (request.proposedCandidates() != null) {
       for (Map.Entry<String, List<String>> entry : request.proposedCandidates().entrySet()) {
@@ -84,15 +111,18 @@ public class FieldMappingSettingsController {
     }
     List<String> samples = request.samples() == null ? List.of() : request.samples();
     FieldMappingValidationService.MappingValidationReport report =
-        validationService.validate(proposed, profileService.activeProfile(), samples);
+        validationService.validate(proposed, profileService.activeProfile(scope), samples);
     return toReportDto(report);
   }
 
   @PostMapping("/save")
-  public FieldMappingProfileDto save(@RequestBody FieldMappingSaveRequestDto request) {
+  public FieldMappingProfileDto save(
+      @RequestParam(required = false) String sourceId, @RequestParam(required = false) String project,
+      @RequestBody FieldMappingSaveRequestDto request) {
+    MappingScopeKey scope = scopeResolver.resolve(sourceId, project);
     boolean validationPassed = Boolean.TRUE.equals(request.validationPassed());
-    profileService.confirmSave(validationPassed);
-    return toDto(profileService.activeProfile(), profileService.isModifiedFromDefault(), profileService.isSearchReady());
+    profileService.confirmSave(scope, validationPassed);
+    return toDto(scope, profileService.activeProfile(scope), profileService.isModifiedFromDefault(scope), profileService.isSearchReady(scope));
   }
 
   private CanonicalField resolveField(String key) {
@@ -120,14 +150,15 @@ public class FieldMappingSettingsController {
     return parsed;
   }
 
-  private FieldMappingProfileDto toDto(FieldMappingProfile profile, boolean modified, boolean ready) {
+  private FieldMappingProfileDto toDto(MappingScopeKey scope, FieldMappingProfile profile, boolean modified, boolean ready) {
     List<FieldMappingProfileDto.CanonicalFieldMappingDto> fields = new ArrayList<>();
     for (CanonicalField field : CanonicalField.values()) {
       fields.add(new FieldMappingProfileDto.CanonicalFieldMappingDto(
           field.key(), field.displayName(), field.sensitive(),
           profile.candidates(field).stream().map(JsonPath::raw).toList()));
     }
-    return new FieldMappingProfileDto(fields, modified, ready);
+    String reportedSourceId = scope == MappingScopeKey.UNSPECIFIED ? null : scope.sourceId();
+    return new FieldMappingProfileDto(reportedSourceId, scope.displayScope(), fields, modified, ready);
   }
 
   private FieldMappingValidationReportDto toReportDto(FieldMappingValidationService.MappingValidationReport report) {

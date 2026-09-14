@@ -2,6 +2,7 @@ package com.logexplorer.source.docker;
 
 import com.github.dockerjava.api.model.Container;
 import com.logexplorer.config.DockerProperties;
+import com.logexplorer.core.mapping.MappingScopeKey;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.FollowRequest;
 import com.logexplorer.core.model.SearchRequest;
@@ -268,7 +269,13 @@ public class DockerLogSource implements LogSource {
   }
 
   private void emitFollowedLine(FluxSink<CanonicalLogEvent> sink, Container container, Map<String, String> labels, DockerLogLine line) {
-    CanonicalLogEvent parsed = parser.parse(line.content(), ComposeLabels.service(labels));
+    // Project-Scoped Schema Scan mission §2/§8 - keyed to THIS container's
+    // own real Compose project label, not the request's (possibly absent)
+    // filter value - a caller with no project filter selected still gets
+    // events from multiple real projects correctly attributed to their
+    // own distinct scopes, never merged into one.
+    MappingScopeKey scope = MappingScopeKey.of(id(), ComposeLabels.project(labels));
+    CanonicalLogEvent parsed = parser.parse(line.content(), ComposeLabels.service(labels), scope);
     CanonicalLogEvent enriched = parsed.toBuilder()
         .sourceId(id())
         .composeProject(ComposeLabels.project(labels))
@@ -348,7 +355,9 @@ public class DockerLogSource implements LogSource {
     List<CanonicalLogEvent> events = new ArrayList<>(merged.size());
     for (ContainerLine cl : merged) {
       Map<String, String> labels = cl.container().getLabels();
-      CanonicalLogEvent parsed = parser.parse(cl.line().content(), ComposeLabels.service(labels));
+      // Project-Scoped Schema Scan mission §2/§8 - see emitFollowedLine's matching comment.
+      MappingScopeKey scope = MappingScopeKey.of(id(), ComposeLabels.project(labels));
+      CanonicalLogEvent parsed = parser.parse(cl.line().content(), ComposeLabels.service(labels), scope);
       CanonicalLogEvent enriched = parsed.toBuilder()
           .sourceId(id())
           .composeProject(ComposeLabels.project(labels))

@@ -266,15 +266,18 @@ Explorer was never told which JSON path it lives at for your specific
 source's log format — this is the exact defect that motivated **Settings
 → Log Schema & Field Mapping** (§19 of the User Guide) to exist.
 
-**What to do:** open **Settings → Log Schema & Field Mapping**, run a
-**Quick Schema Scan** against the affected source, and check the
-**Discovered Source Schema** table — find the field's real path (it
-might be a top-level key, or nested differently than the default mapping
-expects). Add that path as an additional candidate for the relevant
-canonical field directly from the discovered-paths picker, then Validate
-and Save. You do not need to remove the existing default path — you can
-list several candidate paths for one field, and Log Explorer tries them
-in order.
+**What to do:** open **Settings → Log Schema & Field Mapping**. If the
+source has a real project/namespace concept (Docker Compose, OpenShift),
+make sure you have the *same* project/namespace selected there that you
+were searching in — a mapping saved for one project never silently
+applies to another. Run a **Quick Schema Scan** against that scope, and
+check the **Discovered Source Schema** table — find the field's real path
+(it might be a top-level key, or nested differently than the default
+mapping expects). Add that path as an additional candidate for the
+relevant canonical field directly from the discovered-paths picker, then
+Validate and Save. You do not need to remove the existing default path —
+you can list several candidate paths for one field, and Log Explorer
+tries them in order.
 
 ---
 
@@ -282,27 +285,40 @@ in order.
 
 **Likely cause:** you (or someone else using this installation) started
 editing the field mapping in **Settings → Log Schema & Field Mapping**
-but haven't finished validating and saving it yet. Log Explorer disables
-Search in this state on purpose, rather than running it against a
-mapping it can't yet vouch for — see §19 of the User Guide.
+for the currently selected project/namespace but haven't finished
+validating and saving it yet. Log Explorer disables Search for that
+specific scope on purpose, rather than running it against a mapping it
+can't yet vouch for — see §19 of the User Guide. Only that project's own
+Search is affected; other projects on the same source keep whatever
+readiness their own saved mapping already has.
 
 **What to do:** open **Settings → Log Schema & Field Mapping**, either
 finish the Validate → Save steps for your in-progress edit, or click
 **Reset to defaults** if you want to discard the edit and go back to the
 built-in mapping. Search re-enables immediately once the mapping is
-valid and saved.
+valid and saved. If Search is unexpectedly disabled right after switching
+projects/namespaces, this is expected the first time you touch a new
+scope's mapping — it starts on the always-ready built-in default, so this
+message should only appear if that scope's mapping was itself left
+mid-edit.
 
 ---
 
 ### The Quick Schema Scan fails or finds nothing
 
 **Likely cause:** the source itself is unreachable (check its own
-connection status first — Docker/OpenShift settings), or the source
-genuinely has no recent events to scan right now.
+connection status first — Docker/OpenShift settings), the source
+genuinely has no recent events to scan right now, or — for a source with
+a project/namespace concept — the currently selected project/namespace
+specifically has no recent events, even if other projects on the same
+source do.
 
 **What to do:** confirm the source shows as connected/healthy elsewhere
-in the app first. If it is, try again after a moment — the scan reads
-only real, recent events, so a source with very low traffic may
-genuinely have few or none to show yet. This is shown honestly (a small
-or zero event count, and an empty Discovered Source Schema) rather than
-as an error when the source itself is fine but simply quiet.
+in the app first, and double-check which project/namespace is actually
+selected (the scan is always scoped to it, never the whole source). If
+the source and scope are both fine, try again after a moment — the scan
+reads only real, recent events from that exact scope, so a project with
+very low traffic may genuinely have few or none to show yet. This is
+shown honestly (a small or zero event count, and an empty Discovered
+Source Schema) rather than as an error when the source itself is fine but
+simply quiet.

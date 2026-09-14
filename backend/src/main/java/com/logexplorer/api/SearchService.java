@@ -6,6 +6,7 @@ import com.logexplorer.core.guard.GuardrailViolationException.Reason;
 import com.logexplorer.core.guard.SearchGuardrails;
 import com.logexplorer.core.guard.ValidatedSearch;
 import com.logexplorer.core.mapping.FieldMappingProfileService;
+import com.logexplorer.core.mapping.MappingScopeKey;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.ResultCounts;
 import com.logexplorer.core.model.SearchRequest;
@@ -98,8 +99,15 @@ public class SearchService {
 
   public Mono<SearchResult> search(SearchRequest request) {
     return Mono.defer(() -> {
-      rejectIfMappingNotReady();
+      // Project-Scoped Schema Scan mission §8: the readiness gate must be
+      // evaluated against the SELECTED project/namespace's own saved
+      // mapping profile, never a single global one - resolving the source
+      // first (moved ahead of the old "before the source is even
+      // resolved" ordering, a deliberate CLAUDE.md §5 named-conflict
+      // update) is what lets a source with server-side session scope
+      // (OpenShift) report its real current scope truthfully.
       LogSource source = registry.require(request.sourceId());
+      rejectIfMappingNotReady(resolveScopeKey(request, source));
       rejectRawLogQlIfUnsupported(request, source);
       ValidatedSearch validated = guardrails.validate(request);
 
@@ -156,11 +164,16 @@ public class SearchService {
    * empty/wrong-looking result for ANY source (mission: "Do NOT fail
    * silently with zero results").
    */
-  private void rejectIfMappingNotReady() {
-    if (!fieldMappingProfileService.isSearchReady()) {
+  private void rejectIfMappingNotReady(MappingScopeKey scope) {
+    if (!fieldMappingProfileService.isSearchReady(scope)) {
       throw new GuardrailViolationException(Reason.MAPPING_NOT_READY,
           "Configure and validate log field mapping before searching this source.");
     }
+  }
+
+  /** The exact scope key {@link com.logexplorer.core.parse.LogLineParser} will actually resolve its profile against for this request's events — see {@code LogSource#resolveMappingScopeLabel}'s own javadoc. */
+  static MappingScopeKey resolveScopeKey(SearchRequest request, LogSource source) {
+    return MappingScopeKey.of(request.sourceId(), source.resolveMappingScopeLabel(request));
   }
 
   /**
