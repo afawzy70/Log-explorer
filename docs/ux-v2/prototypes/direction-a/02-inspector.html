@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Direction A — Event Inspector</title>
+<link rel="stylesheet" href="direction-a.css">
+</head>
+<body>
+<div class="shell">
+  <div class="topbar">
+    <div class="brand">Log Explorer<span class="brand-badge">DIRECTION A</span></div>
+    <div class="source-pill">OpenShift &middot; payments-prod</div>
+    <div class="topbar-spacer"></div>
+    <button class="icon-btn">Privacy &amp; masking</button>
+    <button class="icon-btn">OpenShift</button>
+    <button class="icon-btn" aria-label="Keyboard shortcuts">⌨</button>
+    <div class="health"><span class="health-dot"></span>Healthy</div>
+  </div>
+  <div class="toolbar">
+    <select class="field" aria-label="Source"><option>OpenShift</option></select>
+    <select class="field" aria-label="Project"><option>payments-prod</option></select>
+    <button class="field" aria-label="Time range">🕐 Last 1 hour</button>
+    <button class="chip-btn">All</button>
+    <button class="chip-btn error-active">Errors only</button>
+    <input class="search-input" placeholder="Search messages, errors, users or paste an ID">
+    <button class="btn btn-primary">Search</button>
+    <button class="btn">Live</button>
+    <button class="btn">More filters (4)</button>
+  </div>
+  <div class="metaline">
+    <span>9 of 9 events shown &middot; event 5 of 9 selected</span>
+    <span class="spacer"></span>
+    <button class="icon-btn">Columns</button>
+  </div>
+  <div class="main">
+    <div class="tablewrap">
+      <table>
+        <colgroup><col style="width:96px"><col style="width:82px"><col style="width:106px"><col></colgroup>
+        <thead><tr><th>Time</th><th>Level</th><th>Service</th><th>What happened</th></tr></thead>
+        <tbody>
+          <tr class="row warn"><td class="mono">09:10:38.67</td><td><span class="lvl WARN">WARN</span></td><td>gateway</td><td>Journey step 1: gateway accepted transfer request</td></tr>
+          <tr class="row"><td class="mono">09:10:39.67</td><td><span class="lvl INFO">INFO</span></td><td>accounts-api</td><td>Journey step 2: accounts-api validated balance</td></tr>
+          <tr class="row"><td class="mono">09:10:40.67</td><td><span class="lvl INFO">INFO</span></td><td>payments-api</td><td>Journey step 3: payments-api settled transfer under a new trace</td></tr>
+          <tr class="row"><td class="mono">09:10:41.67</td><td><span class="lvl INFO">INFO</span></td><td>accounts-api</td><td>Customer profile lookup completed</td></tr>
+          <tr class="row err selected"><td class="mono">09:10:42.67</td><td><span class="lvl ERROR">ERROR</span></td><td>payments-api</td><td>Payment authorization failed</td></tr>
+          <tr class="row"><td class="mono">09:10:43.67</td><td><span class="lvl INFO">INFO</span></td><td>gateway</td><td><em>(empty message)</em></td></tr>
+          <tr class="row raw"><td class="dash">—</td><td class="dash">—</td><td class="dash">—</td><td>NOT-JSON fixture-malformed-line<span class="badge-malformed">malformed</span></td></tr>
+          <tr class="row"><td class="mono">09:10:45.67</td><td><span class="lvl INFO">INFO</span></td><td>notification-worker</td><td>Notification worker processed unrecognized event shape</td></tr>
+          <tr class="row"><td class="mono">09:10:46.67</td><td><span class="lvl INFO">INFO</span></td><td>gateway</td><td>Dispatched customer notification</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="inspector">
+      <div class="insp-head">
+        <div class="insp-topline"><span>ERROR &middot; payments-api</span><span>Event 5 of 9</span></div>
+        <div class="insp-msg">Payment authorization failed</div>
+        <div class="insp-nav">
+          <button class="navbtn">← Previous</button>
+          <button class="navbtn">Next →</button>
+          <button class="ctx-btn">Show surrounding logs</button>
+        </div>
+      </div>
+      <div class="tabs" role="tablist">
+        <div class="tab active" role="tab" aria-selected="true">Overview</div>
+        <div class="tab" role="tab" aria-selected="false">Actor &amp; client</div>
+        <div class="tab" role="tab" aria-selected="false">Request flow</div>
+        <div class="tab" role="tab" aria-selected="false">Business &amp; error</div>
+        <div class="tab" role="tab" aria-selected="false">Technical / all fields</div>
+      </div>
+      <div class="tabpanel">
+        <div class="fieldrow"><div class="k">Message</div><div class="v">Payment authorization failed</div></div>
+        <div class="fieldrow"><div class="k">Time</div><div class="v mono">Sep 13, 2026, 09:10:42.670 PM<br>Asia/Kuwait (UTC+03:00) &middot; 06:10:42.670 PM UTC</div></div>
+        <div class="fieldrow"><div class="k">Source</div><div class="v">OpenShift &middot; payments-prod</div></div>
+        <div class="fieldrow"><div class="k">Service</div><div class="v">payments-api</div></div>
+        <div class="fieldrow"><div class="k">Level</div><div class="v">ERROR</div></div>
+        <div class="fieldrow"><div class="k">Logger</div><div class="v mono">com.bank.payments.SettlementService</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

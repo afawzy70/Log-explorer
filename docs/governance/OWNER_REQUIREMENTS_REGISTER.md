@@ -1867,3 +1867,43 @@ including the exact final `main` SHA the baseline tag points to.
 `HISTORICAL_DECISIONS_PRESERVED=YES`. `UNTRACKED_OWNER_REQUIREMENTS=0`.
 
 ---
+
+## 18. UI/UX v2 Discovery and Direction Selection
+
+`UI_UX_V2_DISCOVERY_AND_DIRECTION_SELECTION` mission: the first mission
+of the redesign phase, opened on branch `ux/v2-professional-redesign`
+from the exact frozen baseline tag `functional-baseline-pre-ux-redesign`
+(`ed6dbf578451f0ebca4e769b9b04af7137937031`). **Design discovery only —
+no production implementation.** Installed and used the official
+Impeccable design skill (`pbakaus/impeccable`), documented the current
+baseline's real visual system, independently reviewed all 19 OLD UI
+screenshots against the current baseline, and produced three fully
+prototyped, screenshotted, materially distinct redesign directions for
+an owner decision. No product behavior changed.
+
+| ID | NAME | STATUS | EVIDENCE | NOTES |
+|---|---|---|---|---|
+| UXV2-1 | Redesign branch created from the exact, verified functional baseline tag — never a later unverified commit | `VERIFIED` | `git rev-parse functional-baseline-pre-ux-redesign` == `git rev-parse ux/v2-professional-redesign`'s base == `ed6dbf578451f0ebca4e769b9b04af7137937031`, confirmed before any other work began | `BASELINE_MATCH=YES` |
+| UXV2-2 | Genuine, audited installation of the official Impeccable design skill, project-scoped, smallest maintainable footprint | `VERIFIED` | `.claude/skills/impeccable/` (SKILL.md + reference docs, committed), `.claude/agents/impeccable-*.md` (committed); the per-platform compiled engine binary (`scripts/bin/`, 16MB, self-downloading) and per-developer hook wiring (`settings.local.json`) deliberately gitignored, not committed — see `.gitignore` | `IMPECCABLE_SOURCE=github.com/pbakaus/impeccable`, installed via its own official `npx impeccable install --providers=claude --scope=project`, npm CLI v4.1.0 / engine v0.1.5 (latest at install time, upstream release `skill-v4.3.1`) |
+| UXV2-3 | `PRODUCT.md` written per Impeccable's own `init` flow, durable product truth confirmed with the owner (not silently inferred) before any design work began | `VERIFIED` | `PRODUCT.md` (project root); two AskUserQuestion rounds confirming primary users/job and product positioning before writing | Grounded in `CLAUDE.md` §1/§2/§4, `CAPABILITY_MATRIX.md`, `OLD_UX_RESTORATION_AUDIT.md` — no fact invented without repository evidence |
+| UXV2-4 | `DESIGN.md` + `.impeccable/design.json` generated from the CURRENT baseline's real code (Impeccable `document`, Scan Mode) — real extracted tokens, not invented ones | `VERIFIED` | `DESIGN.md` (project root, "The Instrument Panel" — flat surfaces, one restrained accent, dense 4/8px spacing, two-font system, all confirmed directly from `frontend/src/shared/tokens.css` and component `.module.css` files, not screenshot-sampled) | High-confidence extraction; the six baseline screenshots were used only to cross-check rendered behavior against the CSS, which matched exactly |
+| UXV2-5 | All 19 OLD UI screenshots independently, individually reviewed (not sampled) against the CURRENT baseline; comparative audit produced | `VERIFIED` | `docs/ux-v2/OLD_VS_BASELINE_COMPARATIVE_AUDIT.md` — 27 areas classified OLD_BETTER/CURRENT_BETTER/EQUIVALENT/BOTH_NEED_IMPROVEMENT with cited evidence per area | `OLD_SCREENSHOT_COUNT=19`, `ALL_OLD_SCREENSHOTS_REVIEWED=YES`, `CURRENT_BASELINE_REVIEWED=YES`. Tally: 3 OLD_BETTER, 9 CURRENT_BETTER, 11 EQUIVALENT, 5 BOTH_NEED_IMPROVEMENT |
+| UXV2-6 | Durable design authority split and functional-preservation floor recorded before any direction was designed | `VERIFIED` | `docs/ux-v2/UX_V2_DESIGN_PRINCIPLES.md` (15 principles, each with a concrete check), `docs/ux-v2/FUNCTIONAL_PRESERVATION_CONTRACT.md` (`FUNCTIONAL_BEHAVIOR_LOSS_ALLOWED=NO`, itemized per functional area) | OLD UI authoritative for information hierarchy/workflow/density/discoverability; CURRENT baseline authoritative for functionality/architecture/security/correctness/accessibility/reliability/capabilities — the redesign must exceed both, never trade one for the other |
+| UXV2-7 | Three materially distinct, fully prototyped design directions — not theme/color variants — each with 6 representative states, screenshotted at 1440×900 and 1366×768, self-assessed for real weaknesses | `VERIFIED` | `docs/ux-v2/prototypes/direction-{a,b,c}/` — 6 static HTML states + 12 screenshots + candid `README.md` each (36 screenshots total); every direction's real Impeccable design-detector findings triaged (real issues fixed, false positives disclosed with reasons in `.impeccable/config.json`, never blanket-suppressed) | Direction A: Dense Observability Workstation. Direction B: Modern Developer Console. Direction C: Investigation-First Minimal. Zero production code touched — `frontend/`/`backend/` untouched by any direction |
+| UXV2-8 | Independent, evidence-grounded scoring and an owner decision package with a justified (not rubber-stamped) recommendation | `VERIFIED` | `docs/ux-v2/DESIGN_DIRECTION_COMPARISON.md` (14-criterion scored table, mission coordinator's own independent screenshot review, not directions' self-reports alone), `docs/ux-v2/OWNER_DESIGN_DECISION_PACKAGE.md` (per-direction concept/strengths/weaknesses/inheritance/risk, Direction B recommended with named tradeoffs against A and C) | Scores close by design (57/58/57 of 70) — three genuinely distinct directions surfaced real tradeoffs rather than one manufactured winner. `OWNER_SELECTION_REQUIRED=YES` — no direction is auto-approved |
+| UXV2-9 | No production implementation, no Phase M, no v0.1.0 change | `VERIFIED` | `git diff --stat` against `frontend/`/`backend/` from this mission: empty; `git tag -l` unchanged besides the pre-existing `functional-baseline-pre-ux-redesign`/`v0.1.0` | `UI_UX_IMPLEMENTATION_STARTED=NO`, `PHASE_M_STATUS=NOT_STARTED`, `V0_1_0_UNCHANGED=YES` |
+
+**Gate recorded here for the next mission to read before starting:** no
+UI/UX implementation work may begin until the owner has chosen Direction
+A, B, or C from `docs/ux-v2/OWNER_DESIGN_DECISION_PACKAGE.md`. This is a
+hard gate, not a default — a future mission finding this register entry
+must confirm an explicit owner selection exists before treating any
+direction as approved.
+
+**UI/UX v2 Discovery pass (this section).** Produced the full evidence
+base and three real, fully-prototyped candidate directions a future
+implementation phase will build from — explicitly not that
+implementation itself. `HISTORICAL_DECISIONS_PRESERVED=YES`.
+`UNTRACKED_OWNER_REQUIREMENTS=0`.
+
+---

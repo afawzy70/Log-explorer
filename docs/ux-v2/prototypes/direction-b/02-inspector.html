@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Log Explorer — Direction B — Inspector</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --surface:#ffffff; --surface-alt:#fafbfc; --surface-sunken:#f0f1f4;
+    --border:#e3e5ea; --border-strong:#cdd1d9;
+    --text:#181b20; --text-2:#454b57; --text-3:#5c6270;
+    --accent:#2145a8; --accent-hover:#173583; --accent-soft:#eaf0fe; --accent-text:#1a3a8f;
+    --sev-error:#a92a20; --sev-error-bg:#fceceb; --sev-warn:#7a5000; --sev-warn-bg:#fbf1de;
+    --sev-info:#2145a8; --sev-info-bg:#eaf0fe; --sev-muted:#565d68; --sev-muted-bg:#eef0f3;
+    --radius-sm:4px; --radius-md:6px; --radius-lg:9px;
+    --font-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    --font-mono:ui-monospace,"SF Mono","Cascadia Code","Roboto Mono",Consolas,monospace;
+    --shadow-panel:0 1px 2px rgba(20,24,32,.04), 0 8px 24px rgba(20,24,32,.06);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .app{display:flex;flex-direction:column;height:100vh;min-height:700px}
+  .shell{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;background:var(--surface);border-bottom:1px solid var(--border)}
+  .shell-left{display:flex;align-items:center;gap:10px}
+  .brand{font-weight:600;font-size:14.5px;letter-spacing:-.01em}
+  .badge{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--text-3);background:var(--surface-sunken);border:1px solid var(--border);border-radius:3px;padding:2px 6px}
+  .source-tag{font-size:12px;color:var(--text-2);padding-left:8px;border-left:1px solid var(--border)}
+  .source-tag b{color:var(--text);font-weight:600}
+  .shell-right{display:flex;align-items:center;gap:6px}
+  .text-btn{height:30px;padding:0 10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text-2);font-size:12.5px;font-weight:500}
+  .health{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-2);padding-left:8px;margin-left:4px;border-left:1px solid var(--border)}
+  .dot{width:6px;height:6px;border-radius:50%;background:#1c8a4c}
+
+  .body-split{flex:1;display:flex;overflow:hidden}
+  .table-col{flex:1;min-width:0;overflow:auto;padding:16px 12px 16px 20px;background:var(--bg)}
+  .toolbar-mini{display:flex;align-items:center;gap:8px;color:var(--text-3);font-size:11.5px;padding:0 4px 10px;text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+  table{width:100%;border-collapse:collapse;table-layout:fixed;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden}
+  col.c-time{width:130px} col.c-level{width:70px} col.c-service{width:110px} col.c-what{width:auto}
+  thead th{background:var(--surface-alt);text-align:left;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-3);padding:9px 10px;border-bottom:1px solid var(--border)}
+  tbody td{padding:7px 10px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text);vertical-align:top}
+  tbody tr:last-child td{border-bottom:none}
+  .mono{font-family:var(--font-mono);font-size:11.5px;color:var(--text-2)}
+  .lvl{display:inline-flex;align-items:center;gap:5px;font-weight:700;font-size:11px}
+  .lvl .dot2{width:6px;height:6px;border-radius:50%}
+  .lvl.error{color:var(--sev-error)} .lvl.error .dot2{background:var(--sev-error)}
+  .lvl.warn{color:var(--sev-warn)} .lvl.warn .dot2{background:var(--sev-warn)}
+  .lvl.info{color:var(--sev-info)} .lvl.info .dot2{background:var(--sev-info)}
+  td.truncate{max-width:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  tr.selected td{background:var(--accent-soft)}
+  tr.selected{box-shadow:inset 3px 0 0 var(--accent)}
+
+  /* Inspector panel — attaches from the selected row, connective accent bar continues into the panel */
+  .inspector{width:480px;flex-shrink:0;background:var(--surface);border-left:1px solid var(--border);box-shadow:var(--shadow-panel);display:flex;flex-direction:column;overflow:hidden}
+  .insp-head{padding:16px 20px 12px;border-bottom:1px solid var(--border);border-top:3px solid var(--accent)}
+  .insp-crumb{font-size:11px;color:var(--text-3);margin-bottom:4px}
+  .insp-crumb b{color:var(--accent-text)}
+  .insp-title{font-size:15px;font-weight:700;letter-spacing:-.01em;margin-bottom:8px}
+  .insp-sub{display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--text-3)}
+  .insp-nav{display:flex;align-items:center;gap:8px}
+  .nav-btn{width:24px;height:24px;border:1px solid var(--border);border-radius:var(--radius-sm);display:inline-flex;align-items:center;justify-content:center;color:var(--text-2);font-size:12px}
+  .nav-btn.disabled{opacity:.35}
+  .insp-close{margin-left:auto;color:var(--text-3);font-size:16px;cursor:default}
+  .ctx-btn{margin-top:10px;height:28px;padding:0 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-alt);font-size:12px;font-weight:600;color:var(--text);display:inline-flex;align-items:center;gap:6px}
+
+  .tabs{display:flex;border-bottom:1px solid var(--border);padding:0 16px;gap:2px;background:var(--surface-alt)}
+  .tab{padding:10px 12px;font-size:11.5px;font-weight:600;color:var(--text-3);border-bottom:2px solid transparent;cursor:default}
+  .tab.active{color:var(--accent-text);border-bottom-color:var(--accent)}
+
+  .tab-content{flex:1;overflow:auto;padding:18px 20px}
+  .field-row{display:flex;padding:9px 0;border-bottom:1px solid var(--surface-sunken)}
+  .field-row:last-child{border-bottom:none}
+  .field-label{width:110px;flex-shrink:0;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-3);padding-top:1px}
+  .field-value{flex:1;font-size:12.5px;color:var(--text)}
+  .field-value.mono{font-size:12px}
+  .section-title{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-3);margin:18px 0 6px}
+  .section-title:first-child{margin-top:0}
+  .err-box{background:var(--sev-error-bg);border:1px solid #f0c9c4;border-radius:var(--radius-sm);padding:10px 12px;font-family:var(--font-mono);font-size:11.5px;color:#7c231b;white-space:pre-wrap;line-height:1.5}
+  .masked-val{color:var(--text-3);font-family:var(--font-mono)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="shell">
+    <div class="shell-left"><span class="brand">Log Explorer</span><span class="badge">DEV</span><span class="source-tag">Source: <b>OpenShift</b> · payments-prod</span></div>
+    <div class="shell-right"><button class="text-btn">Privacy &amp; masking</button><button class="text-btn">OpenShift</button><span class="health"><span class="dot"></span>Healthy</span></div>
+  </header>
+
+  <div class="body-split">
+    <div class="table-col">
+      <div class="toolbar-mini">Results · 9 events · Sep 13, 09:10–09:11 PM</div>
+      <table>
+        <colgroup><col class="c-time"><col class="c-level"><col class="c-service"><col class="c-what"></colgroup>
+        <thead><tr><th>Time</th><th>Level</th><th>Service</th><th>What happened</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">09:10:45.67 PM</td><td><span class="lvl info"><span class="dot2"></span>INFO</span></td><td>notification-worker</td><td class="truncate">Notification worker processed unrecognized event shape</td></tr>
+          <tr><td>—</td><td>—</td><td>—</td><td class="truncate mono" style="color:var(--text-3)">NOT-JSON fixture-malformed-line…</td></tr>
+          <tr><td class="mono">09:10:43.67 PM</td><td><span class="lvl info"><span class="dot2"></span>INFO</span></td><td>gateway</td><td style="color:var(--text-3);font-style:italic">(empty message)</td></tr>
+          <tr class="selected"><td class="mono">09:10:42.67 PM</td><td><span class="lvl error"><span class="dot2"></span>ERROR</span></td><td>payments-api</td><td class="truncate">Payment authorization failed</td></tr>
+          <tr><td class="mono">09:10:41.67 PM</td><td><span class="lvl info"><span class="dot2"></span>INFO</span></td><td>accounts-api</td><td class="truncate">Customer profile lookup completed</td></tr>
+          <tr><td class="mono">09:10:40.67 PM</td><td><span class="lvl info"><span class="dot2"></span>INFO</span></td><td>payments-api</td><td class="truncate">Journey step 3: payments-api settled transfer under a new trace</td></tr>
+          <tr><td class="mono">09:10:39.67 PM</td><td><span class="lvl info"><span class="dot2"></span>INFO</span></td><td>accounts-api</td><td class="truncate">Journey step 2: accounts-api validated balance</td></tr>
+          <tr><td class="mono">09:10:38.67 PM</td><td><span class="lvl warn"><span class="dot2"></span>WARN</span></td><td>gateway</td><td class="truncate">Journey step 1: gateway accepted transfer request</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <aside class="inspector">
+      <div class="insp-head">
+        <div class="insp-crumb"><b>payments-api</b> · ERROR · Event 4 of 9 loaded</div>
+        <div class="insp-title">Payment authorization failed</div>
+        <div class="insp-sub">
+          <div class="insp-nav">
+            <span class="nav-btn">‹</span><span class="nav-btn">›</span>
+          </div>
+          <span>Sep 13, 2026, 09:10:42.678 PM · Asia/Kuwait (UTC+03:00)</span>
+          <span class="insp-close">✕</span>
+        </div>
+        <button class="ctx-btn">↕ Show surrounding logs</button>
+      </div>
+
+      <div class="tabs">
+        <div class="tab active">Overview</div>
+        <div class="tab">Actor &amp; client</div>
+        <div class="tab">Request flow</div>
+        <div class="tab">Business &amp; error</div>
+        <div class="tab">Technical / all fields</div>
+      </div>
+
+      <div class="tab-content">
+        <div class="section-title">Overview</div>
+        <div class="field-row"><div class="field-label">Message</div><div class="field-value">Payment authorization failed</div></div>
+        <div class="field-row"><div class="field-label">Time</div><div class="field-value">Sep 13, 2026, 09:10:42.678 PM<br><span style="color:var(--text-3);font-size:11.5px">Asia/Kuwait (UTC+03:00) · Sep 13, 06:10:42.678 PM UTC</span></div></div>
+        <div class="field-row"><div class="field-label">Source</div><div class="field-value">OpenShift · payments-prod</div></div>
+        <div class="field-row"><div class="field-label">Service</div><div class="field-value">payments-api</div></div>
+        <div class="field-row"><div class="field-label">Level</div><div class="field-value">ERROR</div></div>
+        <div class="field-row"><div class="field-label">Logger</div><div class="field-value mono">com.bank.payments.SettlementService</div></div>
+      </div>
+    </aside>
+  </div>
+</div>
+</body>
+</html>

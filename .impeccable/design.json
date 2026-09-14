@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-14T05:18:13Z",
+  "title": "Design System: Log Explorer",
+  "extensions": {
+    "colorMeta": {
+      "signal-blue": { "role": "primary", "displayName": "Signal Blue", "canonical": "#2359d1", "tonalRamp": ["#0d2657", "#123a80", "#1a48ad", "#2359d1", "#4a78dd", "#7a9de6", "#aec4f0", "#eaf1fe"] },
+      "instrument-gray-canvas": { "role": "neutral", "displayName": "Instrument Gray — Canvas", "canonical": "#f7f8fa", "tonalRamp": ["#1a1d23", "#3a3e46", "#5b6270", "#868d99", "#b7bdc9", "#d8dce3", "#f0f2f5", "#f7f8fa"] },
+      "instrument-gray-surface": { "role": "neutral", "displayName": "Instrument Gray — Surface", "canonical": "#ffffff", "tonalRamp": ["#e8eaed", "#eef0f2", "#f2f4f6", "#f5f6f8", "#f8f9fa", "#fbfbfc", "#fdfdfe", "#ffffff"] },
+      "severity-error": { "role": "semantic", "displayName": "Severity — Error", "canonical": "#b3261e", "tonalRamp": ["#4d0f0b", "#7a1813", "#9c1f19", "#b3261e", "#c65850", "#dc8a84", "#f0bdb9", "#fdecea"] },
+      "severity-warn": { "role": "semantic", "displayName": "Severity — Warn", "canonical": "#8a5a00", "tonalRamp": ["#3d2800", "#5f3f00", "#754d00", "#8a5a00", "#ab7a2a", "#cc9c5e", "#e6c194", "#fff6e0"] },
+      "severity-info": { "role": "semantic", "displayName": "Severity — Info", "canonical": "#1a5e9a", "tonalRamp": ["#0a2740", "#0f3a60", "#144c7c", "#1a5e9a", "#4680b3", "#79a5cb", "#b0cce3", "#e8f2fc"] },
+      "severity-trace": { "role": "semantic", "displayName": "Severity — Trace", "canonical": "#7a5ba6", "tonalRamp": ["#332740", "#4c3960", "#634a80", "#7a5ba6", "#9a80bd", "#bba8d3", "#dccfe9", "#f3edfb"] },
+      "protected": { "role": "semantic", "displayName": "Protected / Masked", "canonical": "#5b6270", "tonalRamp": ["#1a1d23", "#2f333c", "#454a56", "#5b6270", "#7d8390", "#a3a8b2", "#c9ccd3", "#f0f2f5"] }
+    },
+    "typographyMeta": {
+      "title": { "displayName": "Title", "purpose": "The app shell's own title only (\"Log Explorer\") — not used for any other heading." },
+      "body": { "displayName": "Body", "purpose": "Default size for filters, table cells (non-ID/time), inspector prose, form labels." },
+      "label": { "displayName": "Label", "purpose": "Structural/navigational text only — table column headers, small captions. Never body content." },
+      "data": { "displayName": "Data (mono)", "purpose": "Timestamps and every identifier field (Trace/Span/Correlation/Journey/Event ID) — character-width alignment matters here." }
+    },
+    "shadows": [
+      { "name": "shadow-sm", "value": "0 1px 2px rgba(16, 24, 40, 0.06)", "purpose": "Understated; used sparingly, never as the default way to indicate a raised surface." },
+      { "name": "shadow-md", "value": "0 4px 12px rgba(16, 24, 40, 0.12)", "purpose": "The heavier of only two shadow values in the entire system; reserved for the rare functional case, never decorative." }
+    ],
+    "motion": [
+      { "name": "motion-fast", "value": "120ms", "purpose": "Hover/border-color transitions on buttons and interactive cells." },
+      { "name": "motion-base", "value": "180ms", "purpose": "Slightly larger state transitions." }
+    ],
+    "breakpoints": [
+      { "name": "table-scroll-floor", "value": "1266px" },
+      { "name": "usable-floor", "value": "1024px" },
+      { "name": "constrained-floor", "value": "768px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one filled, high-emphasis action — e.g. Search.",
+      "html": "<button class=\"ds-btn-primary\">Search</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 8px; border-radius: 6px; border: 1px solid transparent; padding: 8px 12px; font-size: 13px; font-weight: 500; line-height: 1; cursor: pointer; white-space: nowrap; background: #2359d1; color: #ffffff; transition: background-color 120ms, border-color 120ms; } .ds-btn-primary:hover { background: #1a48ad; } .ds-btn-primary:focus-visible { outline: 2px solid #2359d1; outline-offset: 2px; } .ds-btn-primary:disabled { cursor: not-allowed; opacity: 0.5; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Non-destructive, non-primary action — e.g. a settings-panel trigger.",
+      "html": "<button class=\"ds-btn-secondary\">Docker settings</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; gap: 8px; border-radius: 6px; padding: 8px 12px; font-size: 13px; font-weight: 500; line-height: 1; cursor: pointer; white-space: nowrap; background: #ffffff; border: 1px solid #d8dce3; color: #1a1d23; transition: background-color 120ms, border-color 120ms; } .ds-btn-secondary:hover { background: #f0f2f5; } .ds-btn-secondary:focus-visible { outline: 2px solid #2359d1; outline-offset: 2px; } .ds-btn-secondary[aria-pressed='true'] { background: #eaf1fe; border-color: #2359d1; color: #2359d1; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Quietest tier — auxiliary actions (e.g. Clear, Pause).",
+      "html": "<button class=\"ds-btn-ghost\">Clear</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; gap: 8px; border-radius: 6px; border: 1px solid transparent; padding: 8px 12px; font-size: 13px; font-weight: 500; line-height: 1; cursor: pointer; white-space: nowrap; background: transparent; color: #5b6270; transition: background-color 120ms, border-color 120ms; } .ds-btn-ghost:hover { background: #f0f2f5; color: #1a1d23; }"
+    },
+    {
+      "name": "Severity Badge",
+      "kind": "custom",
+      "refersTo": "level-cell",
+      "description": "Dot + text label, never color alone. Five variants (error/warn/info/debug/trace) share this structure with different colors.",
+      "html": "<span class=\"ds-severity ds-severity-error\"><span class=\"ds-severity-dot\"></span>ERROR</span>",
+      "css": ".ds-severity { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; font-size: 14px; white-space: nowrap; } .ds-severity-dot { width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0; background: currentColor; } .ds-severity-error { color: #b3261e; }"
+    },
+    {
+      "name": "Results Table Row — Selected",
+      "kind": "custom",
+      "refersTo": "table-row-selected",
+      "description": "The selected-row treatment: accent-tint background + 4px accent left rail, must survive hover.",
+      "html": "<tr class=\"ds-row-selected\" aria-selected=\"true\"><td>Sep 13, 2026, 09:10:45.67</td></tr>",
+      "css": ".ds-row-selected, .ds-row-selected:hover { background: #eaf1fe; box-shadow: inset 4px 0 0 #2359d1; }"
+    },
+    {
+      "name": "Inspector Tab",
+      "kind": "nav",
+      "refersTo": "inspector-tab",
+      "description": "Flat text tab, 2px bottom-border indicator when selected — no pill/box background.",
+      "html": "<button class=\"ds-tab ds-tab-selected\" role=\"tab\" aria-selected=\"true\">Overview</button>",
+      "css": ".ds-tab { appearance: none; border: none; background: transparent; cursor: pointer; padding: 12px 8px; margin-bottom: -1px; font-size: 13px; font-weight: 600; color: #5b6270; border-bottom: 2px solid transparent; white-space: nowrap; } .ds-tab:hover { color: #1a1d23; } .ds-tab-selected { color: #2359d1; border-bottom-color: #2359d1; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Instrument Panel",
+    "overview": "Log Explorer's current, frozen functional baseline is a precision control surface, not a marketing surface — built for someone who reads it dozens of times a day, under time pressure, looking for one specific answer. Every visible element earns its place through information value, not expression: a single restrained accent marks state (selection, focus, active), severity is never color-only, and the interface stays flat and quiet so the data — not the chrome around it — is what the eye lands on. This is deliberately the opposite of a 'generated dashboard' aesthetic: no gradients, no card-in-card nesting, no oversized whitespace, no decorative iconography. Density and legibility are treated as the same goal, not a tradeoff.",
+    "keyCharacteristics": [
+      "One accent color, used only to mark state — never as decoration",
+      "Flat surfaces, 1px borders instead of elevation, near-zero shadow use",
+      "Monospace reserved for timestamps, identifiers, and query/stack-trace text; everything else is the system sans stack",
+      "Severity and state are always dual-coded, never color alone",
+      "Dense 4/8px spacing scale used with total consistency"
+    ],
+    "rules": [
+      { "name": "The One Signal Rule", "body": "Signal Blue is the only color in the system that means 'you did something' or 'this is active.' It never appears as a background tint on a static, non-interactive, non-selected element.", "section": "colors" },
+      { "name": "The Never-Color-Alone Rule", "body": "Every severity, selection, or state cue pairs its color with a second signal — text, an icon, a border-shape change, or an aria-* attribute.", "section": "colors" },
+      { "name": "The Two-Font Rule", "body": "Exactly two font families exist in the entire system: the OS sans stack for prose/labels, and the mono stack for exact data. No third font, no display face, no webfont load.", "section": "typography" },
+      { "name": "The Border-Over-Shadow Rule", "body": "Depth is never the default way to separate content. A 1px border or a background-tint step does the job first; a shadow is reserved for the rare functional case, not routine 'raised card' styling.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use Signal Blue only to mean 'selected, active, or focused' — never as decoration.",
+      "Do pair every severity/state color with a second, non-color signal.",
+      "Do keep the results table a real semantic <table> with fixed layout.",
+      "Do reserve monospace exclusively for timestamps, identifiers, and query/stack-trace text.",
+      "Do communicate structure/grouping with borders and background-tint steps before reaching for a shadow.",
+      "Do keep the 4/8px spacing scale exact — no off-scale spacing values."
+    ],
+    "donts": [
+      "Don't add a second accent color.",
+      "Don't introduce card-in-card nesting, gradients, glassmorphism, or decorative icon tiles.",
+      "Don't reduce table font-size to achieve a denser layout — density changes padding only.",
+      "Don't let a hover state visually erase a selected or context-root row.",
+      "Don't use a shadow as the default way to indicate a raised/grouped surface."
+    ]
+  }
+}

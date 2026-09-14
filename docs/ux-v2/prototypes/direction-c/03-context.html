@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Direction C — Show surrounding logs</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand"><span class="mark">L</span> Log Explorer</div>
+    <div class="source-pill"><span class="dot"></span><b>OpenShift</b>&nbsp;·&nbsp;payments-prod</div>
+    <div class="search-shell" style="opacity:.55">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/></svg>
+      <input placeholder="Search messages, errors, users, or paste a trace/correlation ID…" disabled>
+    </div>
+    <button class="btn-ghost">← Back to search results</button>
+  </div>
+
+  <div class="crumb"><a>Search results</a> › Show surrounding logs</div>
+
+  <div class="ctx-summary">
+    <div class="stat"><b>7</b>events</div>
+    <div class="stat"><b>1</b>service</div>
+    <div class="stat"><b>0</b>errors</div>
+    <div class="stat"><b>1</b>warning</div>
+    <div class="stat"><b>±30s</b>window</div>
+    <div class="stat"><b>2</b>gaps detected</div>
+    <div class="stat" style="margin-left:auto"><b>payments-api</b>same execution scope</div>
+  </div>
+
+  <div class="ctxwrap">
+    <div class="ctx-line">
+      <div style="text-align:center;color:var(--ink-3);font-size:11px;padding:6px 0 14px">before ↓</div>
+
+      <div class="ctx-event"><div class="t">09:10:15.67</div><div class="body"><div class="svc">notification-worker</div><div class="msg">Dispatched customer notification</div></div></div>
+      <div class="ctx-event"><div class="t">09:10:16.67</div><div class="body"><div class="svc">notification-worker</div><div class="msg"><span class="lvl WARN" style="margin-right:6px">WARN</span>Dispatched customer notification</div></div></div>
+      <div class="ctx-event"><div class="t">09:10:20.67</div><div class="body"><div class="svc">notification-worker</div><div class="msg">Consumed JMS event</div></div></div>
+      <div class="ctx-event"><div class="t">09:10:22.67</div><div class="body"><div class="svc">notification-worker</div><div class="msg">Consumed JMS event</div></div></div>
+
+      <div class="ctx-gap">6s with no observed events</div>
+
+      <div class="ctx-event"><div class="t">09:10:28.67</div><div class="body"><div class="svc">notification-worker</div><div class="msg">Dispatched customer notification</div></div></div>
+      <div class="ctx-event"><div class="t">09:10:32.67</div><div class="body"><div class="svc">notification-worker</div><div class="msg">Consumed JMS event</div></div></div>
+
+      <div class="ctx-gap">13s with no observed events</div>
+
+      <div class="ctx-event root">
+        <div class="rail"></div>
+        <div class="body">
+          <div class="rootlabel">◆ Root event — you are here</div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <div><span class="lvl ERROR" style="margin-right:8px">ERROR</span><b style="font-size:13px">Payment authorization failed</b></div>
+            <div class="t" style="flex:none">09:10:42.67</div>
+          </div>
+          <div class="svc" style="margin-top:4px">payments-api · trace-b7e1d4 · user us***42</div>
+        </div>
+      </div>
+
+      <div style="text-align:center;color:var(--ink-3);font-size:11px;padding:14px 0 6px">↓ after (no further events observed in window)</div>
+    </div>
+    <div style="max-width:920px;margin:6px auto 0;padding:0 20px;font-size:11.5px;color:var(--ink-3);line-height:1.6">
+      Sorted chronologically, oldest first — this order does not indicate causality between events. A detected gap means no event was observed in that interval; it is not evidence that anything failed.
+      This view shows the same execution scope only. To follow this request across other services, use <a>Correlation / Trace / Journey</a> instead.
+    </div>
+  </div>
+</div>
+</body>
+</html>

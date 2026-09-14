@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Direction A — Search &amp; Results</title>
+<link rel="stylesheet" href="direction-a.css">
+</head>
+<body>
+<div class="shell">
+  <div class="topbar">
+    <div class="brand">Log Explorer<span class="brand-badge">DIRECTION A</span></div>
+    <div class="source-pill">OpenShift &middot; payments-prod</div>
+    <div class="topbar-spacer"></div>
+    <button class="icon-btn">Privacy &amp; masking</button>
+    <button class="icon-btn">OpenShift</button>
+    <button class="icon-btn" aria-label="Keyboard shortcuts">⌨</button>
+    <div class="health"><span class="health-dot"></span>Healthy</div>
+  </div>
+
+  <div class="toolbar">
+    <select class="field" aria-label="Source"><option>OpenShift</option></select>
+    <select class="field" aria-label="Project"><option>payments-prod</option></select>
+    <button class="field" aria-label="Time range">🕐 Last 1 hour</button>
+    <button class="chip-btn">All</button>
+    <button class="chip-btn error-active">Errors only</button>
+    <button class="chip-btn">Trace</button>
+    <button class="chip-btn">Debug</button>
+    <button class="chip-btn active">Info</button>
+    <button class="chip-btn active">Warn</button>
+    <button class="chip-btn error-active">Error</button>
+    <input class="search-input" placeholder="Search messages, errors, users or paste an ID" value="">
+    <button class="btn btn-primary">Search</button>
+    <button class="btn">Live</button>
+    <button class="btn">More filters (4)</button>
+  </div>
+
+  <div class="filterstrip">
+    <span class="label">Active:</span>
+    <span class="tagchip">Time: Last 1 hour <span class="x">×</span></span>
+    <span class="tagchip">Project: payments-prod <span class="x">×</span></span>
+    <span class="tagchip">Workload: gateway, payments-api, accounts-api, notification-worker <span class="x">×</span></span>
+    <span class="tagchip">Correlation ID: corr-a83f21 <span class="x">×</span></span>
+    <span class="clearall">Clear all</span>
+  </div>
+
+  <div class="metaline">
+    <span>9 of 9 events shown &middot; time range Sep 13, 09:00–10:10 PM (Asia/Kuwait, UTC+03:00)</span>
+    <span class="spacer"></span>
+    <span>Sort:</span>
+    <select><option>Newest first</option></select>
+    <button class="icon-btn">Columns</button>
+    <button class="icon-btn">⟳ Refresh</button>
+  </div>
+
+  <div class="main">
+    <div class="tablewrap">
+      <table>
+        <colgroup>
+          <col style="width:112px"><col style="width:86px"><col style="width:126px">
+          <col><col style="width:104px"><col style="width:144px"><col style="width:34px">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Time <span class="sort-arrow">▼</span></th>
+            <th>Level</th><th>Service</th><th>What happened</th>
+            <th>User/Customer</th><th>Correlation/Trace</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="row warn"><td class="mono">09:10:38.67</td><td><span class="lvl WARN">WARN</span></td><td>gateway</td><td>Journey step 1: gateway accepted transfer request</td><td class="mono">us***42</td><td class="mono">corr-a83f21</td><td><button class="actions-btn">⋯</button></td></tr>
+          <tr class="row"><td class="mono">09:10:39.67</td><td><span class="lvl INFO">INFO</span></td><td>accounts-api</td><td>Journey step 2: accounts-api validated balance</td><td class="mono">us***42</td><td class="mono">corr-a83f21</td><td><button class="actions-btn">⋯</button></td></tr>
+          <tr class="row"><td class="mono">09:10:40.67</td><td><span class="lvl INFO">INFO</span></td><td>payments-api</td><td>Journey step 3: payments-api settled transfer under a new trace</td><td class="mono">us***42</td><td class="mono">b7e1d4-000250</td><td><button class="actions-btn">⋯</button></td></tr>
+          <tr class="row"><td class="mono">09:10:41.67</td><td><span class="lvl INFO">INFO</span></td><td>accounts-api</td><td>Customer profile lookup completed</td><td class="mono">us***42</td><td class="mono">b7e1d4-000250</td><td><button class="actions-btn">⋯</button></td></tr>
+          <tr class="row err selected"><td class="mono">09:10:42.67</td><td><span class="lvl ERROR">ERROR</span></td><td>payments-api</td><td>Payment authorization failed</td><td class="mono">us***42</td><td class="mono">b7e1d4-000250</td><td><button class="actions-btn">⋯</button></td></tr>
+          <tr class="row"><td class="mono">09:10:43.67</td><td><span class="lvl INFO">INFO</span></td><td>gateway</td><td><em>(empty message)</em></td><td class="mono">us***41</td><td class="dash">—</td><td><button class="actions-btn">⋯</button></td></tr>
+          <tr class="row raw"><td class="dash">—</td><td class="dash">—</td><td class="dash">—</td><td>NOT-JSON fixture-malformed-line service=gateway cycle=6<span class="badge-malformed">malformed</span></td><td class="dash">—</td><td class="dash">—</td><td><button class="actions-btn">⋯</button></td></tr>
+          <tr class="row"><td class="mono">09:10:45.67</td><td><span class="lvl INFO">INFO</span></td><td>notification-worker</td><td>Notification worker processed unrecognized event shape</td><td class="mono">us***40</td><td class="dash">—</td><td><button class="actions-btn">⋯</button></td></tr>
+          <tr class="row"><td class="mono">09:10:46.67</td><td><span class="lvl INFO">INFO</span></td><td>gateway</td><td>Dispatched customer notification</td><td class="mono">us***39</td><td class="mono">corr-99a102</td><td><button class="actions-btn">⋯</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</body>
+</html>

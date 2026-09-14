@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Direction C — Settings</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand"><span class="mark">L</span> Log Explorer</div>
+    <div class="source-pill"><span class="dot"></span><b>OpenShift</b>&nbsp;·&nbsp;payments-prod</div>
+    <div class="search-shell" style="opacity:.5">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/></svg>
+      <input placeholder="Search…" disabled>
+    </div>
+    <button class="btn-ghost">← Back to search results</button>
+  </div>
+  <div class="crumb"><a>Search results</a> › Settings</div>
+
+  <div class="body-row">
+    <div class="settings-grid" style="width:100%">
+      <div class="settings-col">
+        <h2>🔒 Privacy &amp; masking</h2>
+        <div class="sub">Global — applies the same way across every source (Fixture, Docker, OpenShift, Loki). Enforced server-side; there is no "reveal" action anywhere in the product.</div>
+
+        <div class="mask-row">
+          <div><div class="name">CIF</div><div class="desc">Masked in all search results and events</div></div>
+          <div class="toggle"></div>
+        </div>
+        <div class="mask-row">
+          <div><div class="name">Username</div></div>
+          <div class="toggle"></div>
+        </div>
+        <div class="mask-row">
+          <div><div class="name">Customer ID</div></div>
+          <div class="toggle"></div>
+        </div>
+        <div class="mask-row">
+          <div><div class="name">Device ID</div></div>
+          <div class="toggle"></div>
+        </div>
+        <div class="mask-row">
+          <div><div class="name">Device IP</div><div class="desc">Unmasking applies to new requests only — already-shown values are never reconstructed</div></div>
+          <div class="toggle off"></div>
+        </div>
+
+        <div class="notice warn" style="margin-top:16px">Device IP is currently unmasked. New search results may show raw values on screen. Re-enable masking when you're done.</div>
+      </div>
+
+      <div class="settings-col">
+        <h2>⎈ OpenShift connection</h2>
+        <div class="sub">Specific to this source — does not affect Docker or masking policy.</div>
+
+        <div class="field"><div class="k">Server</div><div class="v mono">https://api.payments-prod.example:6443</div></div>
+        <div class="field"><div class="k">Token</div><div class="v mono">•••••••••••••••• (session only, never stored)</div></div>
+        <div class="status-ok"><span class="dot"></span>Connected · project access verified</div>
+
+        <div style="height:18px"></div>
+        <h3 style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3);margin:0 0 10px">Proxy</h3>
+        <div class="radiogroup">
+          <label class="radio-opt selected"><input type="radio" checked><span><span class="t">Use system proxy</span><br><span class="d">Honors HTTPS_PROXY / HTTP_PROXY / NO_PROXY from this machine's environment</span></span></label>
+          <label class="radio-opt"><input type="radio"><span><span class="t">Direct connection</span><br><span class="d">Never uses a proxy, even if one is configured</span></span></label>
+          <label class="radio-opt"><input type="radio"><span><span class="t">Custom proxy</span><br><span class="d">Set host/port explicitly, independent of environment variables</span></span></label>
+        </div>
+        <div class="notice">This proxy setting applies identically to OpenShift and OpenShift Loki — they never drift independently.</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

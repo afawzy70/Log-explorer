@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Log Explorer — Direction B — Surrounding Logs</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --surface:#ffffff; --surface-alt:#fafbfc; --surface-sunken:#f0f1f4;
+    --border:#e3e5ea; --border-strong:#cdd1d9;
+    --text:#181b20; --text-2:#454b57; --text-3:#5c6270;
+    --accent:#2145a8; --accent-hover:#173583; --accent-soft:#eaf0fe; --accent-text:#1a3a8f;
+    --sev-error:#a92a20; --sev-error-bg:#fceceb; --sev-warn:#7a5000; --sev-warn-bg:#fbf1de;
+    --sev-info:#2145a8; --sev-info-bg:#eaf0fe; --sev-muted:#565d68; --sev-muted-bg:#eef0f3;
+    --radius-sm:4px; --radius-md:6px; --radius-lg:9px;
+    --font-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    --font-mono:ui-monospace,"SF Mono","Cascadia Code","Roboto Mono",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .app{display:flex;flex-direction:column;height:100vh;min-height:700px}
+  .shell{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;background:var(--surface);border-bottom:1px solid var(--border)}
+  .brand{font-weight:600;font-size:14.5px}
+  .badge{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--text-3);background:var(--surface-sunken);border:1px solid var(--border);border-radius:3px;padding:2px 6px;margin-left:8px}
+  .health{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-2)}
+  .dot-g{width:6px;height:6px;border-radius:50%;background:#1c8a4c}
+
+  .ctx-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:var(--accent-soft);border-bottom:1px solid var(--border)}
+  .ctx-title{font-size:13.5px;font-weight:700;color:var(--accent-text)}
+  .ctx-sub{font-size:12px;color:var(--text-2);margin-top:2px}
+  .back-btn{height:30px;padding:0 12px;border-radius:var(--radius-sm);border:1px solid var(--border-strong);background:var(--surface);font-size:12.5px;font-weight:600;color:var(--text)}
+
+  .stat-strip{display:flex;gap:0;padding:14px 20px;background:var(--surface);border-bottom:1px solid var(--border)}
+  .stat{padding:0 22px;border-right:1px solid var(--border)}
+  .stat:first-child{padding-left:0}
+  .stat:last-child{border-right:none}
+  .stat-label{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-3)}
+  .stat-value{font-size:17px;font-weight:700;margin-top:3px}
+
+  .timeline-wrap{flex:1;overflow:auto;padding:24px 0;display:flex;justify-content:center}
+  .timeline{width:760px;position:relative;padding-left:28px}
+  .timeline::before{content:"";position:absolute;left:9px;top:6px;bottom:6px;width:2px;background:var(--border-strong)}
+  .t-item{position:relative;margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:11px 14px}
+  .t-item::before{content:"";position:absolute;left:-23px;top:16px;width:9px;height:9px;border-radius:50%;background:var(--surface);border:2px solid var(--border-strong)}
+  .t-head{display:flex;align-items:center;gap:10px;font-size:12px}
+  .t-time{font-family:var(--font-mono);color:var(--text-3);width:96px;flex-shrink:0}
+  .t-svc{font-weight:600;width:130px;flex-shrink:0}
+  .t-lvl{font-weight:700;font-size:11px;width:48px;flex-shrink:0}
+  .t-lvl.info{color:var(--sev-info)} .t-lvl.warn{color:var(--sev-warn)} .t-lvl.error{color:var(--sev-error)}
+  .t-msg{flex:1;color:var(--text)}
+
+  .t-item.root{border-color:var(--accent);border-width:2px;background:var(--accent-soft);box-shadow:0 2px 6px rgba(20,24,32,.08);padding:16px 18px;margin:20px 0}
+  .t-item.root::before{left:-25px;top:20px;width:13px;height:13px;background:var(--accent);border-color:var(--accent)}
+  .root-tag{display:inline-flex;align-items:center;gap:5px;background:var(--accent);color:#fff;font-size:10.5px;font-weight:800;letter-spacing:.06em;padding:2px 8px;border-radius:3px;margin-bottom:8px}
+  .root-tag::before{content:"●"}
+
+  .gap-marker{display:flex;align-items:center;gap:10px;margin:8px 0 14px 2px;color:var(--text-3);font-size:11.5px}
+  .gap-line{flex:0 0 14px;border-top:2px dashed var(--border-strong)}
+  .gap-note{background:var(--surface-alt);border:1px dashed var(--border-strong);border-radius:999px;padding:3px 10px;font-weight:600}
+
+  .disclaimer{text-align:center;color:var(--text-3);font-size:11.5px;max-width:760px;margin:8px auto 0;padding:0 20px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="shell">
+    <div style="display:flex;align-items:center"><span class="brand">Log Explorer</span><span class="badge">DEV</span></div>
+    <span class="health"><span class="dot-g"></span>Healthy</span>
+  </header>
+
+  <div class="ctx-bar">
+    <div>
+      <div class="ctx-title">↕ Surrounding logs</div>
+      <div class="ctx-sub">±30s around Sep 13, 2026, 09:10:42.678 PM (Asia/Kuwait, UTC+03:00) · payments-api · same pod/container scope</div>
+    </div>
+    <button class="back-btn">← Back to original search</button>
+  </div>
+
+  <div class="stat-strip">
+    <div class="stat"><div class="stat-label">Events</div><div class="stat-value">7</div></div>
+    <div class="stat"><div class="stat-label">Services</div><div class="stat-value">1</div></div>
+    <div class="stat"><div class="stat-label">Errors</div><div class="stat-value">0</div></div>
+    <div class="stat"><div class="stat-label">Warnings</div><div class="stat-value">1</div></div>
+    <div class="stat"><div class="stat-label">Window</div><div class="stat-value">60s (±30s)</div></div>
+    <div class="stat"><div class="stat-label">Gaps detected</div><div class="stat-value">2</div></div>
+  </div>
+
+  <div class="timeline-wrap">
+    <div style="width:760px">
+      <div class="timeline">
+        <div class="t-item"><div class="t-head"><span class="t-time">09:10:15.67</span><span class="t-svc">notification-worker</span><span class="t-lvl info">INFO</span><span class="t-msg">Dispatched customer notification</span></div></div>
+        <div class="t-item"><div class="t-head"><span class="t-time">09:10:16.67</span><span class="t-svc">notification-worker</span><span class="t-lvl warn">WARN</span><span class="t-msg">Dispatched customer notification (retry)</span></div></div>
+
+        <div class="gap-marker"><span class="gap-line"></span><span class="gap-note">6s with no observed events</span><span class="gap-line" style="flex:1"></span></div>
+
+        <div class="t-item"><div class="t-head"><span class="t-time">09:10:22.67</span><span class="t-svc">payments-api</span><span class="t-lvl info">INFO</span><span class="t-msg">Consumed JMS event</span></div></div>
+
+        <div class="gap-marker"><span class="gap-line"></span><span class="gap-note">13s with no observed events</span><span class="gap-line" style="flex:1"></span></div>
+
+        <div class="t-item root">
+          <span class="root-tag">Root event you selected</span>
+          <div class="t-head"><span class="t-time" style="color:var(--accent-text);font-weight:700">09:10:42.67</span><span class="t-svc">payments-api</span><span class="t-lvl error">ERROR</span><span class="t-msg" style="font-weight:600">Payment authorization failed</span></div>
+        </div>
+
+        <div class="t-item"><div class="t-head"><span class="t-time">09:10:43.67</span><span class="t-svc">gateway</span><span class="t-lvl info">INFO</span><span class="t-msg">(empty message)</span></div></div>
+        <div class="t-item"><div class="t-head"><span class="t-time">09:10:44.67</span><span class="t-svc">gateway</span><span class="t-lvl info">INFO</span><span class="t-msg">Forwarded error response to client</span></div></div>
+        <div class="t-item"><div class="t-head"><span class="t-time">09:10:45.67</span><span class="t-svc">notification-worker</span><span class="t-lvl info">INFO</span><span class="t-msg">Notification worker processed unrecognized event shape</span></div></div>
+      </div>
+      <p class="disclaimer">Sorted chronologically, oldest first — this order does not indicate causality between events. A detected gap means no event was observed in that interval; it is not evidence that anything failed.</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>
