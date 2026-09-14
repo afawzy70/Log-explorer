@@ -15,6 +15,7 @@ import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.SearchResult;
 import com.logexplorer.core.model.SourceHealth;
+import com.logexplorer.core.mapping.FieldMappingProfileService;
 import com.logexplorer.core.parse.LogLineParser;
 import com.logexplorer.core.query.ast.Comparison;
 import com.logexplorer.core.query.ast.Operator;
@@ -66,7 +67,7 @@ class LokiLogSourceTest {
 
   private LokiLogSource sourceFor(LokiProperties properties) {
     LokiQueryClient queryClient = new LokiQueryClient(properties, new LokiTokenSupplier(properties), new LokiWebClientFactory());
-    LogLineParser parser = new LogLineParser(new ObjectMapper());
+    LogLineParser parser = new LogLineParser(new ObjectMapper(), new FieldMappingProfileService());
     return new LokiLogSource(properties, queryClient, parser);
   }
 
@@ -759,7 +760,7 @@ class LokiLogSourceTest {
     SearchGuardrails guardrails = new SearchGuardrails(properties);
     ConcurrencyGuard concurrencyGuard = new ConcurrencyGuard(properties);
     LogSourceRegistry registry = new LogSourceRegistry(List.of(source), new SourcesProperties());
-    return new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()));
+    return new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()), new com.logexplorer.core.mapping.FieldMappingProfileService());
   }
 
   private Map<String, String> parseQuery(String rawQuery) {

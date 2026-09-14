@@ -1063,6 +1063,7 @@ describe('useSearchState', () => {
           queryStatistics: false,
           contextView: false,
           composeProjectScoping: true,
+          originalSchemaSampling: true,
         },
       },
     ];

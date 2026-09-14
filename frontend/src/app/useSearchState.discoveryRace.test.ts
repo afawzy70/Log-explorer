@@ -36,6 +36,7 @@ function caps(overrides: Record<string, boolean> = {}) {
     queryStatistics: false,
     contextView: true,
     composeProjectScoping: false,
+    originalSchemaSampling: true,
     ...overrides,
   };
 }

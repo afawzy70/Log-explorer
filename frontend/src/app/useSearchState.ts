@@ -2,13 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   fetchComposeProjects,
   fetchContext,
+  fetchFieldMappingProfile,
   fetchJourney,
   fetchSourceHealth,
   fetchSourceServices,
   fetchSources,
+  isMappingNotReadyError,
   runSearch as runSearchApi,
 } from '../shared/api/client';
 import type {
+  FieldMappingProfileDto,
   JourneyField,
   LogEvent,
   SearchDirection,
@@ -300,6 +303,36 @@ export function useSearchState() {
       cancelled = true;
     };
   }, []);
+
+  /**
+   * Configurable Log Field Mapping mission §15 — the app-wide search
+   * readiness gate. Loaded once on mount (mirroring how `sources` loads),
+   * and re-fetched via `refreshFieldMappingProfile` any time the Log
+   * Schema & Field Mapping settings panel edits/saves/resets the profile
+   * elsewhere — the same "something changed in a settings panel, re-check
+   * top-level state" callback shape `onOpenShiftScopeChanged` already
+   * establishes for OpenShift scope. `Toolbar` disables Search using
+   * `fieldMappingSearchReady === false`; `runSearch`'s own catch clause
+   * below is a defensive fallback in case Search still somehow fires
+   * while blocked (mission §15: "Do NOT fail silently with zero results").
+   */
+  const [fieldMappingProfile, setFieldMappingProfile] = useState<FieldMappingProfileDto | null>(null);
+  const [fieldMappingProfileError, setFieldMappingProfileError] = useState<string | null>(null);
+
+  const refreshFieldMappingProfile = useCallback(() => {
+    fetchFieldMappingProfile()
+      .then((result) => {
+        setFieldMappingProfile(result);
+        setFieldMappingProfileError(null);
+      })
+      .catch((error: unknown) =>
+        setFieldMappingProfileError(error instanceof Error ? error.message : 'Failed to load log field mapping settings'),
+      );
+  }, []);
+
+  useEffect(() => {
+    refreshFieldMappingProfile();
+  }, [refreshFieldMappingProfile]);
 
   const checkHealth = useCallback((sourceId: string) => {
     // Carries the caller's generation so a health response (which includes
@@ -601,6 +634,13 @@ export function useSearchState() {
         if (error instanceof DOMException && error.name === 'AbortError') {
           return; // superseded by a newer search - the newer request owns the UI now
         }
+        if (isMappingNotReadyError(error)) {
+          // Defense-in-depth (mission §15): Search fired despite the
+          // Toolbar gate (e.g. a stale readiness snapshot) - re-sync
+          // immediately so the button reflects reality on the very next
+          // render, rather than staying (wrongly) enabled.
+          refreshFieldMappingProfile();
+        }
         setSearchError(error instanceof Error ? error.message : 'Search failed');
       })
       .finally(() => {
@@ -608,7 +648,7 @@ export function useSearchState() {
           setSearchLoading(false);
         }
       });
-  }, [buildRequestBody, timeRange]);
+  }, [buildRequestBody, timeRange, refreshFieldMappingProfile]);
 
   /**
    * UX-R4 §10 - committing a new sort direction always starts a **fresh
@@ -992,6 +1032,12 @@ export function useSearchState() {
     journeyError,
     openJourney,
     closeJourney,
+    /** Configurable Log Field Mapping mission §15 — `null` while still loading on first mount; once loaded, `Toolbar` disables Search when `.searchReady` is `false`. */
+    fieldMappingProfile,
+    fieldMappingProfileError,
+    /** `true` only once loaded and ready — a still-loading/unknown state never silently permits Search (mission §15: "Do NOT fail silently"). */
+    fieldMappingSearchReady: fieldMappingProfile?.searchReady === true,
+    refreshFieldMappingProfile,
   };
 }
 

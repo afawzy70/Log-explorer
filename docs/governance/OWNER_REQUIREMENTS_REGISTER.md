@@ -1867,3 +1867,56 @@ including the exact final `main` SHA the baseline tag points to.
 `HISTORICAL_DECISIONS_PRESERVED=YES`. `UNTRACKED_OWNER_REQUIREMENTS=0`.
 
 ---
+
+## 19. Configurable Log Field Mapping + Original JSON Sampling
+
+`CONFIGURABLE_LOG_FIELD_MAPPING` mission — a **functional architecture**
+mission, completely separate from and never merged into the UI/UX v2
+redesign branch (`ux/v2-professional-redesign`, PR #54, untouched by this
+mission). Branch: `feature/configurable-log-field-mapping`, based on
+`main`.
+
+**Owner-discovered defect:** filtering by CIF returned no results even
+though the original log event genuinely contained a CIF value — because
+`core.parse.LogLineParser` extracted every sensitive/business canonical
+field via a single, hard-coded literal path (always `mdc.<exact-key>`),
+with no fallback to any other JSON location. Confirmed by full pipeline
+trace (source raw event → parser → canonical event → filtering → API DTO)
+— see `docs/verification/CONFIGURABLE_FIELD_MAPPING_REPORT.md` §1.
+
+| ID | NAME | STATUS | EVIDENCE | NOTES |
+|---|---|---|---|---|
+| CFM-1 | Fixed-schema parser limitation — root cause confirmed and fixed via a genuine configurable mapping layer, not a point patch | `VERIFIED` | `backend/src/main/java/com/logexplorer/core/mapping/` (new package: `CanonicalField`, `JsonPath`, `JsonPathResolver`, `FieldMappingProfile`, `DefaultFieldMappingProfile`, `FieldMappingResolver`, `FieldMappingProfileService`, `FieldMappingValidationService`, `sample/FieldMappingSampleService`); `core/parse/LogLineParser.java` refactored to the single authoritative field-resolution mechanism (mission §24 — the old hard-coded block is gone, not duplicated) | `docs/verification/CONFIGURABLE_FIELD_MAPPING_REPORT.md` §1-2. `ROOT_CAUSE_CONFIRMED=YES` |
+| CFM-2 | Original Source JSON sampling — true, unmodified source event, source-neutral across all four sources, never conflated with the Inspector's own already-parsed "Canonical Event JSON" | `VERIFIED` | `CanonicalLogEvent#originalRawJson` (always populated, structurally excluded from `EventDto`/`api.EventMapper`); `POST /api/v1/sources/{id}/field-mapping/samples`; `SourceCapabilities#originalSchemaSampling` (truthfully `true` for Fixture/Docker/OpenShift/Loki — a real, uniform architectural property, not fabricated) | Frontend: `features/settings/fieldMapping/FieldMappingSettingsPanel.tsx` — samples held only in component `useState`, never `localStorage`/`sessionStorage`/a URL, discarded on close/reload |
+| CFM-3 | Multiple candidate paths with ordered precedence, nested and literal-dotted-key JSON path syntax, no eval/scripting | `VERIFIED` | `core/mapping/JsonPath.java` (deterministic hand-written tokenizer; bracket syntax `mdc["event.correlationId"]` for a literal key containing a dot, distinct from nested `mdc.event.correlationId`); `FieldMappingResolver` ("first usable non-null/non-empty candidate wins; last candidate returned as-is" — proven exactly equivalent to the OLD parser's single-path and two-candidate correlationId behaviors) | `JsonPathTest` (17 tests, incl. explicit no-eval proof), `JsonPathResolverTest` (15), `FieldMappingResolverTest` (20) |
+| CFM-4 | Built-in default profile preserves current verified mappings exactly; no invented defaults beyond what was already known-correct | `VERIFIED` | `core/mapping/DefaultFieldMappingProfile.java` — every field's default candidate(s) matches the old hard-coded parser path-for-path; `DefaultFieldMappingProfileTest` asserts this field by field | Full pre-existing backend suite (1078 tests) passes unchanged after the refactor — zero behavior drift for the default profile |
+| CFM-5 | Journey Name — audited, found genuinely absent, added as a new canonical field distinct from Journey ID, no invented default mapping | `VERIFIED` | `CanonicalField.JOURNEY_NAME`; wired through `CanonicalLogEvent`, `EventDto`, `EventMapper`, `SearchRequest`/`SearchRequestDto`/`RequestMapper` (plain filter field, deliberately NOT added to the narrower `JOURNEY_FIELDS` "Find this…" correlation-click set), `EventFilters`, `QueryFields` (`journeyname` DSL alias) | `docs/verification/CONFIGURABLE_FIELD_MAPPING_REPORT.md` §4. `JOURNEY_NAME_CANONICAL_DECISION=ADDED_AS_NEW_DISTINCT_FIELD_NO_DEFAULT_MAPPING_YET` — owner input on a real default path still pending |
+| CFM-6 | Search readiness gate — Search structurally blocked (never silent zero results) while a mapping edit is unvalidated/unsaved | `VERIFIED` | Backend: `FieldMappingProfileService.isSearchReady()`, `SearchService.rejectIfMappingNotReady()` → `GuardrailViolationException.Reason.MAPPING_NOT_READY` (HTTP 400). Frontend: `Toolbar.tsx` disables Search proactively and shows the identical message, re-enabling automatically (no reload) once a save succeeds | `FieldMappingReadinessGateTest` (5), `FieldMappingSettingsControllerIntegrationTest` (7), `Toolbar.test.tsx` (+5) |
+| CFM-7 | Mapping cannot bypass masking — filtering/masking remain entirely downstream of, and blind to, which JSON path supplied a value | `VERIFIED` | `core.search.EventFilters`/`core.mask.MaskingService` both read `CanonicalLogEvent.sensitive()` only — untouched by this mission; `CifFilteringRegressionTest.maskingStillAppliesRegardlessOfWhichPathSuppliedTheValue_mappingCannotBypassMasking` | `MAPPING_CANNOT_BYPASS_MASKING=YES` — structural, not a bolted-on check |
+| CFM-8 | "Raw JSON" mislabeling corrected — truthful terminology split between Log Explorer's own normalized representation and the genuinely original source event | `VERIFIED` | `frontend/src/features/inspector/AllFieldsSection.tsx` — disclosure renamed "Raw JSON" → **"Canonical Event JSON"**; the Field Mapping panel's own sample view is separately, correctly labeled **"Original Source JSON"** | `RAW_JSON_LABEL_CORRECTED=YES`. Both `USER_GUIDE_EN/AR.md` updated to explain the distinction (§19) |
+| CFM-9 | Security review — original samples/validation values never logged, bounded, never bypass masking, no code execution from a user-supplied path | `VERIFIED` | `FieldMappingSettingsLeakTest` (3 tests, real Logback capture at the same DEBUG ceiling `LogLeakTest` already established) | **Genuine finding surfaced and fixed during this verification** (not merely confirmed): Spring's own codec logging (`org.springframework.core.codec`, and the shared `org.springframework.web.HttpLogging` marker logger) logs raw pre-parse request/response body bytes at DEBUG, truncated — independent of any DTO's redacted `toString()`. The pre-existing `LogLeakTest` never caught this because its own sentinel values happened to sit past the truncation point in that test's specific request shape; this mission's shorter-bodied endpoints are not. Fixed by pinning both logger categories to `INFO` in `backend/src/main/resources/application.yml`, the same discipline already applied to `reactor.netty`/`io.netty` — a real, narrowly-scoped fix, not a logging redesign. `MAPPING_SECURITY_REVIEW=PASS` |
+| CFM-10 | Unknown-field preservation — configurable mapping does not delete unknown source data | `VERIFIED` | `LogLineParser`'s "known keys" for `unknownTopLevelFields`/`unknownMdcFields` are now derived dynamically from the ACTIVE profile's own flat top-level/`mdc.<key>` candidate paths (never a stale hard-coded constant set), so unknown-field display never drifts out of sync with a changed mapping | Existing `LogLineParserTest` unknown-field-preservation tests pass unchanged |
+
+**Configurable Log Field Mapping pass (this section).** Backend:
+1180/1180 tests pass (1078 pre-existing + 102 new — the mapping engine,
+the owner-reported filtering regression fixed end to end, sample fetch,
+the readiness gate, and the security leak test that found and closed a
+real, narrowly-scoped logging gap). Frontend: 910/910 tests pass (871
+pre-existing + 39 new), typecheck clean, production build succeeds. Full
+method, evidence, and security re-validation:
+`docs/verification/CONFIGURABLE_FIELD_MAPPING_REPORT.md`.
+`HISTORICAL_DECISIONS_PRESERVED=YES`. `UNTRACKED_OWNER_REQUIREMENTS=0`.
+
+**Gate recorded here for the next mission to read:** the built-in default
+mapping profile is deliberately unchanged from the OLD hard-coded parser
+— per the owner's own explicit instruction (mission §11), no new default
+candidate paths (e.g. a top-level `cif` fallback) were added speculatively.
+**The owner's confirmed, correct default mappings — based on real source
+JSON the owner supplies — remain an open input this project is waiting
+on.** Journey Name in particular has zero default mapping today. A future
+mission should not treat the current default profile as "the fix" in
+isolation — the fix is the *mechanism*; the owner's own environment still
+needs its real field paths configured (or confirmed as defaults) via the
+Log Schema & Field Mapping settings screen this mission built.
+
+---

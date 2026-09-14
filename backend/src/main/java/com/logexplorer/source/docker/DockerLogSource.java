@@ -101,7 +101,7 @@ public class DockerLogSource implements LogSource {
     // UX-R4 §11/§19 - see FixtureLogSource for why `contextView` is now
     // declared truthfully; verified for this source against real Docker
     // containers (UX-R4 report, "Real Docker verification").
-    return new SourceCapabilities(true, true, false, true, false, true, true);
+    return new SourceCapabilities(true, true, false, true, false, true, true, true);
   }
 
   /**

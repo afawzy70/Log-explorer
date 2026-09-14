@@ -10,6 +10,7 @@ import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.RawToken;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.SourceSearchOutcome;
+import com.logexplorer.core.mapping.FieldMappingProfileService;
 import com.logexplorer.core.parse.LogLineParser;
 import com.logexplorer.core.search.ContextTargetProofCodec;
 import com.logexplorer.source.openshift.MockOpenShiftPodLogServer.Fixture;
@@ -57,7 +58,7 @@ class DirectPodLogProviderTest {
     client = new OpenShiftApiClient(java.util.Map.of());
     session = new OpenShiftSession();
     properties = new DirectPodLogProperties();
-    LogLineParser parser = new LogLineParser(new ObjectMapper());
+    LogLineParser parser = new LogLineParser(new ObjectMapper(), new FieldMappingProfileService());
     contextTargetProofCodec = new ContextTargetProofCodec(new ObjectMapper());
     provider = new DirectPodLogProvider(client, session, parser, properties, contextTargetProofCodec);
 
@@ -709,7 +710,7 @@ class DirectPodLogProviderTest {
     OpenShiftSession disconnected = new OpenShiftSession();
     DirectPodLogProvider disconnectedProvider =
         new DirectPodLogProvider(
-            client, disconnected, new LogLineParser(new ObjectMapper()), properties, contextTargetProofCodec);
+            client, disconnected, new LogLineParser(new ObjectMapper(), new FieldMappingProfileService()), properties, contextTargetProofCodec);
     assertThat(disconnectedProvider.describeScopeWarnings(baseRequest().build())).isEmpty();
   }
 
@@ -722,7 +723,7 @@ class DirectPodLogProviderTest {
     noProject.connect(command, "Test", "developer", List.of(NAMESPACE), ProjectDiscovery.Api.PROJECTS, null);
     DirectPodLogProvider noProjectProvider =
         new DirectPodLogProvider(
-            client, noProject, new LogLineParser(new ObjectMapper()), properties, contextTargetProofCodec);
+            client, noProject, new LogLineParser(new ObjectMapper(), new FieldMappingProfileService()), properties, contextTargetProofCodec);
 
     assertThatThrownBy(() -> noProjectProvider.search(baseRequest().build()).collectList().block())
         .isInstanceOf(IllegalStateException.class);

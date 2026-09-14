@@ -379,7 +379,7 @@ this order:
 2. **Actor & client** — who/what was involved (masked fields, device, language).
 3. **Request flow** — Trace/Span/Correlation/Journey/Event IDs, each with a Copy button, and a "Find this…" action where applicable (§13).
 4. **Business / error** — business step, UI identifier, error code, and the full exception text if one exists.
-5. **Technical / all fields** — every field the event carries, including ones Log Explorer doesn't specifically recognize. A search box lets you filter a long field list; a **Raw JSON** disclosure shows the complete underlying record.
+5. **Technical / all fields** — every field the event carries, including ones Log Explorer doesn't specifically recognize. A search box lets you filter a long field list; a **Canonical Event JSON** disclosure shows the complete underlying record — Log Explorer's own parsed, normalized representation of the event, not the untouched original source line (see §19 if you need the real original JSON).
 
 **All five tabs are always there, for every event — this is deliberate.**
 If an event genuinely has no actor/client data, that tab still appears
@@ -539,6 +539,7 @@ only affect one source:
 | **Privacy & masking** | Global — the same policy applies to every source |
 | **Docker settings** | Only affects the Docker source (local/remote connection) |
 | **OpenShift** (connection + proxy) | Only affects OpenShift and OpenShift Loki |
+| **Log Schema & Field Mapping** | Applies to how logs from any source are interpreted — see §19 |
 
 Changing a source-specific setting never affects a different source —
 switching your Docker connection, for example, has no effect on your
@@ -571,3 +572,95 @@ top bar.
 See **[TROUBLESHOOTING_EN.md](TROUBLESHOOTING_EN.md)** for specific
 symptoms and fixes. It covers connection failures, TLS/certificate
 errors, proxy issues, permission errors, Live disconnects, and more.
+
+---
+
+## 19. Log Schema & Field Mapping
+
+This is an advanced, occasional-use setting — most people never need to
+open it, because Log Explorer already understands the log format its
+built-in default mapping was designed for. You need it only if you
+connect a source whose logs put fields (like the customer identifier or
+a trace ID) in different places than Log Explorer expects by default —
+for example, a field at the top level of the JSON instead of nested
+under `mdc`.
+
+**Why this exists:** every canonical field Log Explorer understands (CIF,
+Username, Trace ID, Business Step, and so on) has to be found somewhere
+in your actual log JSON. The built-in default mapping covers the
+structure Log Explorer already knows. If your real logs use a different
+structure, a field can be genuinely present in your data and still not
+show up correctly in search or filtering — not because it's missing, but
+because Log Explorer was never told where to look for it. This setting
+lets you tell it, without needing a code change.
+
+### The workflow
+
+Open **Settings → Log Schema & Field Mapping**. The steps, in order:
+
+1. **Connect** — make sure the source you want to configure is selected
+   and connected (Docker, OpenShift, etc. — see their own sections
+   above).
+2. **Fetch samples** — click to pull a small, bounded batch of real,
+   recent events directly from your source (not a full search — just
+   enough real examples to see your actual field names).
+3. **Inspect Original Source JSON** — this shows you the *real* event
+   exactly as your source sent it, before Log Explorer changes anything.
+   This is different from the Inspector's "Canonical Event JSON" (§11) —
+   that one shows Log Explorer's own normalized version of an event;
+   this one shows the untouched original. Real field names and nesting
+   are exactly what they are in your source — `cif`, `cifId`,
+   `customer.cif`, `mdc.cif` are all shown as genuinely distinct paths,
+   never blurred together.
+4. **Map canonical fields** — for each field Log Explorer understands
+   (CIF, Username, Customer ID, Trace ID, Journey Name, and so on), tell
+   it which path (or paths, in priority order) in your real JSON to read
+   that value from. You can list more than one path for a field — Log
+   Explorer tries them in the order you give, and uses the first one
+   that actually has a value for a given event. This is what fixes the
+   "field is there but doesn't show up" problem: if your logs sometimes
+   use `cif` and sometimes `mdc.cif`, list both.
+5. **Validate** — run your mapping against the real samples you fetched.
+   You'll see, per field, whether it was actually found in your sample
+   data, what real value it resolved to, and whether any path you typed
+   has a mistake in it.
+6. **Save** — commits your mapping. You can only save after a validation
+   that found no path mistakes.
+7. **Search becomes available again** — if Search was temporarily
+   disabled because your mapping needed attention (see below), saving a
+   valid mapping turns it back on immediately.
+
+A **Reset to defaults** action is always available if you want to
+discard your changes and go back to the built-in mapping.
+
+### Why Search can be temporarily disabled
+
+If you've started editing your field mapping but haven't yet validated
+and saved it, Log Explorer disables Search for that data rather than
+running it against a mapping it can't yet vouch for — you'll see a clear
+message explaining why, instead of a search that silently comes back
+empty or wrong. This only happens while you're actively mid-edit; the
+built-in default mapping is always ready to search with, and finishing
+the validate-and-save steps above turns Search back on right away.
+
+### A note on privacy for this one screen
+
+Everywhere else in Log Explorer, the five protected fields (CIF,
+Username, Customer ID, Device ID, Device IP) are masked by default
+(§15). This one screen is the deliberate exception: because you need to
+see your *real* field names and values to set up the mapping correctly,
+the sample data and validation results on this screen show real,
+unmasked values. This is why it matters to treat this screen carefully:
+
+- Sample data and validation results are **never saved anywhere** — not
+  to your browser's local storage, not to a file, not anywhere on the
+  server. They exist only while this screen is open, in your browser's
+  own memory, and disappear the moment you close the panel or reload the
+  page.
+- This does not change how normal search results behave anywhere else
+  in the app — masking there is completely unaffected. This one setup
+  screen is the only place unmasked values are ever shown, and only
+  because you specifically opened it to configure the mapping.
+- Treat anything you see on this screen (screenshots, screen shares) with
+  the same care you'd give the original system's own raw data — because
+  that is exactly what it is.

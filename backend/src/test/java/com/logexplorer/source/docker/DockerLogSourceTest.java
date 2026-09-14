@@ -24,6 +24,7 @@ import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.SearchResult;
 import com.logexplorer.core.model.ServiceInfo;
 import com.logexplorer.core.model.SourceHealth;
+import com.logexplorer.core.mapping.FieldMappingProfileService;
 import com.logexplorer.core.parse.LogLineParser;
 import com.logexplorer.core.search.PageCursorCodec;
 import com.logexplorer.config.DockerRemoteAllowlistProperties;
@@ -62,7 +63,7 @@ class DockerLogSourceTest {
     DockerClientFactory factory = mock(DockerClientFactory.class);
     when(factory.create(properties)).thenReturn(mockClient);
 
-    LogLineParser parser = new LogLineParser(new ObjectMapper());
+    LogLineParser parser = new LogLineParser(new ObjectMapper(), new FieldMappingProfileService());
     remoteHostGuard = new RemoteHostGuard(new DockerRemoteAllowlistProperties(), InetAddress::getAllByName);
     source = new DockerLogSource(factory, properties, parser, remoteHostGuard);
   }
@@ -1096,7 +1097,7 @@ class DockerLogSourceTest {
     SearchGuardrails guardrails = new SearchGuardrails(properties);
     ConcurrencyGuard concurrencyGuard = new ConcurrencyGuard(properties);
     LogSourceRegistry registry = new LogSourceRegistry(List.of(source), new SourcesProperties());
-    return new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()));
+    return new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()), new com.logexplorer.core.mapping.FieldMappingProfileService());
   }
 
   private SearchRequest.Builder wideOpenRequest() {

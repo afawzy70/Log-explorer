@@ -1,5 +1,6 @@
 import { SourceHealthBadge } from './SourceHealthBadge';
 import { DockerSettingsPanel } from '../features/settings/DockerSettingsPanel';
+import { FieldMappingSettingsPanel } from '../features/settings/fieldMapping/FieldMappingSettingsPanel';
 import { OpenShiftSettingsPanel, WORKLOAD_KIND_LABELS } from '../features/settings/OpenShiftSettingsPanel';
 import { PrivacyMaskingSettingsPanel } from '../features/settings/PrivacyMaskingSettingsPanel';
 import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
@@ -113,6 +114,22 @@ export function Shell({ state, openShiftScope, onOpenShiftScopeChanged }: ShellP
        * connect a source?".
        */}
       <PrivacyMaskingSettingsPanel />
+      {/*
+       * Configurable Log Field Mapping mission §14 - also a GLOBAL,
+       * source-independent concern in this mission's minimum-viable scope
+       * (one active profile, mission §13) - sits beside Privacy & Masking
+       * rather than nested under a per-source panel, for the same reason.
+       * Operates on whichever source is currently selected for its sample
+       * fetch (`sourceSupportsSampling` is that source's own declared
+       * capability, never inferred).
+       */}
+      <FieldMappingSettingsPanel
+        sourceId={state.selectedSourceId}
+        sourceSupportsSampling={state.selectedSource?.capabilities.originalSchemaSampling ?? false}
+        profile={state.fieldMappingProfile}
+        profileError={state.fieldMappingProfileError}
+        onProfileChanged={state.refreshFieldMappingProfile}
+      />
       <DockerSettingsPanel />
       {/* OS-1A - the OpenShift connection lives beside Docker settings: both
           are source-connection concerns, and keeping them together is what

@@ -12,6 +12,7 @@ import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.SearchResult;
 import com.logexplorer.core.model.ServiceInfo;
+import com.logexplorer.core.mapping.FieldMappingProfileService;
 import com.logexplorer.core.parse.LogLineParser;
 import com.logexplorer.core.search.PageCursorCodec;
 import com.logexplorer.source.LogSourceRegistry;
@@ -25,7 +26,7 @@ import reactor.test.StepVerifier;
 class FixtureLogSourceTest {
 
   private final ObjectMapper objectMapper = new ObjectMapper();
-  private final FixtureLogSource source = new FixtureLogSource(objectMapper, new LogLineParser(objectMapper));
+  private final FixtureLogSource source = new FixtureLogSource(objectMapper, new LogLineParser(objectMapper, new FieldMappingProfileService()));
 
   @Test
   void reportsHistoricalSearchAndServiceDiscoveryCapabilitiesCorrectly() {
@@ -398,7 +399,7 @@ class FixtureLogSourceTest {
     SearchGuardrails guardrails = new SearchGuardrails(properties);
     ConcurrencyGuard concurrencyGuard = new ConcurrencyGuard(properties);
     LogSourceRegistry registry = new LogSourceRegistry(List.of(source), new SourcesProperties());
-    return new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()));
+    return new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()), new com.logexplorer.core.mapping.FieldMappingProfileService());
   }
 
   private SearchRequest.Builder wideOpenRequest() {

@@ -65,7 +65,7 @@ public class FixtureLogSource implements LogSource {
       // capability-truthfulness defect found while surfacing the action
       // on every row, and verified against the running backend rather
       // than assumed (7 events returned for a real ±30s window).
-      new SourceCapabilities(true, true, false, true, false, true, false);
+      new SourceCapabilities(true, true, false, true, false, true, false, true);
 
   /** Every 6th tick emits a burst instead of one event - the "manual check... including a burst" (IMPLEMENTATION_PLAN.md "Phase J") needs a real, reproducible burst, not left to chance. */
   private static final Duration TICK_INTERVAL = Duration.ofMillis(700);

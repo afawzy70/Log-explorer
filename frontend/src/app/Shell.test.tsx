@@ -20,6 +20,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     queryStatistics: false,
     contextView: false,
     composeProjectScoping: false,
+    originalSchemaSampling: true,
   };
   return {
     sources: [{ id: 'fixture', displayName: 'Fixture', capabilities: caps }],
@@ -79,6 +80,10 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     journeyError: null,
     openJourney: vi.fn(),
     closeJourney: vi.fn(),
+    fieldMappingProfile: null,
+    fieldMappingProfileError: null,
+    fieldMappingSearchReady: true,
+    refreshFieldMappingProfile: vi.fn(),
     ...overrides,
   };
 }
@@ -105,6 +110,7 @@ describe('Shell - active Compose scope visibility (UX-R3 §12)', () => {
       queryStatistics: false,
       contextView: false,
       composeProjectScoping: true,
+      originalSchemaSampling: true,
     };
     render(
       <Shell
@@ -130,6 +136,7 @@ describe('Shell - active Compose scope visibility (UX-R3 §12)', () => {
       queryStatistics: false,
       contextView: false,
       composeProjectScoping: true,
+      originalSchemaSampling: true,
     };
     render(
       <Shell
@@ -159,6 +166,7 @@ describe('Shell - OpenShift ScopeTrail (OS-1F §6)', () => {
     queryStatistics: false,
     contextView: true,
     composeProjectScoping: false,
+    originalSchemaSampling: true,
   };
 
   function renderWithOpenShiftScope(scope: Parameters<typeof Shell>[0]['openShiftScope']) {

@@ -5,6 +5,7 @@ import com.logexplorer.core.guard.GuardrailViolationException;
 import com.logexplorer.core.guard.GuardrailViolationException.Reason;
 import com.logexplorer.core.guard.SearchGuardrails;
 import com.logexplorer.core.guard.ValidatedSearch;
+import com.logexplorer.core.mapping.FieldMappingProfileService;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.ResultCounts;
 import com.logexplorer.core.model.SearchRequest;
@@ -83,17 +84,21 @@ public class SearchService {
   private final SearchGuardrails guardrails;
   private final ConcurrencyGuard concurrencyGuard;
   private final PageCursorCodec cursorCodec;
+  private final FieldMappingProfileService fieldMappingProfileService;
 
   public SearchService(
-      LogSourceRegistry registry, SearchGuardrails guardrails, ConcurrencyGuard concurrencyGuard, PageCursorCodec cursorCodec) {
+      LogSourceRegistry registry, SearchGuardrails guardrails, ConcurrencyGuard concurrencyGuard, PageCursorCodec cursorCodec,
+      FieldMappingProfileService fieldMappingProfileService) {
     this.registry = registry;
     this.guardrails = guardrails;
     this.concurrencyGuard = concurrencyGuard;
     this.cursorCodec = cursorCodec;
+    this.fieldMappingProfileService = fieldMappingProfileService;
   }
 
   public Mono<SearchResult> search(SearchRequest request) {
     return Mono.defer(() -> {
+      rejectIfMappingNotReady();
       LogSource source = registry.require(request.sourceId());
       rejectRawLogQlIfUnsupported(request, source);
       ValidatedSearch validated = guardrails.validate(request);
@@ -142,6 +147,20 @@ public class SearchService {
           .timeout(validated.timeout())
           .map(outcome -> toResult(outcome, validated.effectiveLimit(), request, cursor, queryPlan));
     });
+  }
+
+  /**
+   * Owner mission "Configurable Log Field Mapping + Original JSON
+   * Sampling" §15 — the readiness gate. Checked first, before the source
+   * is even resolved, so an unready mapping can never silently produce an
+   * empty/wrong-looking result for ANY source (mission: "Do NOT fail
+   * silently with zero results").
+   */
+  private void rejectIfMappingNotReady() {
+    if (!fieldMappingProfileService.isSearchReady()) {
+      throw new GuardrailViolationException(Reason.MAPPING_NOT_READY,
+          "Configure and validate log field mapping before searching this source.");
+    }
   }
 
   /**

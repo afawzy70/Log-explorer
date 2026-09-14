@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.logexplorer.core.model.CanonicalLogEvent;
+import com.logexplorer.core.mapping.FieldMappingProfileService;
 import com.logexplorer.core.parse.LogLineParser;
 import java.time.Instant;
 import java.util.HashSet;
@@ -22,7 +23,7 @@ class FixtureCorpusGeneratorTest {
 
   private final ObjectMapper objectMapper = new ObjectMapper();
   private final FixtureCorpusGenerator generator = new FixtureCorpusGenerator(objectMapper);
-  private final LogLineParser parser = new LogLineParser(objectMapper);
+  private final LogLineParser parser = new LogLineParser(objectMapper, new FieldMappingProfileService());
   private static final Instant ANCHOR = Instant.parse("2026-01-01T12:00:00Z");
 
   @Test

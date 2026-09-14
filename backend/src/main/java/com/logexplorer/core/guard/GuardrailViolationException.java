@@ -30,7 +30,19 @@ public class GuardrailViolationException extends RuntimeException {
      * pod/container actually exists, so this can never become an oracle
      * for probing arbitrary pod names.
      */
-    INVALID_CONTEXT_TARGET
+    INVALID_CONTEXT_TARGET,
+    /**
+     * Owner mission "Configurable Log Field Mapping + Original JSON
+     * Sampling" §15 — the active {@code core.mapping.FieldMappingProfile}
+     * has been edited away from the built-in default but not yet
+     * successfully validated-and-saved ({@code
+     * core.mapping.FieldMappingProfileService#isSearchReady()} is false).
+     * Search must never silently run against an unverified mapping and
+     * return a truncated/empty-looking result — it is rejected outright,
+     * with a message the frontend surfaces directly ("Configure and
+     * validate log field mapping before searching this source.").
+     */
+    MAPPING_NOT_READY
   }
 
   private final Reason reason;

@@ -42,7 +42,7 @@ class SearchServicePaginationTest {
     SearchGuardrails guardrails = new SearchGuardrails(properties);
     ConcurrencyGuard concurrencyGuard = new ConcurrencyGuard(properties);
     LogSourceRegistry registry = new LogSourceRegistry(List.of(source), new SourcesProperties());
-    return new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()));
+    return new SearchService(registry, guardrails, concurrencyGuard, new PageCursorCodec(new ObjectMapper()), new com.logexplorer.core.mapping.FieldMappingProfileService());
   }
 
   /** Canonical (application/display) timestamp and source-native timestamp are the same value by default - see {@link #eventWithDivergentTimestamps} for the case where they differ. */

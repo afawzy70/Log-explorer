@@ -112,7 +112,7 @@ test.describe('Legacy Remediation Slice 7 — Conservative free-text sensitive-d
     // expansion asserts.
     await openInspectorTab(dialog, page, /technical.*all fields/i);
     await dialog.getByRole('heading', { name: /^all fields$/i }).click();
-    await dialog.getByText('Raw JSON').click();
+    await dialog.getByText('Canonical Event JSON').click();
     const dialogTextWithJson = await dialog.innerText();
     expect(dialogTextWithJson).not.toContain('DEMO-SENSITIVE-778899');
     expect(dialogTextWithJson).not.toContain('FixtureSecret123!');

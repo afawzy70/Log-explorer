@@ -9,6 +9,13 @@ export interface SourceCapabilities {
   contextView: boolean;
   /** UX-R3 — whether this source has a real Docker Compose "investigation scope" concept at all (true only for `local-docker`). Never inferred from the source id/name. */
   composeProjectScoping: boolean;
+  /**
+   * Configurable Log Field Mapping mission §6 — whether this source can
+   * safely supply bounded, ephemeral Original Source JSON samples for the
+   * Log Schema & Field Mapping settings workflow. Gates the "Fetch sample
+   * events" control there — never inferred from source id/name.
+   */
+  originalSchemaSampling: boolean;
 }
 
 export interface SourceInfo {
@@ -451,4 +458,69 @@ export interface OpenShiftScopeSummary {
   selectedWorkloadName: string | null;
   selectedPod: string | null;
   selectedContainer: string | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Configurable Log Field Mapping + Original JSON Sampling             */
+/* ------------------------------------------------------------------ */
+
+/** Stable wire key for one of the 24 canonical fields (`core.mapping.CanonicalField#key()`), e.g. `"cif"`, `"journeyName"`. */
+export type CanonicalFieldKey = string;
+
+export interface CanonicalFieldMapping {
+  field: CanonicalFieldKey;
+  displayName: string;
+  /** Mirrors the backend's `core.mask.ProtectedField` set (CIF/Username/Customer ID/Device ID/Device IP). */
+  sensitive: boolean;
+  /** Ordered candidate JSON paths, first usable non-empty value wins. Empty means "not yet mapped" (e.g. Journey Name by default). */
+  candidatePaths: string[];
+}
+
+/** `GET/PUT/POST` response shape for every `/api/v1/settings/field-mapping` endpoint. */
+export interface FieldMappingProfileDto {
+  fields: CanonicalFieldMapping[];
+  modifiedFromDefault: boolean;
+  /**
+   * Whether `/api/v1/logs/search` will currently accept a request for ANY
+   * source - `false` the moment a field is edited, until a validate-and-
+   * save round trip with a passing report completes. See `useSearchState`'s
+   * `fieldMappingSearchReady` state, which mirrors this value app-wide.
+   */
+  searchReady: boolean;
+}
+
+export interface FieldMappingFieldValidation {
+  field: CanonicalFieldKey;
+  displayName: string;
+  candidatePaths: string[];
+  invalidPaths: string[];
+  sampleCount: number;
+  foundCount: number;
+  foundInAnySample: boolean;
+  mappedButAbsent: boolean;
+  structuredValueWarning: boolean;
+  /** Real, unmasked resolved values from the fetched samples - owner-approved exception for this privileged setup surface only. Never persist, never log. */
+  exampleValues: string[];
+}
+
+export interface FieldMappingConflict {
+  pathRaw: string;
+  fields: CanonicalFieldKey[];
+}
+
+export interface FieldMappingValidationReport {
+  fields: FieldMappingFieldValidation[];
+  conflicts: FieldMappingConflict[];
+  sampleCount: number;
+  malformedSampleCount: number;
+  /** `true` iff no candidate path anywhere failed to parse - the value to pass to `saveFieldMappingProfile`. */
+  passed: boolean;
+}
+
+/** `POST /api/v1/sources/{id}/field-mapping/samples` response - `samples` are real, unmasked Original Source JSON strings. Hold only in component state, never `localStorage`. */
+export interface FieldMappingSampleResponse {
+  sourceId: string;
+  requestedLimit: number;
+  actualCount: number;
+  samples: string[];
 }

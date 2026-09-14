@@ -90,6 +90,9 @@ public final class EventFilters {
     if (!fieldMatches(request.journeyId(), event.journeyId())) {
       return false;
     }
+    if (!fieldMatches(request.journeyName(), event.journeyName())) {
+      return false;
+    }
     if (!fieldMatches(request.eventId(), event.eventId())) {
       return false;
     }

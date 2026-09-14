@@ -75,3 +75,9 @@ buttons reachable by keyboard (Tab, then Enter).
 That's the whole core loop: **Search → select → inspect → surrounding
 logs / correlation → Live → back to Search.** Everything else in the
 [full guide](USER_GUIDE_EN.md) builds on these same steps.
+
+**One thing you won't need on day one:** if a filter like CIF or Trace ID
+ever finds nothing for a value you know is really in your logs, that's a
+one-time field-mapping setup question, not a search problem — see
+[USER_GUIDE_EN.md §19](USER_GUIDE_EN.md#19-log-schema--field-mapping) or
+[TROUBLESHOOTING_EN.md](TROUBLESHOOTING_EN.md#a-filter-finds-nothing-even-though-the-value-is-in-the-log).

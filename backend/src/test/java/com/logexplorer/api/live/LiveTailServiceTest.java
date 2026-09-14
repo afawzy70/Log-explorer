@@ -38,9 +38,9 @@ class LiveTailServiceTest {
 
   private static final Instant NOW = Instant.parse("2026-01-01T12:00:00Z");
   private static final SourceCapabilities LIVE_CAPABLE =
-      new SourceCapabilities(true, true, false, false, false, false, false);
+      new SourceCapabilities(true, true, false, false, false, false, false, true);
   private static final SourceCapabilities LIVE_INCAPABLE =
-      new SourceCapabilities(true, false, false, false, false, false, false);
+      new SourceCapabilities(true, false, false, false, false, false, false, true);
 
   /** Polls a condition on a background heartbeat scheduler thread until true or the timeout elapses - no new test dependency (Awaitility) needed for this file's small number of async waits. */
   private void waitUntil(java.util.function.BooleanSupplier condition, Duration timeout) {

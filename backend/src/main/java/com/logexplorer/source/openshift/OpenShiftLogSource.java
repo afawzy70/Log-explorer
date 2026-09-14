@@ -91,7 +91,7 @@ public class OpenShiftLogSource implements LogSource {
     // derived from whether a result actually carries a nextCursor - OS-1C's
     // own DirectPodLogProvider never produces one, so that stays honestly
     // false without this source needing to say so twice).
-    return new SourceCapabilities(true, true, false, false, false, true, false);
+    return new SourceCapabilities(true, true, false, false, false, true, false, true);
   }
 
   /**

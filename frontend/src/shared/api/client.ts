@@ -1,8 +1,12 @@
 import type {
+  CanonicalFieldKey,
   ContextRequestBody,
   DockerConnectionCandidate,
   DockerConnectionSummary,
   EnvironmentInfo,
+  FieldMappingProfileDto,
+  FieldMappingSampleResponse,
+  FieldMappingValidationReport,
   JourneyRequestBody,
   MaskingSettings,
   ProblemDetail,
@@ -377,4 +381,85 @@ export function openShiftFailureReason(error: unknown): OpenShiftFailureReason |
     return (reason as OpenShiftFailureReason | undefined) ?? null;
   }
   return null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Configurable Log Field Mapping + Original JSON Sampling             */
+/* ------------------------------------------------------------------ */
+
+/** True when `error` is the backend's `MAPPING_NOT_READY` guardrail rejection ({@code GuardrailViolationException.Reason.MAPPING_NOT_READY}) — the same `.problem.reason` convention {@link openShiftFailureReason} already uses. */
+export function isMappingNotReadyError(error: unknown): boolean {
+  return error instanceof ApiError && (error.problem as { reason?: string } | undefined)?.reason === 'MAPPING_NOT_READY';
+}
+
+export async function fetchFieldMappingProfile(signal?: AbortSignal): Promise<FieldMappingProfileDto> {
+  const response = await fetch('/api/v1/settings/field-mapping', { signal });
+  return parseJsonOrThrow<FieldMappingProfileDto>(response);
+}
+
+export async function updateFieldMappingCandidates(
+  field: CanonicalFieldKey,
+  candidatePaths: string[],
+  signal?: AbortSignal,
+): Promise<FieldMappingProfileDto> {
+  const response = await fetch(`/api/v1/settings/field-mapping/fields/${encodeURIComponent(field)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ candidatePaths }),
+    signal,
+  });
+  return parseJsonOrThrow<FieldMappingProfileDto>(response);
+}
+
+export async function resetFieldMappingProfile(signal?: AbortSignal): Promise<FieldMappingProfileDto> {
+  const response = await fetch('/api/v1/settings/field-mapping/reset', { method: 'POST', signal });
+  return parseJsonOrThrow<FieldMappingProfileDto>(response);
+}
+
+/**
+ * `samples` are real, unmasked Original Source JSON strings the caller
+ * already fetched and is holding in its own component state — never
+ * re-persisted here, this is a stateless pass-through call (mission §4/§20).
+ */
+export async function validateFieldMapping(
+  proposedCandidates: Partial<Record<CanonicalFieldKey, string[]>>,
+  samples: string[],
+  signal?: AbortSignal,
+): Promise<FieldMappingValidationReport> {
+  const response = await fetch('/api/v1/settings/field-mapping/validate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ proposedCandidates, samples }),
+    signal,
+  });
+  return parseJsonOrThrow<FieldMappingValidationReport>(response);
+}
+
+/** `validationPassed` must be the real `passed` value from the most recent {@link validateFieldMapping} call — never hardcoded `true`. */
+export async function saveFieldMappingProfile(validationPassed: boolean, signal?: AbortSignal): Promise<FieldMappingProfileDto> {
+  const response = await fetch('/api/v1/settings/field-mapping/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ validationPassed }),
+    signal,
+  });
+  return parseJsonOrThrow<FieldMappingProfileDto>(response);
+}
+
+/**
+ * Original Source JSON samples (mission §3/§5) — bounded (1-50, default
+ * 20), real, unmasked. The caller must hold the result only in ephemeral
+ * component state, never `localStorage`/`sessionStorage`/a URL.
+ */
+export async function fetchFieldMappingSamples(
+  sourceId: string,
+  limit?: number,
+  signal?: AbortSignal,
+): Promise<FieldMappingSampleResponse> {
+  const query = limit != null ? `?limit=${encodeURIComponent(limit)}` : '';
+  const response = await fetch(`/api/v1/sources/${encodeURIComponent(sourceId)}/field-mapping/samples${query}`, {
+    method: 'POST',
+    signal,
+  });
+  return parseJsonOrThrow<FieldMappingSampleResponse>(response);
 }

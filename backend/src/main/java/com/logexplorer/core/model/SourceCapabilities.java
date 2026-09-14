@@ -20,6 +20,23 @@ public record SourceCapabilities(
      * selector - the same "frontend never infers what a source can do"
      * rule every other capability here already follows.
      */
-    boolean composeProjectScoping
+    boolean composeProjectScoping,
+    /**
+     * Owner mission "Configurable Log Field Mapping + Original JSON
+     * Sampling" §6 — whether this source can safely supply bounded,
+     * ephemeral Original Source JSON samples for the field-mapping setup
+     * workflow ({@code core.mapping.sample.FieldMappingSampleService}).
+     * Truthfully {@code true} for every source today (Fixture, Docker,
+     * OpenShift, Loki) because all four route through the same {@code
+     * core.parse.LogLineParser} and {@code CanonicalLogEvent#originalRawJson()}
+     * capture, entirely reusing each source's existing, already-bounded
+     * {@code search()} — this is a genuine, uniform architectural property,
+     * never fabricated per mission §6's "do not fabricate support"
+     * instruction. Kept as an explicit per-source capability (not a
+     * hard-coded assumption in the frontend) so a future source that
+     * genuinely cannot support it — should one ever be added — can
+     * truthfully declare {@code false} without a code change anywhere else.
+     */
+    boolean originalSchemaSampling
 ) {
 }

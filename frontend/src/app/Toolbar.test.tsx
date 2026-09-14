@@ -18,6 +18,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     queryStatistics: false,
     contextView: false,
     composeProjectScoping: false,
+    originalSchemaSampling: true,
   };
   return {
     sources: [{ id: 'fixture', displayName: 'Fixture', capabilities: caps }],
@@ -77,6 +78,10 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     journeyError: null,
     openJourney: vi.fn(),
     closeJourney: vi.fn(),
+    fieldMappingProfile: null,
+    fieldMappingProfileError: null,
+    fieldMappingSearchReady: true,
+    refreshFieldMappingProfile: vi.fn(),
     ...overrides,
   };
 }
@@ -128,6 +133,7 @@ describe('Toolbar', () => {
       queryStatistics: false,
       contextView: false,
       composeProjectScoping: true,
+      originalSchemaSampling: true,
     };
     const { container } = render(
       <Toolbar
@@ -156,6 +162,7 @@ describe('Toolbar', () => {
       queryStatistics: false,
       contextView: false,
       composeProjectScoping: false,
+      originalSchemaSampling: true,
     };
     const { container } = render(
       <Toolbar
@@ -181,6 +188,7 @@ describe('Toolbar', () => {
       queryStatistics: false,
       contextView: false,
       composeProjectScoping: false,
+      originalSchemaSampling: true,
     };
     const onStartLive = vi.fn();
     render(
@@ -218,6 +226,7 @@ describe('Toolbar - OpenShift Project/Namespace required for Search/Live (OS-1F 
     queryStatistics: false,
     contextView: true,
     composeProjectScoping: false,
+    originalSchemaSampling: true,
   };
 
   function openShiftState(overrides: Partial<SearchState> = {}) {
@@ -306,5 +315,51 @@ describe('Toolbar - OpenShift Project/Namespace required for Search/Live (OS-1F 
   it('never gates Search before the scope has resolved (openShiftScope still null on first render)', () => {
     render(<Toolbar state={openShiftState()} onStartLive={vi.fn()} openShiftScope={null} />);
     expect(screen.getByRole('button', { name: /^search$/i })).toBeEnabled();
+  });
+
+  describe('Configurable Log Field Mapping mission §15 - search readiness gate', () => {
+    it('disables Search when the field-mapping profile is not search-ready, and shows the exact reason', () => {
+      render(<Toolbar state={baseState({ fieldMappingSearchReady: false })} />);
+      const searchButton = screen.getByRole('button', { name: /^search$/i });
+      expect(searchButton).toBeDisabled();
+      expect(screen.getByText(/configure and validate log field mapping before searching this source/i)).toBeInTheDocument();
+    });
+
+    it('enables Search when the field-mapping profile is search-ready', () => {
+      render(<Toolbar state={baseState({ fieldMappingSearchReady: true })} />);
+      expect(screen.getByRole('button', { name: /^search$/i })).toBeEnabled();
+      expect(screen.queryByText(/configure and validate log field mapping/i)).not.toBeInTheDocument();
+    });
+
+    it('never silently permits Search before the readiness state has loaded (undefined stays blocked)', () => {
+      render(<Toolbar state={baseState({ fieldMappingSearchReady: undefined })} />);
+      expect(screen.getByRole('button', { name: /^search$/i })).toBeDisabled();
+    });
+
+    it('re-enables Search reactively once fieldMappingSearchReady flips true (e.g. after a successful save elsewhere)', () => {
+      const { rerender } = render(<Toolbar state={baseState({ fieldMappingSearchReady: false })} />);
+      expect(screen.getByRole('button', { name: /^search$/i })).toBeDisabled();
+
+      rerender(<Toolbar state={baseState({ fieldMappingSearchReady: true })} />);
+      expect(screen.getByRole('button', { name: /^search$/i })).toBeEnabled();
+    });
+
+    it('the mapping-not-ready gate takes precedence in its own hint text over an OpenShift missing-scope hint', () => {
+      render(
+        <Toolbar
+          state={openShiftState({ fieldMappingSearchReady: false })}
+          openShiftScope={{
+            selectedProject: null,
+            discoveryApi: 'PROJECTS',
+            selectedWorkloadKind: null,
+            selectedWorkloadName: null,
+            selectedPod: null,
+            selectedContainer: null,
+          }}
+        />,
+      );
+      expect(screen.getByText(/configure and validate log field mapping/i)).toBeInTheDocument();
+      expect(screen.queryByText(/select a project to search openshift/i)).not.toBeInTheDocument();
+    });
   });
 });

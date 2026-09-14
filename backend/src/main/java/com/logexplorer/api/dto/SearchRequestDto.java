@@ -28,6 +28,7 @@ public record SearchRequestDto(
     String spanId,
     String correlationId,
     String journeyId,
+    String journeyName,
     String eventId,
     String errorCode,
     String businessStep,
@@ -61,6 +62,7 @@ public record SearchRequestDto(
         + ", spanId=" + spanId
         + ", correlationId=" + correlationId
         + ", journeyId=" + journeyId
+        + ", journeyName=" + journeyName
         + ", eventId=" + eventId
         + ", errorCode=" + errorCode
         + ", businessStep=" + businessStep

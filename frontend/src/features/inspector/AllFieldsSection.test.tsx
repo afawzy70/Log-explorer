@@ -15,7 +15,7 @@ describe('AllFieldsSection', () => {
     expect(screen.getByText('extraField')).toBeInTheDocument();
     expect(screen.getByText('mdc.custom.mdc.key')).toBeInTheDocument();
 
-    const details = screen.getByText('Raw JSON').closest('details');
+    const details = screen.getByText('Canonical Event JSON').closest('details');
     expect(details).not.toBeNull();
     expect(details?.open).toBe(false);
   });

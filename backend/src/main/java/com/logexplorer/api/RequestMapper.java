@@ -51,6 +51,7 @@ public class RequestMapper {
         .spanId(dto.spanId())
         .correlationId(dto.correlationId())
         .journeyId(dto.journeyId())
+        .journeyName(dto.journeyName())
         .eventId(dto.eventId())
         .errorCode(dto.errorCode())
         .businessStep(dto.businessStep())
