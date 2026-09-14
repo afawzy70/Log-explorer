@@ -7,6 +7,7 @@ import type {
   FieldMappingProfileDto,
   FieldMappingSampleResponse,
   FieldMappingValidationReport,
+  SchemaScanResponse,
   JourneyRequestBody,
   MaskingSettings,
   ProblemDetail,
@@ -462,4 +463,25 @@ export async function fetchFieldMappingSamples(
     signal,
   });
   return parseJsonOrThrow<FieldMappingSampleResponse>(response);
+}
+
+/**
+ * Quick Schema Scan (owner mission "Field Mapping Schema Scan + Masking
+ * Policy Extension" §A) — bounded, severity/structure-diverse scan
+ * returning both real Original Event Samples and the generated Discovered
+ * Source Schema union. The caller must hold the result only in ephemeral
+ * component state, never `localStorage`, exactly like {@link
+ * fetchFieldMappingSamples}.
+ */
+export async function fetchFieldMappingSchemaScan(
+  sourceId: string,
+  maxEvents?: number,
+  signal?: AbortSignal,
+): Promise<SchemaScanResponse> {
+  const query = maxEvents != null ? `?maxEvents=${encodeURIComponent(maxEvents)}` : '';
+  const response = await fetch(`/api/v1/sources/${encodeURIComponent(sourceId)}/field-mapping/schema-scan${query}`, {
+    method: 'POST',
+    signal,
+  });
+  return parseJsonOrThrow<SchemaScanResponse>(response);
 }

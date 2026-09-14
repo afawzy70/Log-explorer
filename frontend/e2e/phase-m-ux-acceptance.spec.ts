@@ -81,6 +81,27 @@ test.describe('Task 2 - What happened for a user/customer?', () => {
     page,
   }) => {
     await page.goto('/');
+
+    // Mission "Field Mapping Schema Scan + Masking Policy Extension" §B:
+    // the fresh/default masking state is now OFF - this task is
+    // specifically about the MASKED-display guarantee, so it explicitly
+    // enables Username/Customer ID masking first (the real, current
+    // owner-facing workflow: Privacy & masking -> check a field). Reset
+    // to the fresh default at the end so this shared-singleton backend
+    // policy never leaks into a later test in the same run.
+    await page.getByRole('button', { name: /privacy & masking/i }).click();
+    const maskingDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+    await expect(maskingDialog).toBeVisible();
+    const userNameCheckbox = maskingDialog.getByLabel('Username');
+    const customerIdCheckbox = maskingDialog.getByLabel('Customer ID');
+    if (!(await userNameCheckbox.isChecked())) {
+      await userNameCheckbox.click();
+    }
+    if (!(await customerIdCheckbox.isChecked())) {
+      await customerIdCheckbox.click();
+    }
+    await page.getByRole('button', { name: /^close$/i }).click();
+
     await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
 
     await page.getByRole('button', { name: /^more filters$/i }).click();
@@ -114,6 +135,20 @@ test.describe('Task 2 - What happened for a user/customer?', () => {
 
     await assertNoHorizontalOverflow(page);
     await captureScreenshot(page, 'm', 'task2-user-customer-masked');
+
+    // Restore the fresh default (unmasked) so this shared-singleton
+    // backend policy never leaks into a later test in the same run.
+    await page.keyboard.press('Escape'); // close the Inspector dialog first
+    await page.getByRole('button', { name: /privacy & masking/i }).click();
+    const cleanupDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+    await expect(cleanupDialog).toBeVisible();
+    if (await cleanupDialog.getByLabel('Username').isChecked()) {
+      await cleanupDialog.getByLabel('Username').click();
+    }
+    if (await cleanupDialog.getByLabel('Customer ID').isChecked()) {
+      await cleanupDialog.getByLabel('Customer ID').click();
+    }
+    await page.getByRole('button', { name: /^close$/i }).click();
   });
 });
 

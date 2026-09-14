@@ -524,3 +524,46 @@ export interface FieldMappingSampleResponse {
   actualCount: number;
   samples: string[];
 }
+
+/**
+ * Owner mission "Field Mapping Schema Scan + Masking Policy Extension" §A
+ * — one bounded, real, unmasked Original Event Sample from a Quick Schema
+ * Scan. Never called "Original JSON" in the UI when referring to the
+ * *union* — this type is the real per-event sample; {@link
+ * DiscoveredSchemaPathEntry} is the generated union (mission §A5).
+ */
+export interface OriginalEventSample {
+  originalJson: string;
+  severity: string;
+  malformed: boolean;
+}
+
+/** One row of the "Discovered Source Schema" union (mission §A4/§A7) — schema metadata only, never a raw value. */
+export interface DiscoveredSchemaPathEntry {
+  path: string;
+  observedTypes: string[];
+  occurrenceCount: number;
+  coveragePercentage: number;
+}
+
+/**
+ * `POST /api/v1/sources/{id}/field-mapping/schema-scan` response (mission
+ * §A). `representativeEvents` are real, unmasked Original Event Samples —
+ * hold only in component state, never `localStorage`, exactly like {@link
+ * FieldMappingSampleResponse}. The `*LimitReached` flags say truthfully
+ * which bound (if any) ended the scan early — the UI must present this
+ * schema as "Observed," never "Complete/Guaranteed" (mission §A11).
+ */
+export interface SchemaScanResponse {
+  sourceId: string;
+  totalEventsInspected: number;
+  malformedEventsInspected: number;
+  totalBytesInspected: number;
+  eventLimitReached: boolean;
+  byteLimitReached: boolean;
+  durationLimitReached: boolean;
+  representativeEvents: OriginalEventSample[];
+  discoveredSchema: DiscoveredSchemaPathEntry[];
+  /** Saved mapping candidate paths (mission §A9) that this scan did not observe anywhere in the current source data. */
+  mappedPathsNotObserved: string[];
+}

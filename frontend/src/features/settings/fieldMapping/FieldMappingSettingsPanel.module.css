@@ -245,6 +245,88 @@
   color: var(--color-danger);
 }
 
+.scanStats {
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.scanBoundNotice {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.warningBanner {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+}
+
+.severityBadge {
+  font-size: var(--font-size-xs);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+}
+
+.malformedBadge {
+  font-size: var(--font-size-xs);
+  color: var(--color-danger);
+  border: var(--border-width) solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+}
+
+.schemaTableWrapper {
+  max-height: 220px;
+  overflow-y: auto;
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.schemaTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-xs);
+}
+
+.schemaTable th,
+.schemaTable td {
+  text-align: left;
+  padding: var(--space-1) var(--space-2);
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.schemaTable code {
+  font-family: var(--font-mono);
+}
+
+.pickerRow {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+  align-items: center;
+}
+
+.pickerRow select {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.advancedEntry {
+  margin-top: var(--space-1);
+}
+
+.advancedEntry summary {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
 .actions {
   margin-top: var(--space-3);
   display: flex;

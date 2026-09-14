@@ -266,14 +266,15 @@ Explorer was never told which JSON path it lives at for your specific
 source's log format — this is the exact defect that motivated **Settings
 → Log Schema & Field Mapping** (§19 of the User Guide) to exist.
 
-**What to do:** open **Settings → Log Schema & Field Mapping**, fetch a
-few real sample events from the affected source, and check the
-**Original Source JSON** for one — find the field's real path (it might
-be a top-level key, or nested differently than the default mapping
+**What to do:** open **Settings → Log Schema & Field Mapping**, run a
+**Quick Schema Scan** against the affected source, and check the
+**Discovered Source Schema** table — find the field's real path (it
+might be a top-level key, or nested differently than the default mapping
 expects). Add that path as an additional candidate for the relevant
-canonical field, then Validate and Save. You do not need to remove the
-existing default path — you can list several candidate paths for one
-field, and Log Explorer tries them in order.
+canonical field directly from the discovered-paths picker, then Validate
+and Save. You do not need to remove the existing default path — you can
+list several candidate paths for one field, and Log Explorer tries them
+in order.
 
 ---
 
@@ -293,15 +294,15 @@ valid and saved.
 
 ---
 
-### Original Source JSON sample fetch fails or returns nothing
+### The Quick Schema Scan fails or finds nothing
 
 **Likely cause:** the source itself is unreachable (check its own
 connection status first — Docker/OpenShift settings), or the source
-genuinely has no recent events to sample from right now.
+genuinely has no recent events to scan right now.
 
 **What to do:** confirm the source shows as connected/healthy elsewhere
-in the app first. If it is, try again after a moment — sampling reads
+in the app first. If it is, try again after a moment — the scan reads
 only real, recent events, so a source with very low traffic may
 genuinely have few or none to show yet. This is shown honestly (a small
-or empty sample count) rather than as an error when the source itself is
-fine but simply quiet.
+or zero event count, and an empty Discovered Source Schema) rather than
+as an error when the source itself is fine but simply quiet.

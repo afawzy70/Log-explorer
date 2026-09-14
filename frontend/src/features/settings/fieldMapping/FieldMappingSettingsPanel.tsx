@@ -3,7 +3,7 @@ import { Button } from '../../../shared/ui/Button';
 import { useDismissableLayer } from '../../../shared/ui/useDismissableLayer';
 import { usePopoverTrigger } from '../../../shared/ui/usePopoverTrigger';
 import {
-  fetchFieldMappingSamples,
+  fetchFieldMappingSchemaScan,
   resetFieldMappingProfile,
   saveFieldMappingProfile,
   validateFieldMapping,
@@ -13,9 +13,8 @@ import type {
   CanonicalFieldMapping,
   FieldMappingProfileDto,
   FieldMappingValidationReport,
+  SchemaScanResponse,
 } from '../../../shared/api/types';
-import { discoverPaths } from './discoverPaths';
-import type { DiscoveredPath } from './discoverPaths';
 import styles from './FieldMappingSettingsPanel.module.css';
 
 export interface FieldMappingSettingsPanelProps {
@@ -30,28 +29,34 @@ export interface FieldMappingSettingsPanelProps {
   onProfileChanged: () => void;
 }
 
-const DEFAULT_SAMPLE_LIMIT = 20;
+const DEFAULT_SCAN_MAX_EVENTS = 200;
 
 /**
- * "Log Schema & Field Mapping" settings (mission "Configurable Log Field
- * Mapping + Original JSON Sampling" §14) — a source-independent settings
- * surface, in the same top-right group as {@link
+ * "Log Schema & Field Mapping" settings (owner mission "Field Mapping
+ * Schema Scan + Masking Policy Extension" §A/§C) — a source-independent
+ * settings surface, in the same top-right group as {@link
  * PrivacyMaskingSettingsPanel}/{@link DockerSettingsPanel}, but operating
  * on whichever source is currently selected (a mapping profile is
- * source-neutral today — mission §13 scope note).
+ * source-neutral today — mission §13 scope note, unchanged).
  *
- * <p><b>Security (mission §4/§20):</b> fetched Original Source JSON
- * samples and the validation report's real example values live ONLY in
- * this component's own `useState` — never `localStorage`/`sessionStorage`/
- * a URL, never logged, discarded the moment this panel closes or the page
+ * <p><b>Security (mission §4/§20):</b> the scan's Original Event Samples
+ * and the validation report's real example values live ONLY in this
+ * component's own `useState` — never `localStorage`/`sessionStorage`/a
+ * URL, never logged, discarded the moment this panel closes or the page
  * reloads. There is no caching layer here by design.
  *
- * <p>Workflow (mission §14): fetch samples → inspect Original Source JSON
- * → inspect discovered paths → edit candidate paths per canonical field →
- * validate → review the report (found/absent/invalid/conflicting) → save
- * (only once a validate call has run since the last edit) → Search
- * re-enables automatically via {@link onProfileChanged} once
- * `searchReady` flips true.
+ * <p><b>Workflow (mission §C):</b> Connect Source → Quick Schema Scan →
+ * Review Original Event Samples → Review Discovered Source Schema → Map
+ * Fields → Validate → Save → Search. Rescan never overwrites a saved
+ * mapping (mission §A9) — it only re-runs the scan and highlights newly
+ * discovered / disappeared / mapped-but-absent paths; saving remains a
+ * fully separate, explicit action.
+ *
+ * <p><b>Terminology (mission §A5):</b> "Original Event Samples" are real,
+ * unmodified source events; "Discovered Source Schema" is the generated
+ * path union built from the whole scan — never called "Original JSON."
+ * The schema is always presented as <i>Observed</i>, never
+ * <i>Complete/Guaranteed</i> (mission §A11).
  */
 export function FieldMappingSettingsPanel({
   sourceId,
@@ -66,12 +71,21 @@ export function FieldMappingSettingsPanel({
   const datalistId = useId();
 
   // Ephemeral only — never persisted (mission §4/§20).
-  const [samples, setSamples] = useState<string[]>([]);
-  const [samplesLoading, setSamplesLoading] = useState(false);
-  const [samplesError, setSamplesError] = useState<string | null>(null);
+  const [scanResult, setScanResult] = useState<SchemaScanResponse | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [selectedSampleIndex, setSelectedSampleIndex] = useState(0);
 
-  const discovered: DiscoveredPath[] = discoverPaths(samples);
+  // Mission §A9 rescan-safety: diffed against the PREVIOUS scan's own
+  // discovered paths (never against the saved mapping) - held only in a
+  // ref, since it must survive a rescan overwriting `scanResult` without
+  // itself ever being written back to any server state.
+  const previousScanPathsRef = useRef<Set<string> | null>(null);
+  const [newlyDiscoveredPaths, setNewlyDiscoveredPaths] = useState<string[]>([]);
+  const [disappearedPaths, setDisappearedPaths] = useState<string[]>([]);
+
+  const discovered = scanResult?.discoveredSchema ?? [];
+  const discoveredPathStrings = discovered.map((d) => d.path);
 
   // Only fields the user has actually edited this session — every other
   // field falls back to `profile`'s own last-saved candidates, both for
@@ -79,6 +93,10 @@ export function FieldMappingSettingsPanel({
   // contract: omitted fields validate against their current candidates).
   const [drafts, setDrafts] = useState<Partial<Record<CanonicalFieldKey, string[]>>>({});
   const [newCandidateText, setNewCandidateText] = useState<Partial<Record<CanonicalFieldKey, string>>>({});
+  // Mission §A10: a picker over discovered paths is the normal way to add
+  // a candidate; manual typing (`newCandidateText` above) remains as an
+  // advanced fallback.
+  const [pickerSelection, setPickerSelection] = useState<Partial<Record<CanonicalFieldKey, string>>>({});
 
   const [validationReport, setValidationReport] = useState<FieldMappingValidationReport | null>(null);
   const [validating, setValidating] = useState(false);
@@ -111,6 +129,16 @@ export function FieldMappingSettingsPanel({
     setNewCandidateText((prev) => ({ ...prev, [field]: '' }));
   }
 
+  /** Mission §A10: adds the path currently selected in the discovered-paths picker for this field. */
+  function addPickedCandidate(field: CanonicalFieldKey, savedCandidates: string[]) {
+    const picked = (pickerSelection[field] ?? '').trim();
+    if (!picked) {
+      return;
+    }
+    editField(field, [...candidatesFor(field, savedCandidates), picked]);
+    setPickerSelection((prev) => ({ ...prev, [field]: '' }));
+  }
+
   function removeCandidate(field: CanonicalFieldKey, savedCandidates: string[], index: number) {
     const current = candidatesFor(field, savedCandidates);
     editField(field, current.filter((_, i) => i !== index));
@@ -126,25 +154,46 @@ export function FieldMappingSettingsPanel({
     editField(field, current);
   }
 
-  function fetchSamples() {
+  /**
+   * Runs a Quick Schema Scan (mission §A). Safe to call repeatedly as
+   * "Rescan" — it only ever reads; it never touches the saved mapping
+   * (mission §A9). On each call, the newly-discovered/disappeared path
+   * diff is computed against the PREVIOUS scan's own discovered paths
+   * (never against the saved mapping profile, which is a separate,
+   * server-computed cross-reference already carried on the result as
+   * `mappedPathsNotObserved`).
+   */
+  function runScan() {
     if (!sourceId) {
       return;
     }
-    setSamplesLoading(true);
-    setSamplesError(null);
-    fetchFieldMappingSamples(sourceId, DEFAULT_SAMPLE_LIMIT)
+    setScanning(true);
+    setScanError(null);
+    fetchFieldMappingSchemaScan(sourceId, DEFAULT_SCAN_MAX_EVENTS)
       .then((result) => {
-        setSamples(result.samples);
+        const previousPaths = previousScanPathsRef.current;
+        const currentPaths = new Set(result.discoveredSchema.map((d) => d.path));
+        if (previousPaths) {
+          setNewlyDiscoveredPaths([...currentPaths].filter((p) => !previousPaths.has(p)));
+          setDisappearedPaths([...previousPaths].filter((p) => !currentPaths.has(p)));
+        } else {
+          setNewlyDiscoveredPaths([]);
+          setDisappearedPaths([]);
+        }
+        previousScanPathsRef.current = currentPaths;
+        setScanResult(result);
         setSelectedSampleIndex(0);
+        setValidationReport(null); // last validation ran against a now-stale sample set
       })
-      .catch((error: unknown) => setSamplesError(error instanceof Error ? error.message : 'Failed to fetch sample events'))
-      .finally(() => setSamplesLoading(false));
+      .catch((error: unknown) => setScanError(error instanceof Error ? error.message : 'Failed to run schema scan'))
+      .finally(() => setScanning(false));
   }
 
   function runValidate() {
     setValidating(true);
     setActionError(null);
-    validateFieldMapping(drafts, samples)
+    const rawSamples = (scanResult?.representativeEvents ?? []).map((s) => s.originalJson);
+    validateFieldMapping(drafts, rawSamples)
       .then(setValidationReport)
       .catch((error: unknown) => setActionError(error instanceof Error ? error.message : 'Validation failed'))
       .finally(() => setValidating(false));
@@ -224,37 +273,92 @@ export function FieldMappingSettingsPanel({
               </p>
 
               <section className={styles.section}>
-                <h3 className={styles.subheading}>1–3. Fetch and inspect Original Source JSON</h3>
+                <h3 className={styles.subheading}>1. Quick Schema Scan</h3>
                 {sourceSupportsSampling ? (
                   <>
-                    <Button variant="secondary" onClick={fetchSamples} disabled={samplesLoading || !sourceId}>
-                      {samplesLoading ? 'Fetching…' : `Fetch sample events (up to ${DEFAULT_SAMPLE_LIMIT})`}
+                    <Button variant="secondary" onClick={runScan} disabled={scanning || !sourceId}>
+                      {scanning ? 'Scanning…' : scanResult ? 'Rescan' : `Run Quick Schema Scan (up to ${DEFAULT_SCAN_MAX_EVENTS} events)`}
                     </Button>
-                    {samplesError ? (
+                    {scanError ? (
                       <p role="alert" className={styles.error}>
-                        {samplesError}
+                        {scanError}
                       </p>
                     ) : null}
-                    {samples.length > 0 ? (
-                      <div className={styles.samplesArea}>
-                        <label htmlFor={`${headingId}-sample-select`}>
-                          {samples.length} sample{samples.length === 1 ? '' : 's'} fetched — Original Source JSON
-                          (real, unmasked — never persisted)
-                        </label>
-                        <select
-                          id={`${headingId}-sample-select`}
-                          value={selectedSampleIndex}
-                          onChange={(event) => setSelectedSampleIndex(Number(event.target.value))}
-                        >
-                          {samples.map((_, index) => (
-                            <option key={index} value={index}>
-                              Sample {index + 1}
-                            </option>
-                          ))}
-                        </select>
-                        <pre className={styles.samplePreview}>{formatJson(samples[selectedSampleIndex])}</pre>
-                      </div>
-                    ) : null}
+
+                    {scanResult ? (
+                      <>
+                        <p className={styles.scanStats}>
+                          Observed {scanResult.totalEventsInspected} event
+                          {scanResult.totalEventsInspected === 1 ? '' : 's'}
+                          {scanResult.malformedEventsInspected > 0
+                            ? ` (${scanResult.malformedEventsInspected} malformed, excluded from the schema below)`
+                            : ''}
+                          . This is the <strong>observed</strong> schema from this scan, not a guaranteed-complete one —
+                          a source may still emit shapes this scan didn't happen to see.
+                        </p>
+                        {scanResult.eventLimitReached || scanResult.byteLimitReached || scanResult.durationLimitReached ? (
+                          <p className={styles.scanBoundNotice}>
+                            Scan stopped early:{' '}
+                            {[
+                              scanResult.eventLimitReached ? 'event limit reached' : null,
+                              scanResult.byteLimitReached ? 'byte limit reached' : null,
+                              scanResult.durationLimitReached ? 'time limit reached' : null,
+                            ]
+                              .filter(Boolean)
+                              .join(', ')}
+                            .
+                          </p>
+                        ) : null}
+
+                        {newlyDiscoveredPaths.length > 0 || disappearedPaths.length > 0 ? (
+                          <div role="status" className={styles.warningBanner}>
+                            {newlyDiscoveredPaths.length > 0 ? (
+                              <p>Newly discovered since the last scan: {newlyDiscoveredPaths.map((p) => <code key={p}>{p}</code>)}</p>
+                            ) : null}
+                            {disappearedPaths.length > 0 ? (
+                              <p>No longer observed since the last scan: {disappearedPaths.map((p) => <code key={p}>{p}</code>)}</p>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        {scanResult.mappedPathsNotObserved.length > 0 ? (
+                          <div role="alert" className={styles.warningBanner}>
+                            <p>
+                              Saved mapping path{scanResult.mappedPathsNotObserved.length === 1 ? '' : 's'} not observed in
+                              this scan: {scanResult.mappedPathsNotObserved.map((p) => <code key={p}>{p}</code>)}. The
+                              saved mapping is unchanged — review and re-save only if you want to update it.
+                            </p>
+                          </div>
+                        ) : null}
+
+                        {scanResult.representativeEvents.length > 0 ? (
+                          <div className={styles.samplesArea}>
+                            <label htmlFor={`${headingId}-sample-select`}>
+                              {scanResult.representativeEvents.length} representative Original Event Sample
+                              {scanResult.representativeEvents.length === 1 ? '' : 's'} (real, unmasked — never
+                              persisted)
+                            </label>
+                            <select
+                              id={`${headingId}-sample-select`}
+                              value={selectedSampleIndex}
+                              onChange={(event) => setSelectedSampleIndex(Number(event.target.value))}
+                            >
+                              {scanResult.representativeEvents.map((sample, index) => (
+                                <option key={index} value={index}>
+                                  Sample {index + 1} — {sample.severity}
+                                  {sample.malformed ? ' (malformed)' : ''}
+                                </option>
+                              ))}
+                            </select>
+                            <pre className={styles.samplePreview}>
+                              {formatJson(scanResult.representativeEvents[selectedSampleIndex]?.originalJson ?? '')}
+                            </pre>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <p className={styles.hint}>Run a scan to review real Original Event Samples and the Discovered Source Schema.</p>
+                    )}
                   </>
                 ) : (
                   <p className={styles.hint}>
@@ -265,30 +369,44 @@ export function FieldMappingSettingsPanel({
 
               {discovered.length > 0 ? (
                 <section className={styles.section}>
-                  <h3 className={styles.subheading}>4. Discovered JSON paths</h3>
+                  <h3 className={styles.subheading}>2. Discovered Source Schema</h3>
+                  <p className={styles.hint}>
+                    The observed union of JSON paths seen across this scan — not the original event content.
+                  </p>
                   <datalist id={datalistId}>
                     {discovered.map((d) => (
                       <option key={d.path} value={d.path} />
                     ))}
                   </datalist>
-                  <ul className={styles.discoveredList}>
-                    {discovered.map((d) => (
-                      <li key={d.path} className={styles.discoveredRow}>
-                        <code>{d.path}</code>
-                        <span className={styles.discoveredPreview}>
-                          {d.valueKind !== 'string' && d.valueKind !== 'number' && d.valueKind !== 'boolean'
-                            ? `(${d.valueKind}) `
-                            : ''}
-                          {d.valuePreview}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                  <div className={styles.schemaTableWrapper}>
+                    <table className={styles.schemaTable}>
+                      <thead>
+                        <tr>
+                          <th scope="col">Path</th>
+                          <th scope="col">Type(s)</th>
+                          <th scope="col">Seen</th>
+                          <th scope="col">Coverage</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {discovered.map((d) => (
+                          <tr key={d.path}>
+                            <td>
+                              <code>{d.path}</code>
+                            </td>
+                            <td>{d.observedTypes.join(', ').toLowerCase()}</td>
+                            <td>{d.occurrenceCount}</td>
+                            <td>{d.coveragePercentage.toFixed(0)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </section>
               ) : null}
 
               <section className={styles.section}>
-                <h3 className={styles.subheading}>5. Map canonical fields</h3>
+                <h3 className={styles.subheading}>3. Map canonical fields</h3>
                 <ul className={styles.fieldEditorList}>
                   {profile.fields.map((field) => (
                     <FieldEditorRow
@@ -296,12 +414,18 @@ export function FieldMappingSettingsPanel({
                       field={field}
                       candidates={candidatesFor(field.field, field.candidatePaths)}
                       newCandidateText={newCandidateText[field.field] ?? ''}
+                      pickerOptions={discoveredPathStrings.filter(
+                        (p) => !candidatesFor(field.field, field.candidatePaths).includes(p),
+                      )}
+                      pickerSelection={pickerSelection[field.field] ?? ''}
                       datalistId={datalistId}
                       validation={reportFor(field.field)}
                       onNewCandidateTextChange={(value) =>
                         setNewCandidateText((prev) => ({ ...prev, [field.field]: value }))
                       }
+                      onPickerSelectionChange={(value) => setPickerSelection((prev) => ({ ...prev, [field.field]: value }))}
                       onAdd={() => addCandidate(field.field, field.candidatePaths)}
+                      onAddPicked={() => addPickedCandidate(field.field, field.candidatePaths)}
                       onRemove={(index) => removeCandidate(field.field, field.candidatePaths, index)}
                       onMove={(index, direction) => moveCandidate(field.field, field.candidatePaths, index, direction)}
                     />
@@ -310,12 +434,16 @@ export function FieldMappingSettingsPanel({
               </section>
 
               <section className={styles.section}>
-                <h3 className={styles.subheading}>6–7. Validate &amp; preview</h3>
-                <Button variant="secondary" onClick={runValidate} disabled={validating || samples.length === 0}>
+                <h3 className={styles.subheading}>4. Validate &amp; preview</h3>
+                <Button
+                  variant="secondary"
+                  onClick={runValidate}
+                  disabled={validating || (scanResult?.representativeEvents.length ?? 0) === 0}
+                >
                   {validating ? 'Validating…' : 'Validate mapping'}
                 </Button>
-                {samples.length === 0 ? (
-                  <p className={styles.hint}>Fetch sample events first — validation needs real samples to check against.</p>
+                {(scanResult?.representativeEvents.length ?? 0) === 0 ? (
+                  <p className={styles.hint}>Run a Quick Schema Scan first — validation needs real samples to check against.</p>
                 ) : null}
 
                 {validationReport ? (
@@ -331,10 +459,10 @@ export function FieldMappingSettingsPanel({
 
               <div className={styles.actions}>
                 <Button variant="secondary" onClick={runReset} disabled={resetting}>
-                  {resetting ? 'Resetting…' : '8. Reset to defaults'}
+                  {resetting ? 'Resetting…' : '5. Reset to defaults'}
                 </Button>
                 <Button variant="primary" onClick={runSave} disabled={!canSave}>
-                  {saving ? 'Saving…' : '9. Save mapping'}
+                  {saving ? 'Saving…' : '6. Save mapping'}
                 </Button>
                 <Button variant="ghost" onClick={close}>
                   Close
@@ -354,20 +482,29 @@ function FieldEditorRow({
   field,
   candidates,
   newCandidateText,
+  pickerOptions,
+  pickerSelection,
   datalistId,
   validation,
   onNewCandidateTextChange,
+  onPickerSelectionChange,
   onAdd,
+  onAddPicked,
   onRemove,
   onMove,
 }: {
   field: CanonicalFieldMapping;
   candidates: string[];
   newCandidateText: string;
+  /** Mission §A10 — discovered paths not already mapped for this field, offered as a picker (e.g. `[cif] [mdc.cif] [customer.cif]`). */
+  pickerOptions: string[];
+  pickerSelection: string;
   datalistId: string;
   validation: FieldMappingValidationReport['fields'][number] | null;
   onNewCandidateTextChange: (value: string) => void;
+  onPickerSelectionChange: (value: string) => void;
   onAdd: () => void;
+  onAddPicked: () => void;
   onRemove: (index: number) => void;
   onMove: (index: number, direction: -1 | 1) => void;
 }) {
@@ -404,28 +541,54 @@ function FieldEditorRow({
         ))}
       </ol>
 
-      <div className={styles.addCandidateRow}>
-        <label htmlFor={`candidate-input-${field.field}`} className={styles.srOnly}>
-          Add a candidate path for {field.displayName}
-        </label>
-        <input
-          id={`candidate-input-${field.field}`}
-          type="text"
-          list={datalistId}
-          placeholder="e.g. mdc.cif or cif"
-          value={newCandidateText}
-          onChange={(event) => onNewCandidateTextChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              onAdd();
-            }
-          }}
-        />
-        <Button variant="secondary" onClick={onAdd}>
-          Add
-        </Button>
-      </div>
+      {pickerOptions.length > 0 ? (
+        <div className={styles.pickerRow}>
+          <label htmlFor={`candidate-picker-${field.field}`} className={styles.srOnly}>
+            Add a discovered path as a candidate for {field.displayName}
+          </label>
+          <select
+            id={`candidate-picker-${field.field}`}
+            value={pickerSelection}
+            onChange={(event) => onPickerSelectionChange(event.target.value)}
+          >
+            <option value="">Select a discovered path…</option>
+            {pickerOptions.map((path) => (
+              <option key={path} value={path}>
+                {path}
+              </option>
+            ))}
+          </select>
+          <Button variant="secondary" onClick={onAddPicked} disabled={!pickerSelection}>
+            Add
+          </Button>
+        </div>
+      ) : null}
+
+      <details className={styles.advancedEntry}>
+        <summary>Advanced: enter a path manually</summary>
+        <div className={styles.addCandidateRow}>
+          <label htmlFor={`candidate-input-${field.field}`} className={styles.srOnly}>
+            Add a candidate path for {field.displayName}
+          </label>
+          <input
+            id={`candidate-input-${field.field}`}
+            type="text"
+            list={datalistId}
+            placeholder="e.g. mdc.cif or cif"
+            value={newCandidateText}
+            onChange={(event) => onNewCandidateTextChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                onAdd();
+              }
+            }}
+          />
+          <Button variant="secondary" onClick={onAdd}>
+            Add
+          </Button>
+        </div>
+      </details>
 
       {validation ? <FieldValidationBadge validation={validation} /> : null}
     </li>

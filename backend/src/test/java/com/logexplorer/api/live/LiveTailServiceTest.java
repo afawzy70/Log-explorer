@@ -11,6 +11,7 @@ import com.logexplorer.core.guard.LiveTailGuard;
 import com.logexplorer.core.guard.TooManyConcurrentLiveTailsException;
 import com.logexplorer.core.mask.MaskingPolicyService;
 import com.logexplorer.core.mask.MaskingService;
+import com.logexplorer.core.mask.ProtectedField;
 import com.logexplorer.core.mask.TextRedactor;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.LiveSourceStatus;
@@ -60,7 +61,16 @@ class LiveTailServiceTest {
 
   private LiveTailService newService(StubLogSource stub, LiveTailProperties properties) {
     LiveTailGuard guard = new LiveTailGuard(properties);
-    EventMapper eventMapper = new EventMapper(new MaskingService(new MaskingPolicyService()), new TextRedactor());
+    // Mission "Field Mapping Schema Scan + Masking Policy Extension" §B:
+    // the fresh/default masking state is now OFF - everyEmittedLogEventIsMaskedBeforeItEverReachesTheStream
+    // below is specifically about the MASKED guarantee, so every
+    // protected field is explicitly forced on here (the only test in
+    // this file that touches sensitive fields at all).
+    MaskingPolicyService maskingPolicy = new MaskingPolicyService();
+    for (ProtectedField field : ProtectedField.values()) {
+      maskingPolicy.setMasked(field, true);
+    }
+    EventMapper eventMapper = new EventMapper(new MaskingService(maskingPolicy), new TextRedactor());
     LogSourceRegistry registry = new LogSourceRegistry(List.of(stub), new SourcesProperties());
     return new LiveTailService(registry, guard, properties, eventMapper);
   }

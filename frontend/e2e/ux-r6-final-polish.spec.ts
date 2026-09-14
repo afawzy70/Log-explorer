@@ -307,6 +307,27 @@ test.describe('UX-R6 §15 - responsive matrix', () => {
 
 test.describe('UX-R6 §17 - security regression pass', () => {
   test('masking holds across Results, Inspector and Context, and nothing is persisted', async ({ page }) => {
+    // Mission "Field Mapping Schema Scan + Masking Policy Extension" §B:
+    // the fresh/default masking state is now OFF - this test is
+    // specifically about the MASKED-display guarantee, so it explicitly
+    // enables masking for all five protected fields first. This MUST
+    // happen before the search below: masking is applied server-side at
+    // fetch time, so a row already fetched before the toggle stays
+    // whatever it was fetched as - toggling the policy afterward never
+    // retroactively masks rows already on screen. Reset at the end so
+    // this shared-singleton backend policy never leaks into a later test.
+    await page.goto('/');
+    const protectedLabels = ['CIF', 'Username', 'Customer ID', 'Device ID', 'Device IP'];
+    await page.getByRole('button', { name: /privacy & masking/i }).click();
+    const maskingDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+    await expect(maskingDialog).toBeVisible();
+    for (const label of protectedLabels) {
+      if (!(await maskingDialog.getByLabel(label).isChecked())) {
+        await maskingDialog.getByLabel(label).click();
+      }
+    }
+    await page.getByRole('button', { name: /^close$/i }).click();
+
     await search(page);
     await openInspectorAt(page, 3);
     // Pre-closure functional recovery (PCFR-1): "All fields" now lives
@@ -334,6 +355,19 @@ test.describe('UX-R6 §17 - security regression pass', () => {
     expect(stored.local).not.toMatch(/fixture-trace|fixture-corr|Payment authorization/i);
     expect(stored.session).not.toMatch(/fixture-trace|fixture-corr|Payment authorization/i);
     expect(stored.url).not.toMatch(/trace|cif|customer|payment/i);
+
+    // Restore the fresh default (unmasked) so this shared-singleton
+    // backend policy never leaks into a later test in the same run.
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: /privacy & masking/i }).click();
+    const cleanupDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+    await expect(cleanupDialog).toBeVisible();
+    for (const label of protectedLabels) {
+      if (await cleanupDialog.getByLabel(label).isChecked()) {
+        await cleanupDialog.getByLabel(label).click();
+      }
+    }
+    await page.getByRole('button', { name: /^close$/i }).click();
   });
 });
 

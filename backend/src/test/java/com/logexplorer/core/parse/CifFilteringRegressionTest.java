@@ -159,13 +159,40 @@ class CifFilteringRegressionTest {
     LogLineParser parser = new LogLineParser(objectMapper, mappingService);
     CanonicalLogEvent event = parser.parse(rawLine);
 
-    com.logexplorer.core.mask.MaskingService maskingService =
-        new com.logexplorer.core.mask.MaskingService(new com.logexplorer.core.mask.MaskingPolicyService());
+    // Explicitly enabled - the fresh/default masking state is now OFF
+    // (mission "Field Mapping Schema Scan + Masking Policy Extension"
+    // §B), so this test enables CIF masking itself to prove the real
+    // guarantee: regardless of which JsonPath candidate supplied the
+    // value, masking still applies correctly *whenever the policy says
+    // masked*. See MaskingServiceTest for exhaustive default-state coverage.
+    com.logexplorer.core.mask.MaskingPolicyService maskingPolicy = new com.logexplorer.core.mask.MaskingPolicyService();
+    maskingPolicy.setMasked(com.logexplorer.core.mask.ProtectedField.CIF, true);
+    com.logexplorer.core.mask.MaskingService maskingService = new com.logexplorer.core.mask.MaskingService(maskingPolicy);
     com.logexplorer.core.mask.MaskedSensitiveFields masked = maskingService.mask(event);
 
     assertThat(masked.cif())
         .as("mission §18: MAPPING_CANNOT_BYPASS_MASKING")
         .isNotEqualTo("2449")
         .isEqualTo("****");
+  }
+
+  @Test
+  void whenMaskingIsOff_theMappedValueIsReturnedRawRegardlessOfWhichPathSuppliedIt() {
+    // Mission §B2 - "source path choice does not alter sensitive
+    // classification... whether it is shown masked depends only on the
+    // global CIF masking toggle." Same mapped-from-top-level-cif setup as
+    // above, but with the fresh/default (masking OFF) policy - the raw
+    // value is expected, by owner-approved design, not a leak.
+    String rawLine = "{\"cif\":\"2449\"}";
+    FieldMappingProfileService mappingService = new FieldMappingProfileService();
+    mappingService.updateCandidates(CanonicalField.CIF, List.of(JsonPath.parse("cif")));
+    LogLineParser parser = new LogLineParser(objectMapper, mappingService);
+    CanonicalLogEvent event = parser.parse(rawLine);
+
+    com.logexplorer.core.mask.MaskingService maskingService =
+        new com.logexplorer.core.mask.MaskingService(new com.logexplorer.core.mask.MaskingPolicyService());
+    com.logexplorer.core.mask.MaskedSensitiveFields masked = maskingService.mask(event);
+
+    assertThat(masked.cif()).isEqualTo("2449");
   }
 }
