@@ -48,6 +48,28 @@ COPY --from=backend-build /backend/target/*.jar app.jar
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chown logexplorer:logexplorer app.jar && chmod +x /usr/local/bin/docker-entrypoint.sh
 
+# Event classification rules: the backend persists user-authored rules as a
+# small server-side JSON configuration file (classification-rules.json plus
+# its .bak / .corrupt-<timestamp> siblings) under LOGEXPLORER_DATA_DIR - see
+# application.yml `logexplorer.classification.rules-file`. Configuration
+# only: never log events, never an application database. Nothing is written
+# until the first save.
+# - Owned by `logexplorer` (the su-exec'd Compose user) AND group 0 with
+#   g=u, so OpenShift's arbitrary UID (always a member of GID 0) can write
+#   it too - the standard OpenShift image convention.
+# - Docker copies this directory's ownership/mode into a fresh *named*
+#   volume on first mount (docker-compose.yml's `log-explorer-data`), and
+#   docker-entrypoint.sh re-asserts ownership when started as root, so a
+#   mounted volume stays writable.
+# - Deliberately no `VOLUME` instruction (no existing one in this image):
+#   it would silently create an anonymous volume on every plain
+#   `docker run`. Persistence is declared where it is actually managed -
+#   the Compose named volume, or the OpenShift PVC (deploy/openshift/pvc.yaml).
+RUN mkdir -p /app/data && \
+    chown logexplorer:0 /app/data && \
+    chmod g=u /app/data
+ENV LOGEXPLORER_DATA_DIR=/app/data
+
 EXPOSE 3434
 # Legacy Remediation Slice 9 §B/§K: 3434 is the project's formal default
 # port. SERVER_ADDRESS=0.0.0.0 (not the application's own 127.0.0.1

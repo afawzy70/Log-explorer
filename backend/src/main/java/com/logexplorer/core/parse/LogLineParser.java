@@ -63,10 +63,29 @@ public class LogLineParser {
 
   private final ObjectMapper objectMapper;
   private final FieldMappingProfileService mappingProfileService;
+  private final com.logexplorer.core.classify.EventClassifier classifier;
 
   public LogLineParser(ObjectMapper objectMapper, FieldMappingProfileService mappingProfileService) {
+    this(objectMapper, mappingProfileService, com.logexplorer.core.classify.EventClassifier.NONE);
+  }
+
+  /**
+   * Owner mission "Event Classification, Extraction, and Portable Rules" —
+   * every parsed event (malformed or not) passes through {@code classifier}
+   * once, after field mapping and before any adapter filters, masks, or
+   * serializes it. One classification path for every source and workspace.
+   */
+  @org.springframework.beans.factory.annotation.Autowired
+  public LogLineParser(ObjectMapper objectMapper, FieldMappingProfileService mappingProfileService,
+      com.logexplorer.core.classify.EventClassifier classifier) {
     this.objectMapper = objectMapper;
     this.mappingProfileService = mappingProfileService;
+    this.classifier = classifier;
+  }
+
+  /** Changes whenever the active classification rule set changes — see {@code FixtureLogSource#corpus()}. */
+  public long classificationGeneration() {
+    return classifier.generation();
   }
 
   /**
@@ -110,6 +129,10 @@ public class LogLineParser {
    * mechanics unit tests) and use {@link MappingScopeKey#UNSPECIFIED}.
    */
   public CanonicalLogEvent parse(String line, String serviceSourceHint, MappingScopeKey scope) {
+    return classifier.classify(parseUnclassified(line, serviceSourceHint, scope));
+  }
+
+  private CanonicalLogEvent parseUnclassified(String line, String serviceSourceHint, MappingScopeKey scope) {
     if (line == null) {
       return malformed(null, serviceSourceHint);
     }

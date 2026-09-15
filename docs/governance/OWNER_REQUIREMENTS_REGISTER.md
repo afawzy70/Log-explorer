@@ -2328,3 +2328,67 @@ superseded for this one profile, not silently dropped.
 owner review of this implementation PR required before merge.
 
 ---
+
+---
+
+## 26. Event Classification, Extraction, and Portable Rules
+
+`EVENT_CLASSIFICATION_EXTRACTION_AND_PORTABLE_RULES` mission — branch
+`feature/event-classification-extraction-rules` from latest `main`
+`3f6b1b4bc30c282e0cd1e65510697ff128d79d73`. Section 25 is intentionally left
+to the paused Modern Developer Console design lane (PR #58, untouched), so
+the two lanes never collide on numbering.
+
+```
+EVENT_CLASSIFICATION_RULES=APPROVED
+HARDCODED_MIDDLEWARE_CLASSIFICATION=NO
+GENERIC_TAG_RULE_ENGINE=YES
+PATTERN_DETECTION_FROM_SELECTED_EVENT=YES
+PATTERN_DETECTION_IS_SUGGESTION_ONLY=YES
+BOUNDED_REAL_SAMPLE_TESTING=YES
+DEFAULT_DETECTION_SAMPLE_TARGET=200
+STRUCTURED_EXTRACTION=YES
+CLASSIFICATION_BACKEND_AUTHORITATIVE=YES
+RULE_STORAGE=SERVER_SIDE_VERSIONED_JSON
+RULE_DATABASE=NO
+LOG_RETENTION_DATABASE=NO
+RULE_IMPORT_EXPORT=JSON
+PORTABLE_RULE_PACKS=YES
+IMPORT_PREVIEW_REQUIRED=YES
+IMPORT_CONFLICTS_NOT_SILENTLY_OVERWRITTEN=YES
+RULES_PERSIST_ACROSS_DOCKER_RECREATE=YES
+RULES_PERSIST_ACROSS_APPLICATION_UPGRADE=YES
+EXTRACTED_RESULTS_PERSISTED=NO
+RULES_APPLY_TO_FUTURE_RUNTIME_EVENTS=YES
+EXTRACTION_RESPECTS_MASKING=YES
+DESIGN_SYNC_REQUIRED_AFTER_FEATURE_MERGE=YES
+RESULT_ROW_TAG_PRESENTATION_DEFERRED_TO_DESIGN_SYNC=YES
+PR58_TOUCHED=NO
+SEARCH_PERFORMANCE_INVESTIGATION_STARTED=NO
+UNTRACKED_OWNER_REQUIREMENTS=0
+```
+
+| ID | NAME | STATUS | EVIDENCE | NOTES |
+|---|---|---|---|---|
+| ECR-1 | Generic, data-driven classification engine at the canonical-event layer (no hard-coded middleware logic, no source-specific engines) | `VERIFIED` | `core.classify.ClassificationEngine`, hook in `core.parse.LogLineParser#parse`; `ClassificationEngineTest`, `LogLineParserClassificationTest`, adapter tests in `DockerLogSourceTest`/`LokiLogSourceTest`/`FixtureLogSourceClassificationTest` | One path for Docker, Loki, OpenShift, Fixture; search, context, journey, live. Rules targeting adapter-enrichment-only fields (pod, namespace, container) are not supported because classification runs before adapter enrichment — documented limitation |
+| ECR-2 | Matchers EXACT / CONTAINS / STARTS_WITH / REGEX, ALL/ANY, multiple rules and tags per event, deterministic order (priority, id), disabled rules skipped | `VERIFIED` | `RuleCompilerTest`, `ClassificationEngineTest` | Evaluation never stops at the first match |
+| ECR-3 | Safe regex: RE2/J (linear time), compiled on save/import/load, unsupported constructs rejected, bounded length | `VERIFIED` | `pom.xml` `com.google.re2j:re2j:1.8` (BSD-3-Clause); `RuleCompilerTest#catastrophicBacktrackingPatternStillRunsInLinearTime`, `#lookaroundAndBackreferencesAreRejectedAsUnsupportedNotRunOnAnUnsafeEngine` | |
+| ECR-4 | Structured extraction: RE2 named/numbered capture groups and RFC 6901 JSON Pointer (Jackson), optional type conversion, per-rule isolation, absent values never fabricated, bounded sizes | `VERIFIED` | `ClassificationEngineTest` | |
+| ECR-5 | Deterministic local pattern detection anchored on the selected event, bounded real sample (default 200, max 500), stable/variable segmentation, simplest matcher first, `NO_SAFE_PATTERN_SUGGESTION`, measured coverage (no invented confidence), extraction suggestions | `VERIFIED` | `core.classify.detect.PatternDetector`; `PatternDetectorTest`; `ClassificationRulesIntegrationTest#detectSuggestsFromARealBoundedSampleAndPersistsNothing` | No external AI or network |
+| ECR-6 | Rule test against a bounded real sample without persisting or activating; counts, extraction coverage, ≤5 matched and ≤5 borderline previews, masked | `VERIFIED` | `RuleTesterTest`; `ClassificationRulesIntegrationTest#ruleTestReportsBoundedResultsAndDoesNotPersistOrActivate` | "Review these matches for false positives" — no false-positive claims |
+| ECR-7 | Server-side versioned JSON persistence: atomic writes, last-known-good backup, corrupt-file preservation, fail-safe load, optimistic revision (HTTP 409), thread-safe | `VERIFIED` | `core.classify.ClassificationRuleRepository`, `ClassificationRuleService`; `ClassificationRuleServiceTest` | No database; logs and extracted values never persisted |
+| ECR-8 | Portable JSON rule packs: export all/selected, two-phase import (preview + explicit apply), MERGE with explicit conflict resolution, REPLACE_ALL with confirmation, strict schema/version validation, size and count limits, no runtime or secret data exported | `VERIFIED` | `ClassificationRuleServiceTest`; `ClassificationRulesIntegrationTest#exportPreviewAndApplyOverHttpUseTheSamePortableFormat` | Format `log-explorer-classification-pack`, schema version 1, migration interface `RulesSchemaMigrator` |
+| ECR-9 | Backend-enforced tag filter (ANY) on events each source retrieved; no source pushdown claimed | `VERIFIED` | `EventFilters`, `SearchRequest#tags`, cursor fingerprint, query plan note; `ClassificationRulesIntegrationTest#tagFilterIsEnforcedByTheBackendWithAnySemantics` | |
+| ECR-10 | Extraction respects the masking boundary (credential headers, sensitive definitions, policy masking, TextRedactor) | `VERIFIED` | `core.mask.ExtractedValueRedactor`; `ExtractedValueRedactorTest`; `ClassificationRulesIntegrationTest#extractedValuesNeverCarryRawSecretsToTheBrowser` | ArchUnit rules unchanged and passing |
+| ECR-11 | Persistence across Docker recreate, OpenShift, and desktop upgrades | `IMPLEMENTED` | `Dockerfile`, `docker-entrypoint.sh`, `docker-compose.yml` (`log-explorer-data` volume), `deploy/openshift/pvc.yaml`, launchers pass `LOGEXPLORER_DATA_DIR`; packaged smoke tests assert the per-user location and survival after uninstall; `scripts/smoke.sh` recreate step | Verified in CI (Windows/macOS desktop workflows) and by the Compose smoke recreate step — see the verification report for outcomes |
+| ECR-12 | Frontend: Create tag rule from Inspector (wizard: source, detect, classification, extraction, test, save), Inspector classification details, Classification rules workspace (list/enable/edit/duplicate/test/delete/import/export), tag filter | `IMPLEMENTED` | `frontend/src/features/classification/*`, Inspector and search changes; unit tests and E2E — see verification report | Current production UI language only; results-row tag presentation deferred to the design sync |
+| ECR-13 | Design sync of this feature into the paused Modern Developer Console lane after merge | `DEFERRED` | — | `DESIGN_SYNC_REQUIRED_AFTER_FEATURE_MERGE=YES` |
+
+**Event Classification, Extraction, and Portable Rules pass (this
+section).** Adds a generic, backend-authoritative rule engine with safe
+regex, structured extraction, deterministic pattern suggestion, bounded
+real-sample testing, atomic JSON persistence, and portable rule packs — no
+database, no log retention, no source-specific logic. The Live Service
+EXCLUDE defect (D8) and `SEARCH_PERFORMANCE_ROOT_CAUSE` remain separate
+lanes. `HISTORICAL_DECISIONS_PRESERVED=YES`. `UNTRACKED_OWNER_REQUIREMENTS=0`.
+

@@ -1,10 +1,17 @@
 package com.logexplorer.api;
 
+import com.logexplorer.api.dto.ClassificationDto;
 import com.logexplorer.api.dto.EventDto;
+import com.logexplorer.api.dto.ExtractedFieldDto;
+import com.logexplorer.core.classify.ClassificationLimits;
+import com.logexplorer.core.mask.ExtractedValueRedactor;
 import com.logexplorer.core.mask.MaskedSensitiveFields;
 import com.logexplorer.core.mask.MaskingService;
 import com.logexplorer.core.mask.TextRedactor;
 import com.logexplorer.core.model.CanonicalLogEvent;
+import com.logexplorer.core.model.ExtractedField;
+import com.logexplorer.core.model.RuleMatch;
+import java.util.List;
 import org.springframework.stereotype.Component;
 
 /**
@@ -29,16 +36,24 @@ import org.springframework.stereotype.Component;
  * passed the search (that predicate always sees the true, unredacted
  * {@code CanonicalLogEvent} — redacting first would silently break
  * free-text search matching).
+ *
+ * <p><b>Event classification</b> — tags and per-rule extracted values
+ * leave through this same boundary; every extracted value passes {@link
+ * ExtractedValueRedactor} (credential headers, sensitive extraction
+ * definitions, policy-masked protected identifiers, {@link TextRedactor})
+ * and is bounded in length.
  */
 @Component
 public class EventMapper {
 
   private final MaskingService maskingService;
   private final TextRedactor textRedactor;
+  private final ExtractedValueRedactor extractedValueRedactor;
 
   public EventMapper(MaskingService maskingService, TextRedactor textRedactor) {
     this.maskingService = maskingService;
     this.textRedactor = textRedactor;
+    this.extractedValueRedactor = new ExtractedValueRedactor(maskingService, textRedactor);
   }
 
   public EventDto toDto(CanonicalLogEvent event) {
@@ -81,6 +96,31 @@ public class EventMapper {
         event.stream(),
         event.namespace(),
         event.pod(),
-        event.contextTargetProof());
+        event.contextTargetProof(),
+        event.tags(),
+        classifications(event));
+  }
+
+  private List<ClassificationDto> classifications(CanonicalLogEvent event) {
+    if (event.classifications().isEmpty()) {
+      return List.of();
+    }
+    return event.classifications().stream()
+        .map(match -> toDto(event, match))
+        .toList();
+  }
+
+  private ClassificationDto toDto(CanonicalLogEvent event, RuleMatch match) {
+    List<ExtractedFieldDto> extracted = match.extracted().stream()
+        .map(field -> toDto(event, field))
+        .toList();
+    return new ClassificationDto(match.ruleId(), match.ruleName(), match.tags(), extracted);
+  }
+
+  private ExtractedFieldDto toDto(CanonicalLogEvent event, ExtractedField field) {
+    ExtractedValueRedactor.Presented presented = extractedValueRedactor.present(
+        event, field, ClassificationLimits.MAX_RETURNED_EXTRACTED_VALUE_LENGTH);
+    return new ExtractedFieldDto(field.name(), field.label(), presented.value(), field.status().name(),
+        presented.redacted(), presented.truncated());
   }
 }

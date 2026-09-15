@@ -82,6 +82,9 @@ public final class QueryPlanBuilder {
     if (!request.levels().isEmpty()) {
       conditions.add("level in " + request.levels());
     }
+    if (!request.tags().isEmpty()) {
+      conditions.add("tag in " + request.tags() + " (classification tags, evaluated on the events this source returned)");
+    }
     addIfSet(conditions, "message contains", request.text(), true);
     addIfSet(conditions, "traceId =", request.traceId(), false);
     addIfSet(conditions, "spanId =", request.spanId(), false);

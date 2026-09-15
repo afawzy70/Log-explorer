@@ -164,6 +164,29 @@ public class GlobalExceptionHandler {
    * downgrading a client error into a fabricated server error - and its
    * structural (never sensitive) reason text, e.g. the unmatched path.
    */
+  @ExceptionHandler(com.logexplorer.core.classify.ClassificationRulesException.class)
+  public ProblemDetail handleClassificationRules(com.logexplorer.core.classify.ClassificationRulesException e) {
+    ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.valueOf(e.status()), e.getMessage());
+    problem.setProperty("reason", e.reason());
+    e.properties().forEach(problem::setProperty);
+    return problem;
+  }
+
+  @ExceptionHandler(com.logexplorer.core.classify.RuleValidationException.class)
+  public ProblemDetail handleRuleValidation(com.logexplorer.core.classify.RuleValidationException e) {
+    ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
+    problem.setProperty("reason", "RULE_INVALID");
+    problem.setProperty("errors", e.errors());
+    return problem;
+  }
+
+  @ExceptionHandler(org.springframework.core.io.buffer.DataBufferLimitException.class)
+  public ProblemDetail handleBodyTooLarge(org.springframework.core.io.buffer.DataBufferLimitException e) {
+    ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.PAYLOAD_TOO_LARGE, "The request body is too large");
+    problem.setProperty("reason", "REQUEST_TOO_LARGE");
+    return problem;
+  }
+
   @ExceptionHandler(ResponseStatusException.class)
   public ProblemDetail handleResponseStatus(ResponseStatusException e) {
     String detail = e.getReason() != null ? e.getReason() : e.getMessage();

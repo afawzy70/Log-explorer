@@ -162,6 +162,12 @@ public final class EventFilters {
     if (!fieldMatches(filters.deviceIp(), raw.deviceIp())) {
       return false;
     }
+    // Owner mission "Event Classification, Extraction, and Portable Rules" -
+    // ANY selected tag. Classification already ran in LogLineParser, so the
+    // event carries its runtime tags here; tags never exist at the source.
+    if (!request.tags().isEmpty() && event.tags().stream().noneMatch(request.tags()::contains)) {
+      return false;
+    }
     return QueryEvaluator.evaluate(request.query(), event);
   }
 

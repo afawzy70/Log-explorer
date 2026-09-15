@@ -104,6 +104,18 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     mappingWorkspaceOpen: false,
     openMappingWorkspace: vi.fn(),
     closeMappingWorkspace: vi.fn(),
+    selectedTags: [],
+    setSelectedTags: vi.fn(),
+    classificationTags: null,
+    classificationTagsError: null,
+    refreshClassificationTags: vi.fn(),
+    buildClassificationSampleScope: vi.fn(() => null),
+    classificationWorkspaceOpen: false,
+    classificationWorkspaceEvent: null,
+    classificationWorkspaceKey: 0,
+    openClassificationWorkspace: vi.fn(),
+    openClassificationRuleFromEvent: vi.fn(),
+    closeClassificationWorkspace: vi.fn(),
     ...overrides,
   };
 }
@@ -487,5 +499,48 @@ describe('EventInspector', () => {
       const { container } = renderWithRegistry(<EventInspector state={baseState({ selectedEvent: redactedEvent, selectedIndex: 0 })} />);
       expect(await axe(container)).toHaveNoViolations();
     });
+  });
+});
+
+describe('EventInspector - event classification', () => {
+  const classified = fullEvent({
+    tags: ['middleware'],
+    classifications: [
+      {
+        ruleId: 'mw-call',
+        ruleName: 'Middleware call',
+        tags: ['middleware'],
+        extracted: [
+          { name: 'endpoint', label: 'Endpoint', value: '/accounts', status: 'PRESENT', redacted: false, truncated: false },
+        ],
+      },
+    ],
+  });
+
+  it('renders "Create tag rule from this event" in the header and hands the selected event to the workspace', async () => {
+    const user = userEvent.setup();
+    const openClassificationRuleFromEvent = vi.fn();
+    const event = fullEvent();
+    renderWithRegistry(
+      <EventInspector state={baseState({ selectedEvent: event, selectedIndex: 0, openClassificationRuleFromEvent })} />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Create tag rule from this event' }));
+    expect(openClassificationRuleFromEvent).toHaveBeenCalledWith(event);
+  });
+
+  it('shows the Classification section inside Overview for a classified event while keeping exactly five tabs', () => {
+    renderWithRegistry(<EventInspector state={baseState({ selectedEvent: classified, selectedIndex: 0 })} />);
+    const tablist = screen.getByRole('tablist', { name: /event detail sections/i });
+    expect(within(tablist).getAllByRole('tab')).toHaveLength(5);
+    expect(screen.getByRole('heading', { name: 'Classification' })).toBeInTheDocument();
+    expect(screen.getByText('MIDDLEWARE')).toBeInTheDocument();
+    expect(screen.getByText('/accounts')).toBeInTheDocument();
+  });
+
+  it('shows no Classification section when the event has no classifications', () => {
+    renderWithRegistry(<EventInspector state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0 })} />);
+    const tablist = screen.getByRole('tablist', { name: /event detail sections/i });
+    expect(within(tablist).getAllByRole('tab')).toHaveLength(5);
+    expect(screen.queryByRole('heading', { name: 'Classification' })).not.toBeInTheDocument();
   });
 });

@@ -179,6 +179,33 @@ export interface LogEvent {
    * `ContextRequestBody#contextTargetProof`).
    */
   contextTargetProof: string | null;
+  /**
+   * Event Classification & Extraction Rules - the union of every tag the
+   * server's saved rules applied to this event. Empty when no rule matched.
+   */
+  tags: string[];
+  /** One entry per matching rule, in server order. Values are already masked/redacted server-side. */
+  classifications: RuleMatchDto[];
+}
+
+/** `PRESENT` is the only status that ever carries a `value`. */
+export type ExtractedValueStatus = 'PRESENT' | 'ABSENT' | 'INVALID';
+
+export interface ExtractedFieldValue {
+  name: string;
+  label: string | null;
+  value: string | null;
+  status: ExtractedValueStatus;
+  redacted: boolean;
+  truncated: boolean;
+}
+
+/** One saved rule that matched one event (named `RuleMatchDto` to avoid clashing with the schema-scan `EventClassification`). */
+export interface RuleMatchDto {
+  ruleId: string;
+  ruleName: string;
+  tags: string[];
+  extracted: ExtractedFieldValue[];
 }
 
 export interface ResultCounts {
@@ -256,6 +283,12 @@ export interface SearchRequestBody {
   cursor?: string;
   /** UX-R3 §7/§8/§9 — request/session-scoped Docker Compose project selection, never sensitive. */
   composeProject?: string;
+  /**
+   * Event Classification & Extraction Rules - an event matches when it has
+   * ANY of these tags. Enforced server-side after classification, on the
+   * events each source actually retrieved (no source pushdown).
+   */
+  tags?: string[];
 }
 
 /**
@@ -326,6 +359,10 @@ export interface ProblemDetail {
   instance?: string;
   reason?: string;
   position?: number;
+  /** Classification rules - `RULE_INVALID` / `IMPORT_HAS_INVALID_RULES` carry per-path validation errors. */
+  errors?: RuleValidationError[];
+  /** Classification rules - `RULES_REVISION_CONFLICT` carries the revision the server now holds. */
+  currentRevision?: number;
 }
 
 /**
@@ -623,4 +660,220 @@ export interface SchemaScanResponse {
   discoveredSchema: DiscoveredSchemaPathEntry[];
   /** Saved mapping candidate paths (mission §A9) that this scan did not observe anywhere in the current source data. */
   mappedPathsNotObserved: string[];
+}
+
+/* ------------------------------------------------------------------ */
+/* Event Classification & Extraction Rules                             */
+/* ------------------------------------------------------------------ */
+
+export type RuleMatchMode = 'ALL' | 'ANY';
+export type RuleMatcher = 'EXACT' | 'CONTAINS' | 'STARTS_WITH' | 'REGEX';
+export type ExtractionType = 'REGEX' | 'JSON_POINTER';
+export type ExtractionValueType = 'STRING' | 'INTEGER' | 'DECIMAL' | 'BOOLEAN';
+
+/** `field` is a canonical key (see `ClassificationRulesState.fields`), `extra.<key>` or `mdc.<key>`. */
+export interface RuleCondition {
+  field: string;
+  matcher: RuleMatcher;
+  value: string;
+  ignoreCase?: boolean;
+}
+
+/** REGEX uses RE2 syntax with named groups; JSON_POINTER expressions start with "/". */
+export interface ExtractionDefinition {
+  name: string;
+  label?: string;
+  sourceField: string;
+  type: ExtractionType;
+  expression: string;
+  group?: string;
+  valueType?: ExtractionValueType;
+  sensitive?: boolean;
+}
+
+/** Nulls are omitted by the server. Defaults: enabled=true, priority=100, matchMode=ALL, description="". */
+export interface ClassificationRule {
+  id?: string;
+  name: string;
+  description?: string;
+  tags: string[];
+  enabled?: boolean;
+  priority?: number;
+  matchMode?: RuleMatchMode;
+  conditions: RuleCondition[];
+  extractions?: ExtractionDefinition[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface RuleValidationError {
+  path: string;
+  message: string;
+}
+
+export interface RuleValidationResult {
+  valid: boolean;
+  errors: RuleValidationError[];
+}
+
+export interface ClassificationRuleField {
+  key: string;
+  label: string;
+}
+
+export interface ClassificationRuntimeStats {
+  eventsEvaluated: number;
+  ruleMatches: number;
+  evaluationFailures: number;
+}
+
+export interface ClassificationRulesState {
+  revision: number;
+  updatedAt: string | null;
+  status: 'OK' | 'RECOVERED_FROM_BACKUP' | 'INVALID';
+  statusMessage: string | null;
+  storageFile: string;
+  rules: ClassificationRule[];
+  tags: string[];
+  limits: Record<string, number>;
+  fields: ClassificationRuleField[];
+  runtime: ClassificationRuntimeStats;
+}
+
+/** The bounded sample a detect/test call reads - mirrors the committed search scope. */
+export interface ClassificationSampleScope {
+  sourceId: string;
+  composeProject?: string | null;
+  start: string;
+  end: string;
+  services?: string[];
+  serviceFilterMode?: 'INCLUDE' | 'EXCLUDE';
+  levels?: string[];
+}
+
+export interface PatternDetectionRequest {
+  field: string;
+  anchorValue: string;
+  scope: ClassificationSampleScope;
+  sampleSize?: number;
+}
+
+export interface DetectedVariableSegment {
+  name: string;
+  kind: string;
+  example: string;
+}
+
+export interface DetectionCoverage {
+  matchedSimilar: number;
+  similar: number;
+  matchedOther: number;
+  other: number;
+}
+
+export interface SuggestedExtraction {
+  definition: ExtractionDefinition;
+  extracted: number;
+  of: number;
+}
+
+/** A suggestion only - nothing is saved by `/detect`. */
+export interface PatternDetectionResult {
+  status: 'SUGGESTED' | 'NO_SAFE_PATTERN_SUGGESTION';
+  reason: string | null;
+  field: string;
+  structure: 'TEXT' | 'JSON';
+  sampledEvents: number;
+  valuesWithField: number;
+  similarEvents: number;
+  stableSegments: string[];
+  variableSegments: DetectedVariableSegment[];
+  suggestedMatchMode: RuleMatchMode | null;
+  suggestedConditions: RuleCondition[];
+  suggestedPattern: string | null;
+  coverage: DetectionCoverage | null;
+  suggestedExtractions: SuggestedExtraction[];
+  warnings: string[];
+}
+
+export interface RuleTestRequest {
+  rule: ClassificationRule;
+  scope: ClassificationSampleScope;
+  sampleSize?: number;
+}
+
+export interface ExtractionCoverage {
+  name: string;
+  label: string | null;
+  extracted: number;
+  invalid: number;
+  of: number;
+}
+
+export interface RulePreviewEvent {
+  timestamp: string | null;
+  service: string | null;
+  severity: string | null;
+  field: string;
+  fieldValue: string | null;
+  fieldValueTruncated: boolean;
+  conditionsMatched: number;
+  conditionsTotal: number;
+  extracted: ExtractedFieldValue[];
+}
+
+/** Nothing is persisted by `/test`. */
+export interface RuleTestResult {
+  sampledEvents: number;
+  sampleLimitReached: boolean;
+  matched: number;
+  notMatched: number;
+  extractionCoverage: ExtractionCoverage[];
+  matchedPreview: RulePreviewEvent[];
+  nearMissPreview: RulePreviewEvent[];
+  reviewNote: string;
+}
+
+export type ImportItemStatus = 'NEW' | 'IDENTICAL' | 'CONFLICT' | 'INVALID';
+
+export interface ImportPreviewItem {
+  index: number;
+  id: string | null;
+  name: string | null;
+  tags: string[];
+  status: ImportItemStatus;
+  existingName: string | null;
+  errors: RuleValidationError[];
+}
+
+/** `/import/preview` writes nothing. */
+export interface ImportPreviewResult {
+  pack: { name?: string; description?: string; version?: string | number; exportedAt?: string } | null;
+  rulesInPack: number;
+  newRules: number;
+  identical: number;
+  conflicts: number;
+  invalid: number;
+  items: ImportPreviewItem[];
+  currentRevision: number;
+}
+
+export type ImportMode = 'MERGE' | 'REPLACE_ALL';
+export type ImportConflictResolution = 'KEEP_EXISTING' | 'USE_IMPORTED';
+
+export interface ImportApplyRequest {
+  packJson: string;
+  mode: ImportMode;
+  conflictResolution?: ImportConflictResolution;
+  expectedRevision: number;
+  confirmReplaceAll?: boolean;
+}
+
+export interface ImportApplyResult {
+  state: ClassificationRulesState;
+  added: number;
+  replaced: number;
+  unchanged: number;
+  keptExisting: number;
+  removed: number;
 }

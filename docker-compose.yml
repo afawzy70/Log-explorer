@@ -47,6 +47,15 @@ services:
     env_file:
       - path: .env
         required: false
+    volumes:
+      # Classification rules configuration ONLY (classification-rules.json +
+      # its .bak/.corrupt-<timestamp> siblings, written by the backend under
+      # LOGEXPLORER_DATA_DIR=/app/data - set in the Dockerfile). Never logs,
+      # never log events, never secrets, not a database. A named volume (not
+      # a host bind mount) so it survives `docker compose down`, `up`,
+      # `up --force-recreate` and image rebuilds; only `docker compose down -v`
+      # (or `docker volume rm log-explorer_log-explorer-data`) deletes it.
+      - log-explorer-data:/app/data
     healthcheck:
       test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:3434/actuator/health"]
       interval: 10s
@@ -79,3 +88,9 @@ services:
       context: ./tools/mock-loki
     ports:
       - "${MOCK_LOKI_PORT:-3100}:3100"
+
+# Named volume for `app`'s classification rules configuration (see the
+# comment on `app.volumes`). Compose prefixes it with the project name
+# (`log-explorer_log-explorer-data` for a checkout named log-explorer).
+volumes:
+  log-explorer-data:

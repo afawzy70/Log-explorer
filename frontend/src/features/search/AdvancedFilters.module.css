@@ -171,3 +171,18 @@
   border-top: var(--border-width) solid var(--color-border);
   padding-top: var(--space-3);
 }
+
+/* Event Classification & Extraction Rules - tag filter checklist. */
+.tagHelp {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.tagOption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-1);
+}

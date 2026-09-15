@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  fetchClassificationRules,
   fetchComposeProjects,
   fetchContext,
   fetchFieldMappingProfile,
@@ -11,6 +12,7 @@ import {
   runSearch as runSearchApi,
 } from '../shared/api/client';
 import type {
+  ClassificationSampleScope,
   FieldMappingProfileDto,
   JourneyField,
   LogEvent,
@@ -129,6 +131,7 @@ interface SearchSnapshot {
   sortDirection: SearchDirection;
   selectedIndex: number | null;
   selectedLevels: string[];
+  selectedTags: string[];
   searchText: string;
   advancedFilters: AdvancedFilterValues;
   queryState: QueryAuthoringState;
@@ -174,6 +177,15 @@ export function useSearchState() {
   const [composeProjectsLoading, setComposeProjectsLoading] = useState(false);
   const [composeProjectsError, setComposeProjectsError] = useState<string | null>(null);
   const [selectedLevels, setSelectedLevels] = useState<string[]>(DEFAULT_SEVERITY_LEVELS);
+  /**
+   * Event Classification & Extraction Rules - the committed tag filter
+   * (an event matches when it has ANY selected tag; enforced server-side).
+   * Session state only: never written to localStorage or the URL.
+   */
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  /** Every tag the saved rules can apply (`GET .../classification-rules` `tags`) - `null` until first loaded. Fetched lazily, never on startup. */
+  const [classificationTags, setClassificationTags] = useState<string[] | null>(null);
+  const [classificationTagsError, setClassificationTagsError] = useState<string | null>(null);
   const [searchText, setSearchText] = useState('');
   const [timeRange, setTimeRange] = useState<CommittedTimeRange>(defaultTimeRange);
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilterValues>(emptyAdvancedFilterValues);
@@ -368,8 +380,47 @@ export function useSearchState() {
    * - this workspace has no per-open query/result of its own to preserve.
    */
   const [mappingWorkspaceOpen, setMappingWorkspaceOpen] = useState(false);
-  const openMappingWorkspace = useCallback(() => setMappingWorkspaceOpen(true), []);
+
+  /**
+   * Event Classification & Extraction Rules - a second takeover workspace,
+   * mutually exclusive with the mapping workspace above (opening one closes
+   * the other). `classificationWorkspaceEvent` is the event a "Create tag
+   * rule from this event" action carried in; it lives only in React state,
+   * never the URL or localStorage. `classificationWorkspaceKey` changes on
+   * every open so the workspace remounts with a fresh draft each time.
+   */
+  const [classificationWorkspaceOpen, setClassificationWorkspaceOpen] = useState(false);
+  const [classificationWorkspaceEvent, setClassificationWorkspaceEvent] = useState<LogEvent | null>(null);
+  const [classificationWorkspaceKey, setClassificationWorkspaceKey] = useState(0);
+
+  const openMappingWorkspace = useCallback(() => {
+    setClassificationWorkspaceOpen(false);
+    setClassificationWorkspaceEvent(null);
+    setMappingWorkspaceOpen(true);
+  }, []);
   const closeMappingWorkspace = useCallback(() => setMappingWorkspaceOpen(false), []);
+
+  const openClassificationWorkspace = useCallback(() => {
+    setMappingWorkspaceOpen(false);
+    setClassificationWorkspaceEvent(null);
+    setClassificationWorkspaceKey((k) => k + 1);
+    setClassificationWorkspaceOpen(true);
+  }, []);
+  const closeClassificationWorkspace = useCallback(() => {
+    setClassificationWorkspaceOpen(false);
+    setClassificationWorkspaceEvent(null);
+  }, []);
+
+  const refreshClassificationTags = useCallback(() => {
+    fetchClassificationRules()
+      .then((result) => {
+        setClassificationTags(result.tags);
+        setClassificationTagsError(null);
+      })
+      .catch((error: unknown) =>
+        setClassificationTagsError(error instanceof Error ? error.message : 'Failed to load classification tags'),
+      );
+  }, []);
 
   /**
    * Owner mission "Project-Scoped Schema Scan" §7/§8 — scoped to a real
@@ -590,6 +641,7 @@ export function useSearchState() {
     setSelectedServices([]);
     setServiceFilterMode('INCLUDE');
     setSelectedLevels(DEFAULT_SEVERITY_LEVELS);
+    setSelectedTags([]);
     setAdvancedFilters(emptyAdvancedFilterValues());
     setQueryState(emptyQueryAuthoringState());
     setTimeRange(defaultTimeRange());
@@ -634,10 +686,34 @@ export function useSearchState() {
         rawLogQl: resolveRawLogQl(queryState),
         cursor,
         composeProject: selectedComposeProject ?? undefined,
+        tags: selectedTags.length > 0 ? selectedTags : undefined,
       };
     },
-    [selectedSourceId, timeRange, sortDirection, selectedServices, serviceFilterMode, selectedLevels, searchText, advancedFilters, queryState, selectedComposeProject],
+    [selectedSourceId, timeRange, sortDirection, selectedServices, serviceFilterMode, selectedLevels, selectedTags, searchText, advancedFilters, queryState, selectedComposeProject],
   );
+
+  /**
+   * The bounded sample scope a classification detect/test call reads: the
+   * selected source, Compose project, services + mode, levels, and the
+   * committed time range resolved exactly as a fresh Search would resolve
+   * it (`recomputeRelativeRange`) - relative presets end "now", a custom
+   * range stays exactly as typed. Does not commit anything.
+   */
+  const buildClassificationSampleScope = useCallback((): ClassificationSampleScope | null => {
+    if (!selectedSourceId) {
+      return null;
+    }
+    const range = recomputeRelativeRange(timeRange);
+    return {
+      sourceId: selectedSourceId,
+      composeProject: selectedComposeProject ?? null,
+      start: range.start,
+      end: range.end,
+      services: selectedServices,
+      serviceFilterMode,
+      levels: selectedLevels,
+    };
+  }, [selectedSourceId, selectedComposeProject, timeRange, selectedServices, serviceFilterMode, selectedLevels]);
 
   /** Aborts whatever request is currently in flight, so its result can never race a newer one. */
   function supersedeActiveRequest(): AbortController {
@@ -834,6 +910,16 @@ export function useSearchState() {
     focusRestoreRef.current = null;
   }, []);
 
+  /** "Create tag rule from this event" - closes the inspector and opens the classification workspace in create-from-event mode. */
+  const openClassificationRuleFromEvent = useCallback((event: LogEvent) => {
+    setSelectedIndex(null);
+    focusRestoreRef.current = null;
+    setMappingWorkspaceOpen(false);
+    setClassificationWorkspaceEvent(event);
+    setClassificationWorkspaceKey((k) => k + 1);
+    setClassificationWorkspaceOpen(true);
+  }, []);
+
   const selectPreviousEvent = useCallback(() => {
     setSelectedIndex((prev) => (prev != null && prev > 0 ? prev - 1 : prev));
   }, []);
@@ -849,6 +935,7 @@ export function useSearchState() {
       sortDirection,
       selectedIndex,
       selectedLevels,
+      selectedTags,
       searchText,
       advancedFilters,
       queryState,
@@ -856,7 +943,7 @@ export function useSearchState() {
       searchResult,
       lastSearchedRange,
     }),
-    [selectedServices, serviceFilterMode, sortDirection, selectedIndex, selectedLevels, searchText, advancedFilters, queryState, timeRange, searchResult, lastSearchedRange],
+    [selectedServices, serviceFilterMode, sortDirection, selectedIndex, selectedLevels, selectedTags, searchText, advancedFilters, queryState, timeRange, searchResult, lastSearchedRange],
   );
 
   /** "Preserves and restores the original search state" (HANDOVER.md §17.5, applied here to both Phase H detour actions) - only the true original is ever kept, never a chain of detours. */
@@ -887,6 +974,7 @@ export function useSearchState() {
     setSelectedServices(snapshot.selectedServices);
     setServiceFilterMode(snapshot.serviceFilterMode);
     setSelectedLevels(snapshot.selectedLevels);
+    setSelectedTags(snapshot.selectedTags);
     setSearchText(snapshot.searchText);
     setAdvancedFilters(snapshot.advancedFilters);
     setQueryState(snapshot.queryState);
@@ -1131,6 +1219,13 @@ export function useSearchState() {
     composeProjectsError,
     selectedLevels,
     setSelectedLevels,
+    /** Event Classification & Extraction Rules - committed tag filter (session only). */
+    selectedTags,
+    setSelectedTags,
+    classificationTags,
+    classificationTagsError,
+    refreshClassificationTags,
+    buildClassificationSampleScope,
     searchText,
     setSearchText,
     timeRange,
@@ -1194,6 +1289,12 @@ export function useSearchState() {
     mappingWorkspaceOpen,
     openMappingWorkspace,
     closeMappingWorkspace,
+    classificationWorkspaceOpen,
+    classificationWorkspaceEvent,
+    classificationWorkspaceKey,
+    openClassificationWorkspace,
+    openClassificationRuleFromEvent,
+    closeClassificationWorkspace,
   };
 }
 

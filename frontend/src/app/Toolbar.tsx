@@ -71,6 +71,10 @@ export function Toolbar({ state, onStartLive, openShiftScope }: ToolbarProps) {
     state.applyAdvancedFilters({ ...state.advancedFilters, text: state.searchText, [key]: '' });
   }
 
+  function removeTag(tag: string) {
+    state.setSelectedTags(state.selectedTags.filter((t) => t !== tag));
+  }
+
   function removeService(service: string) {
     state.setSelectedServices(state.selectedServices.filter((s) => s !== service));
   }
@@ -145,6 +149,11 @@ export function Toolbar({ state, onStartLive, openShiftScope }: ToolbarProps) {
           queryState={state.queryState}
           onApplyQuery={state.applyQuery}
           rawLogQlSupported={rawLogQlSupported}
+          availableTags={state.classificationTags}
+          availableTagsError={state.classificationTagsError}
+          selectedTags={state.selectedTags}
+          onApplyTags={state.setSelectedTags}
+          onOpen={state.refreshClassificationTags}
         />
       </div>
       <div className={styles.activeFiltersRow}>
@@ -159,6 +168,8 @@ export function Toolbar({ state, onStartLive, openShiftScope }: ToolbarProps) {
           onClearServices={() => state.setSelectedServices([])}
           advancedValues={{ ...state.advancedFilters, text: state.searchText }}
           onRemoveAdvancedField={removeAdvancedField}
+          selectedTags={state.selectedTags}
+          onRemoveTag={removeTag}
           onClearAll={state.clearAllFilters}
         />
       </div>

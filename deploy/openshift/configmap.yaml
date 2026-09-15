@@ -32,6 +32,13 @@ data:
   # deployment.
   SERVER_ADDRESS: "0.0.0.0"
 
+  # --- Classification rules storage -------------------------------------
+  # Where the backend persists user-authored classification rules (a small
+  # JSON configuration file - never log data). Must match the
+  # `log-explorer-data` PVC mountPath in deployment.yaml; the image already
+  # defaults to this value, it is repeated here so the PVC wiring is explicit.
+  LOGEXPLORER_DATA_DIR: "/app/data"
+
   # --- OpenShift Loki source (Phase D) ---------------------------------
   LOGEXPLORER_LOKI_BASE_URL: "https://loki-gateway.example-namespace.svc.cluster.local:8080"
   LOGEXPLORER_LOKI_GATEWAY_PREFIX: "/api/logs/v1"

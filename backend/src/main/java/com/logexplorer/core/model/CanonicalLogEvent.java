@@ -3,6 +3,8 @@ package com.logexplorer.core.model;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -138,7 +140,17 @@ public record CanonicalLogEvent(
      * own "do not log it" instruction — see {@code SearchRequest#toString}
      * for the matching request-side redaction.
      */
-    String contextTargetProof
+    String contextTargetProof,
+    /**
+     * Owner mission "Event Classification, Extraction, and Portable Rules" —
+     * the classification rules that matched this event, each with its own
+     * extracted values, computed at runtime by {@code
+     * core.classify.ClassificationEngine} right after parsing and field
+     * mapping. Never persisted. Extracted values are raw here and are
+     * redacted only at the {@code api.EventMapper} boundary, exactly like
+     * {@link #message}.
+     */
+    List<RuleMatch> classifications
 ) {
 
   public CanonicalLogEvent {
@@ -160,6 +172,19 @@ public record CanonicalLogEvent(
         ? Map.of()
         : Collections.unmodifiableMap(new LinkedHashMap<>(unknownMdcFields));
     sensitive = sensitive == null ? RawSensitiveFields.empty() : sensitive;
+    classifications = classifications == null ? List.of() : List.copyOf(classifications);
+  }
+
+  /** De-duplicated tags of every matching classification rule, in deterministic rule order. */
+  public List<String> tags() {
+    if (classifications.isEmpty()) {
+      return List.of();
+    }
+    LinkedHashSet<String> tags = new LinkedHashSet<>();
+    for (RuleMatch match : classifications) {
+      tags.addAll(match.tags());
+    }
+    return List.copyOf(tags);
   }
 
   public static Builder builder() {
@@ -213,7 +238,8 @@ public record CanonicalLogEvent(
         .namespace(namespace)
         .pod(pod)
         .sourceTimestamp(sourceTimestamp)
-        .contextTargetProof(contextTargetProof);
+        .contextTargetProof(contextTargetProof)
+        .classifications(classifications);
   }
 
   /** Builder for a large immutable record — plain positional construction would be error-prone. */
@@ -258,6 +284,7 @@ public record CanonicalLogEvent(
     private String pod;
     private Instant sourceTimestamp;
     private String contextTargetProof;
+    private List<RuleMatch> classifications = List.of();
 
     public Builder timestamp(Instant v) { this.timestamp = v; return this; }
     public Builder timestampRaw(String v) { this.timestampRaw = v; return this; }
@@ -300,6 +327,8 @@ public record CanonicalLogEvent(
     public Builder sourceTimestamp(Instant v) { this.sourceTimestamp = v; return this; }
     /** OS-1D review recovery — see the field's own javadoc. */
     public Builder contextTargetProof(String v) { this.contextTargetProof = v; return this; }
+    /** Runtime classification results — see the field's own javadoc. */
+    public Builder classifications(List<RuleMatch> v) { this.classifications = v; return this; }
 
     public CanonicalLogEvent build() {
       return new CanonicalLogEvent(
@@ -309,7 +338,7 @@ public record CanonicalLogEvent(
           errorCode, correlationId, sensitive, devicePlatformType, language,
           serverIp, serverHost, unknownTopLevelFields, unknownMdcFields,
           malformed, rawLine, originalRawJson, sourceId, composeProject, composeService, containerId, containerName, stream,
-          namespace, pod, sourceTimestamp, contextTargetProof);
+          namespace, pod, sourceTimestamp, contextTargetProof, classifications);
     }
   }
 }

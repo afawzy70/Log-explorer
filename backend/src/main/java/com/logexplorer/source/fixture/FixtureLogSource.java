@@ -81,6 +81,8 @@ public class FixtureLogSource implements LogSource {
   private volatile List<CanonicalLogEvent> corpus;
   /** The mapping generation {@link #corpus} was last built against — see {@link #corpus()}'s own javadoc. */
   private volatile long corpusGeneration = -1;
+  /** The classification rule-set generation {@link #corpus} was last built against — rules are applied at parse time. */
+  private volatile long corpusClassificationGeneration = -1;
 
   public FixtureLogSource(ObjectMapper objectMapper, LogLineParser parser) {
     this.parser = parser;
@@ -177,11 +179,14 @@ public class FixtureLogSource implements LogSource {
    */
   private List<CanonicalLogEvent> corpus() {
     long currentGeneration = parser.mappingGeneration(SCOPE);
+    long currentClassificationGeneration = parser.classificationGeneration();
     List<CanonicalLogEvent> result = corpus;
-    if (result == null || corpusGeneration != currentGeneration) {
+    if (result == null || corpusGeneration != currentGeneration
+        || corpusClassificationGeneration != currentClassificationGeneration) {
       synchronized (lock) {
         result = corpus;
-        if (result == null || corpusGeneration != currentGeneration) {
+        if (result == null || corpusGeneration != currentGeneration
+            || corpusClassificationGeneration != currentClassificationGeneration) {
           Instant anchor = Instant.now();
           List<String> lines = generator.generateLines(SEED, CORPUS_SIZE, anchor);
           List<CanonicalLogEvent> built = new ArrayList<>(lines.size());
@@ -202,6 +207,7 @@ public class FixtureLogSource implements LogSource {
           result = List.copyOf(built);
           corpus = result;
           corpusGeneration = currentGeneration;
+          corpusClassificationGeneration = currentClassificationGeneration;
         }
       }
     }

@@ -1,0 +1,25 @@
+# Persistent storage for event classification rules - the only state Log
+# Explorer persists. It holds a small JSON *configuration* file
+# (classification-rules.json, plus its .bak last-known-good copy and any
+# .corrupt-<timestamp> file the backend moves aside) - never log events,
+# never secrets, not an application database. Mounted at /app/data by
+# deployment.yaml (LOGEXPLORER_DATA_DIR in configmap.yaml).
+#
+# ReadWriteOnce + a single replica (deployment.yaml uses the Recreate
+# strategy for exactly this reason). 50Mi is generous: the rules file is
+# bounded by the backend's own limits (at most 200 rules) and stays in the
+# kilobyte range. No storageClassName - the namespace's default
+# StorageClass is used; set one explicitly if your cluster has no default.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: log-explorer-data
+  labels:
+    app.kubernetes.io/name: log-explorer
+    app.kubernetes.io/part-of: log-explorer
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Mi

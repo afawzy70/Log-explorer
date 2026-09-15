@@ -63,6 +63,10 @@ final class BackendProcessManager {
 
         ProcessBuilder builder = new ProcessBuilder(javaExe.toString(), "-jar", backendJar.toString());
         builder.environment().put("SERVER_PORT", Integer.toString(port));
+        // Classification rules configuration lives under
+        // ~/Library/Application Support/LogExplorer/data - never relative to
+        // the process working directory or inside the replaceable .app bundle.
+        builder.environment().put("LOGEXPLORER_DATA_DIR", AppPaths.DATA_DIRECTORY.toString());
         // Never SERVER_ADDRESS=0.0.0.0 here - the desktop deployment is
         // exactly the "same machine, nothing else should reach it" case
         // application.yml's own default (127.0.0.1) already covers.

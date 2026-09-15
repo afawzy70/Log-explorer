@@ -105,7 +105,16 @@ public record SearchRequest(
      * way {@code containerId}/{@code pod} already only mean something to
      * one source each.
      */
-    String composeProject
+    String composeProject,
+    /**
+     * Owner mission "Event Classification, Extraction, and Portable Rules" —
+     * classification tags to keep (ANY selected tag matches). Tags exist
+     * only after server-side classification, so no source can push this
+     * filter down; it is evaluated by {@code core.search.EventFilters} on
+     * the canonical events each adapter actually retrieved, inside that
+     * adapter's own read bounds. Normalized to trimmed lower case.
+     */
+    List<String> tags
 ) {
 
   public SearchRequest {
@@ -114,6 +123,11 @@ public record SearchRequest(
     levels = levels == null ? List.of() : List.copyOf(levels);
     sensitiveFilters = sensitiveFilters == null ? RawSensitiveFields.empty() : sensitiveFilters;
     direction = direction == null ? Direction.BACKWARD : direction;
+    tags = tags == null ? List.of() : tags.stream()
+        .filter(t -> t != null && !t.isBlank())
+        .map(t -> t.trim().toLowerCase(java.util.Locale.ROOT))
+        .distinct()
+        .toList();
   }
 
   public enum Direction { FORWARD, BACKWARD }
@@ -143,7 +157,7 @@ public record SearchRequest(
         traceId, spanId, correlationId, journeyId, journeyName, eventId, errorCode,
         businessStep, uiIdentifier, loggerContains, devicePlatform, language,
         containerId, pod, containerName, contextTargetProof, sensitiveFilters, query, rawLogQl, cursor, boundary,
-        composeProject);
+        composeProject, tags);
   }
 
   @Override
@@ -179,6 +193,7 @@ public record SearchRequest(
         + ", cursor=" + cursor
         + ", pageBoundary=" + pageBoundary
         + ", composeProject=" + composeProject
+        + ", tags=" + tags
         + "]";
   }
 
@@ -218,6 +233,7 @@ public record SearchRequest(
     private String cursor;
     private Instant pageBoundary;
     private String composeProject;
+    private List<String> tags;
 
     public Builder sourceId(String v) { this.sourceId = v; return this; }
     public Builder start(Instant v) { this.start = v; return this; }
@@ -252,6 +268,8 @@ public record SearchRequest(
     public Builder pageBoundary(Instant v) { this.pageBoundary = v; return this; }
     /** UX-R3 §7/§8/§9 — request/session-scoped Compose project selection. */
     public Builder composeProject(String v) { this.composeProject = v; return this; }
+    /** Classification tag filter (ANY). */
+    public Builder tags(List<String> v) { this.tags = v; return this; }
 
     /**
      * Builds the raw sensitive-filter holder from plain strings, entirely
@@ -293,7 +311,7 @@ public record SearchRequest(
           traceId, spanId, correlationId, journeyId, journeyName, eventId, errorCode,
           businessStep, uiIdentifier, loggerContains, devicePlatform, language,
           containerId, pod, containerName, contextTargetProof, sensitiveFilters, query, rawLogQl, cursor,
-          pageBoundary, composeProject);
+          pageBoundary, composeProject, tags);
     }
   }
 }

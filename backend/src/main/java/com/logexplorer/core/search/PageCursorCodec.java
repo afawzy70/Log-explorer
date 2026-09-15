@@ -256,6 +256,7 @@ public class PageCursorCodec {
     appendField(basis, sf.deviceIp());
     appendField(basis, r.query());
     appendField(basis, r.rawLogQl());
+    appendOrderInsensitiveList(basis, r.tags());
     return hmacHex(requestBindingSubkey, basis.toString());
   }
 

@@ -33,6 +33,20 @@ if [ "$(id -u)" != "0" ]; then
   exec java -jar app.jar "$@"
 fi
 
+# Classification rules data directory (see the Dockerfile's /app/data
+# comment). Only reached when genuinely root - the non-root path above is
+# unchanged. A freshly created Compose named volume normally inherits the
+# image directory's ownership already, but a bind mount or a volume created
+# by an older image may be root-owned; the backend's atomic save (temp file
+# + move in this directory) then fails with 503. Non-recursive on purpose:
+# directory write permission is all the atomic temp-file + move needs, and
+# it never rewrites ownership of an arbitrary host tree. Group 0 + g=u keeps
+# the same arbitrary-UID convention as the image itself.
+if [ -d /app/data ] && [ "$(stat -c '%U' /app/data)" != "logexplorer" ]; then
+  chown logexplorer:0 /app/data && chmod g=u /app/data || \
+    echo "WARNING: could not make /app/data writable for logexplorer - saving classification rules will fail (search is unaffected)" >&2
+fi
+
 if [ -S /var/run/docker.sock ]; then
   SOCK_GID="$(stat -c '%g' /var/run/docker.sock)"
   if ! getent group "$SOCK_GID" > /dev/null 2>&1; then

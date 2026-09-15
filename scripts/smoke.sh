@@ -23,7 +23,13 @@ COMPOSE=(docker compose --profile demo)
 step() { printf '\n=== %s ===\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
+SMOKE_RULE_ID=""
+
 cleanup() {
+  # A failed persistence step never leaves its own smoke rule on the volume.
+  if [ -n "$SMOKE_RULE_ID" ]; then
+    curl -s -o /dev/null -X DELETE "${BASE_URL}/api/v1/settings/classification-rules/${SMOKE_RULE_ID}" || true
+  fi
   step "Stop + cleanup (limited to this stack only - no global prune)"
   "${COMPOSE[@]}" down || true
 }
@@ -81,5 +87,51 @@ API_404="$(curl -s -o /dev/null -w '%{http_code}' "${BASE_URL}/api/v1/logs/does-
 ACTUATOR_STATUS="$(curl -s -o /dev/null -w '%{http_code}' "${BASE_URL}/actuator/health")"
 [ "$ACTUATOR_STATUS" = "200" ] || fail "/actuator/health returned ${ACTUATOR_STATUS}, expected 200"
 echo "SPA fallback correctly scoped"
+
+# Classification rules persistence across container recreation: the rules
+# file lives on the `log-explorer-data` named volume (docker-compose.yml).
+# Creates one uniquely named rule, recreates only the `app` container,
+# checks the rule is still there, then deletes that one rule again (other
+# rules already on the volume are never touched). Skip with
+# SMOKE_SKIP_RULES_PERSISTENCE=1.
+if [ "${SMOKE_SKIP_RULES_PERSISTENCE:-0}" != "1" ]; then
+  step "Classification rules survive container recreation (log-explorer-data volume)"
+  RULES_URL="${BASE_URL}/api/v1/settings/classification-rules"
+  rule_ids() { grep -Eo '"id":"[^"]+"' | sort -u || true; }
+
+  BEFORE_JSON="$(curl -sf "$RULES_URL")" || fail "GET ${RULES_URL} failed"
+  REVISION="$(printf '%s' "$BEFORE_JSON" | grep -Eo '"revision":[0-9]+' | head -n1 | cut -d: -f2 || true)"
+  [ -n "$REVISION" ] || fail "classification rules response has no revision"
+  RULE_NAME="Smoke persistence $(date -u +%Y%m%dT%H%M%SZ)-$$"
+  AFTER_JSON="$(curl -sf -X POST "$RULES_URL" -H 'Content-Type: application/json' \
+    -d "{\"expectedRevision\":${REVISION},\"rule\":{\"name\":\"${RULE_NAME}\",\"tags\":[\"smoke\"],\"conditions\":[{\"field\":\"message\",\"matcher\":\"CONTAINS\",\"value\":\"smoke-test-marker\"}]}}")" \
+    || fail "creating a classification rule failed (a 503 means /app/data is not writable)"
+  # The new rule's id is the one id present after the save but not before.
+  SMOKE_RULE_ID="$(comm -13 <(printf '%s' "$BEFORE_JSON" | rule_ids) <(printf '%s' "$AFTER_JSON" | rule_ids) | head -n1 | sed -e 's/^"id":"//' -e 's/"$//')"
+  [ -n "$SMOKE_RULE_ID" ] || fail "could not determine the id of the newly created rule"
+  echo "created rule ${SMOKE_RULE_ID}"
+
+  "${COMPOSE[@]}" up -d --force-recreate app
+  sleep 2
+  HEALTHY=""
+  for _ in $(seq 1 30); do
+    status="$(docker inspect --format='{{.State.Health.Status}}' log-explorer-app-1 2>/dev/null || echo "")"
+    if [ "$status" = "healthy" ]; then
+      HEALTHY="1"
+      break
+    fi
+    sleep 2
+  done
+  [ -n "$HEALTHY" ] || fail "recreated app container never reported healthy within 60s"
+
+  RECREATED_JSON="$(curl -sf "$RULES_URL")" || fail "GET ${RULES_URL} after recreate failed"
+  printf '%s' "$RECREATED_JSON" | grep -q "\"id\":\"${SMOKE_RULE_ID}\"" \
+    || fail "rule ${SMOKE_RULE_ID} was lost when the app container was recreated - rules are not on the named volume"
+  echo "rule survived container recreation"
+
+  curl -sf -o /dev/null -X DELETE "${RULES_URL}/${SMOKE_RULE_ID}" || fail "deleting smoke rule ${SMOKE_RULE_ID} failed"
+  SMOKE_RULE_ID=""
+  echo "smoke rule deleted"
+fi
 
 printf '\nSMOKE TEST PASSED\n'
