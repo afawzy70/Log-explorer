@@ -280,9 +280,9 @@ BACKEND_TESTS=PASS (1319/1319 — 1291 pre-existing + 28 new, 0 failures/errors/
 FRONTEND_TESTS=PASS (943/943 — 925 pre-existing + 18 new)
 TYPECHECK=PASS
 PRODUCTION_BUILD=PASS
-E2E=PASS (30/30 spec files, real backend `SPRING_PROFILES_ACTIVE=dev` + real frontend dev server — see methodology note below)
-WINDOWS_DESKTOP_CI=BLOCKED — no Windows build/signing environment available in this session; unblocked by CI running the existing Windows packaging workflow against this branch
-MACOS_DESKTOP_CI=BLOCKED — no macOS build/signing environment available in this session; unblocked by CI running the existing macOS packaging workflow against this branch
+E2E=PASS (30/30 spec files locally across the segmented runs below, AND the real GitHub Actions `E2E` CI job on PR #57 — https://github.com/afawzy70/Log-explorer/actions/runs/34965088428/job/104367660692)
+WINDOWS_DESKTOP_CI=PASS — real GitHub Actions job on PR #57 — https://github.com/afawzy70/Log-explorer/actions/runs/34965088384/job/104367605057
+MACOS_DESKTOP_CI=PASS — real GitHub Actions job on PR #57 — https://github.com/afawzy70/Log-explorer/actions/runs/34965088330/job/104367621306
 ```
 
 **E2E methodology note.** This session's host repeatedly killed a
@@ -407,3 +407,22 @@ This mission worked exclusively on a new branch,
 `feature/service-filter-docker-performance-default-mapping`, from latest
 `main`. No command in this mission touched `ux/v2-professional-redesign`
 or PR #54.
+
+---
+
+## 6. Pull request and CI
+
+PR #57: https://github.com/afawzy70/Log-explorer/pull/57 —
+`feature/service-filter-docker-performance-default-mapping` → `main`.
+All five real GitHub Actions CI checks pass on the final pushed commit:
+
+```
+Backend                                              PASS  1m54s
+Frontend                                             PASS  1m21s
+E2E                                                   PASS  7m41s
+Build, package, and smoke-test the Windows desktop app  PASS  4m50s
+Build, package, and smoke-test the macOS desktop app    PASS  1m37s
+```
+
+`MERGE_AUTHORIZED=NO` — owner review of this implementation PR required
+before merge.
