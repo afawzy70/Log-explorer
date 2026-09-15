@@ -53,9 +53,17 @@ public final class EventFilters {
         return false;
       }
     }
-    if (!request.services().isEmpty()
-        && (event.service() == null || !request.services().contains(event.service()))) {
-      return false;
+    // Owner mission "Service Filter, Docker Performance, and Verified
+    // Default Mapping" §A - INCLUDE with a non-empty list is an
+    // allow-list (unchanged pre-existing behavior); EXCLUDE with a
+    // non-empty list is a deny-list; EXCLUDE with an empty list means "no
+    // restriction," identical to INCLUDE with an empty list.
+    if (!request.services().isEmpty()) {
+      boolean inList = event.service() != null && request.services().contains(event.service());
+      boolean exclude = request.serviceFilterMode() == SearchRequest.ServiceFilterMode.EXCLUDE;
+      if (exclude ? inList : !inList) {
+        return false;
+      }
     }
     // A real, previously-shipped bug found via Phase M's real-browser UX
     // acceptance testing: a malformed line has no parsed severity by

@@ -150,6 +150,68 @@ describe('ActiveFilters', () => {
     });
   });
 
+  // ------------------------------------------------------------ owner mission
+  // "Service Filter, Docker Performance, and Verified Default Mapping" §A
+
+  describe('EXCLUDE mode summary', () => {
+    it('shows "Excluding: a, b, c" for three or fewer excluded services, never the plain "Service:" per-chip label', () => {
+      render(
+        <ActiveFilters
+          {...baseProps({ selectedServices: ['audit', 'notifications', 'metrics'], serviceFilterMode: 'EXCLUDE' })}
+        />,
+      );
+      expect(screen.getByText(/excluding:/i)).toBeInTheDocument();
+      expect(screen.getByText(/audit, notifications, metrics/)).toBeInTheDocument();
+      expect(screen.queryByText(/^service:$/i)).not.toBeInTheDocument();
+    });
+
+    it('shows "All services except N" once more than three services are excluded', () => {
+      render(
+        <ActiveFilters
+          {...baseProps({
+            selectedServices: ['audit', 'notifications', 'metrics', 'billing'],
+            serviceFilterMode: 'EXCLUDE',
+          })}
+        />,
+      );
+      expect(screen.getByText(/all services except/i)).toBeInTheDocument();
+      expect(screen.getByText(/4 services/)).toBeInTheDocument();
+    });
+
+    it('renders per-service chips as usual when mode is INCLUDE (default), unaffected by the EXCLUDE summary logic', () => {
+      render(<ActiveFilters {...baseProps({ selectedServices: ['payments', 'gateway'], serviceFilterMode: 'INCLUDE' })} />);
+      expect(screen.getByRole('button', { name: /remove service filter payments/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /remove service filter gateway/i })).toBeInTheDocument();
+      expect(screen.queryByText(/excluding:/i)).not.toBeInTheDocument();
+    });
+
+    it('the exclude summary chip\'s single remove button calls onClearServices, not onRemoveService', async () => {
+      const user = userEvent.setup();
+      const onClearServices = vi.fn();
+      const onRemoveService = vi.fn();
+      render(
+        <ActiveFilters
+          {...baseProps({
+            selectedServices: ['audit', 'notifications'],
+            serviceFilterMode: 'EXCLUDE',
+            onClearServices,
+            onRemoveService,
+          })}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /remove service exclusion filter/i }));
+      expect(onClearServices).toHaveBeenCalledTimes(1);
+      expect(onRemoveService).not.toHaveBeenCalled();
+    });
+
+    it('EXCLUDE mode with zero services renders no service-related chip at all', () => {
+      render(<ActiveFilters {...baseProps({ selectedServices: [], serviceFilterMode: 'EXCLUDE' })} />);
+      expect(screen.queryByText(/excluding:/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/all services except/i)).not.toBeInTheDocument();
+    });
+  });
+
   it('has no detectable accessibility violations', async () => {
     const advancedValues = { ...emptyAdvancedFilterValues(), traceId: 'trace-1', cif: 'x' };
     const { container } = render(

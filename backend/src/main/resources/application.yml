@@ -87,6 +87,7 @@ logexplorer:
     default-tail-lines: 2000
     request-timeout: 10s
     connect-timeout: 5s
+    historical-search-concurrency: 6
     remote-allowlist:
       # SSRF/DNS-rebinding policy (Legacy Remediation Slice 3) - empty by
       # default, deny-by-default for loopback/link-local/private-LAN/

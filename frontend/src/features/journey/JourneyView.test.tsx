@@ -31,6 +31,8 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     services: [],
     selectedServices: [],
     setSelectedServices: vi.fn(),
+    serviceFilterMode: 'INCLUDE',
+    setServiceFilterMode: vi.fn(),
     selectedComposeProject: null,
     setSelectedComposeProject: vi.fn(),
     composeProjects: [],

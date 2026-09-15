@@ -20,6 +20,39 @@ async function runRealSearch(page: import('@playwright/test').Page) {
   await expect(page.locator('tbody tr').first()).toBeVisible();
 }
 
+/**
+ * Owner mission "Service Filter, Docker Performance, and Verified
+ * Default Mapping" §C - Journey ID has no default mapping (the owner
+ * declined to guess it), so this journey-investigation flow requires it
+ * explicitly configured first, exactly like a real deployment's owner
+ * would need to do once. Configures it directly via the real HTTP PUT
+ * endpoint (not the UI - this spec's own subject is the journey
+ * investigation experience, not the mapping workspace, which
+ * `phase-n-schema-scan-field-mapping.spec.ts` already covers), pointed at
+ * the real key `FixtureCorpusGenerator` still emits
+ * (`mdc.x-journey-trace-id`), then resets the profile back to its default
+ * afterward per this project's established shared-singleton-backend-state
+ * discipline (`core.mapping.FieldMappingProfileService` is a real
+ * singleton, so a leaked custom mapping would otherwise affect later
+ * tests/runs).
+ */
+async function configureJourneyIdMapping(page: import('@playwright/test').Page) {
+  await page.request.put('/api/v1/settings/field-mapping/fields/journeyId?sourceId=fixture', {
+    data: { candidatePaths: ['mdc.x-journey-trace-id'] },
+  });
+  // Editing a candidate un-readies search (`modifiedFromDefault=true`,
+  // `validatedAndSaved=false`) until confirmed saved - `POST /save`
+  // trusts a client-asserted `validationPassed`, the same contract the
+  // real UI's own validate-then-save flow relies on.
+  await page.request.post('/api/v1/settings/field-mapping/save?sourceId=fixture', {
+    data: { validationPassed: true },
+  });
+}
+
+async function resetMappingProfile(page: import('@playwright/test').Page) {
+  await page.request.post('/api/v1/settings/field-mapping/reset?sourceId=fixture');
+}
+
 test('clicking a real Trace ID in the results table opens the journey timeline with ascending, real, cross-service entries', async ({
   page,
 }) => {
@@ -43,6 +76,7 @@ test('clicking a real Trace ID in the results table opens the journey timeline w
 test('"Find this Journey ID" from the inspector opens a real, multi-trace, cross-service, ascending timeline', async ({
   page,
 }) => {
+  await configureJourneyIdMapping(page);
   await runRealSearch(page);
 
   // The fixture corpus assigns journeys varying event counts (1 to
@@ -116,6 +150,8 @@ test('"Find this Journey ID" from the inspector opens a real, multi-trace, cross
   await expect(page.getByText(/events? across \d+ services?/i)).toBeVisible();
 
   await captureScreenshot(page, 'i', 'journey-view-open-1280px');
+
+  await resetMappingProfile(page);
 });
 
 test('"Back to search results" restores the original results table untouched', async ({ page }) => {

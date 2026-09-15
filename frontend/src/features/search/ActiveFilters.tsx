@@ -10,6 +10,15 @@ export interface ActiveFiltersProps {
   onRemoveSeverity: () => void;
   selectedServices: string[];
   onRemoveService: (service: string) => void;
+  /**
+   * Owner mission "Service Filter, Docker Performance, and Verified
+   * Default Mapping" §A — whether `selectedServices` is an allow-list or a
+   * deny-list. Defaults to `'INCLUDE'` when omitted (matches every prior
+   * caller's only behavior).
+   */
+  serviceFilterMode?: 'INCLUDE' | 'EXCLUDE';
+  /** EXCLUDE mode only — clears the whole exclusion list via the summary chip's single remove action. */
+  onClearServices?: () => void;
   advancedValues: AdvancedFilterValues;
   onRemoveAdvancedField: (key: keyof AdvancedFilterValues) => void;
   onClearAll: () => void;
@@ -49,6 +58,8 @@ export function ActiveFilters({
   onRemoveSeverity,
   selectedServices,
   onRemoveService,
+  serviceFilterMode = 'INCLUDE',
+  onClearServices,
   advancedValues,
   onRemoveAdvancedField,
   onClearAll,
@@ -86,19 +97,41 @@ export function ActiveFilters({
         </span>
       ) : null}
 
-      {selectedServices.map((service) => (
-        <span key={service} className={styles.chip}>
-          <span className={styles.chipLabel}>Service:</span> {service}
+      {serviceFilterMode === 'EXCLUDE' && selectedServices.length > 0 ? (
+        // Owner mission "Service Filter, Docker Performance, and Verified
+        // Default Mapping" §A - one combined chip, never per-service chips
+        // reusing the plain "Service:" label, so exclude mode is never
+        // mistaken for an allow-list at a glance (never rely on color
+        // alone - the wording itself says "except"/"Excluding").
+        <span className={styles.chip}>
+          <span className={styles.chipLabel}>
+            {selectedServices.length <= 3 ? 'Excluding:' : 'All services except'}
+          </span>{' '}
+          {selectedServices.length <= 3 ? selectedServices.join(', ') : `${selectedServices.length} services`}
           <button
             type="button"
             className={styles.chipRemove}
-            aria-label={`Remove service filter ${service}`}
-            onClick={() => onRemoveService(service)}
+            aria-label={`Remove service exclusion filter (${selectedServices.join(', ')})`}
+            onClick={() => onClearServices?.()}
           >
             <span aria-hidden="true">✕</span>
           </button>
         </span>
-      ))}
+      ) : (
+        selectedServices.map((service) => (
+          <span key={service} className={styles.chip}>
+            <span className={styles.chipLabel}>Service:</span> {service}
+            <button
+              type="button"
+              className={styles.chipRemove}
+              aria-label={`Remove service filter ${service}`}
+              onClick={() => onRemoveService(service)}
+            >
+              <span aria-hidden="true">✕</span>
+            </button>
+          </span>
+        ))
+      )}
 
       {activeFields.map((field) => (
         <span key={field.key} className={styles.chip}>

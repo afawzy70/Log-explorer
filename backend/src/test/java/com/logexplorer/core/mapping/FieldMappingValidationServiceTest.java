@@ -109,9 +109,9 @@ class FieldMappingValidationServiceTest {
     // validated using the fallback (default) profile's own existing candidates.
     MappingValidationReport report = service.validate(
         Map.of(CanonicalField.CIF, List.of("cif")), defaultProfile,
-        List.of("{\"cif\":\"2449\",\"mdc\":{\"traceId\":\"t-1\"}}"));
+        List.of("{\"cif\":\"2449\",\"traceId\":\"t-1\"}"));
     FieldValidation traceId = fieldOf(report, CanonicalField.TRACE_ID);
-    assertThat(traceId.candidatePathsRaw()).containsExactly("mdc.traceId");
+    assertThat(traceId.candidatePathsRaw()).containsExactly("traceId");
     assertThat(traceId.foundInAnySample()).isTrue();
   }
 

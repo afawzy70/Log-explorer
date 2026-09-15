@@ -35,6 +35,17 @@ public record SearchRequest(
     Direction direction,
     Integer limit,
     List<String> services,
+    /**
+     * Owner mission "Service Filter, Docker Performance, and Verified
+     * Default Mapping" §A — whether {@link #services} is an allow-list
+     * (only these services) or a deny-list (every otherwise-eligible
+     * service except these). {@code EXCLUDE} with an empty list means "no
+     * restriction" (identical to {@code INCLUDE} with an empty list) —
+     * both are "all eligible services." Defaults to {@code INCLUDE} so
+     * every existing caller that never sets this field keeps its exact
+     * current behavior.
+     */
+    ServiceFilterMode serviceFilterMode,
     List<String> levels,
     String text,
     String traceId,
@@ -99,12 +110,16 @@ public record SearchRequest(
 
   public SearchRequest {
     services = services == null ? List.of() : List.copyOf(services);
+    serviceFilterMode = serviceFilterMode == null ? ServiceFilterMode.INCLUDE : serviceFilterMode;
     levels = levels == null ? List.of() : List.copyOf(levels);
     sensitiveFilters = sensitiveFilters == null ? RawSensitiveFields.empty() : sensitiveFilters;
     direction = direction == null ? Direction.BACKWARD : direction;
   }
 
   public enum Direction { FORWARD, BACKWARD }
+
+  /** Owner mission "Service Filter, Docker Performance, and Verified Default Mapping" §A. */
+  public enum ServiceFilterMode { INCLUDE, EXCLUDE }
 
   /**
    * A copy of this request with only {@code pageBoundary} replaced - used
@@ -124,7 +139,7 @@ public record SearchRequest(
    */
   public SearchRequest withPageBoundary(Instant boundary) {
     return new SearchRequest(
-        sourceId, start, end, direction, limit, services, levels, text,
+        sourceId, start, end, direction, limit, services, serviceFilterMode, levels, text,
         traceId, spanId, correlationId, journeyId, journeyName, eventId, errorCode,
         businessStep, uiIdentifier, loggerContains, devicePlatform, language,
         containerId, pod, containerName, contextTargetProof, sensitiveFilters, query, rawLogQl, cursor, boundary,
@@ -139,6 +154,7 @@ public record SearchRequest(
         + ", direction=" + direction
         + ", limit=" + limit
         + ", services=" + services
+        + ", serviceFilterMode=" + serviceFilterMode
         + ", levels=" + levels
         + ", text=" + (text == null ? "null" : "[REDACTED]")
         + ", traceId=" + traceId
@@ -177,6 +193,7 @@ public record SearchRequest(
     private Direction direction;
     private Integer limit;
     private List<String> services;
+    private ServiceFilterMode serviceFilterMode;
     private List<String> levels;
     private String text;
     private String traceId;
@@ -208,6 +225,8 @@ public record SearchRequest(
     public Builder direction(Direction v) { this.direction = v; return this; }
     public Builder limit(Integer v) { this.limit = v; return this; }
     public Builder services(List<String> v) { this.services = v; return this; }
+    /** Owner mission "Service Filter, Docker Performance, and Verified Default Mapping" §A. Defaults to {@code INCLUDE}. */
+    public Builder serviceFilterMode(ServiceFilterMode v) { this.serviceFilterMode = v; return this; }
     public Builder levels(List<String> v) { this.levels = v; return this; }
     public Builder text(String v) { this.text = v; return this; }
     public Builder traceId(String v) { this.traceId = v; return this; }
@@ -270,7 +289,7 @@ public record SearchRequest(
 
     public SearchRequest build() {
       return new SearchRequest(
-          sourceId, start, end, direction, limit, services, levels, text,
+          sourceId, start, end, direction, limit, services, serviceFilterMode, levels, text,
           traceId, spanId, correlationId, journeyId, journeyName, eventId, errorCode,
           businessStep, uiIdentifier, loggerContains, devicePlatform, language,
           containerId, pod, containerName, contextTargetProof, sensitiveFilters, query, rawLogQl, cursor,

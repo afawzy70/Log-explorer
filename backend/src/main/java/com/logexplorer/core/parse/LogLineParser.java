@@ -69,6 +69,21 @@ public class LogLineParser {
     this.mappingProfileService = mappingProfileService;
   }
 
+  /**
+   * Owner mission "Service Filter, Docker Performance, and Verified
+   * Default Mapping" §C review recovery — exposes {@link
+   * FieldMappingProfileService#generation} through this class (every
+   * real caller already holds a {@link LogLineParser}, not necessarily a
+   * direct {@link FieldMappingProfileService} reference) so a caller that
+   * caches parsed events for one scope (see {@code
+   * source.fixture.FixtureLogSource#corpus()}) can detect when that
+   * scope's mapping has changed since the cache was built, without
+   * needing its own separate reference to the mapping service.
+   */
+  public long mappingGeneration(MappingScopeKey scope) {
+    return mappingProfileService.generation(scope);
+  }
+
   public CanonicalLogEvent parse(String line) {
     return parse(line, null);
   }

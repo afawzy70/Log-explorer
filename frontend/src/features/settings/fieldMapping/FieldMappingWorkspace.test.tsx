@@ -209,6 +209,37 @@ describe('FieldMappingWorkspace', () => {
       expect(within(cifRow).getByText(/run a quick schema scan first/i)).toBeInTheDocument();
     });
 
+    it('never shows "Run a Quick Schema Scan first" for an already-VERIFIED field with no scan run yet - owner mission "Service Filter, Docker Performance, and Verified Default Mapping" §C', () => {
+      // Real, previously-unreported defect: the hint was gated only on
+      // "no scan evidence yet," so an untouched owner-approved default
+      // (VERIFIED with zero scan effort, per this mission) would have
+      // shown a misleading "you must scan first" message even though no
+      // scan is actually required to establish that status.
+      renderWorkspace({
+        profile: baseProfile({
+          fields: [{ field: 'cif', displayName: 'CIF', sensitive: true, candidatePaths: ['cif'], verificationStatus: 'VERIFIED' }],
+        }),
+      });
+      const cifRow = screen.getByText('CIF').closest('li')!;
+      expect(within(cifRow).getByText('Verified')).toBeInTheDocument();
+      expect(within(cifRow).queryByText(/run a quick schema scan first/i)).not.toBeInTheDocument();
+    });
+
+    it('still shows "Run a Quick Schema Scan first" for a non-VERIFIED field with no scan run yet, even alongside an unrelated VERIFIED field', () => {
+      renderWorkspace({
+        profile: baseProfile({
+          fields: [
+            { field: 'cif', displayName: 'CIF', sensitive: true, candidatePaths: ['cif'], verificationStatus: 'VERIFIED' },
+            { field: 'journeyId', displayName: 'Journey ID', sensitive: false, candidatePaths: [], verificationStatus: 'UNVERIFIED' },
+          ],
+        }),
+      });
+      const cifRow = screen.getByText('CIF').closest('li')!;
+      expect(within(cifRow).queryByText(/run a quick schema scan first/i)).not.toBeInTheDocument();
+      const journeyRow = screen.getByText('Journey ID').closest('li')!;
+      expect(within(journeyRow).getByText(/run a quick schema scan first/i)).toBeInTheDocument();
+    });
+
     it('Verify is disabled for an unmapped field', async () => {
       const user = userEvent.setup();
       mockScan.mockResolvedValue(scanResult());

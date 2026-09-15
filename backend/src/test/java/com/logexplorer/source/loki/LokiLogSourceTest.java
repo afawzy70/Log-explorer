@@ -251,11 +251,13 @@ class LokiLogSourceTest {
     mockServer = new MockLokiServer("/api/logs/v1", "application", "namespace", "app");
     LokiProperties properties = propertiesFor(mockServer);
 
+    // Top-level "traceId" - owner mission "Service Filter, Docker
+    // Performance, and Verified Default Mapping" §C default (was "mdc.traceId").
     Map<String, String> labels = Map.of("namespace", "prod-ns", "app", "gateway");
     String matchingLine = "{\"@timestamp\":\"2026-01-01T00:00:00Z\",\"message\":\"has trace\","
-        + "\"application\":\"gateway\",\"mdc\":{\"traceId\":\"trace-abc\"}}";
+        + "\"application\":\"gateway\",\"traceId\":\"trace-abc\"}";
     String nonMatchingLine = "{\"@timestamp\":\"2026-01-01T00:01:00Z\",\"message\":\"no matching trace\","
-        + "\"application\":\"gateway\",\"mdc\":{\"traceId\":\"trace-xyz\"}}";
+        + "\"application\":\"gateway\",\"traceId\":\"trace-xyz\"}";
     mockServer.respondWithStreams(List.of(
         stream(labels, List.of(List.of("1", matchingLine), List.of("2", nonMatchingLine)))));
 
@@ -377,6 +379,38 @@ class LokiLogSourceTest {
 
     Map<String, String> params = parseQuery(mockServer.lastQueryString());
     assertThat(params.get("query")).isEqualTo("{namespace=\"my-namespace\",app=\"gateway\"}");
+  }
+
+  @Test
+  void excludeModeNeverPushesDownTheExcludedServicesAsAPositiveSelectorMatch() throws IOException {
+    // Owner mission "Service Filter, Docker Performance, and Verified
+    // Default Mapping" §A - pushing `services` down under EXCLUDE would
+    // invert the request's own meaning (Loki would return ONLY the
+    // excluded services). Only namespace is pushed down; the exclusion
+    // itself is applied afterward by EventFilters against the response.
+    mockServer = new MockLokiServer("/api/logs/v1", "application", "namespace", "app");
+    LokiProperties properties = propertiesFor(mockServer);
+
+    mockServer.respondWithStreams(List.of(
+        stream(Map.of("namespace", "my-namespace", "app", "gateway"),
+            lineAt(1L, "2026-01-01T00:00:00Z", "kept", "gateway")),
+        stream(Map.of("namespace", "my-namespace", "app", "audit"),
+            lineAt(2L, "2026-01-01T00:00:01Z", "dropped", "audit"))));
+
+    LokiLogSource source = sourceFor(properties);
+    SearchRequest request = SearchRequest.builder()
+        .sourceId(source.id())
+        .start(Instant.parse("2025-01-01T00:00:00Z"))
+        .end(Instant.parse("2027-01-01T00:00:00Z"))
+        .services(List.of("audit"))
+        .serviceFilterMode(SearchRequest.ServiceFilterMode.EXCLUDE)
+        .build();
+
+    List<CanonicalLogEvent> events = source.search(request).collectList().block();
+
+    Map<String, String> params = parseQuery(mockServer.lastQueryString());
+    assertThat(params.get("query")).isEqualTo("{namespace=\"my-namespace\"}");
+    assertThat(events).extracting(CanonicalLogEvent::message).containsExactly("kept");
   }
 
   @Test

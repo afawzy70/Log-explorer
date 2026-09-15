@@ -35,11 +35,14 @@ import com.logexplorer.source.LogSourceRegistry;
 import com.logexplorer.source.docker.security.RemoteHostGuard;
 import com.logexplorer.source.docker.security.RemoteHostRejectedException;
 import java.net.InetAddress;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.test.StepVerifier;
@@ -106,14 +109,73 @@ class DockerLogSourceTest {
     }).when(mockClient).readLogs(eq(containerId), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
   }
 
+  /**
+   * Owner mission "Service Filter, Docker Performance, and Verified
+   * Default Mapping" §B - simulates a real, artificially slow container
+   * read by blocking the calling (boundedElastic) thread for {@code
+   * delayMillis} before completing, tracking the observed peak number of
+   * simultaneously-in-flight reads via {@code maxActiveReads}. This is the
+   * deterministic, non-wall-clock-dependent proof mechanism the mission
+   * itself recommends ("max-active-read-counter").
+   */
+  @SuppressWarnings("unchecked")
+  private void stubLogsWithDelay(
+      String containerId, long delayMillis, AtomicInteger activeReads, AtomicInteger maxActiveReads,
+      String... rawLinesWithTimestamp) {
+    doAnswer(invocation -> {
+      int active = activeReads.incrementAndGet();
+      maxActiveReads.accumulateAndGet(active, Math::max);
+      try {
+        Thread.sleep(delayMillis);
+      } finally {
+        activeReads.decrementAndGet();
+      }
+      DockerFrameCollectingCallback callback = invocation.getArgument(7);
+      for (String line : rawLinesWithTimestamp) {
+        callback.onNext(new com.github.dockerjava.api.model.Frame(
+            com.github.dockerjava.api.model.StreamType.STDOUT,
+            line.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+      }
+      callback.onComplete();
+      return callback;
+    }).when(mockClient).readLogs(eq(containerId), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+  }
+
+  /**
+   * Owner mission "Service Filter, Docker Performance, and Verified
+   * Default Mapping" §B - a stronger, still-deterministic proof than a
+   * counter: {@code barrier} requires exactly {@code barrier.getParties()}
+   * reads to be simultaneously in-flight before any of them can complete.
+   * If reads ran sequentially (the pre-fix behavior), no more than one
+   * thread could ever reach the barrier at once, it would never trip, and
+   * every participating read would fail with a timeout - a real,
+   * deterministic failure signal, not a flaky wall-clock race.
+   */
+  @SuppressWarnings("unchecked")
+  private void stubLogsWithBarrier(String containerId, CyclicBarrier barrier, String... rawLinesWithTimestamp) {
+    doAnswer(invocation -> {
+      barrier.await(5, java.util.concurrent.TimeUnit.SECONDS);
+      DockerFrameCollectingCallback callback = invocation.getArgument(7);
+      for (String line : rawLinesWithTimestamp) {
+        callback.onNext(new com.github.dockerjava.api.model.Frame(
+            com.github.dockerjava.api.model.StreamType.STDOUT,
+            line.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+      }
+      callback.onComplete();
+      return callback;
+    }).when(mockClient).readLogs(eq(containerId), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+  }
+
   private String jsonLine(String timestamp, String service, String message) {
     return timestamp + " {\"@timestamp\":\"" + timestamp + "\",\"message\":\"" + message
         + "\",\"application\":\"" + service + "\",\"mdc\":{}}\n";
   }
 
+  // Top-level "traceId" - owner mission "Service Filter, Docker
+  // Performance, and Verified Default Mapping" §C default (was "mdc.traceId").
   private String jsonLineWithTraceId(String timestamp, String service, String message, String traceId) {
     return timestamp + " {\"@timestamp\":\"" + timestamp + "\",\"message\":\"" + message
-        + "\",\"application\":\"" + service + "\",\"mdc\":{\"traceId\":\"" + traceId + "\"}}\n";
+        + "\",\"application\":\"" + service + "\",\"traceId\":\"" + traceId + "\",\"mdc\":{}}\n";
   }
 
   /**
@@ -564,6 +626,103 @@ class DockerLogSourceTest {
     assertThat(events).hasSize(1);
     assertThat(events.get(0).service()).isEqualTo("gateway");
     verify(mockClient, never()).readLogs(eq("c2"), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+  }
+
+  // ------------------------------------------------------------ owner mission
+  // "Service Filter, Docker Performance, and Verified Default Mapping" §A
+
+  @Test
+  void excludeModeNeverReadsTheExcludedServicesContainersAtAll_dockerExcludedServicesReadCountIsZero() {
+    // Required proof: DOCKER_EXCLUDED_SERVICES_READ_COUNT=0 - excluded
+    // services' containers must never even reach a readLogs() call, not
+    // merely have their events discarded after the fact.
+    Container gateway = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    Container accounts = container("c2", "proj-accounts-1", "proj", "accounts-api", "running");
+    Container audit = container("c3", "proj-audit-1", "proj", "audit", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(gateway, accounts, audit));
+    stubLogs("c2", jsonLine("2026-01-01T00:00:00.000000000Z", "accounts-api", "accounts line"));
+
+    SearchRequest request = wideOpenRequest()
+        .services(List.of("gateway", "audit"))
+        .serviceFilterMode(SearchRequest.ServiceFilterMode.EXCLUDE)
+        .build();
+    List<CanonicalLogEvent> events = source.search(request).collectList().block();
+
+    assertThat(events).hasSize(1);
+    assertThat(events.get(0).service()).isEqualTo("accounts-api");
+    // DOCKER_EXCLUDED_SERVICES_READ_COUNT=0 - neither excluded container's
+    // service was ever passed to readLogs().
+    verify(mockClient, never()).readLogs(eq("c1"), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+    verify(mockClient, never()).readLogs(eq("c3"), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+  }
+
+  @Test
+  void excludeModeWithAnEmptyListAppliesNoRestriction_readsEveryEligibleContainer() {
+    Container gateway = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    Container accounts = container("c2", "proj-accounts-1", "proj", "accounts-api", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(gateway, accounts));
+    stubLogs("c1", jsonLine("2026-01-01T00:00:00.000000000Z", "gateway", "gateway line"));
+    stubLogs("c2", jsonLine("2026-01-01T00:00:01.000000000Z", "accounts-api", "accounts line"));
+
+    SearchRequest request = wideOpenRequest()
+        .services(List.of())
+        .serviceFilterMode(SearchRequest.ServiceFilterMode.EXCLUDE)
+        .build();
+    List<CanonicalLogEvent> events = source.search(request).collectList().block();
+
+    assertThat(events).hasSize(2);
+    verify(mockClient).readLogs(eq("c1"), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+    verify(mockClient).readLogs(eq("c2"), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+  }
+
+  @Test
+  void excludeModeRespectsTheComposeProjectBoundary_neverExcludesAcrossProjects() {
+    // A container in another Compose project is already excluded by the
+    // project filter regardless of the service exclude list - proves the
+    // two filters compose correctly rather than one silently overriding
+    // the other.
+    Container projectAGateway = container("c1", "projA-gateway-1", "projA", "gateway", "running");
+    Container projectBGateway = container("c2", "projB-gateway-1", "projB", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(projectAGateway, projectBGateway));
+    stubLogs("c1", jsonLine("2026-01-01T00:00:00.000000000Z", "gateway", "project A line"));
+
+    SearchRequest request = wideOpenRequest()
+        .services(List.of("audit"))
+        .serviceFilterMode(SearchRequest.ServiceFilterMode.EXCLUDE)
+        .composeProject("projA")
+        .build();
+    List<CanonicalLogEvent> events = source.search(request).collectList().block();
+
+    assertThat(events).hasSize(1);
+    assertThat(events.get(0).message()).isEqualTo("project A line");
+    verify(mockClient, never()).readLogs(eq("c2"), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+  }
+
+  @Test
+  void switchingFromExcludeBackToIncludeOnANewRequestNeverLeaksThePriorModesRestriction() {
+    // Each SearchRequest is immutable and self-contained - proves the
+    // adapter carries no residual mode state between two independent
+    // search() calls (no cross-filter interference / no source-switch
+    // state leak).
+    Container gateway = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    Container audit = container("c2", "proj-audit-1", "proj", "audit", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(gateway, audit));
+    stubLogs("c1", jsonLine("2026-01-01T00:00:00.000000000Z", "gateway", "gateway line"));
+    stubLogs("c2", jsonLine("2026-01-01T00:00:01.000000000Z", "audit", "audit line"));
+
+    SearchRequest excludeAudit = wideOpenRequest()
+        .services(List.of("audit"))
+        .serviceFilterMode(SearchRequest.ServiceFilterMode.EXCLUDE)
+        .build();
+    List<CanonicalLogEvent> excludeResults = source.search(excludeAudit).collectList().block();
+    assertThat(excludeResults).extracting(CanonicalLogEvent::service).containsExactly("gateway");
+
+    SearchRequest includeAudit = wideOpenRequest()
+        .services(List.of("audit"))
+        .serviceFilterMode(SearchRequest.ServiceFilterMode.INCLUDE)
+        .build();
+    List<CanonicalLogEvent> includeResults = source.search(includeAudit).collectList().block();
+    assertThat(includeResults).extracting(CanonicalLogEvent::service).containsExactly("audit");
   }
 
   @Test
@@ -1149,5 +1308,219 @@ class DockerLogSourceTest {
         .sourceId("local-docker")
         .start(Instant.parse("2025-01-01T00:00:00Z"))
         .end(Instant.parse("2027-01-01T00:00:00Z"));
+  }
+
+  // ------------------------------------------------------------ owner mission
+  // "Service Filter, Docker Performance, and Verified Default Mapping" §B
+  // - bounded-parallelism proof tests.
+
+  private List<Container> manyContainers(int count) {
+    List<Container> containers = new ArrayList<>();
+    for (int i = 0; i < count; i++) {
+      containers.add(container("c" + i, "proj-svc" + i + "-1", "proj", "svc" + i, "running"));
+    }
+    return containers;
+  }
+
+  @Test
+  void oneContainerReadsSuccessfullyAndTimingIsRecorded() {
+    Container c1 = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(c1));
+    stubLogs("c1", jsonLine("2026-01-01T00:00:00.000000000Z", "gateway", "line"));
+
+    List<CanonicalLogEvent> events = source.search(wideOpenRequest().build()).collectList().block();
+
+    assertThat(events).hasSize(1);
+    DockerLogSource.HistoricalSearchTiming timing = source.lastHistoricalSearchTiming();
+    assertThat(timing.targetContainerCount()).isEqualTo(1);
+    assertThat(timing.containersActuallyRead()).isEqualTo(1);
+    assertThat(timing.effectiveConcurrency()).isEqualTo(properties.getHistoricalSearchConcurrency());
+    // Owner mission "Service Filter, Docker Performance, and Verified
+    // Default Mapping" §B - "suggested default: 6," verified against a
+    // fresh, never-touched DockerProperties instance (not the test's own
+    // properties field, which other tests in this class mutate).
+    assertThat(new DockerProperties().getHistoricalSearchConcurrency()).isEqualTo(6);
+  }
+
+  @Test
+  void fiveContainersAllReadSimultaneously_dockerReadsAreParallel() throws Exception {
+    int containerCount = 5;
+    List<Container> containers = manyContainers(containerCount);
+    when(mockClient.listContainers(true)).thenReturn(containers);
+
+    CyclicBarrier barrier = new CyclicBarrier(containerCount);
+    for (Container c : containers) {
+      stubLogsWithBarrier(c.getId(), barrier,
+          jsonLine("2026-01-01T00:00:00.000000000Z", ComposeLabels.service(c.getLabels()), "line"));
+    }
+
+    // DOCKER_READS_ARE_PARALLEL=YES - the default concurrency (6) covers
+    // all 5 containers, so every read can be in flight at once; if reads
+    // ran sequentially (the pre-fix behavior), the 5-party barrier could
+    // never trip and this call would return fewer than 5 events (each
+    // barrier participant that times out is caught and skipped, exactly
+    // like any other unreadable container).
+    List<CanonicalLogEvent> events = source.search(wideOpenRequest().build()).collectList().block();
+
+    assertThat(events).hasSize(containerCount);
+  }
+
+  @Test
+  void twentyContainersNeverExceedTheConfiguredConcurrencyBound() {
+    properties.setHistoricalSearchConcurrency(4);
+    int containerCount = 20;
+    List<Container> containers = manyContainers(containerCount);
+    when(mockClient.listContainers(true)).thenReturn(containers);
+
+    AtomicInteger activeReads = new AtomicInteger();
+    AtomicInteger maxActiveReads = new AtomicInteger();
+    for (Container c : containers) {
+      stubLogsWithDelay(c.getId(), 50, activeReads, maxActiveReads,
+          jsonLine("2026-01-01T00:00:00.000000000Z", ComposeLabels.service(c.getLabels()), "line"));
+    }
+
+    List<CanonicalLogEvent> events = source.search(wideOpenRequest().build()).collectList().block();
+
+    assertThat(events).hasSize(containerCount);
+    // DOCKER_PARALLELISM_IS_BOUNDED=YES / MAX_ACTIVE_READS_NEVER_EXCEEDS_CONFIG=YES
+    assertThat(maxActiveReads.get()).isLessThanOrEqualTo(4);
+    // Genuinely parallel, not accidentally serialized down to 1 despite the bound.
+    assertThat(maxActiveReads.get()).isGreaterThan(1);
+
+    DockerLogSource.HistoricalSearchTiming timing = source.lastHistoricalSearchTiming();
+    assertThat(timing.targetContainerCount()).isEqualTo(20);
+    assertThat(timing.containersActuallyRead()).isEqualTo(20);
+    assertThat(timing.effectiveConcurrency()).isEqualTo(4);
+  }
+
+  @Test
+  void oneSlowContainerNeverSerializesTheIndependentFastContainers() {
+    properties.setHistoricalSearchConcurrency(6);
+    Container slow = container("slow", "proj-slow-1", "proj", "slow-svc", "running");
+    List<Container> fast = new ArrayList<>();
+    for (int i = 0; i < 9; i++) {
+      fast.add(container("fast" + i, "proj-fastsvc" + i + "-1", "proj", "fast-svc" + i, "running"));
+    }
+    List<Container> all = new ArrayList<>();
+    all.add(slow);
+    all.addAll(fast);
+    when(mockClient.listContainers(true)).thenReturn(all);
+
+    AtomicInteger activeReads = new AtomicInteger();
+    AtomicInteger maxActiveReads = new AtomicInteger();
+    stubLogsWithDelay("slow", 300, activeReads, maxActiveReads,
+        jsonLine("2026-01-01T00:00:00.000000000Z", "slow-svc", "slow line"));
+    for (Container c : fast) {
+      stubLogsWithDelay(c.getId(), 50, activeReads, maxActiveReads,
+          jsonLine("2026-01-01T00:00:00.000000000Z", ComposeLabels.service(c.getLabels()), "fast line"));
+    }
+
+    long startNanos = System.nanoTime();
+    List<CanonicalLogEvent> events = source.search(wideOpenRequest().build()).collectList().block();
+    long elapsedMillis = Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
+
+    assertThat(events).hasSize(10);
+    // Sequential would be 300 + 9*50 = 750ms; bounded-parallel (concurrency
+    // 6 >= 10 target containers is false here, but 6 still lets the slow
+    // read and 5 fast reads start together, with the remaining 4 fast
+    // reads picked up as slots free almost immediately) finishes close to
+    // the slow container's own 300ms - a generous ceiling well under the
+    // sequential sum proves the slow container never serialized the rest.
+    assertThat(elapsedMillis).isLessThan(550);
+  }
+
+  /**
+   * Owner mission "Service Filter, Docker Performance, and Verified
+   * Default Mapping" §B review recovery - a real, previously-unreported
+   * bug: {@code readContainerLogs} discarded {@code awaitCompletion}'s own
+   * boolean return value entirely, so a genuinely timed-out read was
+   * silently treated as a normal, complete one. This proves the truthful-
+   * failure-semantics fix: a read that never signals completion within
+   * the configured timeout still returns whatever partial lines had
+   * already arrived (never fabricates zero), and the overall search still
+   * completes promptly (bounded by the timeout, never hangs).
+   */
+  @SuppressWarnings("unchecked")
+  @Test
+  void aReadThatNeverCompletesWithinTheTimeoutStillReturnsItsPartialLines_neverFabricatesZero() {
+    properties.setRequestTimeout(Duration.ofMillis(100));
+    Container c1 = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(c1));
+
+    doAnswer(invocation -> {
+      DockerFrameCollectingCallback callback = invocation.getArgument(7);
+      // A full line arrives and is already collected internally by the
+      // callback - but onComplete() is deliberately never called, so
+      // awaitCompletion(...) will time out (return false) rather than
+      // ever being satisfied normally.
+      callback.onNext(new com.github.dockerjava.api.model.Frame(
+          com.github.dockerjava.api.model.StreamType.STDOUT,
+          jsonLine("2026-01-01T00:00:00.000000000Z", "gateway", "partial line").getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+      return callback;
+    }).when(mockClient).readLogs(eq("c1"), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+
+    long startNanos = System.nanoTime();
+    List<CanonicalLogEvent> events = source.search(wideOpenRequest().build()).collectList().block();
+    long elapsedMillis = Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
+
+    // Never silently reports zero logs for a read that actually delivered
+    // data before timing out.
+    assertThat(events).hasSize(1);
+    assertThat(events.get(0).message()).isEqualTo("partial line");
+    // Bounded by the configured timeout, never hangs indefinitely.
+    assertThat(elapsedMillis).isLessThan(2000);
+  }
+
+  @Test
+  void maxContainersCapIsAppliedBeforeTheParallelReadFanOut() {
+    // Owner mission "Service Filter, Docker Performance, and Verified
+    // Default Mapping" §B - the maxContainers cap (pre-existing, Phase C)
+    // must still be enforced exactly the same way with the new parallel
+    // read path: the cap narrows `targets` BEFORE readAllContainersInParallel
+    // ever runs, so only the capped subset is ever read, never all of them
+    // with results silently truncated afterward.
+    properties.setMaxContainers(2);
+    List<Container> containers = manyContainers(5);
+    when(mockClient.listContainers(true)).thenReturn(containers);
+    for (Container c : containers) {
+      stubLogs(c.getId(), jsonLine("2026-01-01T00:00:00.000000000Z", ComposeLabels.service(c.getLabels()), "line"));
+    }
+
+    List<CanonicalLogEvent> events = source.search(wideOpenRequest().build()).collectList().block();
+
+    assertThat(events).hasSize(2);
+    DockerLogSource.HistoricalSearchTiming timing = source.lastHistoricalSearchTiming();
+    assertThat(timing.targetContainerCount()).isEqualTo(2);
+    assertThat(timing.containersActuallyRead()).isEqualTo(2);
+    verify(mockClient, never()).readLogs(eq("c2"), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+    verify(mockClient, never()).readLogs(eq("c3"), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+    verify(mockClient, never()).readLogs(eq("c4"), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+  }
+
+  @Test
+  void multipleSimultaneousTimeoutsAreEachHandledSafelyWithoutHangingOrThrowing() {
+    // Cancellation/timeout cleanup safety under parallelism - several
+    // containers time out at once (not just one), and the search must
+    // still complete promptly with the containers that DID succeed,
+    // rather than hanging or propagating an exception that would fail the
+    // whole search over a subset of unreadable containers.
+    properties.setRequestTimeout(Duration.ofMillis(80));
+    List<Container> containers = manyContainers(4);
+    when(mockClient.listContainers(true)).thenReturn(containers);
+    // c0, c1: never call onComplete - both will time out.
+    doAnswer(invocation -> invocation.getArgument(7))
+        .when(mockClient).readLogs(eq("c0"), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+    doAnswer(invocation -> invocation.getArgument(7))
+        .when(mockClient).readLogs(eq("c1"), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+    // c2, c3: succeed normally.
+    stubLogs("c2", jsonLine("2026-01-01T00:00:00.000000000Z", "svc2", "ok-2"));
+    stubLogs("c3", jsonLine("2026-01-01T00:00:00.000000000Z", "svc3", "ok-3"));
+
+    long startNanos = System.nanoTime();
+    List<CanonicalLogEvent> events = source.search(wideOpenRequest().build()).collectList().block();
+    long elapsedMillis = Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
+
+    assertThat(events).extracting(CanonicalLogEvent::message).containsExactlyInAnyOrder("ok-2", "ok-3");
+    assertThat(elapsedMillis).isLessThan(2000);
   }
 }

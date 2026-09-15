@@ -92,6 +92,8 @@ export function Toolbar({ state, onStartLive, openShiftScope }: ToolbarProps) {
           services={state.services}
           selected={state.selectedServices}
           onChange={state.setSelectedServices}
+          mode={state.serviceFilterMode}
+          onModeChange={state.setServiceFilterMode}
         />
         <TimeRangeControl value={state.timeRange} onChange={state.setTimeRange} />
         <SeverityFilter selected={state.selectedLevels} onChange={state.setSelectedLevels} />
@@ -153,6 +155,8 @@ export function Toolbar({ state, onStartLive, openShiftScope }: ToolbarProps) {
           onRemoveSeverity={() => state.setSelectedLevels(DEFAULT_SEVERITY_LEVELS)}
           selectedServices={state.selectedServices}
           onRemoveService={removeService}
+          serviceFilterMode={state.serviceFilterMode}
+          onClearServices={() => state.setSelectedServices([])}
           advancedValues={{ ...state.advancedFilters, text: state.searchText }}
           onRemoveAdvancedField={removeAdvancedField}
           onClearAll={state.clearAllFilters}

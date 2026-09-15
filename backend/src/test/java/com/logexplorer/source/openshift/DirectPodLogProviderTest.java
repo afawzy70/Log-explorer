@@ -98,13 +98,24 @@ class DirectPodLogProviderTest {
         + "\",\"message\":\"" + message + "\"}";
   }
 
-  /** OS-1D — a JSON log line carrying correlation/trace/journey/event MDC fields, per LogLineParser's own contract. */
+  /**
+   * OS-1D - a JSON log line carrying correlation/trace/journey/event
+   * fields, per LogLineParser's own contract. Correlation and trace are
+   * emitted at the top level (owner mission "Service Filter, Docker
+   * Performance, and Verified Default Mapping" Sec.C default: {@code
+   * X-Correlation-id} and {@code traceId} are both top-level keys).
+   * Journey ID has no default mapping (owner declined to guess it) and
+   * event ID stays mdc-nested per the same approved table, so both remain
+   * under {@code mdc} here; tests exercising journey ID configure an
+   * explicit candidate pointed at {@code mdc.x-journey-trace-id}.
+   */
   private static String jsonLineWithMdc(
       String app, String message, String correlationId, String traceId, String journeyId, String eventId) {
     return "{\"@timestamp\":\"2026-09-12T10:00:00Z\",\"application\":\"" + app + "\",\"level\":\"INFO\""
-        + ",\"message\":\"" + message + "\",\"mdc\":{"
-        + "\"event.correlationId\":\"" + correlationId + "\","
-        + "\"traceId\":\"" + traceId + "\","
+        + ",\"message\":\"" + message + "\""
+        + ",\"X-Correlation-id\":\"" + correlationId + "\""
+        + ",\"traceId\":\"" + traceId + "\""
+        + ",\"mdc\":{"
         + "\"x-journey-trace-id\":\"" + journeyId + "\","
         + "\"eventId\":\"" + eventId + "\"}}";
   }
@@ -255,8 +266,10 @@ class DirectPodLogProviderTest {
   @Test
   void multilineExceptionEmbeddedInOneJsonObjectStaysOneLogicalEvent() {
     seedPods(List.of(pod("pod-a", List.of("app"))), true);
+    // Top-level "stack_trace" - owner mission "Service Filter, Docker
+    // Performance, and Verified Default Mapping" §C default (was "exception").
     String exceptionJson = "{\"@timestamp\":\"2026-09-12T10:00:00Z\",\"application\":\"payments\",\"level\":\"ERROR\","
-        + "\"message\":\"boom\",\"exception\":\"java.lang.RuntimeException: boom\\n\\tat com.example.Foo.bar(Foo.java:10)\"}";
+        + "\"message\":\"boom\",\"stack_trace\":\"java.lang.RuntimeException: boom\\n\\tat com.example.Foo.bar(Foo.java:10)\"}";
     server.setFixture("pod-a", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", exceptionJson)));
 
     List<CanonicalLogEvent> events = provider.search(baseRequest().build()).collectList().block();
@@ -268,8 +281,10 @@ class DirectPodLogProviderTest {
   @Test
   void sensitiveFieldsAreCarriedRawForSourceSideMatchingNeverDroppedByParsing() {
     seedPods(List.of(pod("pod-a", List.of("app"))), true);
+    // Top-level "cif"/"userName" - owner mission "Service Filter, Docker
+    // Performance, and Verified Default Mapping" §C default (was mdc-nested, capitalized "UserName").
     String json = "{\"@timestamp\":\"2026-09-12T10:00:00Z\",\"application\":\"payments\",\"level\":\"INFO\","
-        + "\"message\":\"login\",\"mdc\":{\"cif\":\"12345678\",\"UserName\":\"jdoe\"}}";
+        + "\"message\":\"login\",\"cif\":\"12345678\",\"userName\":\"jdoe\"}";
     server.setFixture("pod-a", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z", json)));
 
     List<CanonicalLogEvent> events = provider.search(baseRequest().build()).collectList().block();
@@ -1189,11 +1204,26 @@ class DirectPodLogProviderTest {
 
   @Test
   void journeyIdMatchesEventsWithinTheCurrentOpenShiftResolvedScope() {
+    // Journey ID has no default mapping (owner mission Sec.C: "do not
+    // infer paths... user may explicitly configure them later"), so this
+    // test configures an explicit candidate pointed at the same
+    // mdc.x-journey-trace-id key jsonLineWithMdc still emits, matching
+    // the pattern already used for FixtureLogSourceTest/FixtureCorpusGeneratorTest.
     seedPods(List.of(pod("pod-a", List.of("app"))), true);
     server.setFixture("pod-a", "app", Fixture.ok(line("2026-09-12T10:00:00.000000000Z",
         jsonLineWithMdc("gateway", "journey-event", "", "", "journey-42", ""))));
 
-    List<CanonicalLogEvent> events = provider.search(baseRequest().journeyId("journey-42").build()).collectList().block();
+    FieldMappingProfileService journeyConfiguredMapping = new FieldMappingProfileService();
+    journeyConfiguredMapping.updateCandidates(
+        com.logexplorer.core.mapping.MappingScopeKey.of("openshift", NAMESPACE),
+        com.logexplorer.core.mapping.CanonicalField.JOURNEY_ID,
+        List.of(com.logexplorer.core.mapping.JsonPath.parse("mdc.x-journey-trace-id")));
+    LogLineParser journeyParser = new LogLineParser(new ObjectMapper(), journeyConfiguredMapping);
+    DirectPodLogProvider journeyProvider =
+        new DirectPodLogProvider(client, session, journeyParser, properties, contextTargetProofCodec);
+
+    List<CanonicalLogEvent> events =
+        journeyProvider.search(baseRequest().journeyId("journey-42").build()).collectList().block();
 
     assertThat(events).extracting(CanonicalLogEvent::message).containsExactly("journey-event");
   }

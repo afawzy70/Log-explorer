@@ -599,6 +599,32 @@ describe('useSearchState', () => {
       expect(result.current.contextRootIdentity).toBeNull();
     });
 
+    it('restoreOriginalSearch restores the exact serviceFilterMode (and services) that were active before the detour, owner mission §A', async () => {
+      const result = await searchedWithThreeEvents();
+      act(() => result.current.setSelectedServices(['audit']));
+      act(() => result.current.setServiceFilterMode('EXCLUDE'));
+      const rootEvent = result.current.searchResult!.events[0];
+
+      act(() => result.current.showContext(rootEvent));
+      await waitFor(() => expect(contextCalls).toHaveLength(1));
+      contextCalls[0].resolve(
+        jsonResponse({
+          events: [eventWithMessage('surrounding')],
+          counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await waitFor(() => expect(result.current.searchResult?.events[0].message).toBe('surrounding'));
+
+      // A detour never itself changes the underlying filter state...
+      expect(result.current.serviceFilterMode).toBe('EXCLUDE');
+
+      // ...and going back restores it exactly, not silently reset to INCLUDE.
+      act(() => result.current.restoreOriginalSearch());
+      expect(result.current.serviceFilterMode).toBe('EXCLUDE');
+      expect(result.current.selectedServices).toEqual(['audit']);
+    });
+
     it('restoreOriginalSearch clears contextRootIdentity and restores the pristine, never-sorted original result', async () => {
       const result = await searchedWithThreeEvents();
       const originalOrder = result.current.searchResult!.events.map((e) => e.message);
@@ -841,6 +867,44 @@ describe('useSearchState', () => {
 
       act(() => result.current.clearAllFilters());
       expect(result.current.timeRange).not.toEqual(staleRange);
+    });
+
+    it('resets serviceFilterMode back to INCLUDE, even if EXCLUDE was selected', async () => {
+      const result = await renderReady();
+      act(() => result.current.setServiceFilterMode('EXCLUDE'));
+      expect(result.current.serviceFilterMode).toBe('EXCLUDE');
+
+      act(() => result.current.clearAllFilters());
+      expect(result.current.serviceFilterMode).toBe('INCLUDE');
+    });
+  });
+
+  describe('Service filter mode (owner mission "Service Filter, Docker Performance, and Verified Default Mapping" §A)', () => {
+    it('defaults to INCLUDE', async () => {
+      const result = await renderReady();
+      expect(result.current.serviceFilterMode).toBe('INCLUDE');
+    });
+
+    it('runSearch sends the current serviceFilterMode on the wire', async () => {
+      const result = await renderReady();
+      act(() => result.current.setSelectedServices(['audit']));
+      act(() => result.current.setServiceFilterMode('EXCLUDE'));
+
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+
+      const body = JSON.parse(searchCalls[0].body);
+      expect(body.services).toEqual(['audit']);
+      expect(body.serviceFilterMode).toBe('EXCLUDE');
+    });
+
+    it('runSearch sends INCLUDE by default, when serviceFilterMode was never changed', async () => {
+      const result = await renderReady();
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+
+      const body = JSON.parse(searchCalls[0].body);
+      expect(body.serviceFilterMode).toBe('INCLUDE');
     });
   });
 

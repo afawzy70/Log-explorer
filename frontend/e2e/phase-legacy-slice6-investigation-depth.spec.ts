@@ -223,6 +223,19 @@ test.describe('Legacy Remediation Slice 6 — Investigation depth, gap visibilit
   });
 
   test('12. journey/correlation summary shows Errors/Warnings/First->Last/Gaps for a real multi-event journey', async ({ page }) => {
+    // Owner mission "Service Filter, Docker Performance, and Verified
+    // Default Mapping" §C - Journey ID has no default mapping (the owner
+    // declined to guess it), so this scenario requires it explicitly
+    // configured first, matching what a real deployment's owner would
+    // need to do once. Reset at the end per this project's established
+    // shared-singleton-backend-state discipline.
+    await page.request.put('/api/v1/settings/field-mapping/fields/journeyId?sourceId=fixture', {
+      data: { candidatePaths: ['mdc.x-journey-trace-id'] },
+    });
+    // Editing a candidate un-readies search until confirmed saved.
+    await page.request.post('/api/v1/settings/field-mapping/save?sourceId=fixture', {
+      data: { validationPassed: true },
+    });
     await gotoFixture(page);
     await search(page);
 
@@ -273,6 +286,8 @@ test.describe('Legacy Remediation Slice 6 — Investigation depth, gap visibilit
     await expect(journeyView.getByText('Warnings', { exact: true })).toBeVisible();
     await expect(journeyView.getByText('Gaps', { exact: true })).toBeVisible();
     await captureScreenshot(page, 'legacy-slice6', 'journey-summary-enriched');
+
+    await page.request.post('/api/v1/settings/field-mapping/reset?sourceId=fixture');
   });
 
   test('14. existing Live workflows remain green after the health-model change', async ({ page }) => {

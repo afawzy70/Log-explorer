@@ -48,6 +48,7 @@ public class RequestMapper {
         .direction(parseDirection(dto.direction()))
         .limit(dto.limit())
         .services(dto.services())
+        .serviceFilterMode(parseServiceFilterMode(dto.serviceFilterMode()))
         .levels(dto.levels())
         .text(dto.text())
         .traceId(dto.traceId())
@@ -131,6 +132,25 @@ public class RequestMapper {
     }
     try {
       return SearchRequest.Direction.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
+  }
+
+  /**
+   * Owner mission "Service Filter, Docker Performance, and Verified
+   * Default Mapping" §A — {@code null}/blank/unrecognized all fall back to
+   * {@code INCLUDE} (the compact constructor's own default too — this
+   * mirrors {@link #parseDirection}'s exact "unrecognized -&gt; null -&gt;
+   * caller's own default applies" shape), so every existing caller that
+   * never sends this field keeps its exact current behavior.
+   */
+  private SearchRequest.ServiceFilterMode parseServiceFilterMode(String raw) {
+    if (raw == null || raw.isBlank()) {
+      return null;
+    }
+    try {
+      return SearchRequest.ServiceFilterMode.valueOf(raw.trim().toUpperCase(Locale.ROOT));
     } catch (IllegalArgumentException e) {
       return null;
     }

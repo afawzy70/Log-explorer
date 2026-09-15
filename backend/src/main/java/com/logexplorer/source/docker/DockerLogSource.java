@@ -14,6 +14,7 @@ import com.logexplorer.core.search.EventFilters;
 import com.logexplorer.source.LogSource;
 import com.logexplorer.source.docker.security.RemoteHostGuard;
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -22,6 +23,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -54,6 +56,42 @@ public class DockerLogSource implements LogSource {
   private final DockerProperties properties;
   private final LogLineParser parser;
   private final RemoteHostGuard remoteHostGuard;
+
+  /**
+   * Owner mission "Service Filter, Docker Performance, and Verified
+   * Default Mapping" §B — low-cost timing/observability from the most
+   * recent {@link #searchBlocking} call, for tests/diagnostics only.
+   * Deliberately carries no log content, query values, or identifiers —
+   * only counts and durations. Package-private so {@code DockerLogSourceTest}
+   * can assert on it directly; not part of the public {@link LogSource} API.
+   */
+  private volatile HistoricalSearchTiming lastHistoricalSearchTiming;
+
+  /**
+   * @param targetContainerCount containers matched by the service/project
+   *     filter before any read was attempted (post service-include/exclude
+   *     narrowing, pre {@code maxContainers} cap already applied by the
+   *     caller).
+   * @param containersActuallyRead containers a real read was attempted for
+   *     (always equal to {@code targetContainerCount} today — Docker never
+   *     short-circuits a read — kept distinct from it because a future
+   *     early-exit/cap would change only this field).
+   * @param effectiveConcurrency the bounded-parallelism limit actually used
+   *     for this search ({@code max(1, configured value)}).
+   * @param totalDurationMillis wall-clock time for the whole container-read
+   *     phase (parallel reads only, not parsing/filtering/merge).
+   * @param slowestContainerReadMillis the single slowest container read's
+   *     own duration — proves one slow container never serializes the rest.
+   */
+  record HistoricalSearchTiming(
+      int targetContainerCount, int containersActuallyRead, int effectiveConcurrency,
+      long totalDurationMillis, long slowestContainerReadMillis) {
+  }
+
+  /** Test/diagnostic visibility only — see {@link #lastHistoricalSearchTiming} field javadoc. */
+  HistoricalSearchTiming lastHistoricalSearchTiming() {
+    return lastHistoricalSearchTiming;
+  }
 
   public DockerLogSource(DockerClientFactory factory, DockerProperties properties, LogLineParser parser, RemoteHostGuard remoteHostGuard) {
     this.client = factory.create(properties);
@@ -303,7 +341,9 @@ public class DockerLogSource implements LogSource {
   private List<CanonicalLogEvent> searchBlocking(SearchRequest request) {
     checkRemoteHostIfNeeded();
     List<Container> containers = client.listContainers(true);
-    List<Container> targets = relevantContainers(containers, request.services(), request.composeProject()).stream()
+    List<Container> targets = relevantContainers(
+            containers, request.services(), request.serviceFilterMode(), request.composeProject())
+        .stream()
         .limit(properties.getMaxContainers())
         .toList();
 
@@ -336,12 +376,7 @@ public class DockerLogSource implements LogSource {
       }
     }
 
-    List<ContainerLine> merged = new ArrayList<>();
-    for (Container container : targets) {
-      for (DockerLogLine line : readContainerLogs(container, since, until)) {
-        merged.add(new ContainerLine(line, container));
-      }
-    }
+    List<ContainerLine> merged = readAllContainersInParallel(targets, since, until);
 
     // Deterministic merge across containers, in direction-of-travel order
     // (mandatory blocker #2: never silently treat FORWARD as BACKWARD) -
@@ -383,11 +418,82 @@ public class DockerLogSource implements LogSource {
     return events;
   }
 
+  /**
+   * Owner mission "Service Filter, Docker Performance, and Verified
+   * Default Mapping" §B — replaces the previous sequential {@code for
+   * (Container : targets) { readContainerLogs(...) }} loop (latency ==
+   * SUM of every container's own read timeout) with BOUNDED parallelism:
+   * at most {@code historicalSearchConcurrency} container reads run at
+   * once, so latency approaches {@code ceil(N / concurrency) *
+   * perContainerLatency} instead. {@link Flux#flatMap(java.util.function.Function, int)}'s
+   * own concurrency parameter is the actual bound enforced — never
+   * unbounded. Each container read still runs on {@link
+   * Schedulers#boundedElastic()} (the codebase's established rule for
+   * blocking Docker client calls); nesting bounded-elastic-scheduled
+   * inner work inside this already-bounded-elastic-scheduled outer call
+   * is safe because that scheduler has its own dynamic thread cap (10x
+   * cores by default), far larger than this method's own small
+   * concurrency bound.
+   *
+   * <p>Final ordering is untouched by this change: {@link #searchBlocking}
+   * always re-sorts the full merged result deterministically right after
+   * this method returns, so the unordered-completion nature of {@code
+   * flatMap} can never affect the final event order, only which order
+   * individual container reads happen to finish in.
+   */
+  private List<ContainerLine> readAllContainersInParallel(List<Container> targets, Integer since, Integer until) {
+    int concurrency = Math.max(1, properties.getHistoricalSearchConcurrency());
+    long searchStartNanos = System.nanoTime();
+    AtomicInteger containersRead = new AtomicInteger();
+    AtomicLong slowestReadNanos = new AtomicLong();
+
+    List<List<ContainerLine>> perContainer = Flux.fromIterable(targets)
+        .flatMap(container -> Mono.fromCallable(() -> {
+              long readStartNanos = System.nanoTime();
+              List<DockerLogLine> lines = readContainerLogs(container, since, until);
+              slowestReadNanos.accumulateAndGet(System.nanoTime() - readStartNanos, Math::max);
+              containersRead.incrementAndGet();
+              return lines.stream().map(line -> new ContainerLine(line, container)).toList();
+            }).subscribeOn(Schedulers.boundedElastic()),
+            concurrency)
+        .collectList()
+        .block();
+
+    List<ContainerLine> merged = new ArrayList<>();
+    if (perContainer != null) {
+      perContainer.forEach(merged::addAll);
+    }
+
+    lastHistoricalSearchTiming = new HistoricalSearchTiming(
+        targets.size(), containersRead.get(), concurrency,
+        Duration.ofNanos(System.nanoTime() - searchStartNanos).toMillis(),
+        Duration.ofNanos(slowestReadNanos.get()).toMillis());
+    log.debug(
+        "Docker historical search read {} of {} target container(s) in {} ms "
+            + "(concurrency={}, slowest single-container read={} ms)",
+        lastHistoricalSearchTiming.containersActuallyRead(), lastHistoricalSearchTiming.targetContainerCount(),
+        lastHistoricalSearchTiming.totalDurationMillis(), lastHistoricalSearchTiming.effectiveConcurrency(),
+        lastHistoricalSearchTiming.slowestContainerReadMillis());
+    return merged;
+  }
+
   private List<DockerLogLine> readContainerLogs(Container container, Integer since, Integer until) {
     DockerFrameCollectingCallback callback = new DockerFrameCollectingCallback(properties.getDefaultTailLines());
     try {
       client.readLogs(container.getId(), true, true, true, since, until, properties.getDefaultTailLines(), callback);
-      callback.awaitCompletion(properties.getRequestTimeout().toMillis(), TimeUnit.MILLISECONDS);
+      // Owner mission "Service Filter, Docker Performance, and Verified
+      // Default Mapping" §B review recovery - a real, previously-unreported
+      // bug: this boolean (true == the read genuinely completed; false ==
+      // it timed out) was discarded entirely, so a timed-out read was
+      // silently treated as a normal, complete one, with whatever partial
+      // lines had arrived by then returned with no signal at all. Still
+      // returns those partial lines unchanged (never fabricates zero,
+      // never silently claims completeness) - only the diagnostic is new.
+      boolean completed = callback.awaitCompletion(properties.getRequestTimeout().toMillis(), TimeUnit.MILLISECONDS);
+      if (!completed) {
+        log.warn("Docker log read for container {} did not complete within {} - returning {} partial line(s) already received",
+            container.getId(), properties.getRequestTimeout(), callback.lines().size());
+      }
       return callback.lines();
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
@@ -425,6 +531,25 @@ public class DockerLogSource implements LogSource {
    */
   private List<Container> relevantContainers(
       List<Container> containers, List<String> requestedServices, String requestedComposeProject) {
+    return relevantContainers(containers, requestedServices, SearchRequest.ServiceFilterMode.INCLUDE, requestedComposeProject);
+  }
+
+  /**
+   * @param serviceFilterMode Owner mission "Service Filter, Docker
+   *     Performance, and Verified Default Mapping" §A — {@code INCLUDE}
+   *     (default, matches every prior caller's behavior unchanged) keeps
+   *     only containers whose Compose service is in {@code
+   *     requestedServices}; {@code EXCLUDE} keeps every container whose
+   *     Compose service is NOT in {@code requestedServices} (an empty
+   *     list under EXCLUDE means "no restriction," same as an empty list
+   *     under INCLUDE). This is the one narrowing point every Docker
+   *     caller (search/follow) builds its container target list from, so
+   *     an excluded service's containers are structurally never passed to
+   *     {@link #readContainerLogs} — their logs are never read at all.
+   */
+  private List<Container> relevantContainers(
+      List<Container> containers, List<String> requestedServices,
+      SearchRequest.ServiceFilterMode serviceFilterMode, String requestedComposeProject) {
     // A real bug found via Phase K's own Compose end-to-end verification:
     // Compose's `env_file` mechanism passes a declared-but-empty .env line
     // (e.g. "LOGEXPLORER_DOCKER_COMPOSE_PROJECT_FILTER=") through as the
@@ -454,8 +579,13 @@ public class DockerLogSource implements LogSource {
         // already routes through; containers from another project never
         // reach any candidate set built from this method's result.
         .filter(c -> noProjectFilter || effectiveProjectFilter.equals(ComposeLabels.project(c.getLabels())))
-        .filter(c -> requestedServices.isEmpty()
-            || requestedServices.contains(ComposeLabels.service(c.getLabels())))
+        .filter(c -> {
+          if (requestedServices.isEmpty()) {
+            return true;
+          }
+          boolean inList = requestedServices.contains(ComposeLabels.service(c.getLabels()));
+          return serviceFilterMode == SearchRequest.ServiceFilterMode.EXCLUDE ? !inList : inList;
+        })
         .toList();
   }
 
