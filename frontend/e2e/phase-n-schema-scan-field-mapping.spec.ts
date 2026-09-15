@@ -180,6 +180,66 @@ test('the built-in default mapping starts Unverified, and Verify against real ev
   await resetMappingProfile(page);
 });
 
+/*
+ * Recovery mission "Field Mapping Verification Workflow Recovery" - the
+ * owner-reported defect, reproduced and proven fixed against the real
+ * backend: a picked discovered path is validated, saved, and genuinely
+ * PERSISTED (proven by leaving the workspace and reopening it - a fresh
+ * GET, not client memory) - then Verify succeeds against exactly that
+ * saved candidate. Before the fix, Save never actually called `PUT
+ * /fields/{field}`, so the reopened panel would still show the OLD
+ * candidate and Verify would reject it with "not found in any of the
+ * given samples" despite the picker having shown it as observed.
+ */
+test('a picked candidate genuinely persists after Save (proven by reopening the workspace) and then Verify succeeds against exactly that saved value', async ({
+  page,
+}) => {
+  await selectFixtureSource(page);
+  const panel = await openMappingPanel(page);
+
+  await panel.getByRole('button', { name: /run quick schema scan/i }).click();
+  await expect(panel.getByText(/discovered source schema/i)).toBeVisible({ timeout: 10_000 });
+
+  const cifRow = panel.locator('li', { has: page.getByText('CIF', { exact: true }) }).first();
+  // Replace the default candidate with a different real discovered path -
+  // proves persistence of a genuinely CHANGED mapping, not just re-saving
+  // the untouched default (which would pass even with the old bug, since
+  // the backend's untouched default candidate was already correct).
+  await cifRow.getByRole('button', { name: /remove mdc\.cif/i }).click();
+  const picker = cifRow.getByLabel(/add a discovered path as a candidate/i);
+  const customerIdOption = picker.locator('option', { hasText: /customerid/i }).first();
+  const customerIdValue = await customerIdOption.getAttribute('value');
+  expect(customerIdValue).toBeTruthy();
+  await picker.selectOption(customerIdValue!);
+  await cifRow.getByRole('button', { name: /^add$/i }).click();
+  await expect(cifRow.locator('code', { hasText: customerIdValue! })).toBeVisible();
+
+  await panel.getByRole('button', { name: /^validate mapping$/i }).click();
+  await expect(panel.getByText(/no invalid paths/i)).toBeVisible({ timeout: 10_000 });
+  await expect(panel.getByRole('button', { name: /save mapping/i })).toBeEnabled();
+  await panel.getByRole('button', { name: /save mapping/i }).click();
+  await expect(panel.getByText(/^search ready\.?$/i)).toBeVisible({ timeout: 10_000 });
+
+  // Persistence proof: leave the workspace entirely and come back - a real fresh GET, not client memory.
+  await panel.getByRole('button', { name: /back to search results/i }).click();
+  const reopened = await openMappingPanel(page);
+  const cifRowAgain = reopened.locator('li', { has: page.getByText('CIF', { exact: true }) }).first();
+  await expect(cifRowAgain.locator('code', { hasText: customerIdValue! })).toBeVisible();
+  await expect(cifRowAgain.locator('code', { hasText: 'mdc.cif' })).toHaveCount(0);
+
+  // Now Verify must succeed against exactly this saved candidate - the owner-reported contradiction, now fixed.
+  await reopened.getByRole('button', { name: /run quick schema scan/i }).click();
+  await expect(reopened.getByText(/observed \d+ events?/i)).toBeVisible({ timeout: 10_000 });
+  await expect(cifRowAgain.getByRole('button', { name: /^verify$/i })).toBeEnabled();
+  await cifRowAgain.getByRole('button', { name: /^verify$/i }).click();
+  await expect(cifRowAgain.getByText('Verified', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(cifRowAgain.getByRole('alert')).toHaveCount(0);
+
+  await captureScreenshot(page, 'n', 'field-mapping-recovery-persisted-and-verified-1280px');
+
+  await resetMappingProfile(page);
+});
+
 test('Mark needs change flags a field explicitly, and editing its candidate never silently promotes it back to Verified', async ({
   page,
 }) => {

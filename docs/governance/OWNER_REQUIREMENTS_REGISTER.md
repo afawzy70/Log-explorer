@@ -2175,4 +2175,96 @@ detour mechanism rather than a second, parallel one.
 `UNTRACKED_OWNER_REQUIREMENTS=0`. `MERGE_AUTHORIZED=NO` — owner review of
 PR #55 required before merge.
 
+**Post-merge note:** PR #55 (sections 19–22) merged into `main` at
+`399fe2b200d3ea7404e5043b6e3415590ca51934` after owner review and all CI
+green (Backend/Frontend/E2E/Windows/macOS), confirmed by the
+`MERGE_PR55_AND_POST_MERGE_VALIDATE` closure mission. See section 23
+below for a real functional defect the owner found in the merged Mapping
+Verification workflow, and its recovery.
+
+---
+
+## 23. Field Mapping Verification Workflow Recovery
+
+`FIELD_MAPPING_VERIFICATION_WORKFLOW_RECOVERY` mission — a real,
+owner-reported functional defect found in the Mapping Verification
+Workspace (section 22) after PR #55 merged to `main`, tested against real
+logs. A narrow recovery mission on a NEW branch
+(`fix/field-mapping-verification-workflow`) and a SEPARATE PR from `main`
+— never a reuse of the already-merged PR #55 branch — never touching PR
+#54 / `ux/v2-professional-redesign`.
+
+**Owner-observed defect.** Quick Schema Scan finds real paths; the UI
+shows a path as "observed in latest scan" with a real sample value
+("Found: `<value>`"); the owner selects that exact discovered path from
+the picker; despite this, the field stays `UNVERIFIED`, and clicking
+Verify still returns "Cannot verify … candidate path was not found in any
+of the given samples." For Exception specifically: `stack_trace` is
+observed with a real sample shown; the unobserved fallback `exception`
+alone caused verification to fail.
+
+**Named conflict, applied per CLAUDE.md §5.** Section 19's original
+`FieldMappingSettingsPanel.tsx` "Save mapping" action (row CFM-*, carried
+into section 22's `FieldMappingWorkspace.tsx` unchanged) was described
+and tested as persisting the owner's edited candidate. **It never
+actually did.** This is not a design change superseding a prior decision
+— it is the correction of a real defect that existed, undetected, from
+section 19 onward: no test at any layer ever asserted that a field's
+candidate paths, as returned by a **subsequent** `GET`, actually reflect
+what a preceding edit-then-save round trip submitted. Every existing
+`VERIFIED` row in sections 19–22 whose evidence chain went through the
+UI's "Save mapping" button (not the raw `PUT /fields/{field}` HTTP calls
+used directly in backend integration tests) is corrected here, not
+re-litigated: the backend contract those rows describe (`PUT` persists,
+`/validate` is stateless, `/save` only confirms readiness) was always
+correct and needed no change; only the frontend's use of that contract
+was wrong.
+
+**Root cause (confirmed by inspection before editing, per CLAUDE.md §5
+"audit before editing").** `FieldMappingWorkspace.tsx`'s `runSave()`
+called only `POST /save` (`FieldMappingProfileService#confirmSave`, which
+is a pure boolean-flag flip — it never touches the active profile's
+candidates, by design; see its own javadoc) after `POST /validate`
+(stateless — it validates the caller-supplied draft directly, without
+requiring it to be persisted first, also by design). The ONLY endpoint
+that ever mutates a scope's active profile candidates is `PUT
+/fields/{field}` (`FieldMappingProfileService#updateCandidates`) — and
+`runSave()` never called it. The owner's newly-picked discovered path was
+therefore validated and shown as "Found: `<value>`" but never actually
+persisted to the backend's saved profile; the saved profile silently kept
+its old candidate. Verify (which by design reads the saved/active profile
+— see `runVerify`'s own doc comment, unchanged and correct) then correctly
+rejected the still-old, unobserved candidate — producing the exact
+contradiction the owner saw. The backend's own ordered-candidate
+resolution (`FieldMappingResolver`/`FieldMappingValidationService`,
+"first usable non-null value wins") was **already correct** the whole
+time, already covered by `FieldMappingResolverTest`/
+`FieldMappingValidationServiceTest`, and required no logic change — only
+new regression coverage proving it end to end through the real `/verify`
+HTTP endpoint the owner's browser actually calls.
+
+| ID | NAME | STATUS | EVIDENCE | NOTES |
+|---|---|---|---|---|
+| FMVR-1 | Save actually persists the draft it just validated — `runSave` now calls `PUT /fields/{field}` for every edited field (the exact draft that was validated, unchanged) BEFORE confirming, so what Verify later checks is genuinely what the owner reviewed and saved | `VERIFIED` | `frontend/src/features/settings/fieldMapping/FieldMappingWorkspace.tsx#runSave` — `Promise.all` over every `drafts` entry calling `updateFieldMappingCandidates`, then `saveFieldMappingProfile`; drafts/validation report are cleared only after the whole sequence succeeds — a failed persist leaves the draft intact for retry, never silently discarded | `FieldMappingWorkspace.test.tsx` ("save persists every edited field's draft via PUT /fields/{field} BEFORE confirming — the owner-reported root cause fix", "save never confirms if persisting an edited field fails…"); the same test file's full owner-scenario test (`SELECT_DISCOVERED_PATH_THEN_VALIDATE_SAVE_VERIFY` / `VERIFY_USES_CURRENT_SAVED_MAPPING_AFTER_SAVE` / `VISIBLE_DRAFT_AND_VERIFIED_VALUE_CANNOT_DIVERGE`) |
+| FMVR-2 | Save is enabled only when there are unsaved edits AND the current draft's validation actually passed — not merely "a validation ran" | `VERIFIED` | `FieldMappingWorkspace.tsx`'s `canSave` now also requires `validationReport.passed` | `FieldMappingWorkspace.test.tsx` ("Save stays disabled when the draft's validation fails, never silently saveable with an invalid path") |
+| FMVR-3 | First-usable-candidate-wins verification semantics — a fallback candidate that is never observed does not fail the field when an earlier (or any other) candidate resolves; confirmed ALREADY CORRECT in the backend, no logic change needed, only new coverage against the real HTTP endpoint | `VERIFIED` | `core.mapping.FieldMappingResolver#resolve`/`resolveWithProvenance` (unchanged); `core.mapping.FieldMappingValidationService#validateField`'s `foundCount` (unchanged) | `FieldMappingResolverTest` (pre-existing, e.g. `nullFirstCandidate_populatedSecondCandidate_secondWins`); new: `FieldMappingValidationServiceTest.multiCandidate_firstCandidatePresentSecondNeverObserved_stillFoundInAnySample`, `.multiCandidate_firstCandidateAbsentSecondPresent_stillFoundInAnySample`, `.multiCandidate_neitherCandidateObservedInAnySample_notFound`, `.multiCandidate_foundInAtLeastOneOfSeveralSamplesIsEnough_notEverySampleRequired`; new: `FieldMappingSettingsControllerIntegrationTest.firstUsableCandidateWinsVerification_stackTracePresentExceptionFallbackAbsent`, `.firstCandidateAbsentSecondCandidatePresent_verifiesAgainstTheDefaultCorrelationIdFallback`, `.allCandidatesAbsent_verifyFails`, `.invalidJsonPathSyntaxIsRejectedAtThePutStep_neverSilentlyReachesTheSavedProfile` |
+| FMVR-4 | The exact owner scenario (Exception: `stack_trace` observed, `exception` fallback absent) verifies successfully end to end, at the real HTTP layer, in a real project scope, with no scan/validate/verify scope or sample mismatch | `VERIFIED` | New `FieldMappingSettingsControllerIntegrationTest.foundSampleAndVerifyNeverContradict_theOwnerScenarioEndToEnd` — PUT → validate (asserts `foundInAnySample()==true`, matching what the UI would show as "Found") → save → verify, all against the SAME `sourceId`/`project` scope and the SAME sample string | `PROJECT_SCOPE_PRESERVED`, `NO_CROSS_PROJECT_SAMPLE_MISMATCH`, `FOUND_SAMPLE_VERIFY_CONTRADICTION=NO` — all proven by this one test; scan/validate/verify were already confirmed (section 21/22) to resolve the identical `MappingScopeKey` via the same `MappingScopeResolver`, so no separate scope-mismatch defect existed once the persistence bug above was fixed |
+| FMVR-5 | A valid mapping can be saved with unverified fields — verification state never gates Save; an optional/absent field (not observed in the current sample window) does not block saving a mapping that is otherwise technically valid | `VERIFIED` | Unchanged by design (`canSave`/backend `confirmSave` never read `verificationStatuses`) — re-confirmed, not newly built | New `FieldMappingSettingsControllerIntegrationTest.validMappingCanBeSavedWithUnverifiedFields_verificationNeverGatesSave` — `VALID_MAPPING_CAN_BE_SAVED_WITH_UNVERIFIED_FIELDS=YES`, `OPTIONAL_FIELD_NOT_OBSERVED_DOES_NOT_BLOCK_SAVE=YES` |
+| FMVR-6 | The owner should never have to guess which version (draft vs. saved) Verify is checking — a visible, textual "Unsaved changes" marker appears next to the verification badge itself, and the existing Verify-disabled-while-a-draft-is-pending behavior (pattern A: disable + a very clear, actionable reason pointing at the Save button) is kept and its copy strengthened | `VERIFIED` | `FieldMappingWorkspace.tsx`'s new `.unsavedBadge` next to `VerificationBadge`; hint copy rewritten to explicitly name "6. Save mapping" | `FieldMappingWorkspace.test.tsx` ("Verify is disabled while this field has a pending unsaved draft edit, and says why") |
+| FMVR-7 | Full regression re-verified after this recovery | `VERIFIED` | Backend: see this mission's final structured response for the exact pass count (full `./mvnw test` re-run). Frontend: see the same for the exact pass count (full `npx vitest run` re-run), typecheck clean, production build succeeds | `DESIGN_BRANCH_TOUCHED=NO`, `PR54_TOUCHED=NO` |
+
+**Field Mapping Verification Workflow Recovery pass (this section).** A
+mapping visibly proven by real discovered-path/sample evidence — shown as
+"observed in latest scan" with a real "Found: `<value>`" — is now
+genuinely saveable and verifiable, because Save finally persists the
+exact draft that evidence was computed against. Verification correctly
+follows first-usable-candidate-wins semantics (already true in the
+backend before this mission; now proven end to end, not just at the unit
+level). Save remains gated on technical validity only, never on every
+field being verified, so an optional field absent from the current
+sample window never blocks saving an otherwise-valid mapping.
+`HISTORICAL_DECISIONS_PRESERVED=YES`. `UNTRACKED_OWNER_REQUIREMENTS=0`.
+`MERGE_AUTHORIZED=NO` — owner review of this recovery PR required before
+merge.
+
 ---
