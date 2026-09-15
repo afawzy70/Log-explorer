@@ -121,6 +121,69 @@ class FieldMappingValidationServiceTest {
     assertThat(report.passed()).isTrue();
   }
 
+  // =====================================================================
+  // Recovery mission "Field Mapping Verification Workflow Recovery" -
+  // FIRST_USABLE_CANDIDATE_WINS: a fallback candidate that is never
+  // observed must not fail the field when an earlier (or any other)
+  // candidate DOES resolve in at least one sample. `foundCount` (and thus
+  // `foundInAnySample()`) is what `/verify`'s evidence gate reads.
+  // =====================================================================
+
+  @Test
+  void multiCandidate_firstCandidatePresentSecondNeverObserved_stillFoundInAnySample() {
+    // The owner's exact scenario: Exception mapped to [stack_trace, exception] -
+    // stack_trace resolves in the sample, exception is never observed anywhere.
+    MappingValidationReport report = service.validate(
+        Map.of(CanonicalField.EXCEPTION, List.of("stack_trace", "exception")),
+        defaultProfile,
+        List.of("{\"stack_trace\":\"java.lang.RuntimeException\"}"));
+
+    FieldValidation exception = fieldOf(report, CanonicalField.EXCEPTION);
+    assertThat(exception.foundInAnySample())
+        .as("FIRST_USABLE_CANDIDATE_WINS_VERIFICATION / STACK_TRACE_PRESENT_EXCEPTION_FALLBACK_ABSENT")
+        .isTrue();
+    assertThat(exception.exampleValues()).containsExactly("java.lang.RuntimeException");
+  }
+
+  @Test
+  void multiCandidate_firstCandidateAbsentSecondPresent_stillFoundInAnySample() {
+    MappingValidationReport report = service.validate(
+        Map.of(CanonicalField.EXCEPTION, List.of("stack_trace", "exception")),
+        defaultProfile,
+        List.of("{\"exception\":\"java.lang.NullPointerException\"}"));
+
+    FieldValidation exception = fieldOf(report, CanonicalField.EXCEPTION);
+    assertThat(exception.foundInAnySample())
+        .as("FIRST_CANDIDATE_ABSENT_SECOND_CANDIDATE_PRESENT")
+        .isTrue();
+  }
+
+  @Test
+  void multiCandidate_neitherCandidateObservedInAnySample_notFound() {
+    MappingValidationReport report = service.validate(
+        Map.of(CanonicalField.EXCEPTION, List.of("stack_trace", "exception")),
+        defaultProfile,
+        List.of("{\"unrelated\":\"value\"}"));
+
+    FieldValidation exception = fieldOf(report, CanonicalField.EXCEPTION);
+    assertThat(exception.foundInAnySample()).as("ALL_CANDIDATES_ABSENT").isFalse();
+    assertThat(exception.mappedButAbsent()).isTrue();
+  }
+
+  @Test
+  void multiCandidate_foundInAtLeastOneOfSeveralSamplesIsEnough_notEverySampleRequired() {
+    // "found in any of the given samples" means any SAMPLE, not every one -
+    // a field legitimately absent from most sampled events (an optional
+    // field, e.g. only ERROR events carry a stack trace) must still verify.
+    MappingValidationReport report = service.validate(
+        Map.of(CanonicalField.EXCEPTION, List.of("stack_trace", "exception")),
+        defaultProfile,
+        List.of("{\"level\":\"INFO\"}", "{\"level\":\"INFO\"}", "{\"stack_trace\":\"java.lang.RuntimeException\"}"));
+
+    FieldValidation exception = fieldOf(report, CanonicalField.EXCEPTION);
+    assertThat(exception.foundInAnySample()).isTrue();
+  }
+
   private FieldValidation fieldOf(MappingValidationReport report, CanonicalField field) {
     return report.fields().stream().filter(f -> f.field() == field).findFirst().orElseThrow();
   }

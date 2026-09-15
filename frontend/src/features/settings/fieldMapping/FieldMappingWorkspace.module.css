@@ -166,6 +166,16 @@
   color: var(--color-severity-warn);
 }
 
+/* Recovery mission "Field Mapping Verification Workflow Recovery" - "The owner should never have to guess which version is being checked." A dashed border (distinct from every status badge's solid border) plus its own text, never color alone. */
+.unsavedBadge {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  border: var(--border-width) dashed var(--color-text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  color: var(--color-text-secondary);
+}
+
 .candidateList {
   list-style: none;
   margin: 0 0 var(--space-2);

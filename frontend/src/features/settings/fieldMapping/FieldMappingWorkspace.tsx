@@ -5,6 +5,7 @@ import {
   markFieldMappingNeedsChange,
   resetFieldMappingProfile,
   saveFieldMappingProfile,
+  updateFieldMappingCandidates,
   validateFieldMapping,
   verifyFieldMapping,
 } from '../../../shared/api/client';
@@ -234,13 +235,48 @@ export function FieldMappingWorkspace({
       .finally(() => setValidating(false));
   }
 
+  /**
+   * Owner-reported recovery mission "Field Mapping Verification Workflow
+   * Recovery" - ROOT CAUSE FIX. `/validate` is stateless (it only ever
+   * checks `drafts` against real samples and returns a report - it never
+   * mutates the backend's active profile) and `/save` only flips the
+   * "validated and saved" readiness flag - it never touches candidate
+   * paths either. The ONLY endpoint that actually mutates the active
+   * profile's candidates is `PUT /fields/{field}`
+   * (`updateFieldMappingCandidates`). Before this fix, clicking "Save"
+   * called `/save` directly and never called that endpoint at all, so the
+   * owner's newly-picked discovered path was validated and shown as
+   * "Found: <value>" but NEVER actually persisted - the backend's saved
+   * profile silently kept its old candidate. Verify (which reads the
+   * saved/active profile, by design - see `runVerify`'s own doc comment)
+   * then correctly rejected the STILL-OLD candidate, producing the exact
+   * "not found in any of the given samples" contradiction the owner saw
+   * even though the UI had just shown that same path as observed with a
+   * real sample value.
+   *
+   * <p>The fix: push every edited field's current draft to the backend via
+   * `PUT /fields/{field}` FIRST - the same draft that was just validated,
+   * unchanged, so what gets persisted is exactly what the owner reviewed -
+   * and only then confirm the save. If any field's push fails, nothing is
+   * cleared and the owner can retry; drafts are only cleared once the
+   * whole sequence (persist every edited field, then confirm) succeeds.
+   * This closes the circular dependency the mission describes: Edit -&gt;
+   * Validate (checks the draft) -&gt; Save (now genuinely persists that same
+   * draft) -&gt; Verify (now genuinely checks what was just saved).
+   */
   function runSave() {
-    if (!validationReport) {
-      return; // Save stays disabled until this exists — defensive no-op
+    if (!validationReport || !validationReport.passed) {
+      return; // Save stays disabled until a PASSING validation exists — defensive no-op
     }
     setSaving(true);
     setActionError(null);
-    saveFieldMappingProfile(validationReport.passed, sourceId ?? undefined, project)
+    const editedFields = Object.entries(drafts) as [CanonicalFieldKey, string[]][];
+    Promise.all(
+      editedFields.map(([field, candidatePaths]) =>
+        updateFieldMappingCandidates(field, candidatePaths, sourceId ?? undefined, project),
+      ),
+    )
+      .then(() => saveFieldMappingProfile(validationReport.passed, sourceId ?? undefined, project))
       .then(() => {
         setDrafts({});
         setValidationReport(null);
@@ -272,7 +308,10 @@ export function FieldMappingWorkspace({
    * Deliberately uses `field.candidatePaths` (the saved value), not any
    * pending unsaved draft: the button itself is disabled while a draft is
    * pending for this field (see `FieldEditorRow` below) so this is never
-   * reachable in that state.
+   * reachable in that state. Since the recovery-mission fix to `runSave`
+   * (its own doc comment has the full root-cause explanation), the saved
+   * value Verify checks here is now genuinely what the owner most recently
+   * reviewed and saved — not a stale, never-actually-persisted candidate.
    */
   function runVerify(field: CanonicalFieldKey) {
     setVerifyingField(field);
@@ -301,7 +340,16 @@ export function FieldMappingWorkspace({
   }
 
   const hasUnsavedEdits = Object.keys(drafts).length > 0;
-  const canSave = hasUnsavedEdits && validationReport != null && !saving;
+  /**
+   * Recovery mission requirement: "Save must be enabled when: there are
+   * unsaved edits AND current draft validation passes." Previously this
+   * only checked that a validation report EXISTED, not that it PASSED —
+   * a failed validation (an invalid path) could still be "saved," which
+   * only ever meant confirmSave persisted `validationPassed: false` (still
+   * blocking search), silently, with no clear signal to the owner about
+   * why nothing actually became ready.
+   */
+  const canSave = hasUnsavedEdits && validationReport != null && validationReport.passed && !saving;
 
   function reportFor(field: CanonicalFieldKey) {
     return validationReport?.fields.find((f) => f.field === field) ?? null;
@@ -645,6 +693,15 @@ function FieldEditorRow({
         <span className={styles.fieldName}>{field.displayName}</span>
         {field.sensitive ? <span className={styles.sensitiveBadge}>Protected</span> : null}
         <VerificationBadge status={field.verificationStatus} />
+        {/*
+         * Recovery mission "Field Mapping Verification Workflow Recovery" -
+         * "The owner should never have to guess which version is being
+         * checked." A visible, textual (never color-alone) marker right
+         * next to the verification badge itself - the exact place the
+         * owner is already looking when wondering why a field won't
+         * verify - rather than only a hint sentence further down the row.
+         */}
+        {hasDraft ? <span className={styles.unsavedBadge}>Unsaved changes</span> : null}
       </div>
 
       {candidates.length === 0 ? <p className={styles.hint}>Not mapped yet.</p> : null}
@@ -740,7 +797,10 @@ function FieldEditorRow({
         ) : null}
       </div>
       {hasDraft ? (
-        <p className={styles.hint}>Save this field's edit before verifying it — Verify checks the saved candidate, not an unsaved draft.</p>
+        <p className={styles.hint}>
+          This field has unsaved changes — click <strong>6. Save mapping</strong> below first. Verify always checks
+          exactly what was last saved, so it stays disabled until this edit is saved.
+        </p>
       ) : null}
       {!hasScanEvidence ? <p className={styles.hint}>Run a Quick Schema Scan first — verification needs real samples as evidence.</p> : null}
       {verifyError ? (

@@ -8,6 +8,7 @@ import {
   markFieldMappingNeedsChange,
   resetFieldMappingProfile,
   saveFieldMappingProfile,
+  updateFieldMappingCandidates,
   validateFieldMapping,
   verifyFieldMapping,
   ApiError,
@@ -21,6 +22,7 @@ vi.mock('../../../shared/api/client', async () => {
     fetchFieldMappingSchemaScan: vi.fn(),
     resetFieldMappingProfile: vi.fn(),
     saveFieldMappingProfile: vi.fn(),
+    updateFieldMappingCandidates: vi.fn(),
     validateFieldMapping: vi.fn(),
     verifyFieldMapping: vi.fn(),
     markFieldMappingNeedsChange: vi.fn(),
@@ -30,6 +32,7 @@ vi.mock('../../../shared/api/client', async () => {
 const mockScan = vi.mocked(fetchFieldMappingSchemaScan);
 const mockReset = vi.mocked(resetFieldMappingProfile);
 const mockSave = vi.mocked(saveFieldMappingProfile);
+const mockUpdateCandidates = vi.mocked(updateFieldMappingCandidates);
 const mockValidate = vi.mocked(validateFieldMapping);
 const mockVerify = vi.mocked(verifyFieldMapping);
 const mockMarkNeedsChange = vi.mocked(markFieldMappingNeedsChange);
@@ -109,6 +112,13 @@ describe('FieldMappingWorkspace', () => {
     mockScan.mockReset();
     mockReset.mockReset();
     mockSave.mockReset();
+    mockUpdateCandidates.mockReset();
+    // Recovery mission "Field Mapping Verification Workflow Recovery" - the
+    // fixed `runSave` now pushes every edited field's draft via this
+    // endpoint FIRST, before confirming the save; default it to succeed so
+    // every existing save-flow test (which cares about the confirm step,
+    // not this new persistence step) doesn't need its own explicit stub.
+    mockUpdateCandidates.mockResolvedValue(baseProfile());
     mockValidate.mockReset();
     mockVerify.mockReset();
     mockMarkNeedsChange.mockReset();
@@ -254,7 +264,88 @@ describe('FieldMappingWorkspace', () => {
 
       const cifRow = screen.getByText('CIF').closest('li')!;
       expect(within(cifRow).getByRole('button', { name: /^verify$/i })).toBeDisabled();
-      expect(within(cifRow).getByText(/save this field's edit before verifying/i)).toBeInTheDocument();
+      expect(within(cifRow).getAllByText(/unsaved changes/i).length).toBeGreaterThan(0);
+    });
+
+    it('recovery mission "Field Mapping Verification Workflow Recovery" - the full owner workflow: pick a discovered path, Validate, Save, then Verify succeeds against exactly that saved candidate (SELECT_DISCOVERED_PATH_THEN_VALIDATE_SAVE_VERIFY / VERIFY_USES_CURRENT_SAVED_MAPPING_AFTER_SAVE / VISIBLE_DRAFT_AND_VERIFIED_VALUE_CANNOT_DIVERGE)', async () => {
+      const user = userEvent.setup();
+      mockScan.mockResolvedValue(
+        scanResult({
+          discoveredSchema: [{ path: 'stack_trace', observedTypes: ['STRING'], occurrenceCount: 1, coveragePercentage: 100 }],
+          representativeEvents: [{ originalJson: '{"stack_trace":"java.lang.RuntimeException"}', severity: 'ERROR', classification: 'STRUCTURED_JSON_APPLICATION_EVENT' }],
+        }),
+      );
+      mockValidate.mockResolvedValue({
+        fields: [
+          {
+            field: 'cif', displayName: 'CIF', candidatePaths: ['mdc.cif', 'stack_trace'], invalidPaths: [],
+            sampleCount: 1, foundCount: 1, foundInAnySample: true, mappedButAbsent: false,
+            structuredValueWarning: false, exampleValues: ['java.lang.RuntimeException'],
+          },
+        ],
+        conflicts: [], sampleCount: 1, malformedSampleCount: 0, passed: true,
+      });
+      mockUpdateCandidates.mockResolvedValue(baseProfile({
+        fields: [{ field: 'cif', displayName: 'CIF', sensitive: true, candidatePaths: ['mdc.cif', 'stack_trace'], verificationStatus: 'UNVERIFIED' }],
+      }));
+      mockSave.mockResolvedValue(baseProfile({
+        fields: [{ field: 'cif', displayName: 'CIF', sensitive: true, candidatePaths: ['mdc.cif', 'stack_trace'], verificationStatus: 'UNVERIFIED' }],
+        searchReady: true,
+      }));
+      mockVerify.mockResolvedValue(baseProfile({
+        fields: [{ field: 'cif', displayName: 'CIF', sensitive: true, candidatePaths: ['mdc.cif', 'stack_trace'], verificationStatus: 'VERIFIED' }],
+        searchReady: true,
+      }));
+      const onProfileChanged = vi.fn();
+      const { rerender } = render(
+        <FieldMappingWorkspace
+          sourceId="fixture"
+          project={null}
+          sourceSupportsSampling
+          profile={baseProfile()}
+          profileError={null}
+          onProfileChanged={onProfileChanged}
+          onClose={vi.fn()}
+        />,
+      );
+
+      await runScan(user);
+      await addViaPicker(user, 'CIF', 'stack_trace');
+      await user.click(screen.getByRole('button', { name: /^validate mapping$/i }));
+      await waitFor(() => expect(screen.getByRole('button', { name: /save mapping/i })).toBeEnabled());
+
+      await user.click(screen.getByRole('button', { name: /save mapping/i }));
+
+      // Save must push the EXACT draft that was validated (mdc.cif + stack_trace) to the backend.
+      await waitFor(() => expect(mockUpdateCandidates).toHaveBeenCalledWith('cif', ['mdc.cif', 'stack_trace'], 'fixture', null));
+      await waitFor(() => expect(mockSave).toHaveBeenCalledWith(true, 'fixture', null));
+      await waitFor(() => expect(onProfileChanged).toHaveBeenCalled());
+
+      // Simulate the app-wide profile refresh `onProfileChanged` triggers in the real app.
+      rerender(
+        <FieldMappingWorkspace
+          sourceId="fixture"
+          project={null}
+          sourceSupportsSampling
+          profile={baseProfile({
+            fields: [{ field: 'cif', displayName: 'CIF', sensitive: true, candidatePaths: ['mdc.cif', 'stack_trace'], verificationStatus: 'UNVERIFIED' }],
+          })}
+          profileError={null}
+          onProfileChanged={onProfileChanged}
+          onClose={vi.fn()}
+        />,
+      );
+
+      const cifRow = screen.getByText('CIF').closest('li')!;
+      // No lingering draft after a successful save - Verify is immediately available.
+      expect(within(cifRow).getByRole('button', { name: /^verify$/i })).toBeEnabled();
+      await user.click(within(cifRow).getByRole('button', { name: /^verify$/i }));
+
+      // Verify must check exactly the candidates that were just saved - never a stale pre-save value.
+      await waitFor(() =>
+        expect(mockVerify).toHaveBeenCalledWith('cif', ['{"stack_trace":"java.lang.RuntimeException"}'], 'fixture', null),
+      );
+      expect(within(cifRow).queryByRole('alert')).not.toBeInTheDocument();
     });
 
     it('Mark needs change calls the real endpoint with no samples required, then refreshes the profile', async () => {
@@ -332,11 +423,27 @@ describe('FieldMappingWorkspace', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /save mapping/i })).toBeEnabled());
   });
 
-  it('save passes the real "passed" value from the last validate call, never hardcoded true', async () => {
+  it('recovery mission "Field Mapping Verification Workflow Recovery" - Save stays disabled when the draft\'s validation fails, never silently saveable with an invalid path', async () => {
     const user = userEvent.setup();
     mockScan.mockResolvedValue(scanResult());
     mockValidate.mockResolvedValue(failingReport());
-    mockSave.mockResolvedValue(baseProfile({ searchReady: false }));
+    renderWorkspace();
+    await runScan(user);
+    await addViaPicker(user, 'CIF', 'cif');
+    await user.click(screen.getByRole('button', { name: /^validate mapping$/i }));
+
+    await waitFor(() => expect(screen.getByText(/not valid/i)).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /save mapping/i })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: /save mapping/i }));
+    expect(mockUpdateCandidates).not.toHaveBeenCalled();
+    expect(mockSave).not.toHaveBeenCalled();
+  });
+
+  it('save persists every edited field\'s draft via PUT /fields/{field} BEFORE confirming - the owner-reported root cause fix', async () => {
+    const user = userEvent.setup();
+    mockScan.mockResolvedValue(scanResult());
+    mockValidate.mockResolvedValue(passingReport());
+    mockSave.mockResolvedValue(baseProfile({ searchReady: true }));
     renderWorkspace();
     await runScan(user);
     await addViaPicker(user, 'CIF', 'cif');
@@ -344,7 +451,31 @@ describe('FieldMappingWorkspace', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /save mapping/i })).toBeEnabled());
 
     await user.click(screen.getByRole('button', { name: /save mapping/i }));
-    await waitFor(() => expect(mockSave).toHaveBeenCalledWith(false, 'fixture', null));
+
+    await waitFor(() => expect(mockUpdateCandidates).toHaveBeenCalledWith('cif', ['mdc.cif', 'cif'], 'fixture', null));
+    // The candidate persistence must happen before the confirm call, not after or in parallel with no ordering guarantee.
+    expect(mockUpdateCandidates.mock.invocationCallOrder[0]).toBeLessThan(mockSave.mock.invocationCallOrder[0]);
+    await waitFor(() => expect(mockSave).toHaveBeenCalledWith(true, 'fixture', null));
+  });
+
+  it('save never confirms if persisting an edited field fails, so nothing appears saved that was not', async () => {
+    const user = userEvent.setup();
+    mockScan.mockResolvedValue(scanResult());
+    mockValidate.mockResolvedValue(passingReport());
+    mockUpdateCandidates.mockRejectedValue(new Error('network error'));
+    renderWorkspace();
+    await runScan(user);
+    await addViaPicker(user, 'CIF', 'cif');
+    await user.click(screen.getByRole('button', { name: /^validate mapping$/i }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /save mapping/i })).toBeEnabled());
+
+    await user.click(screen.getByRole('button', { name: /save mapping/i }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/network error/i));
+    expect(mockSave).not.toHaveBeenCalled();
+    // The draft is NOT cleared on failure - the owner can retry without re-entering it.
+    const cifRow = screen.getByText('CIF').closest('li')!;
+    expect(within(cifRow).getByText('cif', { selector: 'code' })).toBeInTheDocument();
   });
 
   it('a successful save calls onProfileChanged so the app-wide readiness state re-syncs', async () => {

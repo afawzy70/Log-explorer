@@ -293,4 +293,168 @@ class FieldMappingSettingsControllerIntegrationTest {
 
     profileService.resetToDefault(MappingScopeKey.of("local-docker", "project-a"));
   }
+
+  // =====================================================================
+  // Recovery mission "Field Mapping Verification Workflow Recovery" -
+  // owner-observed defect: "Quick Schema Scan finds real paths... owner
+  // selects the correct discovered path... field remains UNVERIFIED...
+  // Verify... 'candidate path was not found in any of the given samples'."
+  // ROOT CAUSE (confirmed by reading `FieldMappingWorkspace.tsx` before
+  // editing): the frontend's Save action never called `PUT
+  // /fields/{field}` - it validated the draft (stateless) and then only
+  // confirmed a "validated and saved" flag (`POST /save`, which itself
+  // never mutates candidates either - see `FieldMappingProfileService
+  // #confirmSave`'s own javadoc). The draft the owner reviewed was
+  // therefore NEVER actually persisted; Verify (which reads the real
+  // saved/active profile by design) correctly rejected the still-old,
+  // unobserved candidate. Fixed in `FieldMappingWorkspace.tsx#runSave`.
+  //
+  // These tests prove the BACKEND side of the contract the fixed frontend
+  // now relies on: first-usable-candidate-wins verification semantics
+  // were already correct here (`FieldMappingResolver`/
+  // `FieldMappingValidationService`, both already covered by
+  // `FieldMappingResolverTest`/`FieldMappingValidationServiceTest`) - this
+  // class proves the SAME semantics hold through the real HTTP `/verify`
+  // endpoint end to end, which is what the owner's browser actually calls.
+  // =====================================================================
+
+  @Test
+  void firstUsableCandidateWinsVerification_stackTracePresentExceptionFallbackAbsent() {
+    // The owner's own exact real scenario: Exception's built-in default is
+    // just ["exception"]; the owner's real source instead uses
+    // "stack_trace" - adding it ahead of the unobserved "exception"
+    // fallback must still verify successfully, never require BOTH to be
+    // observed.
+    webTestClient.put().uri("/api/v1/settings/field-mapping/fields/exception")
+        .bodyValue(new FieldMappingCandidatesUpdateRequestDto(List.of("stack_trace", "exception")))
+        .exchange().expectStatus().isOk();
+
+    FieldMappingProfileDto verified = webTestClient.post().uri("/api/v1/settings/field-mapping/fields/exception/verify")
+        .bodyValue(new FieldMappingVerifyRequestDto(List.of("{\"stack_trace\":\"java.lang.RuntimeException: boom\"}")))
+        .exchange().expectStatus().isOk().expectBody(FieldMappingProfileDto.class).returnResult().getResponseBody();
+
+    assertThat(verified).isNotNull();
+    assertThat(verified.fields().stream().filter(f -> f.field().equals("exception")).findFirst().orElseThrow().verificationStatus())
+        .as("FIRST_USABLE_CANDIDATE_WINS_VERIFICATION / STACK_TRACE_PRESENT_EXCEPTION_FALLBACK_ABSENT")
+        .isEqualTo("VERIFIED");
+  }
+
+  @Test
+  void firstCandidateAbsentSecondCandidatePresent_verifiesAgainstTheDefaultCorrelationIdFallback() {
+    // CORRELATION_ID's own built-in default is already exactly this shape
+    // (mdc.X-Correlation-id first, the literal mdc["event.correlationId"]
+    // fallback second, mission example verbatim) - no PUT edit needed.
+    FieldMappingProfileDto verified = webTestClient.post()
+        .uri("/api/v1/settings/field-mapping/fields/correlationId/verify")
+        .bodyValue(new FieldMappingVerifyRequestDto(List.of("{\"mdc\":{\"event.correlationId\":\"corr-1\"}}")))
+        .exchange().expectStatus().isOk().expectBody(FieldMappingProfileDto.class).returnResult().getResponseBody();
+
+    assertThat(verified).isNotNull();
+    assertThat(verified.fields().stream().filter(f -> f.field().equals("correlationId")).findFirst().orElseThrow().verificationStatus())
+        .as("FIRST_CANDIDATE_ABSENT_SECOND_CANDIDATE_PRESENT")
+        .isEqualTo("VERIFIED");
+  }
+
+  @Test
+  void allCandidatesAbsent_verifyFails() {
+    webTestClient.put().uri("/api/v1/settings/field-mapping/fields/exception")
+        .bodyValue(new FieldMappingCandidatesUpdateRequestDto(List.of("stack_trace", "exception")))
+        .exchange().expectStatus().isOk();
+
+    webTestClient.post().uri("/api/v1/settings/field-mapping/fields/exception/verify")
+        .bodyValue(new FieldMappingVerifyRequestDto(List.of("{\"unrelated\":\"value\"}")))
+        .exchange().expectStatus().isEqualTo(HttpStatus.BAD_REQUEST);
+
+    FieldMappingProfileDto dto = webTestClient.get().uri("/api/v1/settings/field-mapping")
+        .exchange().expectStatus().isOk().expectBody(FieldMappingProfileDto.class).returnResult().getResponseBody();
+    assertThat(dto.fields().stream().filter(f -> f.field().equals("exception")).findFirst().orElseThrow().verificationStatus())
+        .as("ALL_CANDIDATES_ABSENT=VERIFY_FAIL")
+        .isEqualTo("UNVERIFIED");
+  }
+
+  @Test
+  void invalidJsonPathSyntaxIsRejectedAtThePutStep_neverSilentlyReachesTheSavedProfile() {
+    // INVALID_JSON_PATH=VERIFY_FAIL: an invalid path can never even become
+    // a saved candidate to verify in the first place - rejected with a
+    // specific reason at the one place candidates are ever mutated.
+    webTestClient.put().uri("/api/v1/settings/field-mapping/fields/exception")
+        .bodyValue(new FieldMappingCandidatesUpdateRequestDto(List.of("mdc..bad")))
+        .exchange().expectStatus().isEqualTo(HttpStatus.BAD_REQUEST)
+        .expectBody().jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("mdc..bad"));
+
+    FieldMappingProfileDto dto = webTestClient.get().uri("/api/v1/settings/field-mapping")
+        .exchange().expectStatus().isOk().expectBody(FieldMappingProfileDto.class).returnResult().getResponseBody();
+    assertThat(dto.fields().stream().filter(f -> f.field().equals("exception")).findFirst().orElseThrow().candidatePaths())
+        .containsExactly("exception");
+  }
+
+  @Test
+  void foundSampleAndVerifyNeverContradict_theOwnerScenarioEndToEnd() {
+    // The exact owner-reported workflow at the real HTTP layer, in a real
+    // project scope: pick a discovered path (PUT) -> validate it (which
+    // shows "Found: <value>", exactly what the owner saw) -> confirm save
+    // -> Verify. All four calls share the SAME scope and the SAME sample -
+    // Verify must never contradict what Validate already proved.
+    webTestClient.put().uri("/api/v1/settings/field-mapping/fields/exception?sourceId=local-docker&project=proj-a")
+        .bodyValue(new FieldMappingCandidatesUpdateRequestDto(List.of("stack_trace", "exception")))
+        .exchange().expectStatus().isOk();
+
+    String sample = "{\"stack_trace\":\"java.lang.RuntimeException: boom\"}";
+    FieldMappingValidationReportDto report = webTestClient.post()
+        .uri("/api/v1/settings/field-mapping/validate?sourceId=local-docker&project=proj-a")
+        .bodyValue(new FieldMappingValidationRequestDto(Map.of(), List.of(sample)))
+        .exchange().expectStatus().isOk().expectBody(FieldMappingValidationReportDto.class).returnResult().getResponseBody();
+    assertThat(report).isNotNull();
+    var validated = report.fields().stream().filter(f -> f.field().equals("exception")).findFirst().orElseThrow();
+    assertThat(validated.foundInAnySample())
+        .as("REAL_SAMPLE_FOUND_AND_VERIFY_CONTRADICTION=NO - precondition: Validate must show Found first")
+        .isTrue();
+
+    webTestClient.post().uri("/api/v1/settings/field-mapping/save?sourceId=local-docker&project=proj-a")
+        .bodyValue(new FieldMappingSaveRequestDto(true))
+        .exchange().expectStatus().isOk();
+
+    FieldMappingProfileDto verified = webTestClient.post()
+        .uri("/api/v1/settings/field-mapping/fields/exception/verify?sourceId=local-docker&project=proj-a")
+        .bodyValue(new FieldMappingVerifyRequestDto(List.of(sample)))
+        .exchange().expectStatus().isOk().expectBody(FieldMappingProfileDto.class).returnResult().getResponseBody();
+
+    assertThat(verified).isNotNull();
+    assertThat(verified.fields().stream().filter(f -> f.field().equals("exception")).findFirst().orElseThrow().verificationStatus())
+        .as("PROJECT_SCOPE_PRESERVED / NO_CROSS_PROJECT_SAMPLE_MISMATCH / FOUND_SAMPLE_VERIFY_CONTRADICTION=NO")
+        .isEqualTo("VERIFIED");
+
+    profileService.resetToDefault(MappingScopeKey.of("local-docker", "proj-a"));
+  }
+
+  @Test
+  void validMappingCanBeSavedWithUnverifiedFields_verificationNeverGatesSave() {
+    // VALID_MAPPING_CAN_BE_SAVED_WITH_UNVERIFIED_FIELDS=YES: saving is
+    // gated on technical validity (no invalid path syntax), never on
+    // every field's verification status - many fields legitimately never
+    // appear in a given sample window.
+    webTestClient.put().uri("/api/v1/settings/field-mapping/fields/cif")
+        .bodyValue(new FieldMappingCandidatesUpdateRequestDto(List.of("cif")))
+        .exchange().expectStatus().isOk();
+
+    FieldMappingValidationReportDto report = webTestClient.post().uri("/api/v1/settings/field-mapping/validate")
+        .bodyValue(new FieldMappingValidationRequestDto(Map.of("cif", List.of("cif")), List.of("{\"cif\":\"2449\"}")))
+        .exchange().expectStatus().isOk().expectBody(FieldMappingValidationReportDto.class).returnResult().getResponseBody();
+    assertThat(report.passed())
+        .as("OPTIONAL_FIELD_NOT_OBSERVED_DOES_NOT_BLOCK_SAVE - every other field is absent from this one-key sample, yet validation still passes")
+        .isTrue();
+
+    FieldMappingProfileDto afterSave = webTestClient.post().uri("/api/v1/settings/field-mapping/save")
+        .bodyValue(new FieldMappingSaveRequestDto(report.passed()))
+        .exchange().expectStatus().isOk().expectBody(FieldMappingProfileDto.class).returnResult().getResponseBody();
+
+    assertThat(afterSave).isNotNull();
+    assertThat(afterSave.searchReady()).isTrue();
+    // Every field except cif is still UNVERIFIED (never touched, never required to be VERIFIED to save).
+    long unverifiedCount = afterSave.fields().stream()
+        .filter(f -> !f.field().equals("cif"))
+        .filter(f -> f.verificationStatus().equals("UNVERIFIED"))
+        .count();
+    assertThat(unverifiedCount).isEqualTo(afterSave.fields().size() - 1);
+  }
 }
