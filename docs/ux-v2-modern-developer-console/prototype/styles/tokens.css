@@ -1,0 +1,327 @@
+/*
+ * Modern Developer Console — design tokens (prototype).
+ * Isolated from production (frontend/src/shared/tokens.css is untouched).
+ *
+ * Structure: one semantic token vocabulary, four value sets.
+ *   [data-treatment="b1"]                 Instrument Neutral   (light, recommended primary)
+ *   [data-treatment="b1"][data-theme=dark] Instrument Neutral   (dark companion, derived from B2's night bench)
+ *   [data-treatment="b2"]                 Night Bench          (dark-first treatment)
+ *   [data-treatment="b3"]                 Enterprise Workbench (light, warm stone, dark shell)
+ * Components only ever read semantic tokens; never raw values.
+ */
+
+@font-face {
+  font-family: "Inter Var";
+  src: url("../assets/fonts/inter-latin-wght-normal.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono Var";
+  src: url("../assets/fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* ---- Typography (shared by every treatment) ---- */
+  --font-ui: "Inter Var", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono Var", ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+  --font-features-ui: "tnum" 1, "cv11" 1, "ss03" 1;  /* tabular numerals; single-storey a; disambiguated I/l/1 */
+  --font-features-mono: "zero" 1, "calt" 0;           /* slashed zero; no ligatures in data */
+
+  --text-title: 600 20px/26px var(--font-ui);        /* page title in a workspace (Settings, Field mapping) */
+  --text-workspace: 600 16px/22px var(--font-ui);    /* mode/workspace heading, inspector event title */
+  --text-section: 600 13px/20px var(--font-ui);      /* section heading inside a panel */
+  --text-body: 400 13px/20px var(--font-ui);         /* default UI and table text */
+  --text-body-strong: 550 13px/20px var(--font-ui);
+  --text-label: 500 12px/16px var(--font-ui);        /* control labels, chips */
+  --text-colhead: 600 12px/16px var(--font-ui);      /* table column headers, sentence case */
+  --text-meta: 400 12px/16px var(--font-ui);         /* metadata, counts, help */
+  --text-caps: 600 11px/16px var(--font-ui);         /* column headers, lane labels (uppercase, tracked) */
+  --tracking-caps: 0.06em;
+  --text-message: 400 13px/20px var(--font-ui);      /* log message text */
+  --text-data: 400 12px/18px var(--font-mono);       /* timestamps, identifiers, paths */
+  --text-code: 400 12px/19px var(--font-mono);       /* JSON, stack traces */
+
+  /* ---- Spacing (4px base with 2px half-steps for dense rows) ---- */
+  --sp-0-5: 2px;
+  --sp-1: 4px;
+  --sp-1-5: 6px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  /* ---- Density ---- */
+  --h-shell: 44px;
+  --h-querybar: 44px;
+  --h-scope: 32px;
+  --h-control: 30px;
+  --h-control-sm: 24px;
+  --h-row: 28px;            /* compact (default) */
+  --h-row-comfortable: 34px;
+  --h-row-header: 30px;
+  --w-gutter: 22px;         /* signal gutter: severity mark + trigger mark */
+  --w-inspector: 500px;     /* fits the five fixed tabs on one row at 12.5px */
+  --gutter-panel: 16px;
+
+  /* ---- Shape ---- */
+  --r-xs: 2px;              /* marks, badges */
+  --r-sm: 3px;              /* buttons, inputs, chips */
+  --r-md: 4px;              /* menus, popovers, segmented groups */
+  --r-lg: 6px;              /* dialogs, sheets */
+  --r-full: 999px;          /* switch track, count badge */
+  --bw: 1px;
+  --focus-w: 2px;
+
+  /* ---- Motion (see MOTION_SYSTEM.md) ---- */
+  --dur-instant: 80ms;
+  --dur-fast: 120ms;
+  --dur-base: 160ms;
+  --dur-panel: 200ms;
+  --dur-view: 240ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.5, 0, 0.75, 0);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---- Icons ---- */
+  --icon-sm: 14px;
+  --icon-md: 16px;
+  --icon-lg: 20px;
+  --icon-stroke: 1.75;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-instant: 0ms;
+    --dur-fast: 0ms;
+    --dur-base: 60ms;   /* opacity/colour state changes stay legible, spatial movement is removed in app.css */
+    --dur-panel: 0ms;
+    --dur-view: 0ms;
+  }
+}
+
+/* =====================================================================
+   B1 — Instrument Neutral (light)  ·  recommended primary reference
+   ===================================================================== */
+[data-treatment="b1"] {
+  color-scheme: light;
+  --bg-app: #eceef1;
+  --surface-shell: #f9fafb;
+  --surface-work: #ffffff;
+  --surface-bar: #f9fafb;
+  --surface-inspector: #f7f8fa;
+  --surface-capture: #f3f5f7;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f1f3f5;
+  --surface-code: #f4f6f8;
+  --shell-ink: var(--ink-1);
+
+  --line-subtle: #e6e9ed;
+  --line: #d6dbe1;
+  --line-strong: #adb5bf;
+  --control-border: #808993; /* input/checkbox/switch boundaries: >=3:1 on every surface they sit on (WCAG 1.4.11) */
+  --ruler: #c9d0d8;          /* tick scales, lane dividers */
+
+  --ink-1: #14181d;
+  --ink-2: #48505a;
+  --ink-3: #636b75;          /* 5.3:1 on white */
+  --ink-disabled: #9aa2ab;   /* never for information-bearing text */
+  --ink-inverse: #ffffff;
+
+  --accent: #0b6975;         /* signal: trigger, selection, focus, primary action */
+  --accent-hover: #09565f;
+  --accent-ink: #0a5e69;
+  --accent-tint: #e3f0f1;
+  --accent-tint-strong: #cfe5e7;
+  --focus: #0b6975;
+
+  --hover: #f1f4f6;
+  --selected: #e3f0f1;
+  --selected-hover: #d8eaec;
+  --trigger-line: #0b6975;
+
+  --sev-error: #b42318;  --sev-error-mark: #d92d20;  --sev-error-row: #fdf3f2;
+  --sev-warn: #8a5300;   --sev-warn-mark: #b06d05;   --sev-warn-row: transparent;
+  --sev-info: #2c5d95;   --sev-info-mark: #4a7fbd;
+  --sev-debug: #5d6670;  --sev-debug-mark: #8c949c;
+  --sev-trace: #6a5a8c;  --sev-trace-mark: #9d8fbd;
+
+  --success: #1d7042;  --success-tint: #e7f3ec;
+  --warning: #8a5300;  --warning-tint: #fbf1dc;
+  --danger: #b42318;   --danger-tint: #fcebea;   --danger-line: #efb4ae;
+  --neutral-tint: #eef1f4;
+
+  --masked: #5d6670;   --masked-tint: #eef1f4;
+
+  --shadow-pop: 0 1px 2px rgba(16, 22, 28, 0.06), 0 6px 18px rgba(16, 22, 28, 0.10);
+  --shadow-sheet: 0 10px 32px rgba(16, 22, 28, 0.18);
+  --scrim: rgba(16, 22, 28, 0.32);
+
+  /* Service lanes avoid severity hues (red/orange/amber) and the accent; always paired with the service name. */
+  --lane-1: #5b6fb8; --lane-2: #3f8f5a; --lane-3: #8a6fb3; --lane-4: #7a8a3a; --lane-5: #5f7285; --lane-6: #a35b8f; --lane-7: #3d8a9c;
+}
+
+/* B1 dark companion — a defined token set, not an inversion. */
+[data-treatment="b1"][data-theme="dark"] {
+  color-scheme: dark;
+  --bg-app: #0e1114;
+  --surface-shell: #121619;
+  --surface-work: #15191d;
+  --surface-bar: #171b20;
+  --surface-inspector: #191e23;
+  --surface-capture: #12171b;
+  --surface-raised: #1d2329;
+  --surface-sunken: #111519;
+  --surface-code: #111519;
+  --line-subtle: #222930;
+  --line: #2c343c;
+  --line-strong: #46515c;
+  --control-border: #707b86;
+  --ruler: #34404a;
+  --ink-1: #e5e9ed;
+  --ink-2: #aeb6bf;
+  --ink-3: #8c96a0;
+  --ink-disabled: #5d6670;
+  --ink-inverse: #0e1114;
+  --accent: #4fb3bd;
+  --accent-hover: #6cc3cb;
+  --accent-ink: #7ccbd2;
+  --accent-tint: #173034;
+  --accent-tint-strong: #1d3c41;
+  --focus: #6cc3cb;
+  --hover: #1b2126;
+  --selected: #173034;
+  --selected-hover: #1c393d;
+  --trigger-line: #4fb3bd;
+  --sev-error: #f28b82; --sev-error-mark: #ef6a60; --sev-error-row: #231718;
+  --sev-warn: #e2ad57;  --sev-warn-mark: #d69a3a;
+  --sev-info: #86ade0;  --sev-info-mark: #6d99d2;
+  --sev-debug: #9aa3ac; --sev-debug-mark: #6f7881;
+  --sev-trace: #b4a6d6; --sev-trace-mark: #8e80b3;
+  --success: #6cc28f; --success-tint: #16281f;
+  --warning: #e2ad57; --warning-tint: #2a2214;
+  --danger: #f28b82;  --danger-tint: #2a1818; --danger-line: #6b3430;
+  --neutral-tint: #1d2329;
+  --masked: #9aa3ac;  --masked-tint: #1d2329;
+  --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 22px rgba(0, 0, 0, 0.45);
+  --shadow-sheet: 0 12px 36px rgba(0, 0, 0, 0.55);
+  --scrim: rgba(0, 0, 0, 0.5);
+  --lane-1: #8793e0; --lane-2: #6fb88a; --lane-3: #a893d6; --lane-4: #a9b86a; --lane-5: #8d9fb0; --lane-6: #d77fc0; --lane-7: #6cb8d4;
+}
+
+/* =====================================================================
+   B2 — Night Bench (dark-first)
+   ===================================================================== */
+[data-treatment="b2"] {
+  color-scheme: dark;
+  --bg-app: #0b0e10;
+  --surface-shell: #0f1316;
+  --surface-work: #12171a;
+  --surface-bar: #14191d;
+  --surface-inspector: #161c20;
+  --surface-capture: #0f1417;
+  --surface-raised: #1a2126;
+  --surface-sunken: #0d1113;
+  --surface-code: #0d1113;
+  --shell-ink: var(--ink-1);
+  --line-subtle: #1f272c;
+  --line: #28323a;
+  --line-strong: #41505b;
+  --control-border: #6e7b86;
+  --ruler: #2f3b44;
+  --ink-1: #e3e8eb;
+  --ink-2: #a8b3ba;
+  --ink-3: #88949c;
+  --ink-disabled: #56626a;
+  --ink-inverse: #0b0e10;
+  --accent: #5cc7b8;
+  --accent-hover: #79d4c7;
+  --accent-ink: #86d9cd;
+  --accent-tint: #13302c;
+  --accent-tint-strong: #183a35;
+  --focus: #79d4c7;
+  --hover: #182025;
+  --selected: #13302c;
+  --selected-hover: #173833;
+  --trigger-line: #5cc7b8;
+  --sev-error: #ff8f85; --sev-error-mark: #f46b61; --sev-error-row: #1f1415;
+  --sev-warn: #e8b35c;  --sev-warn-mark: #d99d3c;  --sev-warn-row: transparent;
+  --sev-info: #8fb4e3;  --sev-info-mark: #6f9bd4;
+  --sev-debug: #97a2aa; --sev-debug-mark: #69747c;
+  --sev-trace: #b7a9d8; --sev-trace-mark: #8f81b5;
+  --success: #6fcb94; --success-tint: #13271c;
+  --warning: #e8b35c; --warning-tint: #292012;
+  --danger: #ff8f85;  --danger-tint: #2a1616; --danger-line: #6e332e;
+  --neutral-tint: #1a2126;
+  --masked: #97a2aa;  --masked-tint: #1a2126;
+  --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-sheet: 0 12px 40px rgba(0, 0, 0, 0.6);
+  --scrim: rgba(0, 0, 0, 0.55);
+  --lane-1: #8793e0; --lane-2: #6fb88a; --lane-3: #a893d6; --lane-4: #a9b86a; --lane-5: #8d9fb0; --lane-6: #d77fc0; --lane-7: #6cb8d4;
+}
+
+/* =====================================================================
+   B3 — Enterprise Workbench (light, warm stone, dark shell)
+   ===================================================================== */
+[data-treatment="b3"] {
+  color-scheme: light;
+  --bg-app: #efede9;
+  --surface-shell: #22262b;
+  --shell-ink: #eef0f2;
+  --shell-ink-2: #c9ced4;
+  --shell-ink-3: #a8afb7;
+  --shell-edge: #454b53;
+  --shell-line: #14171b;
+  --shell-hover: #2f343a;
+  --shell-accent: #aeb8ff;
+  --surface-work: #ffffff;
+  --surface-bar: #faf9f7;
+  --surface-inspector: #fbfaf8;
+  --surface-capture: #f6f4f0;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f3f1ed;
+  --surface-code: #f5f3ef;
+  --line-subtle: #ebe8e3;
+  --line: #dcd8d1;
+  --line-strong: #b4aea4;
+  --control-border: #857e73;
+  --ruler: #d2ccc2;
+  --ink-1: #1c1b19;
+  --ink-2: #4c4943;
+  --ink-3: #66625b;
+  --ink-disabled: #a19c93;
+  --ink-inverse: #ffffff;
+  --accent: #3949a8;
+  --accent-hover: #2d3b8c;
+  --accent-ink: #34439c;
+  --accent-tint: #eceefa;
+  --accent-tint-strong: #dde1f6;
+  --focus: #3949a8;
+  --hover: #f5f3ef;
+  --selected: #eceefa;
+  --selected-hover: #e2e5f7;
+  --trigger-line: #3949a8;
+  --sev-error: #b3261e;  --sev-error-mark: #d13b30;  --sev-error-row: #fdf3f1;
+  --sev-warn: #875300;   --sev-warn-mark: #ad6c0c;   --sev-warn-row: transparent;
+  --sev-info: #2f5c8f;   --sev-info-mark: #5382b8;
+  --sev-debug: #5f5b54;  --sev-debug-mark: #938d84;
+  --sev-trace: #685a86;  --sev-trace-mark: #9a8db6;
+  --success: #25703f;  --success-tint: #e9f3eb;
+  --warning: #875300;  --warning-tint: #faf0dc;
+  --danger: #b3261e;   --danger-tint: #fbebe8;  --danger-line: #ecb3aa;
+  --neutral-tint: #f1efeb;
+  --masked: #5f5b54;   --masked-tint: #f1efeb;
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --shadow-pop: 0 1px 2px rgba(34, 30, 24, 0.06), 0 6px 18px rgba(34, 30, 24, 0.11);
+  --shadow-sheet: 0 10px 32px rgba(34, 30, 24, 0.2);
+  --scrim: rgba(28, 27, 25, 0.34);
+  --lane-1: #5b6fb8; --lane-2: #3f8a5a; --lane-3: #7a67a8; --lane-4: #7a8a3a; --lane-5: #6d7480; --lane-6: #a2588f; --lane-7: #3d8a9c;
+}

@@ -1,0 +1,62 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "tiny-text",
+        "value": "*",
+        "files": [
+          "docs/ux-v2/prototypes/direction-a/03-context.html"
+        ],
+        "createdAt": "2026-09-14T05:21:15.519Z",
+        "reason": "Direction A is deliberately a dense observability-workstation prototype (mission brief + UX_V2_DESIGN_PRINCIPLES.md #2 'dense but calm'); 10.5-11px meta/gap-row text is an intentional density choice matching professional data tools (Seq/k9s), not a WCAG violation (zoom/reflow is satisfied independent of base px)."
+      },
+      {
+        "rule": "tiny-text",
+        "value": "*",
+        "files": [
+          "docs/ux-v2/prototypes/**/*.html"
+        ],
+        "createdAt": "2026-09-14T05:22:11.455Z",
+        "reason": "Deliberate density for a professional dense-data investigation workstation (UX_V2_DESIGN_PRINCIPLES.md #2/#11) \u2014 functional text kept >=11px, never below; the detector's 14-16px content-page recommendation does not fit this genre (cf. Seq/terminal/IDE-class tools)."
+      },
+      {
+        "rule": "all-caps-body",
+        "value": "*",
+        "files": [
+          "docs/ux-v2/prototypes/direction-a/04-more-filters.html"
+        ],
+        "createdAt": "2026-09-14T05:25:24.401Z",
+        "reason": "False positive: detector sums the .grp-title div's full textContent (incl. nested .match-tag child), but .match-tag has text-transform:none which correctly overrides the inherited uppercase in the real CSS cascade - only the short 'Who / customer' label actually renders uppercase, 'masked by default' renders normal-case. Confirmed by reading the cascade; will re-confirm visually in the screenshot."
+      },
+      {
+        "rule": "pulsing-dot",
+        "value": "*",
+        "files": [
+          "docs/ux-v2/prototypes/direction-c/*.html"
+        ],
+        "createdAt": "2026-09-14T05:25:25.106Z",
+        "reason": "shared.css defines .livebar .badge .dot once; the detector flags it on every HTML file that links the stylesheet even though only 06-live.html actually renders that markup. The rule itself is a deliberate, non-decorative exception (pulse tied to a genuinely live, changing connection) \u2014 see the reason on this same value."
+      },
+      {
+        "rule": "design-system-font",
+        "value": "inter var",
+        "createdAt": "2026-09-15T13:50:42.266Z",
+        "reason": "Agent: owner-approved Direction B replacement world; DESIGN.md intentionally still documents the production baseline until owner visual approval (docs/ux-v2-modern-developer-console prototype only)"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "jetbrains mono var",
+        "createdAt": "2026-09-15T13:50:42.279Z",
+        "reason": "Agent: owner-approved Direction B replacement world; DESIGN.md intentionally still documents the production baseline until owner visual approval (docs/ux-v2-modern-developer-console prototype only)"
+      },
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-09-15T14:49:26.915Z",
+        "reason": "Agent: owner-approved Direction B design system chooses Inter deliberately for tabular numerals and I/l/1 disambiguation in dense ID-heavy rows; rationale in docs/ux-v2-modern-developer-console/DESIGN_SYSTEM.md \u00a73"
+      }
+    ]
+  }
+}

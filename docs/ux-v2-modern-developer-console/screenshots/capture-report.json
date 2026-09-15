@@ -1,0 +1,621 @@
+{
+  "problems": [],
+  "report": [
+    {
+      "file": "b1/01-search-results-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/02-search-running-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/03-search-error-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/04-inspector-overview-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 1,
+      "clipped": 0
+    },
+    {
+      "file": "b1/05-inspector-actor-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 1,
+      "clipped": 0
+    },
+    {
+      "file": "b1/06-inspector-request-flow-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 1,
+      "clipped": 0
+    },
+    {
+      "file": "b1/07-inspector-business-error-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 1,
+      "clipped": 0
+    },
+    {
+      "file": "b1/08-inspector-technical-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 1,
+      "clipped": 0
+    },
+    {
+      "file": "b1/09-investigation-trace-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 9,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/10-investigation-journey-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 14,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/11-context-surroundings-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 19,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/12-more-filters-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/13-mapping-workspace-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/14-mapping-editing-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/15-mapping-needs-change-unmapped-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/16-settings-sources-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/17-settings-masking-proxy-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/18-live-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 22,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/19-live-paused-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 22,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/19b-live-reconnecting-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 22,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/20-empty-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/21-first-search-running-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 18,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/22-source-unavailable-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/23-no-services-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/24-load-more-failure-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/25-malformed-event-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 1,
+      "clipped": 0
+    },
+    {
+      "file": "b1/26-mapping-not-ready-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 25,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/27-unsupported-capability-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 1,
+      "clipped": 0
+    },
+    {
+      "file": "b1/28-invalid-query-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/29-services-exclude-open-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/30-columns-settings-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/31-startup-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/32-time-custom-range-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/33-time-custom-applied-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/34-raw-logql-loki-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/35-row-actions-menu-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/36-id-detection-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 25,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/37-surroundings-from-trace-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 19,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/38-live-failed-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 22,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1/39-settings-openshift-connect-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1-dark/01-search-results-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b2/01-search-results-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b3/01-search-results-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1-dark/04-inspector-overview-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 1,
+      "clipped": 0
+    },
+    {
+      "file": "b2/04-inspector-overview-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 1,
+      "clipped": 0
+    },
+    {
+      "file": "b3/04-inspector-overview-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 1,
+      "clipped": 0
+    },
+    {
+      "file": "b1-dark/09-investigation-trace-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 9,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b2/09-investigation-trace-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 9,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b3/09-investigation-trace-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 9,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1-dark/11-context-surroundings-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 19,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b2/11-context-surroundings-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 19,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b3/11-context-surroundings-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 19,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1-dark/13-mapping-workspace-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b2/13-mapping-workspace-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b3/13-mapping-workspace-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b1-dark/18-live-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 22,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b2/18-live-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 22,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "b3/18-live-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 22,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/01-search-results-1920x1080.png",
+      "overflowX": 0,
+      "fullRows": 31,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/01-search-results-1366x768.png",
+      "overflowX": 0,
+      "fullRows": 20,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/01-search-results-1024x768.png",
+      "overflowX": 0,
+      "fullRows": 20,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/01-search-results-768x1024.png",
+      "overflowX": 0,
+      "fullRows": 28,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/01-search-results-390x844.png",
+      "overflowX": 0,
+      "fullRows": 22,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/04-inspector-overview-1920x1080.png",
+      "overflowX": 0,
+      "fullRows": 31,
+      "tabRows": 1,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/04-inspector-overview-1366x768.png",
+      "overflowX": 0,
+      "fullRows": 20,
+      "tabRows": 1,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/04-inspector-overview-1024x768.png",
+      "overflowX": 0,
+      "fullRows": 20,
+      "tabRows": 1,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/04-inspector-overview-768x1024.png",
+      "overflowX": 0,
+      "fullRows": 28,
+      "tabRows": 1,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/04-inspector-overview-390x844.png",
+      "overflowX": 0,
+      "fullRows": 22,
+      "tabRows": 1,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/09-investigation-trace-1920x1080.png",
+      "overflowX": 0,
+      "fullRows": 9,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/09-investigation-trace-1366x768.png",
+      "overflowX": 0,
+      "fullRows": 9,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/09-investigation-trace-1024x768.png",
+      "overflowX": 0,
+      "fullRows": 9,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/09-investigation-trace-768x1024.png",
+      "overflowX": 0,
+      "fullRows": 9,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/09-investigation-trace-390x844.png",
+      "overflowX": 0,
+      "fullRows": 6,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/13-mapping-workspace-1920x1080.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/13-mapping-workspace-1366x768.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/13-mapping-workspace-1024x768.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/13-mapping-workspace-768x1024.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/13-mapping-workspace-390x844.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/16-settings-sources-1920x1080.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/16-settings-sources-1366x768.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/16-settings-sources-1024x768.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/16-settings-sources-768x1024.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/16-settings-sources-390x844.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/18-live-1920x1080.png",
+      "overflowX": 0,
+      "fullRows": 22,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/18-live-1366x768.png",
+      "overflowX": 0,
+      "fullRows": 18,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/18-live-1024x768.png",
+      "overflowX": 0,
+      "fullRows": 18,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/18-live-768x1024.png",
+      "overflowX": 0,
+      "fullRows": 22,
+      "tabRows": 0,
+      "clipped": 0
+    },
+    {
+      "file": "responsive/18-live-390x844.png",
+      "overflowX": 0,
+      "fullRows": 9,
+      "tabRows": 0,
+      "clipped": 0
+    }
+  ]
+}
