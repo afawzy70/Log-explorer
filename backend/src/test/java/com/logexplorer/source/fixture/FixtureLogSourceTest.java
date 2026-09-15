@@ -223,6 +223,44 @@ class FixtureLogSourceTest {
     assertThat(events.stream().map(CanonicalLogEvent::service).distinct().count()).isGreaterThanOrEqualTo(2);
   }
 
+  /**
+   * Owner mission "Service Filter, Docker Performance, and Verified
+   * Default Mapping" §C review recovery — a real, previously-latent
+   * defect this mission's own change exposed: {@link FixtureLogSource}
+   * memoizes its parsed corpus once, so a mapping change made AFTER this
+   * source's first-ever search (real CI/production usage — a fresh
+   * backend serves many searches across its lifetime, and an owner may
+   * reconfigure Journey ID's mapping via Settings at any point, not only
+   * before the very first search) previously had no effect on
+   * already-cached parsed events: journeyId would stay unresolved
+   * forever for that process's lifetime, even after a correct PUT+save.
+   * Proven directly here — ONE {@link FixtureLogSource} instance,
+   * searched once BEFORE the mapping is configured (proving the corpus
+   * really was built/cached with journeyId unmapped, not accidentally
+   * pre-configured), then again AFTER — the second search must resolve
+   * journeyId, which is only possible if the corpus was rebuilt.
+   */
+  @Test
+  void aMappingChangeAfterTheCorpusIsAlreadyCachedStillTakesEffectOnTheNextSearch() {
+    FieldMappingProfileService mapping = new FieldMappingProfileService();
+    FixtureLogSource source = new FixtureLogSource(objectMapper, new LogLineParser(objectMapper, mapping));
+
+    List<CanonicalLogEvent> beforeConfiguring = source.search(wideOpenRequest().build()).collectList().block();
+    assertThat(beforeConfiguring)
+        .as("journeyId has no default - the corpus is now cached with it unresolved")
+        .noneMatch(e -> e.journeyId() != null);
+
+    mapping.updateCandidates(
+        com.logexplorer.core.mapping.MappingScopeKey.of("fixture", null),
+        com.logexplorer.core.mapping.CanonicalField.JOURNEY_ID,
+        List.of(com.logexplorer.core.mapping.JsonPath.parse("mdc.x-journey-trace-id")));
+
+    List<CanonicalLogEvent> afterConfiguring = source.search(wideOpenRequest().build()).collectList().block();
+    assertThat(afterConfiguring)
+        .as("the SAME source instance's cached corpus must reflect the new mapping on the very next search")
+        .anyMatch(e -> e.journeyId() != null);
+  }
+
   @Test
   void timeRangeFilterExcludesEventsOutsideTheWindow() {
     Instant now = Instant.now();

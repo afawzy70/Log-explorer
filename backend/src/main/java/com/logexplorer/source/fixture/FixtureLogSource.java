@@ -79,6 +79,8 @@ public class FixtureLogSource implements LogSource {
   private final FixtureCorpusGenerator generator;
   private final Object lock = new Object();
   private volatile List<CanonicalLogEvent> corpus;
+  /** The mapping generation {@link #corpus} was last built against — see {@link #corpus()}'s own javadoc. */
+  private volatile long corpusGeneration = -1;
 
   public FixtureLogSource(ObjectMapper objectMapper, LogLineParser parser) {
     this.parser = parser;
@@ -160,12 +162,26 @@ public class FixtureLogSource implements LogSource {
         .filter(e -> request.services().isEmpty() || request.services().contains(e.service()));
   }
 
+  /**
+   * Owner mission "Service Filter, Docker Performance, and Verified
+   * Default Mapping" §C review recovery — a real, previously-latent
+   * defect this mission's own change exposed: the corpus below is
+   * memoized once per JVM lifetime for performance, so before this fix a
+   * mapping change made after this source's first-ever search had no
+   * effect on already-cached parsed events, invisible while every field
+   * had a default. Now that Journey ID/UI Identifier require explicit
+   * configuration, that staleness became directly observable (reconfigure,
+   * then search, and still see the old unmapped result). Rebuilding is
+   * still cheap and rare — this scope's mapping only ever changes on an
+   * explicit owner edit/reset, never on an ordinary search.
+   */
   private List<CanonicalLogEvent> corpus() {
+    long currentGeneration = parser.mappingGeneration(SCOPE);
     List<CanonicalLogEvent> result = corpus;
-    if (result == null) {
+    if (result == null || corpusGeneration != currentGeneration) {
       synchronized (lock) {
         result = corpus;
-        if (result == null) {
+        if (result == null || corpusGeneration != currentGeneration) {
           Instant anchor = Instant.now();
           List<String> lines = generator.generateLines(SEED, CORPUS_SIZE, anchor);
           List<CanonicalLogEvent> built = new ArrayList<>(lines.size());
@@ -185,6 +201,7 @@ public class FixtureLogSource implements LogSource {
           }
           result = List.copyOf(built);
           corpus = result;
+          corpusGeneration = currentGeneration;
         }
       }
     }

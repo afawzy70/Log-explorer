@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.stereotype.Service;
 
@@ -82,6 +83,40 @@ public class FieldMappingProfileService {
      */
     private final ConcurrentHashMap<CanonicalField, FieldVerificationStatus> verificationStatuses =
         freshDefaultVerificationMap();
+    /**
+     * Owner mission "Service Filter, Docker Performance, and Verified
+     * Default Mapping" §C review recovery — a real, previously-latent
+     * defect this mission's own change exposed: {@code
+     * source.fixture.FixtureLogSource} memoizes its parsed corpus once
+     * per JVM lifetime for performance (re-parsing a fixed 250-line
+     * corpus on every search would be wasteful), so a mapping change made
+     * after that source's first-ever search previously had no effect on
+     * already-cached parsed events - invisible while every field had a
+     * default (nothing to reconfigure), but a real, observable gap now
+     * that Journey ID/UI Identifier require explicit configuration:
+     * reconfiguring one, then searching, silently kept showing the old
+     * (unmapped) result. This counter lets any cache keyed to a scope's
+     * mapping invalidate itself cheaply (a single volatile-read comparison)
+     * without polling or re-parsing eagerly - bumped on every real change
+     * to the scope's active profile, read via {@link #generation}.
+     */
+    private final AtomicLong generation = new AtomicLong(0);
+  }
+
+  /**
+   * The current mapping generation for {@code scope} - increases by
+   * exactly one on every {@link #updateCandidates}/{@link #resetToDefault}
+   * call for that scope, never on a read-only call. A caller that caches
+   * anything derived from this scope's mapping (see {@code
+   * source.fixture.FixtureLogSource#corpus()}) can cheaply detect
+   * staleness by comparing the generation it built its cache with against
+   * this current value, instead of either never invalidating (the
+   * pre-existing defect this exists to fix) or re-checking/re-parsing
+   * unconditionally on every access (defeating the point of caching at
+   * all).
+   */
+  public long generation(MappingScopeKey scope) {
+    return stateFor(scope).generation.get();
   }
 
   /**
@@ -130,6 +165,7 @@ public class FieldMappingProfileService {
     FieldMappingProfile updated = state.activeProfile.updateAndGet(p -> p.withCandidates(field, newCandidates));
     state.modifiedFromDefault.set(true);
     state.validatedAndSaved.set(false);
+    state.generation.incrementAndGet();
     state.verificationStatuses.computeIfPresent(field,
         (f, status) -> status == FieldVerificationStatus.VERIFIED ? FieldVerificationStatus.UNVERIFIED : status);
     return updated;
@@ -162,6 +198,7 @@ public class FieldMappingProfileService {
     state.activeProfile.set(def);
     state.modifiedFromDefault.set(false);
     state.validatedAndSaved.set(true);
+    state.generation.incrementAndGet();
     freshDefaultVerificationMap().forEach(state.verificationStatuses::put);
     return def;
   }
