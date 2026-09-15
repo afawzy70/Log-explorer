@@ -75,10 +75,28 @@ class FixtureCorpusGeneratorTest {
             ? e.sensitive().cif().startsWith("FAKE-") : true))
         .as("sensitive values are obviously fake").isTrue();
 
-    // Journey spanning multiple services and multiple traceIds.
+    // Journey spanning multiple services and multiple traceIds - Journey
+    // ID has no default mapping (owner mission §C: "do not infer paths...
+    // user may explicitly configure them later"), so this parses with an
+    // explicitly-configured parser pointed at the real field the
+    // generator still emits (mdc.x-journey-trace-id) - proving the
+    // corpus's own DATA is a real, valid multi-service/multi-trace
+    // journey, resolvable once mapped, exactly the real-world workflow
+    // this mission requires.
+    com.logexplorer.core.mapping.FieldMappingProfileService journeyConfiguredMapping =
+        new com.logexplorer.core.mapping.FieldMappingProfileService();
+    journeyConfiguredMapping.updateCandidates(
+        com.logexplorer.core.mapping.CanonicalField.JOURNEY_ID,
+        List.of(com.logexplorer.core.mapping.JsonPath.parse("mdc.x-journey-trace-id")));
+    LogLineParser journeyParser = new LogLineParser(objectMapper, journeyConfiguredMapping);
+    List<CanonicalLogEvent> wellFormedWithJourneyIdMapped = lines.stream()
+        .map(l -> journeyParser.parse(l, null))
+        .filter(e -> !e.malformed())
+        .toList();
+
     java.util.Map<String, Set<String>> journeyServices = new java.util.HashMap<>();
     java.util.Map<String, Set<String>> journeyTraces = new java.util.HashMap<>();
-    for (CanonicalLogEvent e : wellFormed) {
+    for (CanonicalLogEvent e : wellFormedWithJourneyIdMapped) {
       if (e.journeyId() == null) {
         continue;
       }

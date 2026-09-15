@@ -105,28 +105,47 @@ class FieldMappingResolverTest {
     assertThat(FieldMappingResolver.resolve(root, mapping)).isEqualTo("2449");
   }
 
-  // --- Exact equivalence with the OLD correlationId precedence (mission §11 default profile) ---
+  // --- Correlation ID default resolution (owner mission "Service Filter,
+  //     Docker Performance, and Verified Default Mapping" §C - supersedes
+  //     this section's original "reproduces the OLD two-candidate
+  //     precedence" coverage; the built-in default is now a single
+  //     top-level candidate, CLAUDE.md §5 named conflict, applied) --------
 
   @Test
-  void reproducesOldCorrelationIdPrecedenceExactly_headerPreferredWhenPresent() {
-    Map<String, Object> root = mapOf("mdc", mapOf("X-Correlation-id", "header-corr", "event.correlationId", "literal-corr"));
+  void defaultCorrelationIdResolvesTheOwnerApprovedTopLevelKey() {
+    Map<String, Object> root = mapOf("X-Correlation-id", "header-corr");
     FieldMappingProfile profile = DefaultFieldMappingProfile.build();
     assertThat(FieldMappingResolver.resolve(root, profile.candidates(CanonicalField.CORRELATION_ID)))
         .isEqualTo("header-corr");
   }
 
   @Test
-  void reproducesOldCorrelationIdPrecedenceExactly_fallsBackToLiteralDottedKey() {
-    Map<String, Object> root = mapOf("mdc", mapOf("event.correlationId", "literal-corr"));
-    FieldMappingProfile profile = DefaultFieldMappingProfile.build();
-    assertThat(FieldMappingResolver.resolve(root, profile.candidates(CanonicalField.CORRELATION_ID)))
-        .isEqualTo("literal-corr");
-  }
-
-  @Test
-  void reproducesOldCorrelationIdPrecedenceExactly_nullWhenNeitherPresent() {
+  void defaultCorrelationIdIsNullWhenTheApprovedKeyIsAbsent() {
     FieldMappingProfile profile = DefaultFieldMappingProfile.build();
     assertThat(FieldMappingResolver.resolve(Map.of(), profile.candidates(CanonicalField.CORRELATION_ID))).isNull();
+  }
+
+  /**
+   * The OLD two-candidate precedence (header-shaped key first, literal
+   * dotted-key fallback second) is no longer the built-in default, but
+   * the resolver mechanism that made it work is unchanged and remains
+   * available to anyone who explicitly configures it this way (see {@code
+   * LogLineParserTest.literalDottedKeyFallbackRemainsAvailableAsAnExplicitlyConfiguredCandidate}
+   * for the same proof at the full-parse level).
+   */
+  @Test
+  void twoCandidateHeaderThenLiteralDottedKeyPrecedenceRemainsAvailableWhenExplicitlyConfigured() {
+    List<JsonPath> explicitTwoCandidatePrecedence = List.of(
+        JsonPath.parse("mdc.X-Correlation-id"),
+        JsonPath.parse("mdc[\"event.correlationId\"]"));
+
+    Map<String, Object> bothPresent = mapOf("mdc", mapOf("X-Correlation-id", "header-corr", "event.correlationId", "literal-corr"));
+    assertThat(FieldMappingResolver.resolve(bothPresent, explicitTwoCandidatePrecedence)).isEqualTo("header-corr");
+
+    Map<String, Object> onlyLiteralPresent = mapOf("mdc", mapOf("event.correlationId", "literal-corr"));
+    assertThat(FieldMappingResolver.resolve(onlyLiteralPresent, explicitTwoCandidatePrecedence)).isEqualTo("literal-corr");
+
+    assertThat(FieldMappingResolver.resolve(Map.of(), explicitTwoCandidatePrecedence)).isNull();
   }
 
   // --- Provenance (mission §16 validation preview) ---------------------------

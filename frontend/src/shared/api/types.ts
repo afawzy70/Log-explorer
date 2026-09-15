@@ -226,6 +226,13 @@ export interface SearchRequestBody {
   direction?: SearchDirection;
   limit?: number;
   services?: string[];
+  /**
+   * Owner mission "Service Filter, Docker Performance, and Verified
+   * Default Mapping" §A — whether `services` is an allow-list (only these)
+   * or a deny-list (all except these). Omitted/`'INCLUDE'` matches every
+   * existing caller's current behavior unchanged.
+   */
+  serviceFilterMode?: 'INCLUDE' | 'EXCLUDE';
   levels?: string[];
   text?: string;
   traceId?: string;

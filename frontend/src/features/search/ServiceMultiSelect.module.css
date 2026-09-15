@@ -53,6 +53,29 @@
   flex-direction: column;
 }
 
+.modeGroup {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
+.modeButton {
+  flex: 1;
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-raised);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modeButton[aria-pressed='true'] {
+  background: var(--color-accent-bg);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
 .searchInput {
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-sm);

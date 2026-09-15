@@ -66,10 +66,12 @@ test('running a Quick Schema Scan against the real fixture source shows real Ori
   // text in every field row that doesn't yet have it mapped.
   await expect(panel.getByText(/discovered source schema/i)).toBeVisible();
   const schemaTable = panel.locator('table');
-  await expect(schemaTable.getByText('mdc.cif', { exact: true })).toBeVisible();
-  await expect(
-    schemaTable.getByText('mdc.CustomerId', { exact: true }).or(schemaTable.getByText('mdc.customerId', { exact: true })),
-  ).toBeVisible();
+  // Owner mission "Service Filter, Docker Performance, and Verified
+  // Default Mapping" §C - cif/customerId are now emitted (and default-
+  // mapped) at the top level, not nested under mdc - was 'mdc.cif'/
+  // 'mdc.CustomerId'.
+  await expect(schemaTable.getByText('cif', { exact: true })).toBeVisible();
+  await expect(schemaTable.getByText('customerId', { exact: true })).toBeVisible();
 
   // Never presented as a complete/guaranteed schema (mission §A11).
   await expect(page.getByText(/not a guaranteed-complete/i)).toBeVisible();
@@ -150,30 +152,54 @@ test('rescan highlights newly discovered and no-longer-observed paths without si
 });
 
 /*
- * Owner mission "Mapping Verification and Investigation Workspace" - Part
- * A: real-browser evidence that the built-in default mapping starts
- * UNVERIFIED (DEFAULT_MAPPING != VERIFIED_MAPPING), and that Verify is a
+ * Owner mission "Service Filter, Docker Performance, and Verified Default
+ * Mapping" §C - real-browser evidence that (a) the owner-approved built-in
+ * default mapping starts VERIFIED with zero scan/edit/save/verify effort
+ * (BUILT_IN_DEFAULT_PROFILE_STATUS=VERIFIED, superseding the original
+ * "Mapping Verification and Investigation Workspace" mission's "every
+ * field including the built-in default starts UNVERIFIED" rule - see
+ * docs/governance/OWNER_REQUIREMENTS_REGISTER.md §24/MVER-1), and (b) a
+ * field with NO default (UI Identifier, owner declined to guess it) still
+ * starts UNVERIFIED and still requires the owner to map it and Verify is a
  * real, evidence-gated server round trip against the real fixture source.
  */
-test('the built-in default mapping starts Unverified, and Verify against real evidence marks it Verified', async ({
+test('the owner-approved default mapping starts Verified with no scan required; an intentionally unmapped field starts Unverified until configured and verified against real evidence', async ({
   page,
 }) => {
   await selectFixtureSource(page);
   const panel = await openMappingPanel(page);
 
   const serviceRow = panel.locator('li', { has: page.getByText('Service', { exact: true }) }).first();
-  await expect(serviceRow.getByText('Unverified', { exact: true })).toBeVisible();
-  // Verify starts disabled - no scan evidence has been gathered yet.
-  await expect(serviceRow.getByRole('button', { name: /^verify$/i })).toBeDisabled();
+  await expect(serviceRow.getByText('Verified', { exact: true })).toBeVisible();
+  await expect(serviceRow.getByText('Unverified', { exact: true })).not.toBeVisible();
+  // No "run a scan first" hint for an already-VERIFIED, untouched default -
+  // QUICK_SCAN_NOT_REQUIRED_FOR_DEFAULT_VERIFICATION.
+  await expect(serviceRow.getByText(/run a quick schema scan first/i)).toHaveCount(0);
+
+  const uiIdentifierRow = panel.locator('li', { has: page.getByText('UI Identifier', { exact: true }) }).first();
+  await expect(uiIdentifierRow.getByText('Unverified', { exact: true })).toBeVisible();
+  await expect(uiIdentifierRow.getByRole('button', { name: /^verify$/i })).toBeDisabled();
 
   await panel.getByRole('button', { name: /run quick schema scan/i }).click();
   await expect(panel.getByText(/observed \d+ events?/i)).toBeVisible({ timeout: 10_000 });
 
-  await expect(serviceRow.getByRole('button', { name: /^verify$/i })).toBeEnabled();
-  await serviceRow.getByRole('button', { name: /^verify$/i }).click();
+  // UI Identifier has no default candidate - map it via the discovered-paths picker first.
+  const picker = uiIdentifierRow.getByLabel(/add a discovered path as a candidate/i);
+  const uiIdentifierOption = picker.locator('option', { hasText: /uiidentifier/i }).first();
+  const uiIdentifierValue = await uiIdentifierOption.getAttribute('value');
+  expect(uiIdentifierValue).toBeTruthy();
+  await picker.selectOption(uiIdentifierValue!);
+  await uiIdentifierRow.getByRole('button', { name: /^add$/i }).click();
+  await panel.getByRole('button', { name: /^validate mapping$/i }).click();
+  await expect(panel.getByText(/no invalid paths/i)).toBeVisible({ timeout: 10_000 });
+  await panel.getByRole('button', { name: /save mapping/i }).click();
+  await expect(panel.getByText(/^search ready\.?$/i)).toBeVisible({ timeout: 10_000 });
 
-  await expect(serviceRow.getByText('Verified', { exact: true })).toBeVisible({ timeout: 10_000 });
-  await expect(serviceRow.getByText('Unverified', { exact: true })).not.toBeVisible();
+  await expect(uiIdentifierRow.getByRole('button', { name: /^verify$/i })).toBeEnabled();
+  await uiIdentifierRow.getByRole('button', { name: /^verify$/i }).click();
+
+  await expect(uiIdentifierRow.getByText('Verified', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(uiIdentifierRow.getByText('Unverified', { exact: true })).not.toBeVisible();
 
   await captureScreenshot(page, 'n', 'field-mapping-verified-1280px');
 
@@ -205,7 +231,10 @@ test('a picked candidate genuinely persists after Save (proven by reopening the 
   // proves persistence of a genuinely CHANGED mapping, not just re-saving
   // the untouched default (which would pass even with the old bug, since
   // the backend's untouched default candidate was already correct).
-  await cifRow.getByRole('button', { name: /remove mdc\.cif/i }).click();
+  // Owner mission "Service Filter, Docker Performance, and Verified
+  // Default Mapping" §C - CIF's default candidate is now the top-level
+  // "cif" path (was "mdc.cif").
+  await cifRow.getByRole('button', { name: /^remove cif$/i }).click();
   const picker = cifRow.getByLabel(/add a discovered path as a candidate/i);
   const customerIdOption = picker.locator('option', { hasText: /customerid/i }).first();
   const customerIdValue = await customerIdOption.getAttribute('value');
@@ -225,7 +254,7 @@ test('a picked candidate genuinely persists after Save (proven by reopening the 
   const reopened = await openMappingPanel(page);
   const cifRowAgain = reopened.locator('li', { has: page.getByText('CIF', { exact: true }) }).first();
   await expect(cifRowAgain.locator('code', { hasText: customerIdValue! })).toBeVisible();
-  await expect(cifRowAgain.locator('code', { hasText: 'mdc.cif' })).toHaveCount(0);
+  await expect(cifRowAgain.locator('code', { hasText: 'cif', exact: true })).toHaveCount(0);
 
   // Now Verify must succeed against exactly this saved candidate - the owner-reported contradiction, now fixed.
   await reopened.getByRole('button', { name: /run quick schema scan/i }).click();

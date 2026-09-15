@@ -148,4 +148,60 @@ class RequestMapperTest {
               .isEqualTo(GuardrailViolationException.Reason.INVALID_JOURNEY_FIELD));
     }
   }
+
+  // ------------------------------------------------------------ owner mission
+  // "Service Filter, Docker Performance, and Verified Default Mapping" §A
+  // - RequestMapper#toDomain's serviceFilterMode parsing.
+
+  private com.logexplorer.api.dto.SearchRequestDto dtoWithServiceFilterMode(java.util.List<String> services, String serviceFilterMode) {
+    return new com.logexplorer.api.dto.SearchRequestDto(
+        "local-docker", START, END, // sourceId, start, end
+        null, // direction
+        null, // limit
+        services, // services
+        serviceFilterMode, // serviceFilterMode
+        null, // levels
+        null, // text
+        null, null, null, null, null, null, // traceId, spanId, correlationId, journeyId, journeyName, eventId
+        null, null, null, null, // errorCode, businessStep, uiIdentifier, loggerContains
+        null, null, // devicePlatform, language
+        null, null, null, null, null, // cif, userName, customerId, deviceId, deviceIp
+        null, null, null, // query, rawLogQl, cursor
+        null // composeProject
+    );
+  }
+
+  @Test
+  void serviceFilterModeIncludeParsesToTheIncludeEnumValue() {
+    SearchRequest request = mapper.toDomain(dtoWithServiceFilterMode(java.util.List.of("gateway"), "INCLUDE"));
+    assertThat(request.serviceFilterMode()).isEqualTo(SearchRequest.ServiceFilterMode.INCLUDE);
+  }
+
+  @Test
+  void serviceFilterModeExcludeParsesToTheExcludeEnumValue() {
+    SearchRequest request = mapper.toDomain(dtoWithServiceFilterMode(java.util.List.of("gateway"), "EXCLUDE"));
+    assertThat(request.serviceFilterMode()).isEqualTo(SearchRequest.ServiceFilterMode.EXCLUDE);
+  }
+
+  @Test
+  void serviceFilterModeIsCaseInsensitive() {
+    SearchRequest request = mapper.toDomain(dtoWithServiceFilterMode(java.util.List.of("gateway"), "exclude"));
+    assertThat(request.serviceFilterMode()).isEqualTo(SearchRequest.ServiceFilterMode.EXCLUDE);
+  }
+
+  @Test
+  void nullBlankOrUnrecognizedServiceFilterModeDefaultsToInclude_backwardCompatible() {
+    assertThat(mapper.toDomain(dtoWithServiceFilterMode(java.util.List.of("gateway"), null)).serviceFilterMode())
+        .isEqualTo(SearchRequest.ServiceFilterMode.INCLUDE);
+    assertThat(mapper.toDomain(dtoWithServiceFilterMode(java.util.List.of("gateway"), "  ")).serviceFilterMode())
+        .isEqualTo(SearchRequest.ServiceFilterMode.INCLUDE);
+    assertThat(mapper.toDomain(dtoWithServiceFilterMode(java.util.List.of("gateway"), "bogus")).serviceFilterMode())
+        .isEqualTo(SearchRequest.ServiceFilterMode.INCLUDE);
+  }
+
+  @Test
+  void servicesListIsCarriedThroughUnchangedByToDomain() {
+    SearchRequest request = mapper.toDomain(dtoWithServiceFilterMode(java.util.List.of("gateway", "audit"), "EXCLUDE"));
+    assertThat(request.services()).containsExactly("gateway", "audit");
+  }
 }

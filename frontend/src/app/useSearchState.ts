@@ -125,6 +125,7 @@ function sortByTimestampAscending(events: LogEvent[]): LogEvent[] {
  */
 interface SearchSnapshot {
   selectedServices: string[];
+  serviceFilterMode: 'INCLUDE' | 'EXCLUDE';
   sortDirection: SearchDirection;
   selectedIndex: number | null;
   selectedLevels: string[];
@@ -149,6 +150,14 @@ export function useSearchState() {
 
   const [services, setServices] = useState<ServiceInfo[]>([]);
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
+  /**
+   * Owner mission "Service Filter, Docker Performance, and Verified
+   * Default Mapping" §A — whether `selectedServices` is an allow-list
+   * ("Include selected") or a deny-list ("Exclude selected"). Defaults to
+   * INCLUDE, matching every prior release's only behavior. Session/search
+   * state only - never persisted (CLAUDE.md §2 rule 4).
+   */
+  const [serviceFilterMode, setServiceFilterMode] = useState<'INCLUDE' | 'EXCLUDE'>('INCLUDE');
   /**
    * UX-R3 §7/§8/§9 — the request/session-scoped Docker Compose "investigation
    * scope" (never a global mutation of backend config; travels on each
@@ -579,6 +588,7 @@ export function useSearchState() {
   const clearAllFilters = useCallback(() => {
     setSearchText('');
     setSelectedServices([]);
+    setServiceFilterMode('INCLUDE');
     setSelectedLevels(DEFAULT_SEVERITY_LEVELS);
     setAdvancedFilters(emptyAdvancedFilterValues());
     setQueryState(emptyQueryAuthoringState());
@@ -601,6 +611,7 @@ export function useSearchState() {
         start: effectiveTimeRange.start,
         end: effectiveTimeRange.end,
         services: selectedServices,
+        serviceFilterMode,
         levels: selectedLevels,
         text: searchText || undefined,
         traceId: advancedFilters.traceId || undefined,
@@ -625,7 +636,7 @@ export function useSearchState() {
         composeProject: selectedComposeProject ?? undefined,
       };
     },
-    [selectedSourceId, timeRange, sortDirection, selectedServices, selectedLevels, searchText, advancedFilters, queryState, selectedComposeProject],
+    [selectedSourceId, timeRange, sortDirection, selectedServices, serviceFilterMode, selectedLevels, searchText, advancedFilters, queryState, selectedComposeProject],
   );
 
   /** Aborts whatever request is currently in flight, so its result can never race a newer one. */
@@ -834,6 +845,7 @@ export function useSearchState() {
   const snapshotCurrent = useCallback(
     (): SearchSnapshot => ({
       selectedServices,
+      serviceFilterMode,
       sortDirection,
       selectedIndex,
       selectedLevels,
@@ -844,7 +856,7 @@ export function useSearchState() {
       searchResult,
       lastSearchedRange,
     }),
-    [selectedServices, sortDirection, selectedIndex, selectedLevels, searchText, advancedFilters, queryState, timeRange, searchResult, lastSearchedRange],
+    [selectedServices, serviceFilterMode, sortDirection, selectedIndex, selectedLevels, searchText, advancedFilters, queryState, timeRange, searchResult, lastSearchedRange],
   );
 
   /** "Preserves and restores the original search state" (HANDOVER.md §17.5, applied here to both Phase H detour actions) - only the true original is ever kept, never a chain of detours. */
@@ -873,6 +885,7 @@ export function useSearchState() {
       return;
     }
     setSelectedServices(snapshot.selectedServices);
+    setServiceFilterMode(snapshot.serviceFilterMode);
     setSelectedLevels(snapshot.selectedLevels);
     setSearchText(snapshot.searchText);
     setAdvancedFilters(snapshot.advancedFilters);
@@ -1109,6 +1122,8 @@ export function useSearchState() {
     services,
     selectedServices,
     setSelectedServices,
+    serviceFilterMode,
+    setServiceFilterMode,
     selectedComposeProject,
     setSelectedComposeProject,
     composeProjects,

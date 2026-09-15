@@ -802,7 +802,18 @@ function FieldEditorRow({
           exactly what was last saved, so it stays disabled until this edit is saved.
         </p>
       ) : null}
-      {!hasScanEvidence ? <p className={styles.hint}>Run a Quick Schema Scan first — verification needs real samples as evidence.</p> : null}
+      {/*
+       * Owner mission "Service Filter, Docker Performance, and Verified
+       * Default Mapping" §C - an owner-approved default starts VERIFIED
+       * with no scan required to establish it (BUILT_IN_DEFAULT_PROFILE_STATUS=VERIFIED,
+       * QUICK_SCAN_NOT_REQUIRED_FOR_DEFAULT_VERIFICATION), so this hint
+       * would be actively misleading for an untouched VERIFIED field -
+       * it only makes sense for a field that genuinely still needs real
+       * evidence to become VERIFIED (custom/modified/unmapped).
+       */}
+      {!hasScanEvidence && field.verificationStatus !== 'VERIFIED' ? (
+        <p className={styles.hint}>Run a Quick Schema Scan first — verification needs real samples as evidence.</p>
+      ) : null}
       {verifyError ? (
         <p role="alert" className={styles.error}>
           {verifyError}

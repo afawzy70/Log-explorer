@@ -161,9 +161,20 @@ public class LokiLogSource implements LogSource {
    * {@code LogQlDslPlanner}'s narrow, provably-safe single {@code service =
    * "..."} DSL extraction. Shared with {@link #describePushDown} so the
    * query-plan disclosure can never drift from what was actually queried.
+   *
+   * <p>Owner mission "Service Filter, Docker Performance, and Verified
+   * Default Mapping" §A — request-supplied services are only ever pushed
+   * down as this positive exact-match label under {@code INCLUDE} mode.
+   * Under {@code EXCLUDE}, pushing the same list down would invert the
+   * request's own meaning (Loki would return ONLY the excluded services,
+   * the opposite of "all except these") — so EXCLUDE never contributes a
+   * pushdown here and relies entirely on the shared, always-re-applied
+   * {@code EventFilters} post-filter for correctness (same fallback path
+   * as an empty service list).
    */
   private List<String> resolvePushedDownServices(SearchRequest request) {
-    List<String> requestedServices = request.services();
+    List<String> requestedServices =
+        request.serviceFilterMode() == SearchRequest.ServiceFilterMode.INCLUDE ? request.services() : List.of();
     if (requestedServices.isEmpty()) {
       requestedServices = LogQlDslPlanner.extractServiceEquality(request.query())
           .map(List::of)

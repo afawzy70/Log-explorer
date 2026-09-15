@@ -547,7 +547,7 @@ class SchemaScanServiceTest {
         .extracting(JsonPath::raw).containsExactly("cif");
     assertThat(mappingService.activeProfile(projectB).candidates(CanonicalField.CIF))
         .as("project B's own profile is the untouched default, unaffected by project A's edit")
-        .extracting(JsonPath::raw).containsExactly("mdc.cif");
+        .extracting(JsonPath::raw).containsExactly("cif");
   }
 
   @Test
@@ -564,7 +564,7 @@ class SchemaScanServiceTest {
         .extracting(JsonPath::raw).containsExactly("mdc.cif", "cif");
     assertThat(mappingService.activeProfile(projectB).candidates(CanonicalField.CIF))
         .as("project B's own mapping stays the untouched default - project A's save never leaked into it")
-        .extracting(JsonPath::raw).containsExactly("mdc.cif");
+        .extracting(JsonPath::raw).containsExactly("cif");
   }
 
   @Test

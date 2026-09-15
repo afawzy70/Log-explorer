@@ -179,6 +179,27 @@ public class FixtureCorpusGenerator {
     return records.subList(0, CYCLE_LEN);
   }
 
+  /**
+   * Field placement matches the owner-approved built-in default mapping
+   * exactly (owner mission "Service Filter, Docker Performance, and
+   * Verified Default Mapping" §C — {@link
+   * com.logexplorer.core.mapping.DefaultFieldMappingProfile}): most
+   * canonical fields are emitted at the JSON top level now, not nested
+   * under {@code mdc} — this fixture corpus exists specifically to be
+   * realistic against whatever the CURRENT default mapping actually is,
+   * so a fresh install's Search/Investigation/Mapping Verification
+   * workflows all demonstrably work out of the box against it. {@code
+   * eventId}/{@code ERROR_CODE} stay {@code mdc}-nested (the two fields
+   * that remain so in the owner-approved default). {@code
+   * x-journey-trace-id} also stays {@code mdc}-nested and — deliberately —
+   * UNMAPPED by any default (Journey ID has none, per the owner's explicit
+   * instruction): the corpus still generates real, valid multi-service/
+   * multi-trace journey data (discoverable via Quick Schema Scan, usable
+   * once the owner explicitly configures Journey ID), it simply does not
+   * resolve to {@code CanonicalLogEvent#journeyId()} without that
+   * explicit configuration — exactly the real-world behavior this mission
+   * requires for every source, fixture included.
+   */
   private String event(Random rng, int i, String service, String journeyId, String traceId,
       CorrelationVariant correlationVariant, boolean unknownField, String level, String exception,
       String message) {
@@ -193,33 +214,40 @@ public class FixtureCorpusGenerator {
     root.put("level_value", resolvedLevel.equals("ERROR") ? 40000 : resolvedLevel.equals("WARN") ? 30000 : 20000);
     root.put("application", service);
     if (exception != null) {
-      root.put("exception", exception);
+      root.put("stack_trace", exception);
+    }
+
+    root.put("traceId", traceId != null ? traceId : "fixture-trace-" + pad(i, 6));
+    root.put("spanId", "fixture-span-" + pad(i, 6));
+    root.put("stepName", pick(rng, List.of("validate-request", "debit-account", "credit-account",
+        "notify-customer", "route-request")));
+    root.put("uiIdentifier", pick(rng, List.of("screen.transfer.confirm", "screen.login",
+        "screen.dashboard", "screen.support.ticket")));
+    root.put("devicePlatformType", pick(rng, List.of("ANDROID", "IOS", "WEB")));
+    root.put("language", pick(rng, List.of("en", "ar")));
+    root.put("serverIp", "172.21." + (i % 10) + "." + ((i * 3) % 255));
+    root.put("serverHost", "fixture-host-" + ((i % 6) + 1));
+    root.put("cif", "FAKE-CIF-" + pad(1000 + (i % 900), 4));
+    root.put("userName", "fixture.user" + (i % 37));
+    root.put("customerId", "DEMO-CUST-" + pad(200000 + (i % 5000), 6));
+    root.put("deviceId", "DEMO-DEVICE-" + pad(i % 999, 3));
+    root.put("deviceIp", "10." + (i % 200) + "." + ((i * 7) % 200) + "." + ((i * 13) % 255));
+    switch (correlationVariant) {
+      case HEADER -> root.put("X-Correlation-id", "fixture-corr-" + pad(i, 6));
+      // No longer a default fallback candidate - kept as a literal
+      // top-level dotted key so it remains realistic, discovered-but-
+      // unmapped-by-default sample data (still fully usable if the owner
+      // explicitly maps Correlation ID to it via the mapping workspace).
+      case LITERAL -> root.put("event.correlationId", "fixture-corr-" + pad(i, 6));
+      case NONE -> { /* no correlation key */ }
     }
 
     Map<String, Object> mdc = new LinkedHashMap<>();
-    mdc.put("traceId", traceId != null ? traceId : "fixture-trace-" + pad(i, 6));
-    mdc.put("spanId", "fixture-span-" + pad(i, 6));
     mdc.put("eventId", "fixture-event-" + pad(i, 6));
-    mdc.put("x-journey-trace-id", journeyId != null ? journeyId : "fixture-journey-" + pad(i / 7, 4));
-    mdc.put("stepName", pick(rng, List.of("validate-request", "debit-account", "credit-account",
-        "notify-customer", "route-request")));
-    mdc.put("UIIdentifier", pick(rng, List.of("screen.transfer.confirm", "screen.login",
-        "screen.dashboard", "screen.support.ticket")));
     mdc.put("ERROR_CODE", pick(rng, List.of("ERR_NONE", "ERR_TIMEOUT", "ERR_VALIDATION", "ERR_UPSTREAM_5XX")));
-    mdc.put("devicePlatformType", pick(rng, List.of("ANDROID", "IOS", "WEB")));
-    mdc.put("language", pick(rng, List.of("en", "ar")));
-    mdc.put("serverIp", "172.21." + (i % 10) + "." + ((i * 3) % 255));
-    mdc.put("serverHost", "fixture-host-" + ((i % 6) + 1));
-    mdc.put("cif", "FAKE-CIF-" + pad(1000 + (i % 900), 4));
-    mdc.put("UserName", "fixture.user" + (i % 37));
-    mdc.put("CustomerId", "DEMO-CUST-" + pad(200000 + (i % 5000), 6));
-    mdc.put("deviceId", "DEMO-DEVICE-" + pad(i % 999, 3));
-    mdc.put("deviceIp", "10." + (i % 200) + "." + ((i * 7) % 200) + "." + ((i * 13) % 255));
-    switch (correlationVariant) {
-      case HEADER -> mdc.put("X-Correlation-id", "fixture-corr-" + pad(i, 6));
-      case LITERAL -> mdc.put("event.correlationId", "fixture-corr-" + pad(i, 6));
-      case NONE -> { /* no correlation key */ }
-    }
+    // Deliberately unmapped by any default (owner mission §C) - real data,
+    // discoverable, usable once the owner explicitly configures Journey ID.
+    mdc.put("x-journey-trace-id", journeyId != null ? journeyId : "fixture-journey-" + pad(i / 7, 4));
     if (unknownField) {
       mdc.put("unknownFixtureField", "this-key-is-not-in-the-canonical-mdc-list");
     }

@@ -195,6 +195,19 @@ class FixtureLogSourceTest {
 
   @Test
   void filtersByJourneyIdAndFindsAMultiServiceMultiTraceJourney() {
+    // Journey ID has no default mapping (owner mission "Service Filter,
+    // Docker Performance, and Verified Default Mapping" §C - "do not
+    // infer paths... user may explicitly configure them later") - an
+    // explicitly-configured source proves the fixture corpus's own real
+    // journey data is genuinely present and resolvable once mapped,
+    // exactly the real-world workflow this mission requires.
+    FieldMappingProfileService journeyConfiguredMapping = new FieldMappingProfileService();
+    journeyConfiguredMapping.updateCandidates(
+        com.logexplorer.core.mapping.MappingScopeKey.of("fixture", null),
+        com.logexplorer.core.mapping.CanonicalField.JOURNEY_ID,
+        List.of(com.logexplorer.core.mapping.JsonPath.parse("mdc.x-journey-trace-id")));
+    FixtureLogSource source = new FixtureLogSource(objectMapper, new LogLineParser(objectMapper, journeyConfiguredMapping));
+
     // First, find a journeyId that spans services from an unfiltered search.
     List<CanonicalLogEvent> all = source.search(wideOpenRequest().build()).collectList().block();
     String journeyId = all.stream()

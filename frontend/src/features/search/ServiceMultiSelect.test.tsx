@@ -96,6 +96,74 @@ describe('ServiceMultiSelect', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  // ------------------------------------------------------------ owner mission
+  // "Service Filter, Docker Performance, and Verified Default Mapping" §A
+
+  it('shows an "All except N" label in EXCLUDE mode with multiple services selected', () => {
+    render(
+      <ServiceMultiSelect
+        services={SERVICES}
+        selected={['gateway', 'accounts-api']}
+        onChange={vi.fn()}
+        mode="EXCLUDE"
+        onModeChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /all except 2 services/i })).toBeInTheDocument();
+  });
+
+  it('shows an "All except <name>" label in EXCLUDE mode with one service selected', () => {
+    render(
+      <ServiceMultiSelect services={SERVICES} selected={['gateway']} onChange={vi.fn()} mode="EXCLUDE" onModeChange={vi.fn()} />,
+    );
+    expect(screen.getByRole('button', { name: /all except gateway/i })).toBeInTheDocument();
+  });
+
+  it('EXCLUDE with zero selected still shows "All services" - identical to INCLUDE with zero selected', () => {
+    render(<ServiceMultiSelect services={SERVICES} selected={[]} onChange={vi.fn()} mode="EXCLUDE" onModeChange={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /all services/i })).toBeInTheDocument();
+  });
+
+  it('renders the Include selected / Exclude selected mode toggle and reflects the current mode via aria-pressed', async () => {
+    const user = userEvent.setup();
+    render(
+      <ServiceMultiSelect services={SERVICES} selected={['gateway']} onChange={vi.fn()} mode="INCLUDE" onModeChange={vi.fn()} />,
+    );
+    await user.click(screen.getByRole('button', { name: /gateway/i }));
+
+    const includeButton = screen.getByRole('button', { name: 'Include selected' });
+    const excludeButton = screen.getByRole('button', { name: 'Exclude selected' });
+    expect(includeButton).toHaveAttribute('aria-pressed', 'true');
+    expect(excludeButton).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('clicking "Exclude selected" calls onModeChange with EXCLUDE', async () => {
+    const user = userEvent.setup();
+    const onModeChange = vi.fn();
+    render(
+      <ServiceMultiSelect
+        services={SERVICES}
+        selected={['gateway']}
+        onChange={vi.fn()}
+        mode="INCLUDE"
+        onModeChange={onModeChange}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: /gateway/i }));
+    await user.click(screen.getByRole('button', { name: 'Exclude selected' }));
+
+    expect(onModeChange).toHaveBeenCalledWith('EXCLUDE');
+  });
+
+  it('does not render the mode toggle when onModeChange is omitted (backward compatible)', async () => {
+    const user = userEvent.setup();
+    render(<ServiceMultiSelect services={SERVICES} selected={[]} onChange={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: /all services/i }));
+
+    expect(screen.queryByRole('button', { name: 'Include selected' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Exclude selected' })).not.toBeInTheDocument();
+  });
+
   it('has no detectable accessibility violations, closed or open', async () => {
     const user = userEvent.setup();
     const { container } = render(<ServiceMultiSelect services={SERVICES} selected={[]} onChange={vi.fn()} />);

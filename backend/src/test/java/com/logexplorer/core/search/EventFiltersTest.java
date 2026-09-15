@@ -177,6 +177,74 @@ class EventFiltersTest {
     assertThat(EventFilters.matches(noService, baseRequest().services(List.of("gateway")).build())).isFalse();
   }
 
+  // ------------------------------------------------------------ owner mission
+  // "Service Filter, Docker Performance, and Verified Default Mapping" §A
+
+  @Test
+  void includeModeWithANonEmptyListIsAnAllowListUnchangedFromPriorBehavior() {
+    SearchRequest include = baseRequest()
+        .services(List.of("gateway", "billing"))
+        .serviceFilterMode(SearchRequest.ServiceFilterMode.INCLUDE)
+        .build();
+    assertThat(EventFilters.matches(baseEvent().build(), include)).isTrue();
+
+    SearchRequest includeMismatch = baseRequest()
+        .services(List.of("billing", "audit"))
+        .serviceFilterMode(SearchRequest.ServiceFilterMode.INCLUDE)
+        .build();
+    assertThat(EventFilters.matches(baseEvent().build(), includeMismatch)).isFalse();
+  }
+
+  @Test
+  void excludeModeWithANonEmptyListIsADenyList() {
+    SearchRequest excludeOther = baseRequest()
+        .services(List.of("audit", "notifications"))
+        .serviceFilterMode(SearchRequest.ServiceFilterMode.EXCLUDE)
+        .build();
+    assertThat(EventFilters.matches(baseEvent().build(), excludeOther))
+        .as("gateway is not in the excluded list, so it passes")
+        .isTrue();
+
+    SearchRequest excludeGateway = baseRequest()
+        .services(List.of("gateway", "audit"))
+        .serviceFilterMode(SearchRequest.ServiceFilterMode.EXCLUDE)
+        .build();
+    assertThat(EventFilters.matches(baseEvent().build(), excludeGateway))
+        .as("gateway IS in the excluded list, so it is filtered out")
+        .isFalse();
+  }
+
+  @Test
+  void excludeModeWithAnEmptyListMeansNoRestriction_identicalToIncludeWithAnEmptyList() {
+    SearchRequest excludeEmpty = baseRequest().services(List.of()).serviceFilterMode(SearchRequest.ServiceFilterMode.EXCLUDE).build();
+    SearchRequest includeEmpty = baseRequest().services(List.of()).serviceFilterMode(SearchRequest.ServiceFilterMode.INCLUDE).build();
+    assertThat(EventFilters.matches(baseEvent().build(), excludeEmpty)).isTrue();
+    assertThat(EventFilters.matches(baseEvent().build(), includeEmpty)).isTrue();
+
+    CanonicalLogEvent anyOtherService = baseEvent().service("some-other-service").build();
+    assertThat(EventFilters.matches(anyOtherService, excludeEmpty)).isTrue();
+    assertThat(EventFilters.matches(anyOtherService, includeEmpty)).isTrue();
+  }
+
+  @Test
+  void everyExistingCallerThatNeverSetsServiceFilterModeKeepsIncludeSemantics() {
+    // Compact constructor's own default (SearchRequest.ServiceFilterMode
+    // is never set by this call) - proves backward compatibility for
+    // every pre-mission caller/test that only ever sets `services`.
+    SearchRequest neverSetMode = baseRequest().services(List.of("gateway")).build();
+    assertThat(neverSetMode.serviceFilterMode()).isEqualTo(SearchRequest.ServiceFilterMode.INCLUDE);
+    assertThat(EventFilters.matches(baseEvent().build(), neverSetMode)).isTrue();
+  }
+
+  @Test
+  void excludeModeDoesNotThrowWhenTheEventHasNoService() {
+    CanonicalLogEvent noService = CanonicalLogEvent.builder().malformed(true).build();
+    SearchRequest exclude = baseRequest().services(List.of("gateway")).serviceFilterMode(SearchRequest.ServiceFilterMode.EXCLUDE).build();
+    assertThat(EventFilters.matches(noService, exclude))
+        .as("an event with no service can never be IN the excluded list, so it is not filtered out on that basis")
+        .isTrue();
+  }
+
   @Test
   void loggerContainsFiltersAgainstTheLoggerFieldCaseInsensitively() {
     // Real bug found while touching this file for Phase E: loggerContains

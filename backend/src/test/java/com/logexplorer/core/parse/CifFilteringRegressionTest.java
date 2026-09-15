@@ -57,21 +57,31 @@ class CifFilteringRegressionTest {
         .isTrue();
   }
 
+  /**
+   * Superseded by owner mission "Service Filter, Docker Performance, and
+   * Verified Default Mapping" §C (CLAUDE.md §5 named conflict, applied):
+   * this test originally proved the ORIGINAL defect — the built-in
+   * default profile only ever looked under {@code mdc.cif}, so a
+   * top-level {@code cif} silently found nothing until the owner
+   * explicitly reconfigured it (the scenario {@code
+   * topLevelCifFilterFindsTheEvent_onceMappedByTheOwner} above still
+   * proves the general reconfiguration mechanism). The owner has since
+   * reviewed real source JSON and approved a NEW built-in default that
+   * maps CIF to the bare top-level {@code cif} path directly (see {@link
+   * com.logexplorer.core.mapping.DefaultFieldMappingProfile}) — this
+   * exact scenario is therefore no longer reproducible: the untouched
+   * default now finds it with zero configuration, which is the point of
+   * this replacement test.
+   */
   @Test
-  void topLevelCifFilterFindsNothing_beforeTheOwnerConfiguresTheMapping_reproducesTheOriginalDefect() {
-    // Same raw event, but the DEFAULT (unedited) profile - the exact
-    // pre-fix state that produced the owner's bug report.
+  void topLevelCifFilterFindsTheEventByDefault_noConfigurationNeeded_ownerApprovedDefaultMapping() {
     String rawLine = "{\"@timestamp\":\"2026-01-01T12:00:00Z\",\"application\":\"payments-api\","
         + "\"level\":\"INFO\",\"message\":\"Payment authorization failed\",\"cif\":\"2449\"}";
 
     LogLineParser parser = new LogLineParser(objectMapper, new FieldMappingProfileService());
     CanonicalLogEvent event = parser.parse(rawLine);
 
-    // The value is real, present, and fully inspectable - it lands in
-    // unknownTopLevelFields, never discarded - but not yet the canonical
-    // sensitive.cif(), because no mapping candidate points at "cif" yet.
-    assertThat(event.sensitive().cif()).isNull();
-    assertThat(event.unknownTopLevelFields()).containsEntry("cif", "2449");
+    assertThat(event.sensitive().cif()).isEqualTo("2449");
 
     SearchRequest request = SearchRequest.builder()
         .sourceId("x")
@@ -80,13 +90,23 @@ class CifFilteringRegressionTest {
         .sensitiveFilters("2449", null, null, null, null)
         .build();
 
-    assertThat(EventFilters.matches(event, request)).isFalse();
+    assertThat(EventFilters.matches(event, request)).isTrue();
   }
 
+  /**
+   * Superseded by owner mission "Service Filter, Docker Performance, and
+   * Verified Default Mapping" §C: {@code mdc.cif} is no longer part of
+   * the built-in DEFAULT profile (top-level {@code cif} is), but remains
+   * a fully legitimate, explicitly-configurable candidate path for a
+   * source that genuinely still nests it there — "backward compatibility"
+   * now means "still configurable," not "still the untouched default."
+   */
   @Test
-  void mdcCifStillWorksUnchanged_backwardCompatibility() {
+  void mdcCifStillWorksWhenExplicitlyConfigured_backwardCompatibleAsAConfigurableCandidate() {
     String rawLine = "{\"@timestamp\":\"2026-01-01T12:00:00Z\",\"mdc\":{\"cif\":\"2449\"}}";
-    LogLineParser parser = new LogLineParser(objectMapper, new FieldMappingProfileService());
+    FieldMappingProfileService mappingService = new FieldMappingProfileService();
+    mappingService.updateCandidates(CanonicalField.CIF, List.of(JsonPath.parse("mdc.cif")));
+    LogLineParser parser = new LogLineParser(objectMapper, mappingService);
     CanonicalLogEvent event = parser.parse(rawLine);
     assertThat(event.sensitive().cif()).isEqualTo("2449");
 

@@ -51,6 +51,17 @@ public class DockerProperties {
   private Duration requestTimeout = Duration.ofSeconds(10);
   private Duration connectTimeout = Duration.ofSeconds(5);
 
+  /**
+   * Owner mission "Service Filter, Docker Performance, and Verified
+   * Default Mapping" §B — the maximum number of target containers read
+   * concurrently during a historical search. Bounded (not unbounded)
+   * parallelism: latency approaches {@code ceil(containerCount /
+   * historicalSearchConcurrency) * perContainerLatency} instead of the
+   * previous sequential sum, while never opening more simultaneous Docker
+   * API reads than this bound regardless of how many containers match.
+   */
+  private int historicalSearchConcurrency = 6;
+
   public Mode getMode() {
     return mode;
   }
@@ -137,5 +148,13 @@ public class DockerProperties {
 
   public void setConnectTimeout(Duration connectTimeout) {
     this.connectTimeout = connectTimeout;
+  }
+
+  public int getHistoricalSearchConcurrency() {
+    return historicalSearchConcurrency;
+  }
+
+  public void setHistoricalSearchConcurrency(int historicalSearchConcurrency) {
+    this.historicalSearchConcurrency = historicalSearchConcurrency;
   }
 }

@@ -22,6 +22,14 @@ public record SearchRequestDto(
     String direction,
     Integer limit,
     List<String> services,
+    /**
+     * Owner mission "Service Filter, Docker Performance, and Verified
+     * Default Mapping" §A — {@code "INCLUDE"} or {@code "EXCLUDE"}; {@code
+     * null}/blank means {@code INCLUDE} (matches every existing caller's
+     * current behavior unchanged). See {@link com.logexplorer.api.RequestMapper}
+     * for how this parses into {@code core.model.SearchRequest.ServiceFilterMode}.
+     */
+    String serviceFilterMode,
     List<String> levels,
     String text,
     String traceId,
@@ -56,6 +64,7 @@ public record SearchRequestDto(
         + ", direction=" + direction
         + ", limit=" + limit
         + ", services=" + services
+        + ", serviceFilterMode=" + serviceFilterMode
         + ", levels=" + levels
         + ", text=" + redacted(text)
         + ", traceId=" + traceId

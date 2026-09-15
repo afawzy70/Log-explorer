@@ -54,14 +54,50 @@ public class FieldMappingProfileService {
         new AtomicReference<>(DefaultFieldMappingProfile.build());
     private final AtomicBoolean modifiedFromDefault = new AtomicBoolean(false);
     private final AtomicBoolean validatedAndSaved = new AtomicBoolean(true);
-    /** Owner mission "Mapping Verification and Investigation Workspace" — every field starts {@link FieldVerificationStatus#UNVERIFIED}, regardless of whether it uses the built-in default or an edited candidate (DEFAULT_MAPPING != VERIFIED_MAPPING). {@link ConcurrentHashMap}, not {@link EnumMap}, for safe concurrent single-key updates without external synchronization. */
-    private final ConcurrentHashMap<CanonicalField, FieldVerificationStatus> verificationStatuses = freshUnverifiedMap();
+    /**
+     * Owner mission "Mapping Verification and Investigation Workspace"
+     * established the field, <b>superseded in part</b> by owner mission
+     * "Service Filter, Docker Performance, and Verified Default Mapping"
+     * §C (CLAUDE.md §5 named conflict, applied): the ORIGINAL rule — every
+     * field starts {@link FieldVerificationStatus#UNVERIFIED} regardless of
+     * whether it uses the built-in default or an edited candidate
+     * ("DEFAULT_MAPPING != VERIFIED_MAPPING") — was written before the
+     * owner had reviewed and approved a specific built-in default mapping
+     * against real source JSON. Now that the owner has explicitly approved
+     * one (see {@link DefaultFieldMappingProfile}'s own javadoc), that
+     * approval itself IS the evidence: an untouched owner-approved default
+     * candidate starts {@link FieldVerificationStatus#VERIFIED}, never
+     * {@code UNVERIFIED}, and a Quick Schema Scan is never required to
+     * establish it. A field the owner deliberately left unmapped ({@link
+     * CanonicalField#JOURNEY_ID}/{@link CanonicalField#UI_IDENTIFIER}, both
+     * with zero default candidates) still starts {@code UNVERIFIED} — there
+     * is no default to have approved. The general "verified means evidence-
+     * checked, never inferred" principle is UNCHANGED for anything the
+     * owner did not explicitly approve: the moment a field is edited away
+     * from its untouched default, it reverts to {@code UNVERIFIED} exactly
+     * as before (see {@link #updateCandidates}) and requires the normal
+     * evidence-gated {@code /verify} flow, never auto-verified. {@link
+     * ConcurrentHashMap}, not {@link EnumMap}, for safe concurrent
+     * single-key updates without external synchronization.
+     */
+    private final ConcurrentHashMap<CanonicalField, FieldVerificationStatus> verificationStatuses =
+        freshDefaultVerificationMap();
   }
 
-  private static ConcurrentHashMap<CanonicalField, FieldVerificationStatus> freshUnverifiedMap() {
+  /**
+   * A field with a non-empty owner-approved built-in default candidate
+   * starts {@link FieldVerificationStatus#VERIFIED}; a field the owner
+   * deliberately left unmapped by default (zero candidates) starts {@link
+   * FieldVerificationStatus#UNVERIFIED} — derived directly from {@link
+   * DefaultFieldMappingProfile#build()} itself (never a second, hand-
+   * maintained field list that could silently drift out of sync with it).
+   */
+  private static ConcurrentHashMap<CanonicalField, FieldVerificationStatus> freshDefaultVerificationMap() {
     ConcurrentHashMap<CanonicalField, FieldVerificationStatus> map = new ConcurrentHashMap<>();
+    FieldMappingProfile builtInDefault = DefaultFieldMappingProfile.build();
     for (CanonicalField field : CanonicalField.values()) {
-      map.put(field, FieldVerificationStatus.UNVERIFIED);
+      boolean hasApprovedDefault = !builtInDefault.candidates(field).isEmpty();
+      map.put(field, hasApprovedDefault ? FieldVerificationStatus.VERIFIED : FieldVerificationStatus.UNVERIFIED);
     }
     return map;
   }
@@ -107,11 +143,18 @@ public class FieldMappingProfileService {
 
   /**
    * Restores {@code scope}'s built-in default profile — always
-   * immediately {@code SEARCH_READY} again for that scope. Also resets
-   * every field's verification status back to {@link
-   * FieldVerificationStatus#UNVERIFIED} — a whole-profile reset discards
-   * any prior verification evidence along with the candidates it was
-   * evidence for.
+   * immediately {@code SEARCH_READY} again for that scope. Also restores
+   * every field's verification status back to exactly the fresh-scope
+   * state (owner mission "Service Filter, Docker Performance, and
+   * Verified Default Mapping" §C, superseding this method's own original
+   * "resets every field to UNVERIFIED" behavior — CLAUDE.md §5): every
+   * owner-approved default candidate comes back {@code VERIFIED} (a
+   * whole-profile reset discards any CUSTOM verification evidence along
+   * with the custom candidates it was evidence for, but never discards the
+   * owner's own standing approval of the built-in default itself), and
+   * {@link CanonicalField#JOURNEY_ID}/{@link CanonicalField#UI_IDENTIFIER}
+   * come back {@code UNVERIFIED} with no candidate — never silently
+   * carrying over a stale custom mapping or its verification status.
    */
   public FieldMappingProfile resetToDefault(MappingScopeKey scope) {
     FieldMappingProfile def = DefaultFieldMappingProfile.build();
@@ -119,9 +162,7 @@ public class FieldMappingProfileService {
     state.activeProfile.set(def);
     state.modifiedFromDefault.set(false);
     state.validatedAndSaved.set(true);
-    for (CanonicalField field : CanonicalField.values()) {
-      state.verificationStatuses.put(field, FieldVerificationStatus.UNVERIFIED);
-    }
+    freshDefaultVerificationMap().forEach(state.verificationStatuses::put);
     return def;
   }
 
