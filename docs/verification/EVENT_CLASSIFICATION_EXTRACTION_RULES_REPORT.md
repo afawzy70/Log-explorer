@@ -310,13 +310,21 @@ Existing tests were only extended with the new `LogEvent`/`SearchState` fields; 
 
 ## 13. Environment-dependent verification
 
-These results are filled in from the runs listed in the PR:
+GitHub Actions on PR #59, head `4d25e63`:
 
-- **E2E full suite:** recorded below.
+| Workflow / job | Outcome |
+|---|---|
+| CI › Backend | PASS (run 34999671670) |
+| CI › Frontend | PASS (run 34999671670) |
+| CI › E2E | PASS (run 34999671670; isolated `LOGEXPLORER_DATA_DIR`) |
+| Windows Desktop › Build, package, and smoke-test | PASS (run 34999671681) |
+| macOS Desktop › Build, package, and smoke-test | PASS (run 34999671707) |
+
+
+- **E2E full suite:** PASS locally (§12) and in CI.
 - **Docker recreate persistence:** PASS. `APP_PORT=13434 ./scripts/smoke.sh` on Docker 29.7.2 built the image, started the Compose stack, created a uniquely named rule over the real API, ran `docker compose up -d --force-recreate app`, waited for health, found the rule still present ("rule survived container recreation"), deleted it, and ended with `SMOKE TEST PASSED`. The first run proved survival but its cleanup `DELETE` omitted `expectedRevision` and was correctly rejected (400 `REVISION_REQUIRED`); both smoke scripts now send the current revision, and the re-run passed. `DOCKER_RULES_SURVIVE_CONTAINER_RECREATE=YES`.
-- **Windows desktop:** CI `Windows Desktop` workflow — `packaged-smoke-test.ps1` asserts the per-user data path
-  outside the install directory and that the file survives uninstall.
-- **macOS desktop:** CI `macOS Desktop` workflow — `packaged-smoke-test.sh`, the same assertions.
+- **Windows desktop:** PASS. `packaged-smoke-test.ps1` in CI logged `Rules storageFile (from the API): C:\Users\runneradmin\AppData\Local\LogExplorer\data\classification-rules.json`, `Smoke rule saved to … (outside C:\Users\runneradmin\AppData\Local\Programs\Log Explorer)`, and `Rules file survived uninstall`, then restored the pre-test data. `WINDOWS_UPGRADE_DOES_NOT_STORE_RULES_IN_REPLACEABLE_INSTALL_DIRECTORY=YES`.
+- **macOS desktop:** PASS. `packaged-smoke-test.sh` in CI logged `Rules storageFile (from the API): /Users/runner/Library/Application Support/LogExplorer/data/classification-rules.json`, saved outside the installed bundle, and `Rules file survived uninstall`.
 
 ## 14. Known limitations
 
