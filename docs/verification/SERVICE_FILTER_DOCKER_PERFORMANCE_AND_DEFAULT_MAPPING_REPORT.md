@@ -218,26 +218,46 @@ still contains real, valid, discoverable journey data, just not resolved
 without explicit configuration, exactly the real-world workflow this
 mission requires.
 
-**E2E ripple — a real Fixture-source architectural quirk, worked around
-(not a defect in this mission's own code).** Two pre-existing E2E specs
+**E2E ripple — a real, previously-latent Fixture-source defect this
+mission's own change exposed, found and fixed (not merely worked
+around).** Two pre-existing E2E specs
 (`phase-i-journey-investigation.spec.ts`, `phase-legacy-slice6-investigation-depth.spec.ts`)
 broke for the same reason as the backend-side ripple above — Journey ID
 now has no default, so their real-browser "find a multi-event journey"
-probing loop found nothing. The fix (configure the field mapping via a
-direct `PUT .../fields/journeyId` + `POST .../save` HTTP call before
-touching the source) uncovered a genuine, pre-existing architectural fact
-worth recording: `source.fixture.FixtureLogSource#corpus()` parses its
-250-line corpus exactly once per JVM lifetime and memoizes the result
-forever (`private volatile List<CanonicalLogEvent> corpus`, double-checked
-locking) — a mapping change made AFTER the very first Fixture search in a
-given backend process never affects already-cached parsed events. This is
-a reasonable, deliberate design for a fixed demo corpus (re-parsing 250
-lines on every search would be wasteful for data that never changes), not
-a bug introduced by this mission, but it meant these two E2E tests needed
-their mapping configured before the very first Fixture access in that
-backend process's lifetime (via a full backend restart in this session's
-own verification), not merely "at some point before this specific test."
-Both tests were updated with this ordering requirement and now pass.
+probing loop found nothing after configuring the mapping via a direct
+`PUT .../fields/journeyId` + `POST .../save` HTTP call. Root cause:
+`source.fixture.FixtureLogSource#corpus()` parses its 250-line corpus
+once per JVM lifetime and memoizes the result forever — a mapping change
+made after the very first Fixture search in a given backend process
+previously had no effect on already-cached parsed events. This was
+invisible while every field had a default (nothing to ever reconfigure at
+runtime); it became directly observable, and CI-breaking, once Journey
+ID/UI Identifier require explicit configuration — CI runs the whole E2E
+suite against one shared backend process with parallel workers in
+nondeterministic order, so whichever spec happened to touch the fixture
+source first permanently locked in journeyId as unresolved for the
+remainder of that run, and a local re-verification session initially
+masked this by restarting the backend and configuring the mapping first
+(order-dependent, not CI-safe).
+
+Fixed at the source, not worked around: `FieldMappingProfileService`
+gained a per-scope `generation` counter (`AtomicLong`, bumped on every
+real `updateCandidates`/`resetToDefault`), exposed through
+`LogLineParser#mappingGeneration(scope)` (every real caller of
+`FixtureLogSource` already holds a `LogLineParser`, so no new constructor
+dependency was needed). `FixtureLogSource#corpus()` now compares its
+cached generation against the current one on every access and rebuilds
+only when the mapping has actually changed — a single cheap volatile-read
+comparison in the common case (no mapping change between searches), a
+correct rebuild once it does, regardless of test/request ordering. New
+backend regression test
+`FixtureLogSourceTest.aMappingChangeAfterTheCorpusIsAlreadyCachedStillTakesEffectOnTheNextSearch`
+proves this directly on one `FixtureLogSource` instance (search before
+configuring Journey ID → unresolved; configure; search again → resolved
+on the very next search, no restart). Both E2E specs were re-verified
+against a backend that had already served other Fixture searches first
+(the exact CI-representative ordering) and now pass without any
+restart-first workaround.
 
 **Reset to Defaults.** `resetToDefault` now calls the same
 `freshDefaultVerificationMap()` a fresh scope uses, so Reset restores
@@ -256,7 +276,7 @@ exactly as before this mission — re-confirmed by
 ## 4. Test evidence
 
 ```
-BACKEND_TESTS=PASS (1318/1318 — 1291 pre-existing + 27 new, 0 failures/errors/skipped)
+BACKEND_TESTS=PASS (1319/1319 — 1291 pre-existing + 28 new, 0 failures/errors/skipped)
 FRONTEND_TESTS=PASS (943/943 — 925 pre-existing + 18 new)
 TYPECHECK=PASS
 PRODUCTION_BUILD=PASS
@@ -280,16 +300,31 @@ least once, each with a genuine pass/fail outcome:
 2. `phase-n-schema-scan-field-mapping.spec.ts` alone, after its own
    default-mapping-path fixes: **8/8 passed.**
 3. `phase-i-journey-investigation.spec.ts` +
-   `phase-legacy-slice6-investigation-depth.spec.ts` together, after the
-   Fixture-corpus-memoization-aware fix (fresh backend restart, mapping
-   configured before the first Fixture access) and `--workers=1`: **27/27
-   passed**, including both of the two previously-failing tests.
+   `phase-legacy-slice6-investigation-depth.spec.ts` together, immediately
+   after the two spec-level test fixes but BEFORE the
+   `FixtureLogSource#corpus()` cache-invalidation fix existed, with a
+   fresh backend restart and mapping configured before the first Fixture
+   access (an order-dependent workaround, since superseded): **27/27
+   passed.**
+4. **CI itself then caught what the local order-dependent workaround
+   masked**: the real `E2E` GitHub Actions job (one shared backend, real
+   parallel test ordering) failed with the exact same two tests, because
+   CI's execution order let an unrelated spec touch the Fixture corpus
+   first. This is what led to the actual root-cause fix (the `generation`
+   counter described above) rather than stopping at the workaround. After
+   that fix, `phase-i-journey-investigation.spec.ts` +
+   `phase-legacy-slice6-investigation-depth.spec.ts` were re-verified
+   locally with the corpus deliberately touched first (matching CI's real
+   ordering) — **27/27 passed**, this time order-independently. The same
+   commit was pushed and the real CI `E2E` job re-run — see PR #57 for the
+   live result.
 
 No spec file was skipped from verification and no result was assumed —
-every one of the 30 files has a real, current pass result from one of
-these three runs.
+every one of the 30 files has a real, current pass result, and the one
+genuine CI failure this mission produced was root-caused and fixed at the
+production-code level, not patched around at the test level.
 
-New/changed backend test files (27 new tests):
+New/changed backend test files (28 new tests):
 - `core.search.EventFiltersTest` (+6) — INCLUDE unchanged, EXCLUDE
   deny-list, EXCLUDE-empty==no-restriction, backward-compat default,
   null-service-under-EXCLUDE-never-throws.
@@ -303,6 +338,9 @@ New/changed backend test files (27 new tests):
 - `api.RequestMapperTest` (+5) — `serviceFilterMode` parsing.
 - `core.model.SearchRequestTest` (new file, 5 tests) — default, builder
   round-trip, `withPageBoundary` carry-through, `toString`.
+- `source.fixture.FixtureLogSourceTest` (+1) —
+  `aMappingChangeAfterTheCorpusIsAlreadyCachedStillTakesEffectOnTheNextSearch`,
+  the CI-driven cache-invalidation fix's own direct regression proof.
 - Plus the ~20-test Part C fixture-ripple fixes across
   `DefaultFieldMappingProfileTest`, `FieldMappingProfileServiceTest`,
   `FieldMappingResolverTest`, `FieldMappingValidationServiceTest`,
