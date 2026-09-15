@@ -27,3 +27,15 @@ desktop/build/
 # .env.example (CLAUDE.md §2 rule 6, "credentials ... never committed").
 .env
 .env.local
+
+# Impeccable design skill (UI_UX_V2_DISCOVERY mission) - the skill
+# definition/reference docs are committed, but its per-platform compiled
+# engine binary self-downloads on first `npx impeccable install`/first run
+# and must never be committed (useless on any other OS/arch, 16MB+).
+.claude/skills/impeccable/scripts/bin/
+# Per-developer local settings/hooks, not shared project config.
+.claude/settings.local.json
+# Impeccable's own runtime detector cache - regenerated locally, not
+# meaningful to version (unlike .impeccable/config.json's disclosed
+# ignore-value exceptions and .impeccable/design.json, both committed).
+.impeccable/hook.cache.json

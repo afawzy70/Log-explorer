@@ -1868,6 +1868,46 @@ including the exact final `main` SHA the baseline tag points to.
 
 ---
 
+## 18. UI/UX v2 Discovery and Direction Selection
+
+`UI_UX_V2_DISCOVERY_AND_DIRECTION_SELECTION` mission: the first mission
+of the redesign phase, opened on branch `ux/v2-professional-redesign`
+from the exact frozen baseline tag `functional-baseline-pre-ux-redesign`
+(`ed6dbf578451f0ebca4e769b9b04af7137937031`). **Design discovery only —
+no production implementation.** Installed and used the official
+Impeccable design skill (`pbakaus/impeccable`), documented the current
+baseline's real visual system, independently reviewed all 19 OLD UI
+screenshots against the current baseline, and produced three fully
+prototyped, screenshotted, materially distinct redesign directions for
+an owner decision. No product behavior changed.
+
+| ID | NAME | STATUS | EVIDENCE | NOTES |
+|---|---|---|---|---|
+| UXV2-1 | Redesign branch created from the exact, verified functional baseline tag — never a later unverified commit | `VERIFIED` | `git rev-parse functional-baseline-pre-ux-redesign` == `git rev-parse ux/v2-professional-redesign`'s base == `ed6dbf578451f0ebca4e769b9b04af7137937031`, confirmed before any other work began | `BASELINE_MATCH=YES` |
+| UXV2-2 | Genuine, audited installation of the official Impeccable design skill, project-scoped, smallest maintainable footprint | `VERIFIED` | `.claude/skills/impeccable/` (SKILL.md + reference docs, committed), `.claude/agents/impeccable-*.md` (committed); the per-platform compiled engine binary (`scripts/bin/`, 16MB, self-downloading) and per-developer hook wiring (`settings.local.json`) deliberately gitignored, not committed — see `.gitignore` | `IMPECCABLE_SOURCE=github.com/pbakaus/impeccable`, installed via its own official `npx impeccable install --providers=claude --scope=project`, npm CLI v4.1.0 / engine v0.1.5 (latest at install time, upstream release `skill-v4.3.1`) |
+| UXV2-3 | `PRODUCT.md` written per Impeccable's own `init` flow, durable product truth confirmed with the owner (not silently inferred) before any design work began | `VERIFIED` | `PRODUCT.md` (project root); two AskUserQuestion rounds confirming primary users/job and product positioning before writing | Grounded in `CLAUDE.md` §1/§2/§4, `CAPABILITY_MATRIX.md`, `OLD_UX_RESTORATION_AUDIT.md` — no fact invented without repository evidence |
+| UXV2-4 | `DESIGN.md` + `.impeccable/design.json` generated from the CURRENT baseline's real code (Impeccable `document`, Scan Mode) — real extracted tokens, not invented ones | `VERIFIED` | `DESIGN.md` (project root, "The Instrument Panel" — flat surfaces, one restrained accent, dense 4/8px spacing, two-font system, all confirmed directly from `frontend/src/shared/tokens.css` and component `.module.css` files, not screenshot-sampled) | High-confidence extraction; the six baseline screenshots were used only to cross-check rendered behavior against the CSS, which matched exactly |
+| UXV2-5 | All 19 OLD UI screenshots independently, individually reviewed (not sampled) against the CURRENT baseline; comparative audit produced | `VERIFIED` | `docs/ux-v2/OLD_VS_BASELINE_COMPARATIVE_AUDIT.md` — 27 areas classified OLD_BETTER/CURRENT_BETTER/EQUIVALENT/BOTH_NEED_IMPROVEMENT with cited evidence per area | `OLD_SCREENSHOT_COUNT=19`, `ALL_OLD_SCREENSHOTS_REVIEWED=YES`, `CURRENT_BASELINE_REVIEWED=YES`. Tally: 3 OLD_BETTER, 9 CURRENT_BETTER, 11 EQUIVALENT, 5 BOTH_NEED_IMPROVEMENT |
+| UXV2-6 | Durable design authority split and functional-preservation floor recorded before any direction was designed | `VERIFIED` | `docs/ux-v2/UX_V2_DESIGN_PRINCIPLES.md` (15 principles, each with a concrete check), `docs/ux-v2/FUNCTIONAL_PRESERVATION_CONTRACT.md` (`FUNCTIONAL_BEHAVIOR_LOSS_ALLOWED=NO`, itemized per functional area) | OLD UI authoritative for information hierarchy/workflow/density/discoverability; CURRENT baseline authoritative for functionality/architecture/security/correctness/accessibility/reliability/capabilities — the redesign must exceed both, never trade one for the other |
+| UXV2-7 | Three materially distinct, fully prototyped design directions — not theme/color variants — each with 6 representative states, screenshotted at 1440×900 and 1366×768, self-assessed for real weaknesses | `VERIFIED` | `docs/ux-v2/prototypes/direction-{a,b,c}/` — 6 static HTML states + 12 screenshots + candid `README.md` each (36 screenshots total); every direction's real Impeccable design-detector findings triaged (real issues fixed, false positives disclosed with reasons in `.impeccable/config.json`, never blanket-suppressed) | Direction A: Dense Observability Workstation. Direction B: Modern Developer Console. Direction C: Investigation-First Minimal. Zero production code touched — `frontend/`/`backend/` untouched by any direction |
+| UXV2-8 | Independent, evidence-grounded scoring and an owner decision package with a justified (not rubber-stamped) recommendation | `VERIFIED` | `docs/ux-v2/DESIGN_DIRECTION_COMPARISON.md` (14-criterion scored table, mission coordinator's own independent screenshot review, not directions' self-reports alone), `docs/ux-v2/OWNER_DESIGN_DECISION_PACKAGE.md` (per-direction concept/strengths/weaknesses/inheritance/risk, Direction B recommended with named tradeoffs against A and C) | Scores close by design (57/58/57 of 70) — three genuinely distinct directions surfaced real tradeoffs rather than one manufactured winner. `OWNER_SELECTION_REQUIRED=YES` — no direction is auto-approved |
+| UXV2-9 | No production implementation, no Phase M, no v0.1.0 change | `VERIFIED` | `git diff --stat` against `frontend/`/`backend/` from this mission: empty; `git tag -l` unchanged besides the pre-existing `functional-baseline-pre-ux-redesign`/`v0.1.0` | `UI_UX_IMPLEMENTATION_STARTED=NO`, `PHASE_M_STATUS=NOT_STARTED`, `V0_1_0_UNCHANGED=YES` |
+
+**Gate recorded here for the next mission to read before starting:** no
+UI/UX implementation work may begin until the owner has chosen Direction
+A, B, or C from `docs/ux-v2/OWNER_DESIGN_DECISION_PACKAGE.md`. This is a
+hard gate, not a default — a future mission finding this register entry
+must confirm an explicit owner selection exists before treating any
+direction as approved.
+
+**UI/UX v2 Discovery pass (this section).** Produced the full evidence
+base and three real, fully-prototyped candidate directions a future
+implementation phase will build from — explicitly not that
+implementation itself. `HISTORICAL_DECISIONS_PRESERVED=YES`.
+`UNTRACKED_OWNER_REQUIREMENTS=0`.
+
+---
+
 ## 19. Configurable Log Field Mapping + Original JSON Sampling
 
 `CONFIGURABLE_LOG_FIELD_MAPPING` mission — a **functional architecture**
@@ -2326,5 +2366,63 @@ superseded for this one profile, not silently dropped.
 `HISTORICAL_DECISIONS_PRESERVED=YES`. `UNTRACKED_OWNER_REQUIREMENTS=0`.
 `PR54_TOUCHED=NO`. `DESIGN_BRANCH_TOUCHED=NO`. `MERGE_AUTHORIZED=NO` —
 owner review of this implementation PR required before merge.
+
+---
+
+## 25. Modern Developer Console — Baseline Refresh and Deep Visual Design
+
+`MODERN_DEVELOPER_CONSOLE_BASELINE_REFRESH_AND_DEEP_VISUAL_DESIGN` mission.
+
+- **Scope: design only.** No production frontend or backend change. Work is on the design branch
+  `design/v2-modern-developer-console`, from latest `main` `3f6b1b4bc30c282e0cd1e65510697ff128d79d73`.
+- **Owner decision recorded:** Direction B, "Modern Developer Console", is approved. This satisfies the hard gate at
+  the end of §18 ("no UI/UX implementation work may begin until the owner has chosen Direction A, B, or C").
+- **History:** Directions A and C, the scoring, and PR #54 (`ux/v2-professional-redesign`) are preserved unchanged as
+  history. §18 above is imported verbatim from the PR #54 branch into its reserved slot, so the register's history is
+  complete on `main`.
+- **Next gate:** production implementation still requires owner visual approval of this package.
+
+Flags:
+
+```
+DIRECTION_B_MODERN_DEVELOPER_CONSOLE=OWNER_APPROVED
+A_B_C_REDISCOVERY_REQUIRED=NO
+LATEST_MAIN_IS_DESIGN_BASELINE=YES
+VISUAL_DESIGN_SYSTEM_REQUIRED=YES
+MOTION_SYSTEM_REQUIRED=YES
+PRODUCTION_IMPLEMENTATION_REQUIRES_OWNER_VISUAL_APPROVAL=YES
+FUNCTIONAL_BEHAVIOR_LOSS_ALLOWED=NO
+PR54_REMAINS_DESIGN_HISTORY=YES
+UNTRACKED_OWNER_REQUIREMENTS=0
+```
+
+| ID | NAME | STATUS | EVIDENCE | NOTES |
+|---|---|---|---|---|
+| MDC-1 | Direction B "Modern Developer Console" is owner-approved; A/B/C are not rediscovered or re-scored | `VERIFIED` | Owner mission instruction (`DIRECTION_B_MODERN_DEVELOPER_CONSOLE=OWNER_APPROVED`, "Do NOT repeat A/B/C direction discovery") | Supersedes §18's `OWNER_SELECTION_REQUIRED=YES` gate. §18 (UXV2-1…9), Directions A and C, and `docs/ux-v2/` on the PR #54 branch stay as history, unchanged |
+| MDC-2 | Latest `main` is the only functional design baseline; PR #54 is used as history only (research, old Direction B, principles, Impeccable setup, prototype techniques) | `VERIFIED` | `docs/ux-v2-modern-developer-console/CURRENT_BASELINE_INVENTORY.md` (header SHA `3f6b1b4`); PR #54 open and unmerged at `1e2b3528063f3ae1a66f3027604fd31f7ecb9c9f` | Only the Impeccable tooling (`.claude/skills/impeccable`, `.claude/agents/impeccable-*`, `.impeccable/`, `PRODUCT.md`, `DESIGN.md`) was imported from PR #54. `PRODUCT.md` was refreshed to current `main` capabilities |
+| MDC-3 | Current-baseline inventory, including new screens and workflows since PR #54 | `VERIFIED` | `CURRENT_BASELINE_INVENTORY.md` §NEW_SCREENS_SINCE_PR54 (4), §NEW_WORKFLOWS_SINCE_PR54 (6), §DESIGN_RISK_NOTES (12) | New screens: Field Mapping Verification workspace, Span investigation, root-anchored Investigation, Services Include/Exclude. New workflows: scan → map → validate → save → verify/needs-change; mapping search gate; verified defaults; Surroundings from Investigation with contextual Back; View Span; Service EXCLUDE |
+| MDC-4 | Evidence-based visual audit of current `main` | `VERIFIED` | `CURRENT_MAIN_VISUAL_AUDIT.md`; 31 real screenshots and `measurements.json` in `docs/ux-v2-modern-developer-console/baseline/` (real backend, Fixture source; states 02/03 route-mocked only to hold loading/error) | 13 visible rows at 1440×900, 62+62 px chrome, 420 px Inspector with tabs wrapping to two rows, and further findings. Each finding is classified (VISUAL_WEAKNESS / FUNCTIONAL_GOOD_VISUALLY_WEAK / LAYOUT_DEFECT / COPY_DEFECT / FUNCTIONAL_GAP) |
+| MDC-5 | Visual design system: colour, type, spacing, density, radii, border/elevation, icons, controls, tables, tabs, chips, panels, code, focus, selected, status, responsive, dark/light, accessibility | `VERIFIED` | `docs/ux-v2-modern-developer-console/DESIGN_SYSTEM.md`; tokens in `prototype/styles/tokens.css` | Design document only; no production tokens changed. Contrast is computed for every text, mark and control-border pair in 4 value sets (§2.5) |
+| MDC-6 | Motion system | `VERIFIED` | `MOTION_SYSTEM.md` | Tokens 80–240 ms; one signature transition (trigger travel); a first-class reduced-motion table; loading motion states its purpose and never implies faster search |
+| MDC-7 | Component inventory with KEEP / RESTYLE / RECOMPOSE / REPLACE_VISUALLY / DEPRECATE_AFTER_IMPLEMENTATION | `VERIFIED` | `COMPONENT_INVENTORY.md` | Each row names what must not change |
+| MDC-8 | Prototype package: ≥ 20 required states plus global states, responsive widths, up to 3 treatments | `VERIFIED` | `prototype/` (40 states); `screenshots/` (88 PNGs: b1 ×40 at 1440×900; b1-dark, b2, b3 ×6 each; responsive 6 states × 1920/1366/1024/768/390); `capture-report.json` | Synthetic anonymised data only. Final automated check: no page overflow at any width, results/sequence header–cell difference 0 px, axe-core 0 violations on 10 audited states |
+| MDC-9 | Three visual treatments inside B, compared on the 12 required criteria; recommended treatment | `OPEN_UNDECIDED` | `VISUAL_TREATMENT_COMPARISON.md` (B1 55 / B2 47 / B3 49 of 60) | B1 Instrument Neutral is **recommended, not approved**. The owner must choose (decision D0) |
+| MDC-10 | Dark/light decision | `OPEN_UNDECIDED` | `DESIGN_SYSTEM.md` §19 | Proposed C: both, with light (B1) primary and a defined B1 dark companion that ships only after passing its own gates. B (dark only) is excluded by CLAUDE.md §7 |
+| MDC-11 | Implementation plan V2-B1…V2-B7 (components, visual and interaction changes, invariants, risks, screenshot states, test impact, accessibility checks, rollback boundary per slice) | `VERIFIED` | `IMPLEMENTATION_PLAN.md` | Recommended future branch `ux/v2-modern-developer-console`, created from latest `main` **only after owner approval** |
+| MDC-12 | Production implementation of the Modern Developer Console | `OPEN_UNDECIDED` | — | Gated by `PRODUCTION_IMPLEMENTATION_REQUIRES_OWNER_VISUAL_APPROVAL=YES`. Not started |
+| MDC-13 | Independent reviews: Impeccable finish review, LERUX-1, accessibility, responsive; Impeccable detector findings triaged individually | `VERIFIED` | `docs/ux-v2-modern-developer-console/README.md` §Review record; `DESIGN_SYSTEM.md` §20 detector triage | Finish review returned FIX-THEN-SHIP: accepted items fixed, 3 items rejected with baseline evidence. LERUX-1 returned ACCEPT_WITH_CHANGES: fixes applied and an independent confirmation pass run (verdict in README). No blanket suppression. LERDESIGN-1 proposed; the designer did not self-approve |
+| MDC-14 | Owner decisions raised by the design (D0–D16) | `OPEN_UNDECIDED` | `IMPLEMENTATION_PLAN.md` §3 | Includes compact default density (D1), stale rows during re-search (D2), Settings workspace (D3), Inspector 500 px with overlay below 1366 px (D12), Edit search in compact scope (D15), level chips in a Severity popover while All levels / Errors only stay one click (D16) |
+| MDC-15 | Functional findings surfaced by the audit (tracked, not fixed in a design mission) | `OPEN_UNDECIDED` | `CURRENT_MAIN_VISUAL_AUDIT.md` §2.8 G1–G5, I5, M2 | G1 Show Surroundings not gated by `contextView`; G2 no-services vs no-match message; G3 empty source list message; **G4 Live started without `serviceFilterMode`** (`App.tsx:163/189`); G5 named existing conflicts (Live cap 1,000 vs 2,000; unmasked mapping samples vs CLAUDE.md §2.1); I5 contradictory Actor & client masking label; M2 stale mapping intro copy |
+| MDC-16 | `SEARCH_PERFORMANCE_ROOT_CAUSE` | `DEFERRED` | `IMPLEMENTATION_PLAN.md` §4 | Not investigated. Loading visuals are truthful state feedback and do not claim to fix latency |
+| MDC-17 | No production or backend change; PR #54 not merged | `VERIFIED` | `git diff --stat main -- frontend backend` empty on the design branch; PR #54 state OPEN | `PRODUCTION_CODE_CHANGED=NO`, `BACKEND_CODE_CHANGED=NO`, `PR54_MERGED=NO` |
+| MDC-18 | Root `DESIGN.md` is not replaced until owner visual approval (disclosed deviation from Impeccable's finish contract) | `VERIFIED` | `docs/ux-v2-modern-developer-console/README.md` §Impeccable process; `.impeccable/config.json` ignoreValue reasons | Prevents the repository from describing a look that is not shipped. `DESIGN_SYSTEM.md` and the prototype tokens are the proposed source for the future `DESIGN.md` |
+
+**Modern Developer Console baseline refresh and deep visual design pass
+(this section).** Refreshed the design baseline to latest `main`, audited
+it with real screenshots, and produced a complete visual and motion system,
+a 40-state prototype in three treatments with a defined dark companion, an
+independent review record, and a sliced implementation plan. No production
+behaviour changed, and no direction discovery was repeated.
+`HISTORICAL_DECISIONS_PRESERVED=YES`. `UNTRACKED_OWNER_REQUIREMENTS=0`.
 
 ---

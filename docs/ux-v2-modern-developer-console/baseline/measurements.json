@@ -1,0 +1,326 @@
+{
+  "01-search-results-1440x900": {
+    "viewport": {
+      "w": 1440,
+      "h": 900
+    },
+    "shellHeaderHeight": 62,
+    "toolbarHeight": 62,
+    "toolbarSelectorUsed": "_toolbar_zw9ot_1",
+    "activeFiltersRowHeight": 25,
+    "tableTop": 272,
+    "tableHeaderRowHeight": 34,
+    "bodyRowHeight": 45,
+    "bodyRowHeightsSample": [
+      45,
+      45,
+      45,
+      45,
+      45,
+      45,
+      45,
+      45,
+      45,
+      45
+    ],
+    "totalBodyRowsInDom": 200,
+    "visibleBodyRowsInViewport": 13,
+    "tableCellFontSize": "12px",
+    "tableCellLineHeight": "17.4px",
+    "tableCellFontFamily": "ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace",
+    "inspectorWidth": null,
+    "pageScrollWidthOverflow": false,
+    "topTextColors": [
+      {
+        "value": "rgb(26, 29, 35)",
+        "count": 1232
+      },
+      {
+        "value": "rgb(134, 141, 153)",
+        "count": 591
+      },
+      {
+        "value": "rgb(91, 98, 112)",
+        "count": 228
+      },
+      {
+        "value": "rgb(35, 89, 209)",
+        "count": 6
+      },
+      {
+        "value": "rgb(26, 94, 154)",
+        "count": 1
+      },
+      {
+        "value": "rgb(138, 90, 0)",
+        "count": 1
+      },
+      {
+        "value": "rgb(179, 38, 30)",
+        "count": 1
+      },
+      {
+        "value": "rgb(255, 255, 255)",
+        "count": 1
+      }
+    ],
+    "topBackgroundColors": [
+      {
+        "value": "rgb(255, 255, 255)",
+        "count": 222
+      },
+      {
+        "value": "rgb(26, 94, 154)",
+        "count": 170
+      },
+      {
+        "value": "rgb(138, 90, 0)",
+        "count": 18
+      },
+      {
+        "value": "rgb(179, 38, 30)",
+        "count": 11
+      },
+      {
+        "value": "color(srgb 0.992157 0.92549 0.917647 / 0.6)",
+        "count": 10
+      },
+      {
+        "value": "rgb(240, 242, 245)",
+        "count": 7
+      },
+      {
+        "value": "rgb(247, 248, 250)",
+        "count": 7
+      },
+      {
+        "value": "rgb(122, 91, 166)",
+        "count": 1
+      },
+      {
+        "value": "rgb(91, 98, 112)",
+        "count": 1
+      },
+      {
+        "value": "rgb(232, 242, 252)",
+        "count": 1
+      },
+      {
+        "value": "rgb(255, 246, 224)",
+        "count": 1
+      },
+      {
+        "value": "rgb(253, 236, 234)",
+        "count": 1
+      },
+      {
+        "value": "rgb(26, 72, 173)",
+        "count": 1
+      }
+    ],
+    "fontFamilies": [
+      {
+        "value": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif",
+        "count": 1259
+      },
+      {
+        "value": "ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace",
+        "count": 802
+      }
+    ],
+    "topFontSizes": [
+      {
+        "value": "12px",
+        "count": 1230
+      },
+      {
+        "value": "13px",
+        "count": 821
+      },
+      {
+        "value": "8.4px",
+        "count": 5
+      },
+      {
+        "value": "14px",
+        "count": 2
+      },
+      {
+        "value": "18px",
+        "count": 1
+      },
+      {
+        "value": "15px",
+        "count": 1
+      },
+      {
+        "value": "10px",
+        "count": 1
+      }
+    ]
+  },
+  "04-inspector-overview-1440x900": {
+    "viewport": {
+      "w": 1440,
+      "h": 900
+    },
+    "shellHeaderHeight": 62,
+    "toolbarHeight": 62,
+    "toolbarSelectorUsed": "_toolbar_zw9ot_1",
+    "activeFiltersRowHeight": 25,
+    "tableTop": 291,
+    "tableHeaderRowHeight": 34,
+    "bodyRowHeight": 45,
+    "bodyRowHeightsSample": [
+      45,
+      45,
+      45,
+      45,
+      45,
+      45,
+      45,
+      45,
+      45,
+      45
+    ],
+    "totalBodyRowsInDom": 200,
+    "visibleBodyRowsInViewport": 12,
+    "tableCellFontSize": "12px",
+    "tableCellLineHeight": "17.4px",
+    "tableCellFontFamily": "ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace",
+    "inspectorWidth": 420,
+    "pageScrollWidthOverflow": false,
+    "topTextColors": [
+      {
+        "value": "rgb(26, 29, 35)",
+        "count": 1240
+      },
+      {
+        "value": "rgb(134, 141, 153)",
+        "count": 594
+      },
+      {
+        "value": "rgb(91, 98, 112)",
+        "count": 244
+      },
+      {
+        "value": "rgb(35, 89, 209)",
+        "count": 7
+      },
+      {
+        "value": "rgb(26, 94, 154)",
+        "count": 1
+      },
+      {
+        "value": "rgb(138, 90, 0)",
+        "count": 1
+      },
+      {
+        "value": "rgb(179, 38, 30)",
+        "count": 1
+      },
+      {
+        "value": "rgb(255, 255, 255)",
+        "count": 1
+      }
+    ],
+    "topBackgroundColors": [
+      {
+        "value": "rgb(255, 255, 255)",
+        "count": 226
+      },
+      {
+        "value": "rgb(26, 94, 154)",
+        "count": 171
+      },
+      {
+        "value": "rgb(138, 90, 0)",
+        "count": 18
+      },
+      {
+        "value": "rgb(179, 38, 30)",
+        "count": 11
+      },
+      {
+        "value": "color(srgb 0.992157 0.92549 0.917647 / 0.6)",
+        "count": 10
+      },
+      {
+        "value": "rgb(240, 242, 245)",
+        "count": 7
+      },
+      {
+        "value": "rgb(247, 248, 250)",
+        "count": 7
+      },
+      {
+        "value": "rgb(122, 91, 166)",
+        "count": 1
+      },
+      {
+        "value": "rgb(91, 98, 112)",
+        "count": 1
+      },
+      {
+        "value": "rgb(232, 242, 252)",
+        "count": 1
+      },
+      {
+        "value": "rgb(255, 246, 224)",
+        "count": 1
+      },
+      {
+        "value": "rgb(253, 236, 234)",
+        "count": 1
+      },
+      {
+        "value": "rgb(35, 89, 209)",
+        "count": 1
+      },
+      {
+        "value": "rgb(234, 241, 254)",
+        "count": 1
+      }
+    ],
+    "fontFamilies": [
+      {
+        "value": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif",
+        "count": 1285
+      },
+      {
+        "value": "ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace",
+        "count": 804
+      }
+    ],
+    "topFontSizes": [
+      {
+        "value": "12px",
+        "count": 1234
+      },
+      {
+        "value": "13px",
+        "count": 844
+      },
+      {
+        "value": "8.4px",
+        "count": 5
+      },
+      {
+        "value": "15px",
+        "count": 2
+      },
+      {
+        "value": "14px",
+        "count": 2
+      },
+      {
+        "value": "18px",
+        "count": 1
+      },
+      {
+        "value": "10px",
+        "count": 1
+      }
+    ]
+  }
+}
