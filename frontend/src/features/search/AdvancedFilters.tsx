@@ -26,6 +26,18 @@ export interface AdvancedFiltersProps {
   queryState: QueryAuthoringState;
   onApplyQuery: (next: QueryAuthoringState) => void;
   rawLogQlSupported: boolean;
+  /**
+   * Event Classification & Extraction Rules - the tag filter. The fieldset
+   * is shown only when `onApplyTags` is supplied. `availableTags` is `null`
+   * while still loading; `onOpen` lets the caller (re)load it each time the
+   * drawer opens. Tags follow the same draft -> Apply semantics as every
+   * other field here.
+   */
+  availableTags?: string[] | null;
+  availableTagsError?: string | null;
+  selectedTags?: string[];
+  onApplyTags?: (tags: string[]) => void;
+  onOpen?: () => void;
 }
 
 /**
@@ -47,11 +59,23 @@ export interface AdvancedFiltersProps {
  * only updates filter state - the toolbar's own Search button is what
  * actually runs a query).
  */
-export function AdvancedFilters({ values, onApply, queryState, onApplyQuery, rawLogQlSupported }: AdvancedFiltersProps) {
+export function AdvancedFilters({
+  values,
+  onApply,
+  queryState,
+  onApplyQuery,
+  rawLogQlSupported,
+  availableTags = null,
+  availableTagsError = null,
+  selectedTags = [],
+  onApplyTags,
+  onOpen,
+}: AdvancedFiltersProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
   const popover = usePopoverTrigger();
   const [draft, setDraft] = useState<AdvancedFilterValues>(values);
+  const [draftTags, setDraftTags] = useState<string[]>(selectedTags);
   const headingId = useId();
   // UX-R1 regression fix: this drawer is `position: fixed; top: 0`, so
   // without an offset it physically overlaps (and intercepts clicks for)
@@ -101,10 +125,14 @@ export function AdvancedFilters({ values, onApply, queryState, onApplyQuery, raw
     };
   }, [popover.isOpen]);
 
-  const activeCount = countActiveAdvancedFilters(values);
+  const activeCount = countActiveAdvancedFilters(values) + (onApplyTags ? selectedTags.length : 0);
+  // A committed tag that no longer exists in the rules stays listed so it can still be unchecked.
+  const tagOptions = Array.from(new Set([...(availableTags ?? []), ...draftTags, ...selectedTags]));
 
   function openPanel() {
     setDraft(values);
+    setDraftTags(selectedTags);
+    onOpen?.();
     popover.open();
   }
 
@@ -114,6 +142,7 @@ export function AdvancedFilters({ values, onApply, queryState, onApplyQuery, raw
 
   function handleApply() {
     onApply(draft);
+    onApplyTags?.(draftTags);
     popover.close();
   }
 
@@ -132,6 +161,11 @@ export function AdvancedFilters({ values, onApply, queryState, onApplyQuery, raw
    */
   function handleReset() {
     setDraft(emptyAdvancedFilterValues());
+    setDraftTags([]);
+  }
+
+  function toggleDraftTag(tag: string, checked: boolean) {
+    setDraftTags((prev) => (checked ? [...prev.filter((t) => t !== tag), tag] : prev.filter((t) => t !== tag)));
   }
 
   return (
@@ -201,6 +235,37 @@ export function AdvancedFilters({ values, onApply, queryState, onApplyQuery, raw
                 })}
               </fieldset>
             ))}
+
+            {onApplyTags ? (
+              <fieldset className={styles.group} aria-describedby={`${headingId}-tags-help`}>
+                <legend className={styles.groupTitle}>Classification tags</legend>
+                <p id={`${headingId}-tags-help`} className={styles.tagHelp}>
+                  Matches events with any selected tag. Tags are applied by the server to the events each search retrieves.
+                </p>
+                {tagOptions.length > 0 ? (
+                  tagOptions.map((tag) => (
+                    <label key={tag} className={styles.tagOption}>
+                      <input
+                        type="checkbox"
+                        checked={draftTags.includes(tag)}
+                        onChange={(event) => toggleDraftTag(tag, event.target.checked)}
+                      />
+                      {tag}
+                    </label>
+                  ))
+                ) : availableTagsError ? (
+                  <p className={styles.tagHelp} role="alert">
+                    Could not load classification tags: {availableTagsError}
+                  </p>
+                ) : availableTags === null ? (
+                  <p className={styles.tagHelp} role="status">
+                    Loading classification tags…
+                  </p>
+                ) : (
+                  <p className={styles.tagHelp}>No classification tags yet.</p>
+                )}
+              </fieldset>
+            ) : null}
 
             <fieldset className={styles.group}>
               <legend className={styles.groupTitle}>Advanced query</legend>

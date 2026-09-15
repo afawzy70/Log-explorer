@@ -109,6 +109,13 @@ logexplorer:
     # capabilities().liveTail() is hardcoded false regardless of this
     # value; see LokiProperties#liveTailSupported's own doc comment.
     live-tail-supported: false
+  # Event classification rules: server-side JSON configuration (never logs,
+  # samples, or extracted values). LOGEXPLORER_DATA_DIR points at a location
+  # that survives upgrades/recreates: a mounted volume in Docker, a per-user
+  # application-data folder in the desktop launchers. Nothing is written
+  # until the first rule is saved.
+  classification:
+    rules-file: ${LOGEXPLORER_CLASSIFICATION_RULES_FILE:${LOGEXPLORER_DATA_DIR:./data}/classification-rules.json}
   live:
     max-concurrent-tails: 4
     connection-timeout: 30m

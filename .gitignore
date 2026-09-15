@@ -14,6 +14,13 @@ playwright/.cache/
 target/
 *.class
 
+# Local classification rules configuration written by a dev run - the
+# backend's default LOGEXPLORER_DATA_DIR is the relative ./data, i.e.
+# backend/data/ under `mvnw spring-boot:run`, or data/ next to wherever the
+# jar is started from. User-authored local state, never committed.
+backend/data/
+/data/
+
 # OS
 .DS_Store
 

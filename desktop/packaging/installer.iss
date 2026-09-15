@@ -97,3 +97,8 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: no
 ; only removes {app} - never needs to (and does not) touch it; a user's
 ; own logs survive an uninstall/reinstall, matching the documented
 ; per-user-data-directory policy (mission §J).
+; The same applies to %LOCALAPPDATA%\LogExplorer\data, where the backend
+; persists the user's classification rules (classification-rules.json +
+; .bak - configuration, never log data). Do NOT add an entry here that
+; deletes it: rules must survive upgrades and uninstall/reinstall
+; (desktop/packaging/packaged-smoke-test.ps1 asserts exactly that).

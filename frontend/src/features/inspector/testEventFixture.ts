@@ -40,6 +40,8 @@ export function sparseEvent(overrides: Partial<LogEvent> = {}): LogEvent {
     namespace: null,
     pod: null,
     contextTargetProof: null,
+    tags: [],
+    classifications: [],
     ...overrides,
   };
 }
@@ -90,6 +92,8 @@ export function fullEvent(overrides: Partial<LogEvent> = {}): LogEvent {
     namespace: null,
     pod: null,
     contextTargetProof: null,
+    tags: [],
+    classifications: [],
     ...overrides,
   });
 }

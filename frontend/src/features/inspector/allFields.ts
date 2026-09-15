@@ -58,6 +58,7 @@ export function buildCanonicalFieldEntries(event: LogEvent, sources: SourceInfo[
     ['stream', event.stream, event.stream],
     ['namespace', event.namespace, event.namespace],
     ['pod', event.pod, event.pod, true],
+    ['tags', (event.tags ?? []).join(', '), (event.tags ?? []).join(', ')],
   ];
   return entries
     .filter(([, presence]) => presence != null && presence !== '')

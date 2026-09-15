@@ -1523,4 +1523,34 @@ class DockerLogSourceTest {
     assertThat(events).extracting(CanonicalLogEvent::message).containsExactlyInAnyOrder("ok-2", "ok-3");
     assertThat(elapsedMillis).isLessThan(2000);
   }
+
+  // Owner mission "Event Classification, Extraction, and Portable Rules": Docker events take the same parser-level
+  // classification path as every other source, keep their adapter enrichment, and tag filtering applies to the
+  // events this adapter actually retrieved.
+  @Test
+  void dockerEventsAreClassifiedByTheSharedEngineAndTagFilteredAfterRetrieval() throws Exception {
+    com.logexplorer.core.classify.ClassificationEngine engine = new com.logexplorer.core.classify.ClassificationEngine(new ObjectMapper());
+    engine.activate(com.logexplorer.core.classify.CompiledRuleSet.ofEnabled(1, List.of(
+        new com.logexplorer.core.classify.RuleCompiler().compile(com.logexplorer.core.classify.ClassificationTestRules.middlewareRule()))));
+    DockerClientFactory factory = mock(DockerClientFactory.class);
+    when(factory.create(properties)).thenReturn(mockClient);
+    DockerLogSource classifying = new DockerLogSource(factory, properties,
+        new LogLineParser(new ObjectMapper(), mappingProfileService, engine), remoteHostGuard);
+    Container gateway = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(gateway));
+    stubLogs("c1",
+        jsonLine("2026-01-01T00:00:00.000000000Z", "gateway", "Make webhook call to /payments requestId=req-1 responseCode=200 duration=12ms"),
+        jsonLine("2026-01-01T00:00:01.000000000Z", "gateway", "Make webhook configuration reload requested"));
+
+    List<CanonicalLogEvent> all = classifying.search(wideOpenRequest().build()).collectList().block();
+    assertThat(all).hasSize(2);
+    CanonicalLogEvent tagged = all.stream().filter(e -> !e.tags().isEmpty()).findFirst().orElseThrow();
+    assertThat(tagged.tags()).containsExactly("middleware");
+    assertThat(tagged.composeProject()).isEqualTo("proj");
+    assertThat(tagged.classifications().get(0).extracted().get(1).value()).isEqualTo("200");
+
+    List<CanonicalLogEvent> filtered = classifying.search(wideOpenRequest().tags(List.of("middleware")).build())
+        .collectList().block();
+    assertThat(filtered).singleElement().satisfies(e -> assertThat(e.message()).startsWith("Make webhook call to"));
+  }
 }

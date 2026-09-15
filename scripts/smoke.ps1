@@ -86,7 +86,63 @@ try {
     if ($actuator.StatusCode -ne 200) { Fail "/actuator/health returned $($actuator.StatusCode), expected 200" }
     Write-Host 'SPA fallback correctly scoped'
 
+    # Same step as smoke.sh: a uniquely named rule must survive recreating
+    # the `app` container (log-explorer-data named volume), then only that
+    # rule is deleted again. Skip with SMOKE_SKIP_RULES_PERSISTENCE=1.
+    if ($env:SMOKE_SKIP_RULES_PERSISTENCE -ne '1') {
+        Step 'Classification rules survive container recreation (log-explorer-data volume)'
+        $rulesUrl = "$BaseUrl/api/v1/settings/classification-rules"
+        $before = Invoke-RestMethod -Uri $rulesUrl -Method Get
+        if ($null -eq $before.revision) { Fail 'classification rules response has no revision' }
+        $ruleName = "Smoke persistence $((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ'))-$PID"
+        $ruleBody = @{
+            expectedRevision = $before.revision
+            rule             = @{
+                name       = $ruleName
+                tags       = @('smoke')
+                conditions = @(@{ field = 'message'; matcher = 'CONTAINS'; value = 'smoke-test-marker' })
+            }
+        } | ConvertTo-Json -Depth 6
+        try {
+            $created = Invoke-RestMethod -Uri $rulesUrl -Method Post -ContentType 'application/json' -Body $ruleBody
+        } catch {
+            Fail "creating a classification rule failed (a 503 means /app/data is not writable): $($_.Exception.Message)"
+        }
+        $script:SmokeRuleId = ($created.rules | Where-Object { $_.name -eq $ruleName } | Select-Object -First 1).id
+        if (-not $script:SmokeRuleId) { Fail 'could not determine the id of the newly created rule' }
+        Write-Host "created rule $($script:SmokeRuleId)"
+
+        & $Compose[0] $Compose[1..($Compose.Length - 1)] up -d --force-recreate app
+        if ($LASTEXITCODE -ne 0) { Fail 'docker compose up --force-recreate app failed' }
+        Start-Sleep -Seconds 2
+        $healthy = $false
+        for ($i = 0; $i -lt 30; $i++) {
+            $status = (docker inspect --format='{{.State.Health.Status}}' log-explorer-app-1 2>$null)
+            if ($status -eq 'healthy') { $healthy = $true; break }
+            Start-Sleep -Seconds 2
+        }
+        if (-not $healthy) { Fail 'recreated app container never reported healthy within 60s' }
+
+        $recreated = Invoke-RestMethod -Uri $rulesUrl -Method Get
+        if (-not ($recreated.rules | Where-Object { $_.id -eq $script:SmokeRuleId })) {
+            Fail "rule $($script:SmokeRuleId) was lost when the app container was recreated - rules are not on the named volume"
+        }
+        Write-Host 'rule survived container recreation'
+
+        # Deletes carry the current rules revision (optimistic concurrency).
+        Invoke-RestMethod -Uri "$rulesUrl/$($script:SmokeRuleId)?expectedRevision=$($recreated.revision)" -Method Delete | Out-Null
+        $script:SmokeRuleId = $null
+        Write-Host 'smoke rule deleted'
+    }
+
     Write-Host "`nSMOKE TEST PASSED"
 } finally {
+    # A failed persistence step never leaves its own smoke rule on the volume.
+    if ($script:SmokeRuleId) {
+        try {
+            $current = Invoke-RestMethod -Uri "$BaseUrl/api/v1/settings/classification-rules" -Method Get
+            Invoke-RestMethod -Uri "$BaseUrl/api/v1/settings/classification-rules/$($script:SmokeRuleId)?expectedRevision=$($current.revision)" -Method Delete | Out-Null
+        } catch { }
+    }
     Invoke-Cleanup
 }

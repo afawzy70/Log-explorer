@@ -193,6 +193,27 @@ Full reference with defaults and explanations: `.env.example` (copy it to
 `.env` and edit only what you need to change — every value there already
 matches the backend's own built-in defaults).
 
+Classification rules storage:
+
+| Variable | Default | What |
+|---|---|---|
+| `LOGEXPLORER_DATA_DIR` | `./data` (plain backend run); `/app/data` in the Docker image | Directory holding `classification-rules.json` (user-authored classification rules — configuration only, never log events, not a database), its `.bak` last-known-good copy, and any `.corrupt-<timestamp>` file the backend moved aside. Created on the first save. |
+| `LOGEXPLORER_CLASSIFICATION_RULES_FILE` | `${LOGEXPLORER_DATA_DIR}/classification-rules.json` | Optional full path of the rules file; overrides the directory. |
+
+Under Compose, leave both unset: the image's `/app/data` is what the
+`log-explorer-data` named volume is mounted on (see
+[Volumes](#volumes-and-network-requirements)). An unwritable directory
+makes only *saving* rules fail (HTTP 503); search keeps working.
+Resulting rules file per packaging:
+
+| Packaging | Rules file |
+|---|---|
+| Dev (`mvnw spring-boot:run` from `backend/`) | `backend/data/classification-rules.json` (git-ignored) |
+| Docker Compose | `/app/data/classification-rules.json` on the `log-explorer-data` named volume |
+| OpenShift | `/app/data/classification-rules.json` on the `log-explorer-data` PVC (`deploy/openshift/pvc.yaml`) |
+| Windows desktop | `%LOCALAPPDATA%\LogExplorer\data\classification-rules.json` |
+| macOS desktop | `~/Library/Application Support/LogExplorer/data/classification-rules.json` |
+
 ## Health checks and startup ordering
 
 `app`'s own `HEALTHCHECK` (`Dockerfile`) polls `GET /actuator/health`
@@ -211,7 +232,17 @@ unavailable until whichever profile that supplies them is active).
 - **`docker-socket` profile only**: `/var/run/docker.sock` bind-mounted
   **read-only** into `app` — see the privilege warning above. No other
   profile or the base stack ever mounts it.
-- No other host volumes are used anywhere in this stack.
+- **Always (`app`)**: the `log-explorer-data` **named volume** mounted at
+  `/app/data`. It holds classification rules configuration only
+  (`classification-rules.json` + `.bak`) — no logs, no log events, no
+  secrets. It survives `docker compose down`, `up`, `up --force-recreate`
+  and image rebuilds; only `docker compose down -v` (or
+  `docker volume rm log-explorer_log-explorer-data`) deletes it. The
+  image creates `/app/data` owned by `logexplorer` and group-writable for
+  GID 0, and the entrypoint re-asserts ownership when started as root, so
+  a fresh volume is writable.
+- No host bind mounts are used anywhere in this stack other than the
+  opt-in socket above.
 - All three services share one Compose-managed bridge network
   (`log-explorer_default`); `app` reaches `mock-loki` at
   `http://mock-loki:3100` by Compose's own DNS, matching
@@ -236,7 +267,10 @@ Linux / macOS:
 ```
 
 Build → start → health → source discovery → search → UI load → SPA-
-fallback-scope check → stop → cleanup, all against the `demo` profile
+fallback-scope check → classification rules persistence across
+`up -d --force-recreate app` (creates one uniquely named rule, verifies it
+after recreation, deletes only that rule; skip with
+`SMOKE_SKIP_RULES_PERSISTENCE=1`) → stop → cleanup, all against the `demo` profile
 (the default happy path — no `docker-socket`/`loki-mock` dependency, so
 this script alone is a fair fresh-clone rehearsal). Cleanup is always
 **limited to this stack** (`docker compose ... down`, run from a trap/
@@ -244,6 +278,20 @@ this script alone is a fair fresh-clone rehearsal). Cleanup is always
 never touches an unrelated container or image on the host. Exits
 non-zero with a labeled `FAIL:` line naming the failing step if anything
 doesn't match.
+
+### Manually verifying rules survive container recreation
+
+```bash
+docker compose --profile demo up -d --build
+# create a rule in Settings -> Classification rules (or via the API), then:
+docker compose up -d --force-recreate app     # or: docker compose down && docker compose --profile demo up -d
+# reopen Settings -> Classification rules: the rule is still listed, and
+docker compose exec app ls -l /app/data       # shows classification-rules.json
+docker volume inspect log-explorer_log-explorer-data
+```
+
+`docker compose down -v` is the one command that deletes the volume and
+therefore the rules.
 
 ## Offline export/import (no registry access)
 

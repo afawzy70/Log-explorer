@@ -107,8 +107,24 @@ test.describe('Legacy Remediation Slice 6 — Investigation depth, gap visibilit
   });
 
   test('3. an unavailable source shows an honest unavailable state with a sanitized (never raw) message', async ({ page }) => {
+    // Owner decision (PR #59 pre-merge): OpenShift Loki (previously the
+    // naturally-unavailable source used here) is no longer selectable in
+    // the UI, so the same honest-unavailable-state guarantee is exercised
+    // against a selectable source whose health is unavailable.
+    await page.route('**/api/v1/sources/local-docker/health', (route: Route) =>
+      route.fulfill({
+        json: {
+          status: 'DOWN',
+          message: 'Docker daemon is not reachable',
+          checkedAt: new Date().toISOString(),
+          latencyMs: null,
+          warnings: [],
+          capabilities: { historicalSearch: true, liveTail: true, rawLogQL: false, serviceDiscovery: true, queryStatistics: false, contextView: false },
+        },
+      }),
+    );
     await page.goto('/');
-    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('openshift-loki');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('local-docker');
     await expect(page.getByText(/\bunhealthy\b/i)).toBeVisible({ timeout: 10_000 });
 
     await page.getByRole('button', { name: /source health details/i }).click();

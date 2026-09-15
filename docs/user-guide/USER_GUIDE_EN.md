@@ -542,7 +542,9 @@ applies immediately to new results going forward.
 > fresh installation starts fully unmasked instead — the checkbox
 > control, the "no reveal action" guarantee, and every other behavior on
 > this screen are unchanged; only the starting value of the five
-> checkboxes moved. Like every other setting in Log Explorer, this
+> checkboxes moved. Like the other runtime settings in Log Explorer (the
+> one exception is classification rules, which are saved configuration —
+> see [Event classification rules](EVENT_CLASSIFICATION_RULES.md)), this
 > policy lives only for as long as the application is running — it is
 > never written to disk, so restarting the server always returns to the
 > current default (now unmasked). While the server keeps running,
@@ -806,3 +808,14 @@ screen carefully:
 - Treat anything you see on this screen (screenshots, screen shares) with
   the same care you'd give the original system's own raw data — because
   that is exactly what it is.
+
+## Event classification rules
+
+Classification rules tag events with your own labels (for example
+`middleware` or `external-api`) and extract structured values such as a
+URL, response code, or duration. Create one from any event with **Create
+tag rule from this event** in the Event Inspector, detect a pattern from
+a bounded sample, test it, and save it. Rules are saved on the server as
+a JSON configuration file (never a database, never your logs) and can be
+exported and imported as portable rule packs. Full guide:
+[Event classification rules](EVENT_CLASSIFICATION_RULES.md).

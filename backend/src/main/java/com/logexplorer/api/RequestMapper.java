@@ -68,6 +68,7 @@ public class RequestMapper {
         .rawLogQl(dto.rawLogQl())
         .cursor(dto.cursor())
         .composeProject(dto.composeProject())
+        .tags(dto.tags())
         .build();
   }
 

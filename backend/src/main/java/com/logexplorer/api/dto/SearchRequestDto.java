@@ -53,8 +53,23 @@ public record SearchRequestDto(
     String rawLogQl,
     String cursor,
     /** UX-R3 §7/§8/§9 — request-scoped Docker Compose project selection, never sensitive. */
-    String composeProject
+    String composeProject,
+    /** Classification tags (ANY). Evaluated server-side after classification. */
+    List<String> tags
 ) {
+
+  /** Pre-classification arity, kept so existing callers keep compiling. */
+  public SearchRequestDto(String sourceId, Instant start, Instant end, String direction, Integer limit,
+      List<String> services, String serviceFilterMode, List<String> levels, String text, String traceId,
+      String spanId, String correlationId, String journeyId, String journeyName, String eventId, String errorCode,
+      String businessStep, String uiIdentifier, String loggerContains, String devicePlatform, String language,
+      String cif, String userName, String customerId, String deviceId, String deviceIp, String query,
+      String rawLogQl, String cursor, String composeProject) {
+    this(sourceId, start, end, direction, limit, services, serviceFilterMode, levels, text, traceId, spanId,
+        correlationId, journeyId, journeyName, eventId, errorCode, businessStep, uiIdentifier, loggerContains,
+        devicePlatform, language, cif, userName, customerId, deviceId, deviceIp, query, rawLogQl, cursor,
+        composeProject, null);
+  }
 
   @Override
   public String toString() {
@@ -88,6 +103,7 @@ public record SearchRequestDto(
         + ", rawLogQl=" + redacted(rawLogQl)
         + ", cursor=" + cursor
         + ", composeProject=" + composeProject
+        + ", tags=" + tags
         + "]";
   }
 

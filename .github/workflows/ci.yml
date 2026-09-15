@@ -129,10 +129,13 @@ jobs:
       # Central like any other fresh checkout. That is ordinary build-time
       # dependency resolution, not "real external infrastructure" in the
       # sense this job otherwise avoids (real Docker/OpenShift/Loki).
+      # LOGEXPLORER_DATA_DIR: classification rules saved by E2E specs go to
+      # an isolated runner-temp directory, never into the checkout (the
+      # backend's relative ./data default would otherwise be backend/data).
       - name: Start backend (SPRING_PROFILES_ACTIVE=dev, fixture source)
         working-directory: backend
         run: |
-          SPRING_PROFILES_ACTIVE=dev nohup ./mvnw --batch-mode --quiet spring-boot:run > /tmp/backend.log 2>&1 &
+          LOGEXPLORER_DATA_DIR="${{ runner.temp }}/log-explorer-data" SPRING_PROFILES_ACTIVE=dev nohup ./mvnw --batch-mode --quiet spring-boot:run > /tmp/backend.log 2>&1 &
           echo $! > /tmp/backend.pid
 
       # Generous budget (up to 6 minutes): a cold Maven cache on this

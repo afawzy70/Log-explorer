@@ -53,6 +53,8 @@ function event(overrides: Partial<LogEvent> = {}): LogEvent {
     namespace: null,
     pod: null,
     contextTargetProof: null,
+    tags: [],
+    classifications: [],
     ...overrides,
   };
 }

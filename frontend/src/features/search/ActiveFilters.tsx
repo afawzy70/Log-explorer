@@ -21,6 +21,9 @@ export interface ActiveFiltersProps {
   onClearServices?: () => void;
   advancedValues: AdvancedFilterValues;
   onRemoveAdvancedField: (key: keyof AdvancedFilterValues) => void;
+  /** Event Classification & Extraction Rules - committed tag filter, one chip per tag. */
+  selectedTags?: string[];
+  onRemoveTag?: (tag: string) => void;
   onClearAll: () => void;
 }
 
@@ -62,6 +65,8 @@ export function ActiveFilters({
   onClearServices,
   advancedValues,
   onRemoveAdvancedField,
+  selectedTags = [],
+  onRemoveTag,
   onClearAll,
 }: ActiveFiltersProps) {
   const activeFields = ALL_ADVANCED_FILTER_FIELDS.filter(
@@ -146,6 +151,20 @@ export function ActiveFilters({
                 : `Remove ${field.label} filter ${advancedValues[field.key]}`
             }
             onClick={() => onRemoveAdvancedField(field.key)}
+          >
+            <span aria-hidden="true">✕</span>
+          </button>
+        </span>
+      ))}
+
+      {selectedTags.map((tag) => (
+        <span key={`tag-${tag}`} className={styles.chip}>
+          <span className={styles.chipLabel}>Tag:</span> {tag}
+          <button
+            type="button"
+            className={styles.chipRemove}
+            aria-label={`Remove tag filter ${tag}`}
+            onClick={() => onRemoveTag?.(tag)}
           >
             <span aria-hidden="true">✕</span>
           </button>

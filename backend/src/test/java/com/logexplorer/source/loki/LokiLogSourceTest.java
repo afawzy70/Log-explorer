@@ -813,4 +813,38 @@ class LokiLogSourceTest {
     }
     return result;
   }
+
+  // Owner mission "Event Classification, Extraction, and Portable Rules": Loki events use the same engine; tags are
+  // evaluated on the canonical events Loki returned (tags never exist at the source).
+  @Test
+  void lokiEventsAreClassifiedByTheSharedEngineAndTagFiltered() throws IOException {
+    mockServer = new MockLokiServer("/api/logs/v1", "application", "namespace", "app");
+    LokiProperties properties = propertiesFor(mockServer);
+    Map<String, String> labels = Map.of(
+        "namespace", "prod-ns", "app", "gateway", "pod", "gateway-abc123", "container", "gateway");
+    mockServer.respondWithStreams(List.of(
+        stream(labels, lineAt(1_700_000_000_000_000_000L, "2026-01-01T00:00:00Z",
+            "Make webhook call to /payments requestId=req-1 responseCode=502 duration=31ms", "gateway")),
+        stream(labels, lineAt(1_700_000_001_000_000_000L, "2026-01-01T00:00:01Z", "hello", "gateway"))));
+    com.logexplorer.core.classify.ClassificationEngine engine = new com.logexplorer.core.classify.ClassificationEngine(new ObjectMapper());
+    engine.activate(com.logexplorer.core.classify.CompiledRuleSet.ofEnabled(1, List.of(
+        new com.logexplorer.core.classify.RuleCompiler().compile(com.logexplorer.core.classify.ClassificationTestRules.middlewareRule()))));
+    LokiQueryClient queryClient = new LokiQueryClient(properties, new LokiTokenSupplier(properties), new LokiWebClientFactory());
+    LokiLogSource source = new LokiLogSource(properties, queryClient,
+        new LogLineParser(new ObjectMapper(), new FieldMappingProfileService(), engine));
+    SearchRequest request = SearchRequest.builder()
+        .sourceId(source.id())
+        .start(Instant.parse("2025-01-01T00:00:00Z"))
+        .end(Instant.parse("2027-01-01T00:00:00Z"))
+        .tags(List.of("middleware"))
+        .build();
+
+    StepVerifier.create(source.search(request))
+        .assertNext(event -> {
+          assertThat(event.tags()).containsExactly("middleware");
+          assertThat(event.namespace()).isEqualTo("prod-ns");
+          assertThat(event.classifications().get(0).extracted().get(1).value()).isEqualTo("502");
+        })
+        .verifyComplete();
+  }
 }

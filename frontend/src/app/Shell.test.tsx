@@ -92,6 +92,18 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     mappingWorkspaceOpen: false,
     openMappingWorkspace: vi.fn(),
     closeMappingWorkspace: vi.fn(),
+    selectedTags: [],
+    setSelectedTags: vi.fn(),
+    classificationTags: null,
+    classificationTagsError: null,
+    refreshClassificationTags: vi.fn(),
+    buildClassificationSampleScope: vi.fn(() => null),
+    classificationWorkspaceOpen: false,
+    classificationWorkspaceEvent: null,
+    classificationWorkspaceKey: 0,
+    openClassificationWorkspace: vi.fn(),
+    openClassificationRuleFromEvent: vi.fn(),
+    closeClassificationWorkspace: vi.fn(),
     ...overrides,
   };
 }
