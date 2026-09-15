@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { firstSelectableSourceId, isSourceSelectableInUi } from '../features/search/sourcePolicy';
 import {
   fetchClassificationRules,
   fetchComposeProjects,
@@ -149,7 +150,20 @@ interface SearchSnapshot {
 export function useSearchState() {
   const [sources, setSources] = useState<SourceInfo[]>([]);
   const [sourcesLoading, setSourcesLoading] = useState(true);
-  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
+  const [selectedSourceId, setSelectedSourceIdState] = useState<string | null>(null);
+  /**
+   * Owner decision (PR #59 pre-merge, `features/search/sourcePolicy.ts`): a
+   * source that is not selectable in the UI (currently OpenShift Loki) can
+   * never become the active source — not from the selector, not from stale
+   * or malformed client state, not from the initial auto-selection — so no
+   * health/service/search request is ever made for it as the active source.
+   */
+  const setSelectedSourceId = useCallback((sourceId: string | null) => {
+    if (sourceId !== null && !isSourceSelectableInUi(sourceId)) {
+      return;
+    }
+    setSelectedSourceIdState(sourceId);
+  }, []);
 
   const [services, setServices] = useState<ServiceInfo[]>([]);
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
@@ -342,7 +356,14 @@ export function useSearchState() {
         }
         setSources(list);
         if (list.length > 0) {
-          setSelectedSourceId((current) => current ?? list[0].id);
+          // Explicit selector policy, never API/registration order: keep a
+          // still-valid selectable current source, otherwise the
+          // highest-priority selectable one (Docker, then OpenShift, then
+          // any other selectable source such as the dev-only Fixture).
+          setSelectedSourceIdState((current) =>
+            current !== null && isSourceSelectableInUi(current) && list.some((source) => source.id === current)
+              ? current
+              : firstSelectableSourceId(list));
         }
       })
       .finally(() => {

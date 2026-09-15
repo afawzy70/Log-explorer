@@ -2392,3 +2392,32 @@ database, no log retention, no source-specific logic. The Live Service
 EXCLUDE defect (D8) and `SEARCH_PERFORMANCE_ROOT_CAUSE` remain separate
 lanes. `HISTORICAL_DECISIONS_PRESERVED=YES`. `UNTRACKED_OWNER_REQUIREMENTS=0`.
 
+### 26.1 Source selector availability (PR #59 pre-merge owner adjustment)
+
+`PR59_PRE_MERGE_SOURCE_SELECTOR_FINALIZATION` — a current UI availability
+decision on the same PR #59 branch. It does not rewrite or remove any
+historical OpenShift Loki requirement (§12 remains the record of the Loki
+capability); the Loki adapter, APIs, source registration, LogQL logic, and
+backend tests are unchanged.
+
+```
+SOURCE_SELECTOR_PRIORITY_1=DOCKER
+SOURCE_SELECTOR_PRIORITY_2=OPENSHIFT
+SOURCE_SELECTOR_PRIORITY_3=OPENSHIFT_LOKI
+OPENSHIFT_LOKI_VISIBLE=YES
+OPENSHIFT_LOKI_SELECTABLE=NO
+OPENSHIFT_LOKI_UI_STATUS=NOT_AVAILABLE
+OPENSHIFT_LOKI_BACKEND_REMOVED=NO
+OPENSHIFT_LOKI_CAPABILITY_PRESERVED=YES
+STALE_OPENSHIFT_LOKI_SELECTION_RESTORED=NO
+SAFE_AVAILABLE_SOURCE_FALLBACK=YES
+UNTRACKED_OWNER_REQUIREMENTS=0
+```
+
+| ID | NAME | STATUS | EVIDENCE | NOTES |
+|---|---|---|---|---|
+| SSEL-1 | User-facing source selector order Docker (`local-docker`) → OpenShift (`openshift`) → OpenShift Loki (`openshift-loki`) by explicit policy keyed on stable ids, never API/registration/map order; other sources (dev/test-only Fixture) keep their existing availability and follow in API order | `VERIFIED` | `frontend/src/features/search/sourcePolicy.ts`; `sourcePolicy.test.ts`, `SourceSelect.test.tsx`; `e2e/source-selector-availability.spec.ts` | The backend source registry iterates an unordered map, so API order was never a contract |
+| SSEL-2 | OpenShift Loki visible but not selectable: native `<option disabled>` labelled "OpenShift Loki — Not available"; `onChange` guarded; never the active source through the selector, initial auto-selection, or stale/malformed client state; no health/service/search request made for it as the active source | `VERIFIED` | `SourceSelect.tsx`, guarded `setSelectedSourceId` in `app/useSearchState.ts`; `useSearchState.sourceSelection.test.ts`; E2E asserts no `/api/v1/sources/openshift-loki` request | The selected source is session React state only (never localStorage/URL), so there is no persisted Loki selection to restore; the guard still covers stale/malformed state. Re-enabling = removing `openshift-loki` from `UI_UNAVAILABLE_SOURCE_IDS` |
+| SSEL-3 | Safe fallback: Docker when available, otherwise OpenShift, otherwise the first selectable source; truthful no-source state when nothing is selectable | `VERIFIED` | `sourcePolicy.test.ts`, `useSearchState.sourceSelection.test.ts`, `SourceSelect.test.tsx` ("No available source") | |
+| SSEL-4 | Existing E2E steps that selected OpenShift Loki updated deliberately (named conflict, later decision applied) | `VERIFIED` | `phase-j-live-tail.spec.ts` (asserts Loki disabled instead of selecting it; Loki liveTail:false stays covered by `LokiLogSourceTest`), `phase-legacy-slice6-investigation-depth.spec.ts` test 3 and `phase-m-ux-acceptance.spec.ts` Task 6 (unavailable state exercised with a selectable source whose health is mocked DOWN; no-service-discovery exercised with `openshift`) | CLAUDE.md §5: older requirement conflicts with a later decision — named and applied; tests not weakened in intent |
+

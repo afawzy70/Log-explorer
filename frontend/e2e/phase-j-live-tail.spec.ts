@@ -31,12 +31,15 @@ test('the Live button is only shown for a source whose real capabilities adverti
   await selectFixtureSource(page);
   await expect(page.getByRole('button', { name: /^live$/i })).toBeVisible();
 
-  // openshift-loki's real backend-reported capabilities say liveTail:
-  // false (CLAUDE.md "never show Live for a source that cannot support
-  // it") - confirmed against the real /api/v1/sources response, not
-  // assumed.
-  await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('openshift-loki');
-  await expect(page.getByRole('button', { name: /^live$/i })).not.toBeVisible();
+  // Owner decision (PR #59 pre-merge) supersedes the earlier step that
+  // selected openshift-loki to prove Live is hidden for a source without
+  // liveTail: OpenShift Loki is now visible but NOT selectable in the UI,
+  // so it can never become the active source (Live included). Loki's own
+  // liveTail:false capability remains covered by backend tests
+  // (LokiLogSourceTest).
+  const lokiOption = page.getByRole('combobox', { name: 'Source', exact: true }).locator('option[value="openshift-loki"]');
+  await expect(lokiOption).toBeDisabled();
+  await expect(lokiOption).toHaveText('OpenShift Loki — Not available');
 });
 
 test('clicking Live immediately streams real, masked events from the fixture source; visually distinct from historical search', async ({

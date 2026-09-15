@@ -341,3 +341,24 @@ GitHub Actions on PR #59, head `4d25e63`:
   endpoints.
 - **Scope boundary.** Not combined with the Live Service EXCLUDE defect (D8) or `SEARCH_PERFORMANCE_ROOT_CAUSE`.
   `SEARCH_PERFORMANCE_INVESTIGATION_STARTED=NO`.
+
+## 15. Pre-merge owner adjustment — source selector (same PR #59)
+
+- **Order.** The user-facing source selector lists `local-docker` (Docker), `openshift` (OpenShift), `openshift-loki`
+  (OpenShift Loki) by an explicit policy keyed on stable ids (`frontend/src/features/search/sourcePolicy.ts`). Any
+  other source — the dev/test-only Fixture — stays available after them. The backend registry order is unordered
+  (`Map.copyOf`), so API order is never relied on.
+- **Loki not selectable.** OpenShift Loki is a native `<option disabled>` labelled "OpenShift Loki — Not available".
+  `onChange` ignores it, and `useSearchState.setSelectedSourceId` refuses it, so it can never become the active
+  source and no health/service/search request is made for it as the active source.
+- **Initial selection.** It keeps a still-valid selectable current source; otherwise it picks the highest-priority
+  selectable source.
+- **No persisted source.** The source is never persisted to localStorage or the URL, so there is no stored Loki
+  selection. The guard covers stale or malformed state anyway.
+- **Backend unchanged.** Loki adapter, APIs, registration, LogQL, and backend tests are untouched
+  (`OPENSHIFT_LOKI_BACKEND_REMOVED=NO`).
+- **Existing E2E updated by name.** Three existing steps selected Loki: `phase-j-live-tail`, `phase-legacy-slice6` test 3,
+  and `phase-m` Task 6. Each now asserts the disabled option, or exercises the same guarantee with a selectable source.
+  See register §26.1 SSEL-4.
+- Verification results are listed in the PR #59 description and in the final mission report.
+
