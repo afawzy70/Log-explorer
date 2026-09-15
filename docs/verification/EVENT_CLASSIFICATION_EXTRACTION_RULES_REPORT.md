@@ -313,7 +313,7 @@ Existing tests were only extended with the new `LogEvent`/`SearchState` fields; 
 These results are filled in from the runs listed in the PR:
 
 - **E2E full suite:** recorded below.
-- **Docker recreate persistence:** `scripts/smoke.sh` step "rule survived container recreation".
+- **Docker recreate persistence:** PASS. `APP_PORT=13434 ./scripts/smoke.sh` on Docker 29.7.2 built the image, started the Compose stack, created a uniquely named rule over the real API, ran `docker compose up -d --force-recreate app`, waited for health, found the rule still present ("rule survived container recreation"), deleted it, and ended with `SMOKE TEST PASSED`. The first run proved survival but its cleanup `DELETE` omitted `expectedRevision` and was correctly rejected (400 `REVISION_REQUIRED`); both smoke scripts now send the current revision, and the re-run passed. `DOCKER_RULES_SURVIVE_CONTAINER_RECREATE=YES`.
 - **Windows desktop:** CI `Windows Desktop` workflow — `packaged-smoke-test.ps1` asserts the per-user data path
   outside the install directory and that the file survives uninstall.
 - **macOS desktop:** CI `macOS Desktop` workflow — `packaged-smoke-test.sh`, the same assertions.

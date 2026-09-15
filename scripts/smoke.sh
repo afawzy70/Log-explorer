@@ -28,7 +28,9 @@ SMOKE_RULE_ID=""
 cleanup() {
   # A failed persistence step never leaves its own smoke rule on the volume.
   if [ -n "$SMOKE_RULE_ID" ]; then
-    curl -s -o /dev/null -X DELETE "${BASE_URL}/api/v1/settings/classification-rules/${SMOKE_RULE_ID}" || true
+    # Deletes carry the current rules revision (optimistic concurrency).
+    CLEANUP_REVISION="$(curl -s "${BASE_URL}/api/v1/settings/classification-rules" | grep -Eo '"revision":[0-9]+' | head -n1 | cut -d: -f2 || true)"
+    curl -s -o /dev/null -X DELETE "${BASE_URL}/api/v1/settings/classification-rules/${SMOKE_RULE_ID}?expectedRevision=${CLEANUP_REVISION}" || true
   fi
   step "Stop + cleanup (limited to this stack only - no global prune)"
   "${COMPOSE[@]}" down || true
@@ -129,7 +131,9 @@ if [ "${SMOKE_SKIP_RULES_PERSISTENCE:-0}" != "1" ]; then
     || fail "rule ${SMOKE_RULE_ID} was lost when the app container was recreated - rules are not on the named volume"
   echo "rule survived container recreation"
 
-  curl -sf -o /dev/null -X DELETE "${RULES_URL}/${SMOKE_RULE_ID}" || fail "deleting smoke rule ${SMOKE_RULE_ID} failed"
+  CURRENT_REVISION="$(printf '%s' "$RECREATED_JSON" | grep -Eo '"revision":[0-9]+' | head -n1 | cut -d: -f2 || true)"
+  curl -sf -o /dev/null -X DELETE "${RULES_URL}/${SMOKE_RULE_ID}?expectedRevision=${CURRENT_REVISION}" \
+    || fail "deleting smoke rule ${SMOKE_RULE_ID} failed"
   SMOKE_RULE_ID=""
   echo "smoke rule deleted"
 fi

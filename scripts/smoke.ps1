@@ -129,7 +129,8 @@ try {
         }
         Write-Host 'rule survived container recreation'
 
-        Invoke-RestMethod -Uri "$rulesUrl/$($script:SmokeRuleId)" -Method Delete | Out-Null
+        # Deletes carry the current rules revision (optimistic concurrency).
+        Invoke-RestMethod -Uri "$rulesUrl/$($script:SmokeRuleId)?expectedRevision=$($recreated.revision)" -Method Delete | Out-Null
         $script:SmokeRuleId = $null
         Write-Host 'smoke rule deleted'
     }
@@ -138,7 +139,10 @@ try {
 } finally {
     # A failed persistence step never leaves its own smoke rule on the volume.
     if ($script:SmokeRuleId) {
-        try { Invoke-RestMethod -Uri "$BaseUrl/api/v1/settings/classification-rules/$($script:SmokeRuleId)" -Method Delete | Out-Null } catch { }
+        try {
+            $current = Invoke-RestMethod -Uri "$BaseUrl/api/v1/settings/classification-rules" -Method Get
+            Invoke-RestMethod -Uri "$BaseUrl/api/v1/settings/classification-rules/$($script:SmokeRuleId)?expectedRevision=$($current.revision)" -Method Delete | Out-Null
+        } catch { }
     }
     Invoke-Cleanup
 }
