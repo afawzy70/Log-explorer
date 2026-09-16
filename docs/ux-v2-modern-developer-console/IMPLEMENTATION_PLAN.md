@@ -7,12 +7,15 @@ Production work starts only after the owner:
 2. decides the flagged items in §3.
 
 Starting points:
-- **Functional baseline**: latest `main` `51f06e51709455f2c20dcf5c1b32e2dd67443377` (after PR #59: Event
-  Classification, extraction, rule packs, source-selector policy). The first pass planned against `3f6b1b4`; this
-  refresh adds the classification work to the existing slices (§2.1) and decisions D17–D29 (§3). Re-verify it is still
-  the tip before branching. If `main` has moved, refresh `CURRENT_BASELINE_INVENTORY.md` first.
-- **PR #59 is preserved, not rewritten.** Slices restyle and recompose the merged components; the classification
-  API, `useSearchState` classification state, rule semantics, masking and the source policy stay as they are.
+- **Functional baseline**: `main` `6e71af8d901418d65de2bebb472240db27779147` — after **both PR #59** (event
+  classification, extraction, rule packs, source-selector policy) **and PR #60** (classification search-scope
+  recovery, assisted extraction, visible Tags column, user-selected tag colours). Earlier passes planned against
+  `3f6b1b4` then `51f06e5`; this refresh adds the PR #60 work to the existing slices (§2.2) and decisions D30–D40
+  (§3). Re-verify it is still the tip before branching. If `main` has moved, refresh `CURRENT_BASELINE_INVENTORY.md`
+  first.
+- **PR #59 and PR #60 are both preserved, not rewritten.** Slices restyle and recompose the merged components; the
+  classification API, `useSearchState` classification state, rule semantics, masking, the source policy, the
+  search-scope sampling, assisted extraction and tag-colour storage all stay as they are.
 - **Recommended production branch**: `ux/v2-modern-developer-console`. Create it from latest `main` **after owner
   approval**; it does not exist yet.
 - **PR #54** (`ux/v2-professional-redesign`) is design history only. Nothing is merged or cherry-picked from it except
@@ -28,8 +31,9 @@ Starting points:
   parallel if they are reviewed separately.
 - **Every slice must pass these gates** before merge into the design-implementation branch:
   1. `npm run typecheck`, `npm test`, `npm run build` (frontend) — PASS.
-  2. The full Playwright E2E suite — PASS, including `geometry.spec.ts`: header/cell alignment ≤ 2 px, 7 columns, no
-     page overflow at 1920/1440/1366/1280/1024/768/390.
+  2. The full Playwright E2E suite — PASS, including `geometry.spec.ts`: header/cell alignment ≤ 2 px, **8 columns**
+     (Time, Level, Service, What happened, Tags, User/Customer, Correlation/Trace, Actions — D30 supersedes the
+     earlier 7-column invariant), no page overflow at 1920/1440/1366/1280/1024/768/390.
   3. `git diff --stat main -- backend/` is empty. No slice touches the backend.
   4. Before/after screenshots of the slice's states at 1440×900, plus the responsive widths listed per slice. They are
      captured from the real app with the Fixture source and compared against the prototype state.
@@ -82,7 +86,12 @@ Starting points:
 | **Affected components** | `ResultsTable.tsx` (+ module CSS), `columnRegistry.tsx`, `MessageCell`, `ActionsCell`, `TableSettingsControl`, `ResultsPanel` (state panels, load more), `ContextSummary` (stat row only; the plot comes in B5). |
 | **Visual changes** | 28 px compact rows (D1); a signal gutter with severity shape marks; neutral INFO/DEBUG/TRACE words; ERROR row wash; sticky header and sticky Time column; sentence-case headers; mono middle-ellipsis IDs in ink (accent on hover); selection tint plus hairlines; trigger ring; new loading, empty, error, load-more-failure and invalid-query panels; skeleton for the first search. |
 | **Interaction changes** | Previous rows stay visible in tertiary ink during re-search (D2). "Search last 1 day" appears only when it widens the range, and the orphan Refresh is removed (D7). |
-| **Invariants** | All of CLAUDE.md §4 "Results table": one table and colgroup, `table-layout: fixed`, 7 columns in order, message only, `—`, one row per event, alignment ≤ 2 px, newest first (Context oldest first, existing), one pagination model, distinct counts, contained horizontal scroll. Row-state precedence (inventory risk 2). Roving tabindex, `aria-selected`, `aria-current`. Gap rows. Density preference stays presentation-only. |
+| **Invariants** | All of CLAUDE.md §4 "Results table": one table and colgroup, `table-layout: fixed`, **8 columns in
+order (Time, Level, Service, What happened, Tags, User/Customer, Correlation/Trace, Actions — Tags visible by
+default, D30 supersedes the earlier 7-column invariant)**, message only, `—`, one row per event, alignment ≤ 2 px,
+newest first (Context oldest first, existing), one pagination model, distinct counts, contained horizontal scroll.
+A classified row is exactly as tall as an unclassified one. Row-state precedence (inventory risk 2). Roving
+tabindex, `aria-selected`, `aria-current`. Gap rows. Density preference stays presentation-only. |
 | **Risks** | A sticky left Time cell must not break header/cell geometry or the box-shadow row states. It needs an opaque cell background per state. The selection rule has already erased the root marker once. |
 | **Screenshot states** | 01, 02, 03, 20, 21, 22, 24, 25, 28, 30, 35 at 1440; 01 at 1920/1366/1024/768/390; 01 in comfortable density. |
 | **Test impact** | `geometry.spec.ts` must pass unchanged (new widths are asserted as design values). Update unit tests for text changes in panels. Add tests: "Search last 1 day" hidden when range ≥ 1 day; trigger row keeps its ring while selected; sticky Time alignment at scroll position > 0. |
