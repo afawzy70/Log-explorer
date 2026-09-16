@@ -18,10 +18,10 @@ describe('tablePreferences', () => {
   });
 
   describe('defaultTablePreferences', () => {
-    it('is exactly the seven default-visible columns, in the registry default order (mission requirement 1 + 2)', () => {
+    it('is exactly the eight default-visible columns, in the registry default order (mission requirement 1 + 2, Tags added by the classification visibility mission)', () => {
       const prefs = defaultTablePreferences();
       const visible = prefs.columnOrder.filter((id) => !prefs.hiddenColumnIds.includes(id));
-      expect(visible).toEqual(['time', 'level', 'service', 'whatHappened', 'userCustomer', 'correlationTrace']);
+      expect(visible).toEqual(['time', 'level', 'service', 'whatHappened', 'tags', 'userCustomer', 'correlationTrace']);
       expect(prefs.columnOrder).toEqual(DEFAULT_COLUMN_ORDER);
       expect(prefs.hiddenColumnIds).toEqual(DEFAULT_HIDDEN_COLUMN_IDS);
       expect(prefs.density).toBe('comfortable');
@@ -85,7 +85,9 @@ describe('tablePreferences', () => {
       });
       expect(result.columnOrder).toHaveLength(ALL_COLUMN_IDS.length);
       const visible = result.columnOrder.filter((id) => !result.hiddenColumnIds.includes(id));
-      expect(visible.sort()).toEqual(['correlationTrace', 'level', 'service', 'time', 'userCustomer', 'whatHappened'].sort());
+      expect(visible.sort()).toEqual(
+        ['correlationTrace', 'level', 'service', 'tags', 'time', 'userCustomer', 'whatHappened'].sort(),
+      );
       // every optional column must still be hidden, not silently promoted to visible
       expect(result.hiddenColumnIds).toEqual(expect.arrayContaining(DEFAULT_HIDDEN_COLUMN_IDS.filter((id) => id !== 'time')));
     });
@@ -163,8 +165,8 @@ describe('tablePreferences', () => {
 
     it('refuses to hide the last visible data column', () => {
       const { result } = renderHook(() => useTablePreferences());
-      // Hide five of the six default-visible columns, one at a time.
-      for (const id of ['level', 'service', 'whatHappened', 'userCustomer', 'correlationTrace'] as const) {
+      // Hide six of the seven default-visible registry columns, one at a time.
+      for (const id of ['level', 'service', 'whatHappened', 'tags', 'userCustomer', 'correlationTrace'] as const) {
         act(() => result.current.setColumnVisible(id, false));
       }
       const visibleBefore = result.current.preferences.columnOrder.filter(

@@ -191,6 +191,7 @@ function AppContent() {
               <ClassificationRulesWorkspace
                 key={state.classificationWorkspaceKey}
                 sourceEvent={state.classificationWorkspaceEvent}
+                intent={state.classificationWorkspaceIntent}
                 buildScope={state.buildClassificationSampleScope}
                 onRulesChanged={state.refreshClassificationTags}
                 onClose={state.closeClassificationWorkspace}

@@ -35,6 +35,29 @@
   --color-severity-trace: #7a5ba6;
   --color-severity-trace-bg: #f3edfb;
 
+  /*
+   * Classification tag palette (owner mission "Classification real search scope, assisted extraction, and visual
+   * tagging"). One controlled semantic entry per name - the server persists "BLUE", never a CSS value. Colour is
+   * identity only, never severity or outcome, and never the only signal: a chip always carries its tag text.
+   * Every foreground/background pair below is >= 5.5:1, so the text passes WCAG AA on its own chip.
+   */
+  --color-tag-gray: #4a5160;
+  --color-tag-gray-bg: #eef0f3;
+  --color-tag-blue: #1b4fb8;
+  --color-tag-blue-bg: #e8f0fe;
+  --color-tag-cyan: #0f5c6b;
+  --color-tag-cyan-bg: #e3f4f7;
+  --color-tag-green: #1f6b3a;
+  --color-tag-green-bg: #e7f5ec;
+  --color-tag-amber: #7a5300;
+  --color-tag-amber-bg: #fdf3dc;
+  --color-tag-orange: #9a4a12;
+  --color-tag-orange-bg: #fdeee2;
+  --color-tag-red: #b3261e;
+  --color-tag-red-bg: #fdecea;
+  --color-tag-purple: #6a3fa0;
+  --color-tag-purple-bg: #f3edfb;
+
   --color-protected: #5b6270;
   --color-protected-bg: #f0f2f5;
 

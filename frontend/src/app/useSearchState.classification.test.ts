@@ -136,22 +136,66 @@ describe('useSearchState - classification tag filter and workspace', () => {
     expect(result.current.classificationWorkspaceOpen).toBe(false);
   });
 
-  it('builds the detect/test sample scope from the selected source, services, levels and the committed time range', async () => {
+  /*
+   * The owner-reported defect, at the source: a search narrowed by free text showed many matching events, but
+   * Detect/Test sampled the newest events of the whole source because the scope carried only source, project,
+   * window, services and severities. The scope is now the committed search itself.
+   */
+  it('carries the whole committed search into the detect/test sample scope', async () => {
     const { result } = await renderReady();
     act(() => result.current.setSelectedServices(['gateway']));
     act(() => result.current.setServiceFilterMode('EXCLUDE'));
     act(() => result.current.setSelectedLevels(['ERROR']));
     act(() =>
+      result.current.applyAdvancedFilters({
+        ...result.current.advancedFilters,
+        text: 'API_LOGS',
+        traceId: 'trace-7',
+        customerId: 'DEMO-CUST-1',
+        errorCode: 'ERR_UPSTREAM_5XX',
+      }),
+    );
+    act(() =>
       result.current.setTimeRange({ presetId: 'custom', start: '2026-01-01T00:00:00.000Z', end: '2026-01-02T00:00:00.000Z' }),
     );
-    expect(result.current.buildClassificationSampleScope()).toEqual({
+
+    const scope = result.current.buildClassificationSampleScope();
+    expect(scope).toMatchObject({
       sourceId: 'fixture',
-      composeProject: null,
       start: '2026-01-01T00:00:00.000Z',
       end: '2026-01-02T00:00:00.000Z',
       services: ['gateway'],
       serviceFilterMode: 'EXCLUDE',
       levels: ['ERROR'],
+      text: 'API_LOGS',
+      traceId: 'trace-7',
+      customerId: 'DEMO-CUST-1',
+      errorCode: 'ERR_UPSTREAM_5XX',
     });
+    // The sample owns its own paging, and never inherits the cursor of the visible page.
+    expect(scope).not.toHaveProperty('direction');
+    expect(scope).not.toHaveProperty('cursor');
+    // Every field the committed search body carries is either in the scope or one of those three exceptions.
+    const searchOnly = new Set(['direction', 'cursor', 'tags']);
+    act(() => result.current.runSearch());
+    await waitFor(() => expect(searchBodies.length).toBeGreaterThan(0));
+    for (const key of Object.keys(searchBodies[searchBodies.length - 1])) {
+      if (!searchOnly.has(key)) {
+        expect(Object.keys(scope ?? {})).toContain(key);
+      }
+    }
+  });
+
+  it('never carries the classification tag filter into a sample, and marks the selected event as the anchor', async () => {
+    const { result } = await renderReady();
+    act(() => result.current.setSelectedTags(['middleware']));
+
+    // Tags exist only after classification by the saved rules, so sampling through them while a rule is being
+    // authored would make the evidence depend on the classification being created.
+    expect(result.current.buildClassificationSampleScope()).not.toHaveProperty('tags');
+
+    const event = sparseEvent({ timestamp: '2026-01-01T10:00:00.000Z' });
+    expect(result.current.buildClassificationSampleScope(event)?.anchorTimestamp).toBe('2026-01-01T10:00:00.000Z');
+    expect(result.current.buildClassificationSampleScope()?.anchorTimestamp).toBeNull();
   });
 });

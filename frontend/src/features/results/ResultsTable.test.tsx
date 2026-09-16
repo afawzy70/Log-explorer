@@ -64,25 +64,34 @@ function event(overrides: Partial<LogEvent> = {}): LogEvent {
 }
 
 describe('ResultsTable', () => {
-  it('renders exactly the seven required columns, in order', () => {
+  it('renders exactly the eight required columns, in order', () => {
     render(<ResultsTable events={[event()]} />);
     const headers = screen.getAllByRole('columnheader').map((h) => headerLabel(h));
-    expect(headers).toEqual(['Time', 'Level', 'Service', 'What happened', 'User/Customer', 'Correlation/Trace', 'Actions']);
+    expect(headers).toEqual([
+      'Time',
+      'Level',
+      'Service',
+      'What happened',
+      'Tags',
+      'User/Customer',
+      'Correlation/Trace',
+      'Actions',
+    ]);
   });
 
   it('is one semantic table with one colgroup', () => {
     const { container } = render(<ResultsTable events={[event()]} />);
     expect(container.querySelectorAll('table')).toHaveLength(1);
     expect(container.querySelectorAll('colgroup')).toHaveLength(1);
-    expect(container.querySelectorAll('col')).toHaveLength(7);
+    expect(container.querySelectorAll('col')).toHaveLength(8);
   });
 
-  it('renders one <tr> per event, each with exactly seven <td> cells (no second action row)', () => {
+  it('renders one <tr> per event, each with exactly eight <td> cells (no second action row)', () => {
     const { container } = render(<ResultsTable events={[event(), event({ message: 'second event' })]} />);
     const bodyRows = container.querySelectorAll('tbody tr');
     expect(bodyRows).toHaveLength(2);
     bodyRows.forEach((row) => {
-      expect(row.querySelectorAll('td')).toHaveLength(7);
+      expect(row.querySelectorAll('td')).toHaveLength(8);
     });
   });
 
@@ -115,11 +124,13 @@ describe('ResultsTable', () => {
     render(<ResultsTable events={[bare]} />);
     const row = screen.getAllByRole('row')[1];
     const cells = within(row).getAllByRole('cell');
-    expect(cells).toHaveLength(7);
+    expect(cells).toHaveLength(8);
     expect(cells[0].textContent).toBe('—');
     expect(cells[2].textContent).toBe('—');
+    // Tags (4) is empty for an unclassified event, and still renders the placeholder rather than an absent cell.
     expect(cells[4].textContent).toBe('—');
     expect(cells[5].textContent).toBe('—');
+    expect(cells[6].textContent).toBe('—');
   });
 
   it('renders malformed events with their raw line, marked malformed, other fields empty', () => {
@@ -139,21 +150,21 @@ describe('ResultsTable', () => {
   it('shows the masked User/Customer value with its label, never a raw-looking substitute', () => {
     render(<ResultsTable events={[event({ protectedFields: { cif: null, userName: 'al***e', customerId: null, deviceId: null, deviceIp: null } })]} />);
     const row = screen.getAllByRole('row')[1];
-    expect(within(row).getAllByRole('cell')[4].textContent).toContain('al***e');
-    expect(within(row).getAllByRole('cell')[4].textContent).toContain('User');
+    expect(within(row).getAllByRole('cell')[5].textContent).toContain('al***e');
+    expect(within(row).getAllByRole('cell')[5].textContent).toContain('User');
   });
 
   it('shows the Trace ID with its label in Correlation/Trace', () => {
     render(<ResultsTable events={[event({ traceId: 'trace-abc' })]} />);
     const row = screen.getAllByRole('row')[1];
-    expect(within(row).getAllByRole('cell')[5].textContent).toContain('trace-abc');
-    expect(within(row).getAllByRole('cell')[5].textContent).toContain('Trace ID');
+    expect(within(row).getAllByRole('cell')[6].textContent).toContain('trace-abc');
+    expect(within(row).getAllByRole('cell')[6].textContent).toContain('Trace ID');
   });
 
   it('without onOpenJourney, the Correlation/Trace cell has no button at all', () => {
     render(<ResultsTable events={[event({ traceId: 'trace-abc' })]} />);
     const row = screen.getAllByRole('row')[1];
-    expect(within(row).getAllByRole('cell')[5].querySelector('button')).toBeNull();
+    expect(within(row).getAllByRole('cell')[6].querySelector('button')).toBeNull();
   });
 
   it('"supported click actions on non-sensitive IDs" (HANDOVER.md §17) - clicking the Correlation/Trace cell calls onOpenJourney with the right field, value, and this event as root (owner mission "Mapping Verification and Investigation Workspace")', async () => {

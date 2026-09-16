@@ -1,4 +1,5 @@
 import type { ExtractedFieldValue, LogEvent } from '../../shared/api/types';
+import { TagChip, tagColorsOf } from '../../shared/ui/TagChip';
 import { FieldList } from '../../shared/ui/FieldList';
 import type { FieldItem } from '../../shared/ui/FieldList';
 import { VisuallyHidden } from '../../shared/ui/VisuallyHidden';
@@ -48,22 +49,32 @@ export function ClassificationSection({ event }: { event: LogEvent }) {
   const tags = (event.tags ?? []).length > 0
     ? event.tags
     : Array.from(new Set(classifications.flatMap((c) => c.tags)));
+  // The same identity the results table draws, from the same source: the rule that applied the tag.
+  const colors = tagColorsOf(classifications);
 
   return (
     <InspectorSection title="Classification">
       {tags.length > 0 ? (
         <ul className={styles.tagList} aria-label="Tags">
           {tags.map((tag) => (
-            <li key={tag} className={styles.tag}>
+            <li key={tag}>
               <VisuallyHidden>Tag </VisuallyHidden>
-              {tag.toUpperCase()}
+              <TagChip tag={tag.toUpperCase()} color={colors[tag]} title={tag} />
             </li>
           ))}
         </ul>
       ) : null}
       {classifications.map((classification, index) => (
         <div key={`${classification.ruleId}-${index}`} className={styles.rule}>
-          <h3 className={styles.ruleName}>{classification.ruleName}</h3>
+          {/* The chips sit beside the heading, never inside it: the heading names the rule, nothing else. */}
+          <div className={styles.ruleHeader}>
+            <h3 className={styles.ruleName}>{classification.ruleName}</h3>
+            <span className={styles.ruleTags}>
+              {classification.tags.map((tag) => (
+                <TagChip key={tag} tag={tag} color={classification.displayColor} />
+              ))}
+            </span>
+          </div>
           {classification.extracted.length > 0 ? (
             <FieldList items={classification.extracted.map(extractedFieldItem)} />
           ) : (

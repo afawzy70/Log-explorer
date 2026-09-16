@@ -39,6 +39,8 @@ export interface InspectorHeaderProps {
   onShowContext: () => void;
   /** Event Classification & Extraction Rules - opens the rules workspace in create-from-event mode for this event. */
   onCreateTagRule?: () => void;
+  /** Only meaningful for an event that already has classifications - it extends one of the rules that matched. */
+  onAddExtraction?: () => void;
 }
 
 /** "Header: severity, service, title derived from message/error code. No invented diagnosis or root cause." (HANDOVER.md §16.1) */
@@ -53,7 +55,9 @@ export function InspectorHeader({
   position,
   onShowContext,
   onCreateTagRule,
+  onAddExtraction,
 }: InspectorHeaderProps) {
+  const isClassified = event.classifications.length > 0;
   const color = levelColor(event.severity);
   return (
     <div className={styles.header}>
@@ -84,9 +88,19 @@ export function InspectorHeader({
             Next →
           </Button>
           <ContextAction event={event} onConfirm={onShowContext} />
+          {/*
+            * Owner mission §"Inspector action semantics": one action never means two things. An unclassified event
+            * offers only rule creation; a classified one offers extending a rule that already matched it, and
+            * says "another" where it would otherwise read as the same action.
+            */}
+          {onAddExtraction && isClassified ? (
+            <Button variant="ghost" onClick={onAddExtraction}>
+              Add extraction from this event
+            </Button>
+          ) : null}
           {onCreateTagRule ? (
             <Button variant="ghost" onClick={onCreateTagRule}>
-              Create tag rule from this event
+              {isClassified ? 'Create another tag rule' : 'Create tag rule from this event'}
             </Button>
           ) : null}
         </div>

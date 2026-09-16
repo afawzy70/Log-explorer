@@ -63,6 +63,10 @@ public class PatternDetector {
   static final int MAX_TOKENS = 120;
   static final int MAX_SUGGESTED_EXTRACTIONS = 8;
   static final int MAX_LABEL_CONDITIONS = 4;
+  /** How many variable tokens a suggestion may skip between the fixed text it is anchored on and the value. */
+  static final int MAX_SKIPPED_TOKENS = 2;
+  /** Fixed text shorter than this is not read as a value name ("to", "in", "-"). */
+  static final int MIN_DERIVED_NAME_CHARS = 3;
   static final int MAX_EXAMPLE_CHARS = 80;
 
   private final RuleCompiler compiler;
@@ -290,50 +294,78 @@ public class PatternDetector {
     };
   }
 
+  /**
+   * Suggests extractions for the variable parts of the anchor that follow fixed text.
+   *
+   * <p>Every suggestion is anchored on a <b>stable</b> token (text that really is the same across the similar
+   * values) and captures one variable token after it, so the expression describes structure the sample actually
+   * shows. This covers three shapes, in one generic pass and with no knowledge of any particular log format:
+   * <ul>
+   *   <li>{@code label=value} / {@code label: value} pairs the tokenizer already split;</li>
+   *   <li>a labelled value whose "label" is ordinary fixed text rather than a {@code key=} token — for example
+   *       {@code ==&gt;RequestPath: /a/b} or {@code [Status]: 200}, common in multi-line, hand-formatted logs;</li>
+   *   <li>a value further along a run of variables, such as the URL in {@code [API]: POST https://host/path},
+   *       reached by skipping the variables in between.</li>
+   * </ul>
+   *
+   * <p>A suggestion is kept only when it really produced a value in at least
+   * {@value #MIN_EXTRACTION_COVERAGE} of the similar values; the reported count is that measurement, never an
+   * estimate.
+   */
   private List<DetectionResult.SuggestedExtraction> textExtractions(String field, List<Tokenizer.Token> tokens,
       boolean[] stable, List<String> similar) {
     List<DetectionResult.SuggestedExtraction> suggestions = new ArrayList<>();
     Set<String> names = new HashSet<>();
     for (int i = 1; i < tokens.size() && suggestions.size() < MAX_SUGGESTED_EXTRACTIONS; i++) {
+      if (stable[i]) {
+        continue;
+      }
+      // The fixed text this value is anchored on, and how many variable tokens sit between them.
+      int anchorIndex = i - 1;
+      while (anchorIndex >= 0 && !stable[anchorIndex]) {
+        anchorIndex--;
+      }
+      if (anchorIndex < 0) {
+        continue;
+      }
+      int skipped = i - anchorIndex - 1;
+      if (skipped > MAX_SKIPPED_TOKENS) {
+        continue;
+      }
       Tokenizer.Token token = tokens.get(i);
-      Tokenizer.Token previous = tokens.get(i - 1);
-      if (stable[i] || !stable[i - 1]) {
+      Tokenizer.Token anchorToken = tokens.get(anchorIndex);
+      String base = extractionBaseName(token, anchorToken, skipped);
+      if (base == null) {
         continue;
       }
-      String name;
-      String expression;
       ExtractedValueType type = ExtractedValueType.STRING;
-      String quotedPrevious = Pattern.quote(previous.text());
-      if (token.label() != null && previous.kind() == Tokenizer.Kind.LABEL) {
-        String separator = previous.end() == token.start() ? "" : "\\s*";
-        String base = outputName(token.label());
-        String core = token.text().replaceAll("[,;.)\\]}]+$", "");
-        switch (token.kind()) {
-          case NUMBER -> {
-            boolean integer = core.matches("[-+]?\\d+");
-            type = integer ? ExtractedValueType.INTEGER : ExtractedValueType.DECIMAL;
-            name = unique(base, names);
-            expression = quotedPrevious + separator + "(?P<" + name + ">" + (integer ? "[-+]?\\d+" : "[-+]?\\d+(?:\\.\\d+)?") + ")";
-          }
-          case DURATION -> {
-            String unit = core.replaceAll("^[0-9.]+", "");
-            boolean integer = core.substring(0, core.length() - unit.length()).matches("\\d+");
-            type = integer ? ExtractedValueType.INTEGER : ExtractedValueType.DECIMAL;
-            name = unique(base + capitalize(unit), names);
-            expression = quotedPrevious + separator + "(?P<" + name + ">\\d+(?:\\.\\d+)?)" + Pattern.quote(unit);
-          }
-          default -> {
-            name = unique(base, names);
-            expression = quotedPrevious + separator + "(?P<" + name + ">[^\\s,;]+)";
-          }
+      String name;
+      String capture;
+      String core = token.text().replaceAll("[,;.)\\]}]+$", "");
+      switch (token.kind()) {
+        case NUMBER -> {
+          boolean integer = core.matches("[-+]?\\d+");
+          type = integer ? ExtractedValueType.INTEGER : ExtractedValueType.DECIMAL;
+          name = unique(base, names);
+          capture = "(?P<" + name + ">" + (integer ? "[-+]?\\d+" : "[-+]?\\d+(?:\\.\\d+)?") + ")";
         }
-      } else if ((token.kind() == Tokenizer.Kind.PATH || token.kind() == Tokenizer.Kind.URL)
-          && previous.kind() == Tokenizer.Kind.WORD) {
-        name = unique("url", names);
-        expression = "\\b" + quotedPrevious + "\\s+(?P<" + name + ">\\S+)";
-      } else {
-        continue;
+        case DURATION -> {
+          String unit = core.replaceAll("^[0-9.]+", "");
+          boolean integer = core.substring(0, core.length() - unit.length()).matches("\\d+");
+          type = integer ? ExtractedValueType.INTEGER : ExtractedValueType.DECIMAL;
+          name = unique(token.label() != null ? base + capitalize(unit) : base, names);
+          capture = "(?P<" + name + ">\\d+(?:\\.\\d+)?)" + Pattern.quote(unit);
+        }
+        case URL, PATH -> {
+          name = unique(base, names);
+          capture = "(?P<" + name + ">\\S+)";
+        }
+        default -> {
+          name = unique(base, names);
+          capture = "(?P<" + name + ">[^\\s,;]+)";
+        }
       }
+      String expression = anchorPrefix(anchorToken, token, skipped) + "(?:\\S+\\s+){" + skipped + "}" + capture;
       ExtractionDefinition definition = new ExtractionDefinition(name, humanize(name), field, ExtractionType.REGEX,
           expression, name, type, false);
       CompiledRule.Extraction compiled;
@@ -357,6 +389,50 @@ public class PatternDetector {
       }
     }
     return suggestions;
+  }
+
+  /**
+   * The output name a suggested value gets, in a fixed order of preference: the label the tokenizer already
+   * parsed, then the letters of the fixed text it follows (so {@code ==>RequestPath:} names {@code requestPath}
+   * and {@code [Status]:} names {@code status}), then the shape of the value itself. Fixed text too short to read
+   * as a name (for example the {@code to} in "call to /a/b") is skipped in favour of the shape, which is what
+   * makes that case {@code url} rather than {@code to}.
+   */
+  private static String extractionBaseName(Tokenizer.Token token, Tokenizer.Token anchorToken, int skipped) {
+    if (token.label() != null) {
+      return outputName(token.label());
+    }
+    boolean shaped = token.kind() == Tokenizer.Kind.URL || token.kind() == Tokenizer.Kind.PATH
+        || token.kind() == Tokenizer.Kind.DURATION || token.kind() == Tokenizer.Kind.UUID
+        || token.kind() == Tokenizer.Kind.IP || token.kind() == Tokenizer.Kind.TIMESTAMP;
+    String fromAnchor = skipped == 0 ? outputName(readableWord(anchorToken.text())) : null;
+    if (fromAnchor != null && fromAnchor.length() >= MIN_DERIVED_NAME_CHARS && !(shaped && fromAnchor.length() < 4)) {
+      return fromAnchor;
+    }
+    return switch (token.kind()) {
+      case URL, PATH -> "url";
+      case DURATION -> "duration";
+      case UUID, HEX, ID -> "id";
+      case IP -> "ip";
+      case TIMESTAMP -> "timestamp";
+      case NUMBER -> "number";
+      case QUOTED, WORD, LABEL -> null;
+      case REDACTED -> null;
+    };
+  }
+
+  /** ALL-CAPS fixed text reads as one word, not one letter per hump: {@code [API]:} names {@code api}. */
+  private static String readableWord(String raw) {
+    return raw.chars().noneMatch(Character::isLowerCase) ? raw.toLowerCase(Locale.ROOT) : raw;
+  }
+
+  /** The fixed text a suggestion is anchored on, quoted literally, with the separator the sample really uses. */
+  private static String anchorPrefix(Tokenizer.Token anchorToken, Tokenizer.Token token, int skipped) {
+    String quoted = Pattern.quote(anchorToken.text());
+    boolean wordStart = !anchorToken.text().isEmpty() && Character.isLetterOrDigit(anchorToken.text().charAt(0));
+    String boundary = wordStart && anchorToken.kind() != Tokenizer.Kind.LABEL ? "\\b" : "";
+    String separator = skipped == 0 && anchorToken.end() == token.start() ? "" : "\\s*";
+    return boundary + quoted + separator;
   }
 
   // ------------------------------------------------------------------ JSON

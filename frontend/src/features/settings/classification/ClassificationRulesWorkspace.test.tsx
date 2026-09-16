@@ -12,6 +12,7 @@ import {
   downloadClassificationRulesExport,
   fetchClassificationRules,
   previewClassificationImport,
+  suggestClassificationExtractions,
   testClassificationRule,
   updateClassificationRule,
 } from '../../../shared/api/client';
@@ -34,6 +35,7 @@ vi.mock('../../../shared/api/client', async () => {
     updateClassificationRule: vi.fn(),
     deleteClassificationRule: vi.fn(),
     detectClassificationPattern: vi.fn(),
+    suggestClassificationExtractions: vi.fn(),
     testClassificationRule: vi.fn(),
     downloadClassificationRulesExport: vi.fn(),
     previewClassificationImport: vi.fn(),
@@ -46,6 +48,7 @@ const mockCreate = vi.mocked(createClassificationRule);
 const mockUpdate = vi.mocked(updateClassificationRule);
 const mockDelete = vi.mocked(deleteClassificationRule);
 const mockDetect = vi.mocked(detectClassificationPattern);
+const mockSuggestExtractions = vi.mocked(suggestClassificationExtractions);
 const mockTest = vi.mocked(testClassificationRule);
 const mockDownload = vi.mocked(downloadClassificationRulesExport);
 const mockPreview = vi.mocked(previewClassificationImport);
@@ -98,6 +101,7 @@ function rulesState(overrides: Partial<ClassificationRulesState> = {}): Classifi
     storageFile: '/data/classification-rules.json',
     rules: [RULE_A, RULE_B],
     tags: ['middleware', 'payments'],
+    tagColors: { middleware: 'BLUE', payments: 'GREEN' },
     limits: { maxConditionsPerRule: 3, maxExtractionsPerRule: 4, maxImportBytes: 1000, defaultSampleSize: 200, previewCount: 5 },
     fields: [
       { key: 'message', label: 'Message' },
@@ -217,11 +221,22 @@ function conflictError() {
 }
 
 beforeEach(() => {
-  for (const m of [mockFetch, mockCreate, mockUpdate, mockDelete, mockDetect, mockTest, mockDownload, mockPreview, mockApply]) {
+  for (const m of [mockFetch, mockCreate, mockUpdate, mockDelete, mockDetect, mockSuggestExtractions, mockTest, mockDownload, mockPreview, mockApply]) {
     m.mockReset();
   }
   mockFetch.mockResolvedValue(rulesState());
   mockDownload.mockResolvedValue(undefined);
+  // The extraction step asks for suggestions on arrival; tests that care override this.
+  mockSuggestExtractions.mockResolvedValue({
+    status: 'NO_SUGGESTION',
+    reason: 'No extraction could be suggested safely from the sampled events.',
+    field: 'message',
+    sampledEvents: 200,
+    matchedEvents: 12,
+    suggestions: [],
+    alreadyDefined: [],
+    warnings: [],
+  });
 });
 
 describe('ClassificationRulesWorkspace - list', () => {
@@ -615,13 +630,14 @@ describe('Rule wizard - create from event', () => {
     expect(within(condition).getByLabelText('Matcher')).toHaveValue('REGEX');
     expect(within(condition).getByLabelText('Regular expression')).toHaveValue('^MW call \\S+ took \\d+ms$');
 
-    // Extraction
+    // Extraction - the suggestion already put one confirmed value in the draft; it can still be renamed,
+    // and a manual one added and removed.
     await user.click(screen.getByRole('button', { name: 'Next' }));
-    const extraction1 = screen.getByRole('group', { name: 'Extraction 1' });
+    const extraction1 = await screen.findByRole('group', { name: 'Endpoint (confirmed)' });
     expect(within(extraction1).getByLabelText('Name')).toHaveValue('endpoint');
     await user.clear(within(extraction1).getByLabelText('Name'));
     await user.type(within(extraction1).getByLabelText('Name'), 'target');
-    await user.click(screen.getByRole('button', { name: 'Add extraction' }));
+    await user.click(screen.getByRole('button', { name: 'Add extraction manually' }));
     expect(screen.getByRole('group', { name: 'Extraction 2' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Remove extraction 2' }));
     expect(screen.queryByRole('group', { name: 'Extraction 2' })).not.toBeInTheDocument();

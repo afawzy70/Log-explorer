@@ -53,11 +53,17 @@ Rules:
 Treat these as product requirements, not cosmetic details. Each one came from an observed failure.
 
 **Results table**
-- Exactly seven columns, in order: Time, Level, Service, What happened, User/Customer, Correlation/Trace, Actions.
+- Exactly eight columns by default, in order: Time, Level, Service, What happened, Tags, User/Customer, Correlation/Trace, Actions.
+  (This supersedes the original seven-column set. The owner mission "Classification real search scope, assisted
+  extraction, and visual tagging" made classification visible in the table by default — a saved rule must be
+  discoverable after a re-search without opening the inspector — so **Tags** joined the default set, drawn as one
+  compact chip plus a `+n` counter, with the full list in the cell's accessible name. Recorded in
+  `docs/governance/OWNER_REQUIREMENTS_REGISTER.md` §27 CSX-8; every other rule in this section is unchanged.)
 - `What happened` = **message only**. Message never renders under Service.
 - Missing values render `—`. Never omit a cell.
 - One semantic `<table>`, one `<colgroup>`, `table-layout: fixed`. Header and body share one geometry system — never separate grid/flex layouts.
-- One event = one `<tr>`. Actions `…` is the seventh cell of that same row. No second row, no blank line.
+- One event = one `<tr>`. Actions `…` is the last cell of that same row. No second row, no blank line. A classified
+  row is exactly as tall as an unclassified one.
 - Header/cell `getBoundingClientRect()` left and width must match within **2 CSS pixels**. If that assertion fails, the table is not fixed — do not say it is.
 - Time shows date + time + milliseconds.
 - Newest first. No dropped or duplicated rows.

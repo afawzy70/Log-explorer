@@ -147,6 +147,9 @@ interface SearchSnapshot {
  * (CLAUDE.md §2 rule 4) - state lives entirely in memory for the life of
  * the page.
  */
+/** Why the classification workspace was opened - see `classificationWorkspaceIntent`. */
+export type ClassificationWorkspaceIntent = 'createRule' | 'addExtraction' | null;
+
 export function useSearchState() {
   const [sources, setSources] = useState<SourceInfo[]>([]);
   const [sourcesLoading, setSourcesLoading] = useState(true);
@@ -413,10 +416,18 @@ export function useSearchState() {
   const [classificationWorkspaceOpen, setClassificationWorkspaceOpen] = useState(false);
   const [classificationWorkspaceEvent, setClassificationWorkspaceEvent] = useState<LogEvent | null>(null);
   const [classificationWorkspaceKey, setClassificationWorkspaceKey] = useState(0);
+  /**
+   * Why the workspace was opened, so one action never means two things (owner mission §"Inspector action
+   * semantics"): `createRule` authors a new rule from the event, `addExtraction` extends a rule that already
+   * matched it. `null` is the plain Settings entry point.
+   */
+  const [classificationWorkspaceIntent, setClassificationWorkspaceIntent] =
+    useState<ClassificationWorkspaceIntent>(null);
 
   const openMappingWorkspace = useCallback(() => {
     setClassificationWorkspaceOpen(false);
     setClassificationWorkspaceEvent(null);
+    setClassificationWorkspaceIntent(null);
     setMappingWorkspaceOpen(true);
   }, []);
   const closeMappingWorkspace = useCallback(() => setMappingWorkspaceOpen(false), []);
@@ -424,12 +435,14 @@ export function useSearchState() {
   const openClassificationWorkspace = useCallback(() => {
     setMappingWorkspaceOpen(false);
     setClassificationWorkspaceEvent(null);
+    setClassificationWorkspaceIntent(null);
     setClassificationWorkspaceKey((k) => k + 1);
     setClassificationWorkspaceOpen(true);
   }, []);
   const closeClassificationWorkspace = useCallback(() => {
     setClassificationWorkspaceOpen(false);
     setClassificationWorkspaceEvent(null);
+    setClassificationWorkspaceIntent(null);
   }, []);
 
   const refreshClassificationTags = useCallback(() => {
@@ -714,27 +727,35 @@ export function useSearchState() {
   );
 
   /**
-   * The bounded sample scope a classification detect/test call reads: the
-   * selected source, Compose project, services + mode, levels, and the
-   * committed time range resolved exactly as a fresh Search would resolve
-   * it (`recomputeRelativeRange`) - relative presets end "now", a custom
-   * range stays exactly as typed. Does not commit anything.
+   * The bounded sample scope a classification detect/test call reads.
+   *
+   * It is the *committed search* itself - built from the very same
+   * `buildRequestBody` the results table was filled by, so free text, the
+   * query DSL / raw LogQL, every advanced and identifier filter, services and
+   * their include/exclude mode, severities, the Compose project and the time
+   * range (resolved exactly as a fresh Search would resolve it: relative
+   * presets end "now", a custom range stays as typed) all apply. Before this
+   * it carried only source/project/window/services/levels, so a search
+   * narrowed by text sampled mostly unrelated events and Detect/Test reported
+   * almost no matches for a screen visibly full of them.
+   *
+   * Three things are deliberately not carried: `direction`, `limit`/`cursor`
+   * (a sample is one bounded newest-first page of its own size) and `tags` -
+   * see `ClassificationSampleScope`. `anchorTimestamp` is the selected
+   * event's own timestamp, so the server can guarantee it takes part.
+   * Commits nothing.
    */
-  const buildClassificationSampleScope = useCallback((): ClassificationSampleScope | null => {
-    if (!selectedSourceId) {
-      return null;
-    }
-    const range = recomputeRelativeRange(timeRange);
-    return {
-      sourceId: selectedSourceId,
-      composeProject: selectedComposeProject ?? null,
-      start: range.start,
-      end: range.end,
-      services: selectedServices,
-      serviceFilterMode,
-      levels: selectedLevels,
-    };
-  }, [selectedSourceId, selectedComposeProject, timeRange, selectedServices, serviceFilterMode, selectedLevels]);
+  const buildClassificationSampleScope = useCallback(
+    (anchor?: LogEvent | null): ClassificationSampleScope | null => {
+      const body = buildRequestBody(undefined, recomputeRelativeRange(timeRange));
+      if (!body) {
+        return null;
+      }
+      const { direction: _direction, cursor: _cursor, tags: _tags, ...scope } = body;
+      return { ...scope, anchorTimestamp: anchor?.timestamp ?? null };
+    },
+    [buildRequestBody, timeRange],
+  );
 
   /** Aborts whatever request is currently in flight, so its result can never race a newer one. */
   function supersedeActiveRequest(): AbortController {
@@ -937,6 +958,22 @@ export function useSearchState() {
     focusRestoreRef.current = null;
     setMappingWorkspaceOpen(false);
     setClassificationWorkspaceEvent(event);
+    setClassificationWorkspaceIntent('createRule');
+    setClassificationWorkspaceKey((k) => k + 1);
+    setClassificationWorkspaceOpen(true);
+  }, []);
+
+  /**
+   * "Add extraction from this event" - the event is already classified, so this extends one of the rules that
+   * matched it rather than authoring a new one. The workspace asks which rule when more than one matched, and
+   * never mutates a rule without an explicit Save.
+   */
+  const openClassificationExtractionFromEvent = useCallback((event: LogEvent) => {
+    setSelectedIndex(null);
+    focusRestoreRef.current = null;
+    setMappingWorkspaceOpen(false);
+    setClassificationWorkspaceEvent(event);
+    setClassificationWorkspaceIntent('addExtraction');
     setClassificationWorkspaceKey((k) => k + 1);
     setClassificationWorkspaceOpen(true);
   }, []);
@@ -1312,7 +1349,9 @@ export function useSearchState() {
     closeMappingWorkspace,
     classificationWorkspaceOpen,
     classificationWorkspaceEvent,
+    classificationWorkspaceIntent,
     classificationWorkspaceKey,
+    openClassificationExtractionFromEvent,
     openClassificationWorkspace,
     openClassificationRuleFromEvent,
     closeClassificationWorkspace,

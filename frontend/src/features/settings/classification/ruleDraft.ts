@@ -138,6 +138,10 @@ export function toWritableRule(rule: ClassificationRule, keepId = true): Classif
     name: rule.name.trim(),
     description: rule.description ?? '',
     tags: [...(rule.tags ?? [])],
+    // Carried through deliberately: omitting it silently reset the rule's colour on every save, including the
+    // list's Enabled switch. A rule that never chose one still sends nothing, so the server's deterministic
+    // default applies.
+    ...(rule.displayColor ? { displayColor: rule.displayColor } : {}),
     enabled: rule.enabled ?? true,
     priority: rule.priority ?? 100,
     matchMode: rule.matchMode ?? 'ALL',

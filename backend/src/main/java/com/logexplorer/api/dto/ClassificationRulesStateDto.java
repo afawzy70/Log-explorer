@@ -20,6 +20,8 @@ public record ClassificationRulesStateDto(
     String storageFile,
     List<ClassificationRule> rules,
     List<String> tags,
+    /** The one colour each tag is drawn in ({@code core.classify.TagColorPolicy}), as semantic palette names. */
+    Map<String, String> tagColors,
     Map<String, Integer> limits,
     List<FieldRef.FieldOption> fields,
     ClassificationEngine.RuntimeStats runtime
