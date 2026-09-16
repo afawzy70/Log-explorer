@@ -7,5 +7,6 @@ import java.util.List;
  * Every extracted value has already passed the server-side masking and
  * redaction boundary ({@code core.mask.ExtractedValueRedactor}).
  */
-public record ClassificationDto(String ruleId, String ruleName, List<String> tags, List<ExtractedFieldDto> extracted) {
+public record ClassificationDto(String ruleId, String ruleName, List<String> tags, String displayColor,
+    List<ExtractedFieldDto> extracted) {
 }

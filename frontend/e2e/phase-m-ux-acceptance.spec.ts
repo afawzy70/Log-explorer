@@ -159,7 +159,7 @@ test.describe('Task 3 - Follow a request', () => {
     await page.getByRole('button', { name: /^search$/i }).click();
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10_000 });
 
-    const idCell = page.locator('tbody tr').first().locator('td').nth(5);
+    const idCell = page.locator('tbody tr').first().locator('td').nth(6);
     const idText = (await idCell.textContent()) ?? '';
     const idValue = idText.replace(/^.*ID:/i, '').trim();
     expect(idValue.length).toBeGreaterThan(0);

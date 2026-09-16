@@ -20,6 +20,7 @@ Log Explorer uses two versioned JSON formats for classification rules. Both star
 | `name` | string | yes | ≤ 80 characters |
 | `description` | string | no | ≤ 500 characters |
 | `tags` | string[] | yes, 1–5 | Stored lowercase. `^[a-z0-9][a-z0-9._-]{0,39}$` |
+| `displayColor` | `GRAY` \| `BLUE` \| `CYAN` \| `GREEN` \| `AMBER` \| `ORANGE` \| `RED` \| `PURPLE` | no | How this rule's tags are drawn. A semantic name, never a CSS value. Omitted means a deterministic default derived from the first tag, so a file or pack written before this field existed still loads. Two rules that share a tag must give it the same colour; a conflict is reported and refused, never resolved silently. |
 | `enabled` | boolean | no | Default `true` |
 | `priority` | integer | no | 0–10000, default 100. Lower runs first; ties are broken by `id`. |
 | `matchMode` | `ALL` \| `ANY` | no | Default `ALL` |

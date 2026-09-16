@@ -17,7 +17,10 @@ import type {
   ImportApplyResult,
   ImportPreviewResult,
   LogEvent,
+  RuleMatchDto,
 } from '../../../shared/api/types';
+import type { ClassificationWorkspaceIntent } from '../../../app/useSearchState';
+import { TagChip } from '../../../shared/ui/TagChip';
 import { RuleEditor } from './RuleEditor';
 import type { EditorMode, StepId } from './RuleEditor';
 import { ImportPanel } from './ImportPanel';
@@ -38,7 +41,16 @@ export interface ClassificationRulesWorkspaceProps {
   /** Set when opened from the inspector's "Create tag rule from this event" - held only in React state. */
   sourceEvent: LogEvent | null;
   /** The committed search scope a detect/test call samples; `null` when no source is selected. */
-  buildScope: () => ClassificationSampleScope | null;
+  /**
+   * The committed search scope a sample is read from. The selected event is passed so the server can guarantee it
+   * takes part in detection even when the bounded page stops short of it.
+   */
+  buildScope: (anchor?: LogEvent | null) => ClassificationSampleScope | null;
+  /**
+   * Why the workspace was opened: `createRule` authors a new rule from `sourceEvent`, `addExtraction` extends a
+   * rule that already matched it (owner mission §"Inspector action semantics"). Omitted for the Settings entry.
+   */
+  intent?: ClassificationWorkspaceIntent;
   /** Called after any successful write so app-wide tag lists can refresh. */
   onRulesChanged?: () => void;
   onClose: () => void;
@@ -47,6 +59,8 @@ export interface ClassificationRulesWorkspaceProps {
 type View =
   | { kind: 'list' }
   | { kind: 'editor'; mode: EditorMode; initialRule: ClassificationRule; initialStep?: StepId }
+  /** "Add extraction from this event" when more than one saved rule matched it - the user picks which to extend. */
+  | { kind: 'chooseRule'; candidates: RuleMatchDto[] }
   | { kind: 'import'; fileName: string; packText: string; preview: ImportPreviewResult };
 
 const STATUS_LABELS: Record<ClassificationRulesState['status'], string> = {
@@ -62,7 +76,13 @@ const STATUS_LABELS: Record<ClassificationRulesState['status'], string> = {
  * client last read, so a concurrent change surfaces as a conflict instead
  * of being overwritten.
  */
-export function ClassificationRulesWorkspace({ sourceEvent, buildScope, onRulesChanged, onClose }: ClassificationRulesWorkspaceProps) {
+export function ClassificationRulesWorkspace({
+  sourceEvent,
+  intent,
+  buildScope,
+  onRulesChanged,
+  onClose,
+}: ClassificationRulesWorkspaceProps) {
   const headingId = useId();
   const fileInputId = useId();
   const headingRef = useRef<HTMLHeadingElement | null>(null);
@@ -73,8 +93,12 @@ export function ClassificationRulesWorkspace({ sourceEvent, buildScope, onRulesC
   const [rulesState, setRulesState] = useState<ClassificationRulesState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [view, setView] = useState<View>(() =>
-    sourceEvent ? { kind: 'editor', mode: 'fromEvent', initialRule: emptyRule() } : { kind: 'list' },
+    sourceEvent && intent !== 'addExtraction'
+      ? { kind: 'editor', mode: 'fromEvent', initialRule: emptyRule() }
+      : { kind: 'list' },
   );
+  /** Resolved once the rules are loaded, because extending a rule needs the saved rule itself. */
+  const extensionResolvedRef = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [listConflict, setListConflict] = useState(false);
@@ -101,6 +125,31 @@ export function ClassificationRulesWorkspace({ sourceEvent, buildScope, onRulesC
     loadRules().catch(() => undefined);
   }, [loadRules]);
 
+  /**
+   * "Add extraction from this event" needs the saved rule, so it resolves once the rules have loaded: one
+   * matching rule opens straight on its extraction step, several ask which to extend, and a rule that has since
+   * been deleted says so instead of silently authoring something else. Nothing is mutated without an explicit
+   * Save either way.
+   */
+  useEffect(() => {
+    if (intent !== 'addExtraction' || !rulesState || !sourceEvent || extensionResolvedRef.current) {
+      return;
+    }
+    extensionResolvedRef.current = true;
+    const matched = sourceEvent.classifications.filter((c) => rulesState.rules.some((r) => r.id === c.ruleId));
+    if (matched.length === 1) {
+      openExtractionEditor(matched[0].ruleId);
+    } else if (matched.length > 1) {
+      setView({ kind: 'chooseRule', candidates: matched });
+    } else {
+      setNotice(
+        sourceEvent.classifications.length > 0
+          ? 'The rules that classified this event are no longer saved. Choose a rule to edit, or create a new one.'
+          : 'This event is not classified yet, so there is no rule to extend. Create a tag rule first.',
+      );
+    }
+  }, [intent, rulesState, sourceEvent]);
+
   useEffect(() => {
     headingRef.current?.focus();
   }, []);
@@ -112,6 +161,17 @@ export function ClassificationRulesWorkspace({ sourceEvent, buildScope, onRulesC
   }, [pendingDelete]);
 
   useDismissableLayer(confirmRef, pendingDelete != null, () => setPendingDelete(null));
+
+  /** Opens a saved rule on its extraction step, with the selected event as the anchor for suggestions. */
+  function openExtractionEditor(ruleId: string) {
+    const rule = rulesState?.rules.find((r) => r.id === ruleId);
+    if (!rule) {
+      setListError('That rule no longer exists. Reload the rules and try again.');
+      setView({ kind: 'list' });
+      return;
+    }
+    setView({ kind: 'editor', mode: 'edit', initialRule: rule, initialStep: 'extraction' });
+  }
 
   function clearListMessages() {
     setListError(null);
@@ -238,13 +298,39 @@ export function ClassificationRulesWorkspace({ sourceEvent, buildScope, onRulesC
         Loading classification rules…
       </p>
     );
+  } else if (view.kind === 'chooseRule') {
+    body = (
+      <section aria-labelledby={`${headingId}-choose`}>
+        <h2 id={`${headingId}-choose`}>Which rule should this value be added to?</h2>
+        <p className={styles.hint}>
+          {view.candidates.length} saved rules classified this event. Extraction is added to one rule at a time, and
+          nothing changes until you save.
+        </p>
+        <ul className={styles.chooserList} aria-label="Rules that classified this event">
+          {view.candidates.map((candidate) => (
+            <li key={candidate.ruleId} className={styles.chooserRow}>
+              <span className={styles.chooserName}>{candidate.ruleName}</span>
+              <span className={styles.chooserTags}>
+                {candidate.tags.map((tag) => (
+                  <TagChip key={tag} tag={tag} color={candidate.displayColor} />
+                ))}
+              </span>
+              <Button variant="primary" onClick={() => openExtractionEditor(candidate.ruleId)}>
+                Add extraction to {candidate.ruleName}
+              </Button>
+            </li>
+          ))}
+        </ul>
+        <Button onClick={() => setView({ kind: 'list' })}>Cancel</Button>
+      </section>
+    );
   } else if (view.kind === 'editor') {
     body = (
       <RuleEditor
         mode={view.mode}
         initialRule={view.initialRule}
         initialStep={view.initialStep}
-        sourceEvent={view.mode === 'fromEvent' ? sourceEvent : null}
+        sourceEvent={view.mode === 'fromEvent' || intent === 'addExtraction' ? sourceEvent : null}
         rulesState={rulesState}
         buildScope={buildScope}
         onReloadRules={loadRules}
@@ -382,7 +468,17 @@ export function ClassificationRulesWorkspace({ sourceEvent, buildScope, onRulesC
                             <span className={styles.ruleName}>{rule.name}</span>
                             {rule.description ? <span className={styles.hint}>{rule.description}</span> : null}
                           </td>
-                          <td>{rule.tags.length > 0 ? rule.tags.join(', ') : '—'}</td>
+                          <td>
+                            {rule.tags.length > 0 ? (
+                              <span className={styles.chooserTags}>
+                                {rule.tags.map((tag) => (
+                                  <TagChip key={tag} tag={tag} color={rule.displayColor} />
+                                ))}
+                              </span>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
                           <td className={styles.mono}>{conditionSummary(rule)}</td>
                           <td>
                             <label className={styles.checkboxRow}>

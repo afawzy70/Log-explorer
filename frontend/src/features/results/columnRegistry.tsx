@@ -11,6 +11,7 @@ import {
   resolveUserOrCustomer,
 } from './columnMapping';
 import { MessageCell } from './MessageCell';
+import { TagChip, tagColorsOf } from '../../shared/ui/TagChip';
 import { JOURNEY_ACTION_LABELS } from '../journey/journeyFields';
 import styles from './ResultsTable.module.css';
 
@@ -50,6 +51,7 @@ export type ColumnId =
   | 'level'
   | 'service'
   | 'whatHappened'
+  | 'tags'
   | 'userCustomer'
   | 'correlationTrace'
   | 'logger'
@@ -100,6 +102,32 @@ export interface ColumnDefinition {
    * "sort by time" implementations.
    */
   sortAccessor?: (event: LogEvent) => string | number | null;
+}
+
+/**
+ * Every tag an event carries, drawn in the colour of the rule that applied it: the first tag as a chip, the rest
+ * as a "+n" counter. The complete list is always available as text - in this cell's accessible name, in its
+ * tooltip, and in the inspector - so nothing is discoverable only by hovering.
+ */
+function TagsCell({ event }: { event: LogEvent }) {
+  // Defensive: every response from this backend carries `tags`, but a cell must never be the thing that breaks a
+  // row - an event assembled elsewhere (a mocked response in a test, an older payload) simply has no tags.
+  const tags = event.tags ?? [];
+  if (tags.length === 0) {
+    return EMPTY_VALUE;
+  }
+  const colors = tagColorsOf(event.classifications);
+  const [first, ...rest] = tags;
+  const all = tags.join(', ');
+  return (
+    <span className={styles.tagsGroup} title={all}>
+      <span className={styles.visuallyHidden}>{`Tags: ${all}`}</span>
+      <span aria-hidden="true" className={styles.tagsGroup}>
+        <TagChip tag={first} color={colors[first]} title={all} />
+        {rest.length > 0 ? <TagChip tag={`+${rest.length}`} color={colors[first]} title={all} /> : null}
+      </span>
+    </span>
+  );
 }
 
 function levelColor(severity: string | null): string | undefined {
@@ -192,6 +220,26 @@ export const COLUMN_REGISTRY: ColumnDefinition[] = [
      * squeezed below a readable width when there is not.
      */
     render: (event) => <MessageCell event={event} />,
+  },
+  {
+    /*
+     * Owner mission "Classification real search scope, assisted extraction, and visual tagging" §"Fourth owner
+     * requirement": after a rule is saved and Search re-run, a matched event must be visibly classified in the
+     * table - discovering it must not require opening the inspector. This supersedes the earlier "optional,
+     * hidden by default" tag-column decision (design decision D19); see `docs/governance/
+     * OWNER_REQUIREMENTS_REGISTER.md` and CLAUDE.md §4 for the superseded seven-default-column contract.
+     *
+     * Density is preserved deliberately: one compact chip plus a "+n" counter, a fixed width, and a chip height
+     * (18px) below the row height, so a tagged row is exactly as tall as an untagged one. The full list is in the
+     * cell's accessible name and its tooltip, and in the inspector - never only in a hover.
+     */
+    id: 'tags',
+    label: 'Tags',
+    defaultVisible: true,
+    width: '150px',
+    cellClassName: styles.tagsCell,
+    sortAccessor: (event) => event.tags?.[0] ?? null,
+    render: (event) => <TagsCell event={event} />,
   },
   {
     id: 'userCustomer',

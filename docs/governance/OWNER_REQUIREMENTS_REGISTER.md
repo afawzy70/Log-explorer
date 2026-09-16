@@ -2552,3 +2552,68 @@ UNTRACKED_OWNER_REQUIREMENTS=0
 | SSEL-3 | Safe fallback: Docker when available, otherwise OpenShift, otherwise the first selectable source; truthful no-source state when nothing is selectable | `VERIFIED` | `sourcePolicy.test.ts`, `useSearchState.sourceSelection.test.ts`, `SourceSelect.test.tsx` ("No available source") | |
 | SSEL-4 | Existing E2E steps that selected OpenShift Loki updated deliberately (named conflict, later decision applied) | `VERIFIED` | `phase-j-live-tail.spec.ts` (asserts Loki disabled instead of selecting it; Loki liveTail:false stays covered by `LokiLogSourceTest`), `phase-legacy-slice6-investigation-depth.spec.ts` test 3 and `phase-m-ux-acceptance.spec.ts` Task 6 (unavailable state exercised with a selectable source whose health is mocked DOWN; no-service-discovery exercised with `openshift`) | CLAUDE.md §5: older requirement conflicts with a later decision — named and applied; tests not weakened in intent |
 
+
+## 27. Classification search scope, assisted extraction, and visible coloured tags
+
+`CLASSIFICATION_REAL_SEARCH_SCOPE_ASSISTED_EXTRACTION_AND_VISUAL_TAGGING_RECOVERY`
+— a functional recovery on top of §26 (PR #59), from a real owner test of
+the packaged Windows build against real Docker Compose logs: a search
+narrowed by free text (`API_LOGS`) showed many matching events, but
+**Detect pattern** reported about one similar event and a hand-written
+`message STARTS_WITH "API_LOGS:"` rule reported **matched 1, not matched
+199**. Root cause confirmed in code: the classification sample rebuilt only
+source, Compose project, time range, services, service filter mode and
+severities, dropping the committed query and every advanced filter, so it
+sampled the newest events of the whole source instead of the population the
+selected event was visible in.
+
+```
+CLASSIFICATION_SAMPLE_MATCHES_CURRENT_SEARCH_SCOPE=YES
+CLASSIFICATION_QUERY_FILTER_PRESERVED=YES
+CLASSIFICATION_ADVANCED_FILTERS_PRESERVED=YES
+CLASSIFICATION_SELECTED_EVENT_ANCHOR_GUARANTEED=YES
+CLASSIFICATION_TAG_FILTER_IN_SAMPLE=NO
+
+ASSISTED_EXTRACTION=YES
+EXTRACTION_SUGGESTIONS=YES
+EXTRACTION_NO_SUGGESTION_HELP=YES
+ADD_EXTRACTION_FROM_EVENT=YES
+EXISTING_RULE_EXTRACTION_EXTENSION=YES
+
+CLASSIFICATION_VISIBLE_IN_RESULTS=YES
+CLASSIFICATION_VISIBLE_WITHOUT_INSPECTOR=YES
+
+RULE_DISPLAY_COLOR=YES
+RULE_DISPLAY_COLOR_STORAGE=SERVER_JSON
+RULE_DISPLAY_COLOR_EXPORT_IMPORT=YES
+SAME_TAG_COLOR_CONFLICT_SILENT=NO
+COLOR_IS_NOT_ONLY_SIGNAL=YES
+
+DATABASE_ADDED=NO
+LOG_PERSISTENCE_ADDED=NO
+AI_RUNTIME_DETECTION=NO
+PR58_REQUIRES_POST_RECOVERY_SYNC=YES
+UNTRACKED_OWNER_REQUIREMENTS=0
+```
+
+| ID | NAME | STATUS | EVIDENCE | NOTES |
+|---|---|---|---|---|
+| CSX-1 | Detect/Test sample the committed search population the selected event came from: source, Compose project, window, services + include/exclude mode, severities, free text, query DSL, raw LogQL, trace/span/correlation/journey/event ids, error code, business step, UI identifier, logger, device platform, language, and the five protected filters — built through the one real `RequestMapper`, so every filter behaves exactly as Search | `VERIFIED` | `api/ClassificationSampleCollector.java`, `api/dto/ClassificationSampleScopeDto.java`, `app/useSearchState.ts#buildClassificationSampleScope`; `ClassificationSearchScopeIntegrationTest` (7 tests incl. the API_LOGS reproduction and the unscoped contrast), `useSearchState.classification.test.ts` | Sampling still owns direction, limit and cursor: one bounded newest-first page |
+| CSX-2 | A classification tag filter is never carried into a sample | `VERIFIED` | `ClassificationSampleCollector` javadoc + `aClassificationTagFilterIsNeverCarriedIntoASample`, `useSearchState.classification.test.ts` | Tags exist only after classification by the saved rules, so sampling through them while a rule is being authored would make the evidence depend on the classification being created. Every other committed filter is preserved |
+| CSX-3 | The selected event takes part in detection even when the bounded page stops short of it, de-duplicated, with truthful counts | `VERIFIED` | `ClassificationSampleCollector#anchorEvents`; `theSelectedEventTakesPartEvenWhenTheBoundedPageStopsShortOfIt`, `aSampleWithoutAnAnchorTimestampStaysExactlyTheRequestedSize` | One extra bounded read of the anchor's own millisecond with identical filters |
+| CSX-4 | Bounded sampling unchanged: default 200, max 500, no unbounded scan, nothing retained | `VERIFIED` | `ClassificationLimits`, collector tests | |
+| CSX-5 | Assisted extraction: suggestions mined from the events the rule actually matches, by the same deterministic detector (RE2 named captures, JSON pointer, labelled key/value and stable-literal analysis) — no external LLM | `VERIFIED` | `core/classify/detect/PatternDetector#textExtractions` (generalized to labelled fixed text and values further along a variable run), `api/ClassificationRulesController#suggestExtractions`; `ExtractionSuggestionIntegrationTest` | Suggestion coverage is measured on the sample, never estimated |
+| CSX-6 | Extraction step explains itself, offers accept/deselect/rename/edit/preview/sensitive/remove and manual authoring, and never leaves a nearly blank page when nothing can be inferred | `VERIFIED` | `RuleEditor.tsx` extraction step; `RuleEditor.assistedExtraction.test.tsx` | Regex / JSON pointer detail sits behind a per-value "Advanced" disclosure |
+| CSX-7 | "Add extraction from this event" on a classified event, with a rule chooser when several rules matched, revision-protected save, and no silent mutation | `VERIFIED` | `InspectorHeader.tsx`, `useSearchState#openClassificationExtractionFromEvent`, `ClassificationRulesWorkspace` chooser; `classificationActions.test.tsx` | An unclassified event never offers it |
+| CSX-8 | Classification is visible in the results table by default (compact chip + `+n`, full list in the accessible name and tooltip), without opening the inspector and without taller rows | `VERIFIED` | `features/results/columnRegistry.tsx` `tags` column; `ResultsTable.classification.test.tsx`, updated column-contract tests | **Supersedes the seven-default-column contract** (CLAUDE.md §4) and design decision D19's "hidden by default": the default set is now eight columns, Tags between "What happened" and "User/Customer". Every other table invariant is unchanged — one table, one colgroup, one row per event, no omitted cells, message-only "What happened", Actions pinned last |
+| CSX-9 | User-selected tag colour from a controlled semantic palette (GRAY BLUE CYAN GREEN AMBER ORANGE RED PURPLE), persisted as a name in the server JSON, exported and imported, with a deterministic default derived from the first tag | `VERIFIED` | `core/classify/TagColor.java`, `ClassificationRule#displayColor`; `TagColorTest` | Old rules files and packs without the field keep loading; no schema version change was needed |
+| CSX-10 | One normalized tag resolves to one colour; a same-tag/different-colour conflict is reported and refused, never silently resolved — on save and on import (preview lists it; MERGE and REPLACE_ALL both refuse) | `VERIFIED` | `core/classify/TagColorPolicy.java`, `ClassificationRuleService#compileAll`, import preview `tagColorConflicts`; `TagColorTest` | |
+| CSX-11 | Colour is identity only and never the only signal: every chip carries its tag text, pairs are ≥ 5.5:1 contrast, and forced-colours mode drops the tint and keeps the text | `VERIFIED` | `shared/ui/TagChip.tsx`, `shared/tokens.css`; axe in the new unit tests | Never implies severity, success, failure or causality |
+| CSX-12 | Security unchanged: extraction stays backend-authoritative, previews and extracted values pass the existing masking/redaction boundary, and no sensitive value reaches logs, packs or fixtures | `VERIFIED` | `ExtractedValueRedactor` path untouched; existing leak tests PASS | The API_LOGS fixture family is synthetic |
+| CSX-13 | Design sync of this recovery into the paused Modern Developer Console lane (PR #58) after merge | `DEFERRED` | — | `PR58_REQUIRES_POST_RECOVERY_SYNC=YES`: corrected Detect/Test scope, assisted extraction, add-extraction-from-event, no-suggestion help, visible table classification, rule colour, coloured chips, import colour conflicts |
+
+**Scope discipline.** This recovery touches classification sampling,
+extraction, tag presentation and colour only. The Live Service EXCLUDE
+defect (D8), `SEARCH_PERFORMANCE_ROOT_CAUSE`, the Loki backend capability
+(§12, SSEL-2) and the Modern Developer Console design lane are untouched.
+`HISTORICAL_DECISIONS_PRESERVED=YES`. `UNTRACKED_OWNER_REQUIREMENTS=0`.

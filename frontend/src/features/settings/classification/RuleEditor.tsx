@@ -7,6 +7,7 @@ import {
   detectClassificationPattern,
   isRulesRevisionConflict,
   ruleValidationErrors,
+  suggestClassificationExtractions,
   testClassificationRule,
   updateClassificationRule,
 } from '../../../shared/api/client';
@@ -15,6 +16,7 @@ import type {
   ClassificationRulesState,
   ClassificationSampleScope,
   ExtractionDefinition,
+  ExtractionSuggestionResult,
   ExtractionType,
   ExtractionValueType,
   LogEvent,
@@ -24,7 +26,11 @@ import type {
   RulePreviewEvent,
   RuleTestResult,
   RuleValidationError,
+  SuggestedExtraction,
+  TagColor,
 } from '../../../shared/api/types';
+import { TAG_COLORS } from '../../../shared/api/types';
+import { TagChip } from '../../../shared/ui/TagChip';
 import { extractedFieldItem } from '../../inspector/ClassificationSection';
 import { formatUtcTimestamp } from '../../inspector/timestampFormat';
 import { resolveService } from '../../results/columnMapping';
@@ -61,6 +67,25 @@ const EDITOR_TITLES: Record<EditorMode, string> = {
   fromEvent: 'Create tag rule from event',
 };
 
+/** Plain words for the palette, so the choice is never colour-only (CLAUDE.md §7). */
+const COLOR_LABELS: Record<TagColor, string> = {
+  GRAY: 'Grey',
+  BLUE: 'Blue',
+  CYAN: 'Cyan',
+  GREEN: 'Green',
+  AMBER: 'Amber',
+  ORANGE: 'Orange',
+  RED: 'Red',
+  PURPLE: 'Purple',
+};
+
+/** One row of the suggestion list: whether it is ticked, the output name the user may rename, and sensitivity. */
+interface SuggestionChoice {
+  selected: boolean;
+  name: string;
+  sensitive: boolean;
+}
+
 const MATCHERS: RuleMatcher[] = ['EXACT', 'CONTAINS', 'STARTS_WITH', 'REGEX'];
 const EXTRACTION_TYPES: { value: ExtractionType; label: string }[] = [
   { value: 'REGEX', label: 'Regular expression (RE2)' },
@@ -80,7 +105,11 @@ export interface RuleEditorProps {
   /** Only in `fromEvent` mode. */
   sourceEvent: LogEvent | null;
   rulesState: ClassificationRulesState;
-  buildScope: () => ClassificationSampleScope | null;
+  /**
+   * The committed search scope a sample is read from. The selected event is passed so the server can guarantee it
+   * takes part in detection even when the bounded page stops short of it.
+   */
+  buildScope: (anchor?: LogEvent | null) => ClassificationSampleScope | null;
   onReloadRules: () => Promise<void>;
   onSaved: (state: ClassificationRulesState) => void;
   onCancel: () => void;
@@ -210,6 +239,15 @@ export function RuleEditor({
   const [detection, setDetection] = useState<PatternDetectionResult | null>(null);
   const [suggestionApplied, setSuggestionApplied] = useState(false);
 
+  // ---- Assisted extraction ----
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [suggestion, setSuggestion] = useState<ExtractionSuggestionResult | null>(null);
+  const [suggestionChoices, setSuggestionChoices] = useState<Record<string, SuggestionChoice>>({});
+  const [extractionSkipped, setExtractionSkipped] = useState(false);
+  const [openExtractionDetails, setOpenExtractionDetails] = useState<Record<number, boolean>>({});
+  const suggestedOnceRef = useRef(false);
+
   // ---- Classification ----
   const [advancedOpen, setAdvancedOpen] = useState(mode === 'edit' || mode === 'duplicate');
 
@@ -223,6 +261,16 @@ export function RuleEditor({
   const [saveIssues, setSaveIssues] = useState<string[]>([]);
   const [conflict, setConflict] = useState(false);
   const [reloadNotice, setReloadNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (step !== 'extraction' || suggestedOnceRef.current || conditions.length === 0) {
+      return;
+    }
+    suggestedOnceRef.current = true;
+    runSuggestExtractions();
+    // Runs once, the first time the user reaches the extraction step with conditions to match on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   function ruleForSubmit(): ClassificationRule {
     return toWritableRule({ ...draft, tags }, mode === 'edit');
@@ -242,7 +290,7 @@ export function RuleEditor({
   }
 
   function runDetect() {
-    const scope = buildScope();
+    const scope = buildScope(sourceEvent);
     if (!scope) {
       setDetectError('Select a source before detecting a pattern.');
       return;
@@ -286,8 +334,91 @@ export function RuleEditor({
     setMessage(errorMessage(error, fallback));
   }
 
+  /**
+   * Asks the server which values can be pulled out of the events this rule actually matches, inside the same
+   * committed search scope. Deterministic and server-side - the same detector Detect pattern uses - and a
+   * suggestion only: nothing is saved until the user adds a value and saves the rule.
+   */
+  function runSuggestExtractions() {
+    const scope = buildScope(sourceEvent);
+    if (!scope) {
+      setSuggestError('Select a source before suggesting extractions.');
+      return;
+    }
+    setSuggesting(true);
+    setSuggestError(null);
+    setExtractionSkipped(false);
+    suggestClassificationExtractions({
+      rule: ruleForSubmit(),
+      field: anchorField,
+      anchorValue: anchorValue || undefined,
+      scope,
+      sampleSize,
+    })
+      .then((result) => {
+        setSuggestion(result);
+        setSuggestionChoices(
+          Object.fromEntries(
+            result.suggestions.map((s) => [
+              s.definition.name,
+              { selected: true, name: s.definition.name, sensitive: s.definition.sensitive ?? false },
+            ]),
+          ),
+        );
+      })
+      .catch((error: unknown) => setSuggestError(errorMessage(error, 'Suggesting extractions failed')))
+      .finally(() => setSuggesting(false));
+  }
+
+  function updateSuggestionChoice(key: string, patch: Partial<SuggestionChoice>) {
+    setSuggestionChoices((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
+  }
+
+  /** Moves the ticked suggestions into the rule as confirmed extractions. Still not saved - Save rule does that. */
+  function addSelectedSuggestions() {
+    const chosen = (suggestion?.suggestions ?? []).filter((s) => suggestionChoices[s.definition.name]?.selected);
+    if (chosen.length === 0) {
+      return;
+    }
+    const existing = new Set(extractions.map((x) => x.name));
+    const additions: ExtractionDefinition[] = [];
+    for (const s of chosen) {
+      const choice = suggestionChoices[s.definition.name];
+      const name = (choice?.name ?? s.definition.name).trim() || s.definition.name;
+      if (existing.has(name) || extractions.length + additions.length >= maxExtractions) {
+        continue;
+      }
+      existing.add(name);
+      // The output name is the user's to choose, but the capture group is part of the expression the detector
+      // built - renaming the value must never repoint it at a group that does not exist.
+      additions.push({ ...s.definition, name, sensitive: choice?.sensitive ?? false });
+    }
+    updateDraft({ extractions: [...extractions, ...additions] });
+    const adoptedKeys = new Set(chosen.map((s) => s.definition.name));
+    setSuggestion((prev) =>
+      prev
+        ? {
+            ...prev,
+            suggestions: prev.suggestions.filter((s) => !adoptedKeys.has(s.definition.name)),
+            alreadyDefined: [...prev.alreadyDefined, ...additions.map((x) => x.name)],
+          }
+        : prev,
+    );
+  }
+
+  function addManualExtraction() {
+    setExtractionSkipped(false);
+    updateDraft({
+      extractions: [
+        ...extractions,
+        { name: '', sourceField: anchorField, type: 'REGEX', expression: '', valueType: 'STRING', sensitive: false },
+      ],
+    });
+    setOpenExtractionDetails((prev) => ({ ...prev, [extractions.length]: true }));
+  }
+
   function runTest() {
-    const scope = buildScope();
+    const scope = buildScope(sourceEvent);
     if (!scope) {
       setTestError('Select a source before testing a rule.');
       return;
@@ -626,6 +757,32 @@ export function RuleEditor({
           ) : null}
           <FieldErrors errors={errorsAt(validationErrors, 'tags')} />
         </div>
+        <fieldset className={styles.field}>
+          <legend>Tag colour</legend>
+          <span id={`${id}-color-help`} className={styles.hint}>
+            How these tags are shown in search results and the inspector. Colour is a label, not a severity, and
+            every tag always shows its name. A tag already used by another rule keeps that rule's colour.
+          </span>
+          <div className={styles.colorChoices} role="radiogroup" aria-describedby={`${id}-color-help`}>
+            {TAG_COLORS.map((color) => (
+              <label key={color} className={styles.colorChoice}>
+                <input
+                  type="radio"
+                  name={`${id}-color`}
+                  value={color}
+                  checked={(draft.displayColor ?? 'GRAY') === color}
+                  onChange={() => updateDraft({ displayColor: color })}
+                />
+                <TagChip tag={color.toLowerCase()} color={color} label={COLOR_LABELS[color]} />
+              </label>
+            ))}
+          </div>
+          <p className={styles.previewRow}>
+            <span className={styles.hint}>Preview:</span>{' '}
+            <TagChip tag={tags[0] ?? 'tag'} color={draft.displayColor ?? 'GRAY'} />
+          </p>
+          <FieldErrors errors={errorsAt(validationErrors, 'displayColor')} />
+        </fieldset>
         <div className={styles.field}>
           <label htmlFor={`${id}-description`}>Description</label>
           <textarea
@@ -762,17 +919,137 @@ export function RuleEditor({
       </>
     );
   } else if (step === 'extraction') {
+    const suggestions = suggestion?.suggestions ?? [];
+    const selectedCount = suggestions.filter((s) => suggestionChoices[s.definition.name]?.selected).length;
+    // The "nothing could be suggested" block already offers the manual route, so the step's action row does not
+    // repeat it - one control, one name.
+    const noSuggestionActionsShown = suggestion?.status === 'NO_SUGGESTION' && !suggesting;
     content = (
       <>
         {validationSummary}
         <p className={styles.hint}>
-          Extractions read named values from matching events. They are optional. Values marked "Never show this value" are
-          redacted by the server.
+          Extraction pulls named values out of matching events - a URL, a status, a duration, a request path - so
+          you can read them in the inspector without hunting through the message. It is optional, and values marked
+          "Never show this value" are redacted by the server before they ever reach this window.
         </p>
-        {extractions.length === 0 ? <p className={styles.hint}>No extractions.</p> : null}
+
+        <section className={styles.subsection} aria-labelledby={`${id}-suggested`}>
+          <h4 className={styles.minorHeading} id={`${id}-suggested`}>
+            Suggested values
+          </h4>
+          {suggesting ? (
+            <p role="status" className={styles.hint}>
+              Looking for values in the events this rule matches…
+            </p>
+          ) : null}
+          {suggestError ? (
+            <p role="alert" className={styles.error}>
+              {suggestError}
+            </p>
+          ) : null}
+          {suggestion && !suggesting ? (
+            <p className={styles.hint}>
+              Read from {suggestion.matchedEvents} matching event{suggestion.matchedEvents === 1 ? '' : 's'} in the
+              current search, out of {suggestion.sampledEvents} sampled. Counts describe this bounded sample only.
+            </p>
+          ) : null}
+          {suggestion?.status === 'NO_SUGGESTION' && !suggesting ? (
+            <div className={styles.emptyState}>
+              <p>{suggestion.reason ?? 'No extraction could be suggested safely from the sampled events.'}</p>
+              <div className={styles.buttonRow}>
+                <Button onClick={runSuggestExtractions}>Detect extractable values again</Button>
+                <Button onClick={addManualExtraction} disabled={extractions.length >= maxExtractions}>
+                  Add extraction manually
+                </Button>
+                <Button variant="ghost" onClick={() => { setExtractionSkipped(true); setStep('test'); }}>
+                  Skip extraction
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          {suggestions.length > 0 && !suggesting ? (
+            <>
+              <ul className={styles.suggestionList} aria-label="Suggested extractions">
+                {suggestions.map((s: SuggestedExtraction) => {
+                  const key = s.definition.name;
+                  const choice = suggestionChoices[key] ?? { selected: false, name: key, sensitive: false };
+                  return (
+                    <li key={key} className={styles.suggestionRow}>
+                      <label className={styles.checkboxRow}>
+                        <input
+                          type="checkbox"
+                          checked={choice.selected}
+                          onChange={(e) => updateSuggestionChoice(key, { selected: e.target.checked })}
+                        />
+                        <span className={styles.suggestionName}>{s.definition.label ?? key}</span>
+                      </label>
+                      <span className={styles.suggestionCoverage}>
+                        Found in {s.extracted} / {s.of}
+                      </span>
+                      <div className={styles.field}>
+                        <label htmlFor={`${id}-sg-${key}`}>Output name</label>
+                        <input
+                          id={`${id}-sg-${key}`}
+                          type="text"
+                          value={choice.name}
+                          maxLength={limits.maxExtractionNameLength}
+                          onChange={(e) => updateSuggestionChoice(key, { name: e.target.value })}
+                          autoComplete="off"
+                        />
+                      </div>
+                      <label className={styles.checkboxRow}>
+                        <input
+                          type="checkbox"
+                          checked={choice.sensitive}
+                          onChange={(e) => updateSuggestionChoice(key, { sensitive: e.target.checked })}
+                        />
+                        Never show this value
+                      </label>
+                      <Button
+                        variant="ghost"
+                        aria-label={`Remove suggestion ${choice.name || key}`}
+                        onClick={() =>
+                          setSuggestion((prev) =>
+                            prev ? { ...prev, suggestions: prev.suggestions.filter((o) => o.definition.name !== key) } : prev,
+                          )
+                        }
+                      >
+                        Remove
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className={styles.buttonRow}>
+                <Button variant="primary" onClick={addSelectedSuggestions} disabled={selectedCount === 0}>
+                  Add {selectedCount} selected value{selectedCount === 1 ? '' : 's'}
+                </Button>
+                <Button onClick={runSuggestExtractions}>Detect extractable values again</Button>
+              </div>
+            </>
+          ) : null}
+          {!suggestion && !suggesting && !suggestError ? (
+            <div className={styles.buttonRow}>
+              <Button onClick={runSuggestExtractions}>Detect extractable values</Button>
+            </div>
+          ) : null}
+          {suggestion && suggestion.alreadyDefined.length > 0 ? (
+            <p className={styles.hint}>Already extracted by this rule: {suggestion.alreadyDefined.join(', ')}.</p>
+          ) : null}
+        </section>
+
+        <h4 className={styles.minorHeading}>Values this rule will extract</h4>
+        {extractionSkipped && extractions.length === 0 ? (
+          <p className={styles.hint}>Extraction skipped. The rule will still tag matching events.</p>
+        ) : null}
+        {extractions.length === 0 && !extractionSkipped ? (
+          <p className={styles.hint}>None yet. Add a suggested value above, or add one yourself.</p>
+        ) : null}
         {extractions.map((x, i) => (
           <fieldset key={i} className={styles.fieldset}>
-            <legend className={styles.legend}>Extraction {i + 1}</legend>
+            <legend className={styles.legend}>
+              {x.name ? `${x.label ?? x.name} (confirmed)` : `Extraction ${i + 1}`}
+            </legend>
             <div className={styles.rowGrid}>
               <div className={styles.field}>
                 <label htmlFor={`${id}-x${i}-name`}>Name</label>
@@ -808,49 +1085,6 @@ export function RuleEditor({
                 />
               </div>
               <div className={styles.field}>
-                <label htmlFor={`${id}-x${i}-type`}>Type</label>
-                <select
-                  id={`${id}-x${i}-type`}
-                  value={x.type}
-                  onChange={(e) => updateExtraction(i, { type: e.target.value as ExtractionType })}
-                >
-                  {EXTRACTION_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className={styles.field}>
-              <label htmlFor={`${id}-x${i}-expression`}>Expression</label>
-              <input
-                id={`${id}-x${i}-expression`}
-                type="text"
-                className={styles.mono}
-                value={x.expression}
-                maxLength={limits.maxPatternLength}
-                onChange={(e) => updateExtraction(i, { expression: e.target.value })}
-                autoComplete="off"
-              />
-              <span className={styles.hint}>
-                {x.type === 'JSON_POINTER'
-                  ? 'A JSON pointer starting with "/".'
-                  : 'RE2 syntax with a named group, e.g. (?P<name>...).'}
-              </span>
-            </div>
-            <div className={styles.rowGrid}>
-              <div className={styles.field}>
-                <label htmlFor={`${id}-x${i}-group`}>Group (optional)</label>
-                <input
-                  id={`${id}-x${i}-group`}
-                  type="text"
-                  value={x.group ?? ''}
-                  onChange={(e) => updateExtraction(i, { group: e.target.value })}
-                  autoComplete="off"
-                />
-              </div>
-              <div className={styles.field}>
                 <label htmlFor={`${id}-x${i}-value-type`}>Value type</label>
                 <select
                   id={`${id}-x${i}-value-type`}
@@ -865,6 +1099,62 @@ export function RuleEditor({
                 </select>
               </div>
             </div>
+            <div className={styles.buttonRow}>
+              <Button
+                aria-expanded={openExtractionDetails[i] ?? false}
+                aria-controls={`${id}-x${i}-advanced`}
+                onClick={() => setOpenExtractionDetails((prev) => ({ ...prev, [i]: !prev[i] }))}
+              >
+                {(openExtractionDetails[i] ?? false) ? '▾' : '▸'} Advanced: how this value is read
+              </Button>
+            </div>
+            {(openExtractionDetails[i] ?? false) ? (
+              <div id={`${id}-x${i}-advanced`}>
+                <div className={styles.rowGrid}>
+                  <div className={styles.field}>
+                    <label htmlFor={`${id}-x${i}-type`}>Method</label>
+                    <select
+                      id={`${id}-x${i}-type`}
+                      value={x.type}
+                      onChange={(e) => updateExtraction(i, { type: e.target.value as ExtractionType })}
+                    >
+                      {EXTRACTION_TYPES.map((t) => (
+                        <option key={t.value} value={t.value}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className={styles.field}>
+                    <label htmlFor={`${id}-x${i}-group`}>Group (optional)</label>
+                    <input
+                      id={`${id}-x${i}-group`}
+                      type="text"
+                      value={x.group ?? ''}
+                      onChange={(e) => updateExtraction(i, { group: e.target.value })}
+                      autoComplete="off"
+                    />
+                  </div>
+                </div>
+                <div className={styles.field}>
+                  <label htmlFor={`${id}-x${i}-expression`}>Expression</label>
+                  <input
+                    id={`${id}-x${i}-expression`}
+                    type="text"
+                    className={styles.mono}
+                    value={x.expression}
+                    maxLength={limits.maxPatternLength}
+                    onChange={(e) => updateExtraction(i, { expression: e.target.value })}
+                    autoComplete="off"
+                  />
+                  <span className={styles.hint}>
+                    {x.type === 'JSON_POINTER'
+                      ? 'A JSON pointer starting with "/".'
+                      : 'RE2 syntax with a named group, e.g. (?P<name>...).'}
+                  </span>
+                </div>
+              </div>
+            ) : null}
             <label className={styles.checkboxRow}>
               <input
                 type="checkbox"
@@ -884,19 +1174,11 @@ export function RuleEditor({
           </fieldset>
         ))}
         <div className={styles.buttonRow}>
-          <Button
-            onClick={() =>
-              updateDraft({
-                extractions: [
-                  ...extractions,
-                  { name: '', sourceField: anchorField, type: 'REGEX', expression: '', valueType: 'STRING', sensitive: false },
-                ],
-              })
-            }
-            disabled={extractions.length >= maxExtractions}
-          >
-            Add extraction
-          </Button>
+          {noSuggestionActionsShown ? null : (
+            <Button onClick={addManualExtraction} disabled={extractions.length >= maxExtractions}>
+              Add extraction manually
+            </Button>
+          )}
           <Button
             onClick={() => {
               setStep('test');

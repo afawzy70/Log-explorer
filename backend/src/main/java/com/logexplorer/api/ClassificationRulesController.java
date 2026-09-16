@@ -2,6 +2,8 @@ package com.logexplorer.api;
 
 import com.logexplorer.api.dto.ClassificationRuleWriteRequestDto;
 import com.logexplorer.api.dto.ClassificationRulesStateDto;
+import com.logexplorer.api.dto.ExtractionSuggestionRequestDto;
+import com.logexplorer.api.dto.ExtractionSuggestionResponseDto;
 import com.logexplorer.api.dto.ImportApplyRequestDto;
 import com.logexplorer.api.dto.ImportApplyResponseDto;
 import com.logexplorer.api.dto.PatternDetectionRequestDto;
@@ -13,19 +15,25 @@ import com.logexplorer.core.classify.ClassificationPack;
 import com.logexplorer.core.classify.ClassificationRule;
 import com.logexplorer.core.classify.ClassificationRuleService;
 import com.logexplorer.core.classify.ClassificationRulesException;
+import com.logexplorer.core.classify.CompiledRule;
 import com.logexplorer.core.classify.ConflictResolution;
+import com.logexplorer.core.classify.ExtractionDefinition;
 import com.logexplorer.core.classify.FieldRef;
 import com.logexplorer.core.classify.ImportMode;
 import com.logexplorer.core.classify.RuleCompiler;
 import com.logexplorer.core.classify.RuleTester;
 import com.logexplorer.core.classify.RuleValidationException;
+import com.logexplorer.core.classify.TagColorPolicy;
 import com.logexplorer.core.classify.detect.DetectionResult;
 import com.logexplorer.core.classify.detect.PatternDetector;
 import com.logexplorer.core.mask.ExtractedValueRedactor;
 import com.logexplorer.core.mask.TextRedactor;
+import com.logexplorer.core.model.CanonicalLogEvent;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -151,6 +159,87 @@ public class ClassificationRulesController {
         .map(sample -> tester.test(body.rule(), sample.events(), sample.limitReached()));
   }
 
+  /**
+   * Suggests extractable values from the events a rule actually matches in
+   * the user's committed search scope (owner mission §"Extraction from
+   * detected pattern"). Deterministic and local — the same detector Detect
+   * pattern uses, never an external service — and a suggestion only:
+   * nothing is saved, and the rule is not activated.
+   */
+  @PostMapping("/extractions/suggest")
+  public Mono<ExtractionSuggestionResponseDto> suggestExtractions(@RequestBody ExtractionSuggestionRequestDto body) {
+    ClassificationRule source;
+    if (body.rule() != null) {
+      source = body.rule();
+    } else if (body.ruleId() != null && !body.ruleId().isBlank()) {
+      source = ruleService.state().document().rules().stream()
+          .filter(r -> body.ruleId().equals(r.id()))
+          .findFirst()
+          .orElse(null);
+      if (source == null) {
+        return Mono.error(ClassificationRulesException.badRequest("RULE_NOT_FOUND",
+            "That rule no longer exists. Reload the rules and try again."));
+      }
+    } else {
+      return Mono.error(ClassificationRulesException.badRequest("RULE_REQUIRED",
+          "Choose the rule to add extractions to"));
+    }
+    CompiledRule compiled;
+    try {
+      compiled = compiler.compile(source);
+    } catch (RuleValidationException e) {
+      return Mono.error(e);
+    }
+    FieldRef field;
+    try {
+      field = FieldRef.parse(body.field() == null || body.field().isBlank() ? "message" : body.field());
+    } catch (IllegalArgumentException e) {
+      return Mono.error(ClassificationRulesException.badRequest("FIELD_INVALID", e.getMessage()));
+    }
+    List<String> alreadyDefined = compiled.rule().extractions().stream()
+        .map(ExtractionDefinition::name)
+        .filter(Objects::nonNull)
+        .toList();
+    return sampleCollector.collect(body.scope(), body.sampleSize())
+        .publishOn(Schedulers.boundedElastic())
+        .map(sample -> {
+          List<CanonicalLogEvent> matched = sample.events().stream()
+              .filter(event -> engine.evaluate(compiled, event).isPresent())
+              .toList();
+          List<String> values = matched.stream()
+              .map(event -> {
+                String text = engine.fieldText(field, event);
+                return text == null ? null
+                    : truncate(redactor.redactText(event, text), ClassificationLimits.MAX_DETECTION_VALUE_CHARS);
+              })
+              .filter(Objects::nonNull)
+              .toList();
+          if (values.isEmpty()) {
+            return ExtractionSuggestionResponseDto.none("No event in this sample matched the rule and had a value for "
+                + field.raw() + ", so there is nothing to infer values from. Widen the time range, or add the "
+                + "extraction yourself.", field.raw(), sample.events().size(), matched.size(), alreadyDefined);
+          }
+          String anchor = body.anchorValue() == null || body.anchorValue().isBlank()
+              ? values.get(0)
+              : truncate(textRedactor.redact(body.anchorValue()), ClassificationLimits.MAX_DETECTION_VALUE_CHARS);
+          DetectionResult detection = detector.detect(field.raw(), anchor, values, sample.events().size());
+          List<DetectionResult.SuggestedExtraction> suggestions = detection.suggestedExtractions().stream()
+              .filter(s -> s.definition() != null && !alreadyDefined.contains(s.definition().name()))
+              .toList();
+          if (suggestions.isEmpty()) {
+            String reason = detection.reason() != null ? detection.reason()
+                : alreadyDefined.isEmpty()
+                    ? "No extraction could be suggested safely from the sampled events."
+                    : "No extraction beyond the ones this rule already has could be suggested safely from the "
+                        + "sampled events.";
+            return ExtractionSuggestionResponseDto.none(reason, field.raw(), sample.events().size(), matched.size(),
+                alreadyDefined);
+          }
+          return new ExtractionSuggestionResponseDto(ExtractionSuggestionResponseDto.Status.SUGGESTED, null,
+              field.raw(), sample.events().size(), matched.size(), suggestions, alreadyDefined, detection.warnings());
+        });
+  }
+
   @GetMapping("/export")
   public ResponseEntity<byte[]> export(@RequestParam(required = false) List<String> ids,
       @RequestParam(required = false) String name) {
@@ -195,9 +284,11 @@ public class ClassificationRulesController {
   private ClassificationRulesStateDto toDto(ClassificationRuleService.State state) {
     List<ClassificationRule> rules = state.document().rules();
     List<String> tags = rules.stream().flatMap(r -> r.tags().stream()).distinct().sorted().toList();
+    Map<String, String> tagColors = new LinkedHashMap<>();
+    TagColorPolicy.tagColors(rules).forEach((tag, color) -> tagColors.put(tag, color.name()));
     return new ClassificationRulesStateDto(state.document().revisionOrZero(), state.document().updatedAt(),
-        state.status().name(), state.statusMessage(), state.storageFile(), rules, tags, ClassificationLimits.asMap(),
-        FieldRef.canonicalOptions(), engine.stats());
+        state.status().name(), state.statusMessage(), state.storageFile(), rules, tags, tagColors,
+        ClassificationLimits.asMap(), FieldRef.canonicalOptions(), engine.stats());
   }
 
   private static String truncate(String value, int max) {

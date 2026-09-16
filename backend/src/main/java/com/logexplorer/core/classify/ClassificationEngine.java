@@ -140,7 +140,8 @@ public class ClassificationEngine implements EventClassifier {
       extracted.add(extract(extraction, context));
     }
     ClassificationRule definition = rule.rule();
-    return new RuleMatch(definition.id(), definition.name(), definition.tags(), extracted);
+    return new RuleMatch(definition.id(), definition.name(), definition.tags(),
+        definition.effectiveDisplayColor().name(), extracted);
   }
 
   private boolean matches(CompiledRule rule, EvaluationContext context) {

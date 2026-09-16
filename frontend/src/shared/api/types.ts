@@ -205,6 +205,8 @@ export interface RuleMatchDto {
   ruleId: string;
   ruleName: string;
   tags: string[];
+  /** The rule's semantic palette entry, so the table and the inspector draw the same identity. */
+  displayColor?: TagColor | null;
   extracted: ExtractedFieldValue[];
 }
 
@@ -666,6 +668,14 @@ export interface SchemaScanResponse {
 /* Event Classification & Extraction Rules                             */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The controlled palette a rule's tags are drawn in. Colour is identity only - never severity, success or failure -
+ * and never the only signal: a chip always carries its tag text.
+ */
+export type TagColor = 'GRAY' | 'BLUE' | 'CYAN' | 'GREEN' | 'AMBER' | 'ORANGE' | 'RED' | 'PURPLE';
+
+export const TAG_COLORS: TagColor[] = ['GRAY', 'BLUE', 'CYAN', 'GREEN', 'AMBER', 'ORANGE', 'RED', 'PURPLE'];
+
 export type RuleMatchMode = 'ALL' | 'ANY';
 export type RuleMatcher = 'EXACT' | 'CONTAINS' | 'STARTS_WITH' | 'REGEX';
 export type ExtractionType = 'REGEX' | 'JSON_POINTER';
@@ -697,6 +707,8 @@ export interface ClassificationRule {
   name: string;
   description?: string;
   tags: string[];
+  /** Optional: the server fills in a deterministic default derived from the first tag when it is omitted. */
+  displayColor?: TagColor;
   enabled?: boolean;
   priority?: number;
   matchMode?: RuleMatchMode;
@@ -735,12 +747,29 @@ export interface ClassificationRulesState {
   storageFile: string;
   rules: ClassificationRule[];
   tags: string[];
+  /** The one colour each tag resolves to, so every surface draws a tag the same way. */
+  tagColors: Record<string, TagColor>;
   limits: Record<string, number>;
   fields: ClassificationRuleField[];
   runtime: ClassificationRuntimeStats;
 }
 
 /** The bounded sample a detect/test call reads - mirrors the committed search scope. */
+/**
+ * The committed search scope a bounded classification sample is read from.
+ *
+ * Mirrors `SearchRequestBody` field for field, apart from what a sample owns
+ * itself: `direction`/`limit`/`cursor` (sampling is always one bounded
+ * newest-first page) and `tags` - a classification tag filter is deliberately
+ * not carried, because sampling through the tags of the saved rules while a
+ * rule is being authored would make the evidence depend on the very
+ * classification being created. Everything else the user actually searched
+ * with is preserved, so Detect and Test sample the same population the
+ * selected event is visible in.
+ *
+ * `anchorTimestamp` lets the server guarantee the selected event takes part
+ * even when the bounded page would have stopped short of it.
+ */
 export interface ClassificationSampleScope {
   sourceId: string;
   composeProject?: string | null;
@@ -749,6 +778,27 @@ export interface ClassificationSampleScope {
   services?: string[];
   serviceFilterMode?: 'INCLUDE' | 'EXCLUDE';
   levels?: string[];
+  text?: string;
+  traceId?: string;
+  spanId?: string;
+  correlationId?: string;
+  journeyId?: string;
+  journeyName?: string;
+  eventId?: string;
+  errorCode?: string;
+  businessStep?: string;
+  uiIdentifier?: string;
+  loggerContains?: string;
+  devicePlatform?: string;
+  language?: string;
+  cif?: string;
+  userName?: string;
+  customerId?: string;
+  deviceId?: string;
+  deviceIp?: string;
+  query?: string;
+  rawLogQl?: string;
+  anchorTimestamp?: string | null;
 }
 
 export interface PatternDetectionRequest {
@@ -793,6 +843,31 @@ export interface PatternDetectionResult {
   suggestedPattern: string | null;
   coverage: DetectionCoverage | null;
   suggestedExtractions: SuggestedExtraction[];
+  warnings: string[];
+}
+
+/**
+ * "Suggest extractions" - mine the events a rule actually matches, inside the committed search scope, for values
+ * worth pulling out. Send either a saved `ruleId` or the unsaved `rule` being authored.
+ */
+export interface ExtractionSuggestionRequest {
+  ruleId?: string;
+  rule?: ClassificationRule;
+  field?: string;
+  anchorValue?: string;
+  scope: ClassificationSampleScope;
+  sampleSize?: number;
+}
+
+export interface ExtractionSuggestionResult {
+  status: 'SUGGESTED' | 'NO_SUGGESTION';
+  reason: string | null;
+  field: string;
+  sampledEvents: number;
+  matchedEvents: number;
+  suggestions: SuggestedExtraction[];
+  /** Output names the rule already extracts - offered as existing, never suggested again. */
+  alreadyDefined: string[];
   warnings: string[];
 }
 

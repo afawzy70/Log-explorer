@@ -28,6 +28,15 @@ public record ClassificationRule(
     String name,
     String description,
     List<String> tags,
+    /**
+     * The semantic palette entry this rule's tags are drawn in (owner
+     * mission "Classification real search scope, assisted extraction, and
+     * visual tagging"). Optional on the wire and in a pack: {@link
+     * #normalized()} fills in {@link TagColor#defaultFor(String)}, so a
+     * rules file or pack written before this field existed keeps loading
+     * and every installation derives the same colour for the same tag.
+     */
+    TagColor displayColor,
     Boolean enabled,
     Integer priority,
     MatchMode matchMode,
@@ -39,6 +48,14 @@ public record ClassificationRule(
 
   public static final int DEFAULT_PRIORITY = 100;
 
+  /** Pre-colour arity, kept so existing callers keep compiling; the colour then comes from the deterministic default. */
+  public ClassificationRule(String id, String name, String description, List<String> tags, Boolean enabled,
+      Integer priority, MatchMode matchMode, List<RuleCondition> conditions, List<ExtractionDefinition> extractions,
+      Instant createdAt, Instant updatedAt) {
+    this(id, name, description, tags, null, enabled, priority, matchMode, conditions, extractions, createdAt,
+        updatedAt);
+  }
+
   public ClassificationRule normalized() {
     LinkedHashSet<String> normalizedTags = new LinkedHashSet<>();
     if (tags != null) {
@@ -48,11 +65,13 @@ public record ClassificationRule(
         }
       }
     }
+    List<String> tagList = List.copyOf(normalizedTags);
     return new ClassificationRule(
         ExtractionDefinition.blankToNull(id),
         name == null ? null : name.trim(),
         description == null ? "" : description.trim(),
-        List.copyOf(normalizedTags),
+        tagList,
+        displayColor == null ? TagColor.defaultFor(tagList.isEmpty() ? null : tagList.get(0)) : displayColor,
         enabled == null ? Boolean.TRUE : enabled,
         priority == null ? DEFAULT_PRIORITY : priority,
         matchMode == null ? MatchMode.ALL : matchMode,
@@ -63,13 +82,19 @@ public record ClassificationRule(
   }
 
   public ClassificationRule withId(String newId) {
-    return new ClassificationRule(newId, name, description, tags, enabled, priority, matchMode, conditions, extractions,
-        createdAt, updatedAt);
+    return new ClassificationRule(newId, name, description, tags, displayColor, enabled, priority, matchMode,
+        conditions, extractions, createdAt, updatedAt);
   }
 
   public ClassificationRule withMetadata(Instant created, Instant updated) {
-    return new ClassificationRule(id, name, description, tags, enabled, priority, matchMode, conditions, extractions,
-        created, updated);
+    return new ClassificationRule(id, name, description, tags, displayColor, enabled, priority, matchMode, conditions,
+        extractions, created, updated);
+  }
+
+  /** The colour this rule's tags are drawn in, with the deterministic default applied. */
+  public TagColor effectiveDisplayColor() {
+    return displayColor != null ? displayColor
+        : TagColor.defaultFor(tags == null || tags.isEmpty() ? null : tags.get(0));
   }
 
   public ClassificationRule withoutMetadata() {

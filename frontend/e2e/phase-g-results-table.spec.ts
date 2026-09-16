@@ -54,7 +54,7 @@ for (const zoom of ZOOM_LEVELS) {
   });
 }
 
-test('real fixture events render correctly: seven columns, newest first, malformed lines survive, no page overflow', async ({
+test('real fixture events render correctly: the eight default columns, newest first, malformed lines survive, no page overflow', async ({
   page,
 }) => {
   await runRealSearch(page);
@@ -63,14 +63,23 @@ test('real fixture events render correctly: seven columns, newest first, malform
   // a <button> with an appended visually-hidden sort-state description -
   // strip it back to the plain column label before comparing.
   const headers = (await page.getByRole('columnheader').allTextContents()).map(headerLabel);
-  expect(headers).toEqual(['Time', 'Level', 'Service', 'What happened', 'User/Customer', 'Correlation/Trace', 'Actions']);
+  expect(headers).toEqual([
+    'Time',
+    'Level',
+    'Service',
+    'What happened',
+    'Tags',
+    'User/Customer',
+    'Correlation/Trace',
+    'Actions',
+  ]);
 
   const rowCount = await page.locator('tbody tr').count();
   expect(rowCount).toBeGreaterThan(0);
 
-  // Every body row has exactly seven cells - no second action row, no omitted cell.
+  // Every body row has exactly eight cells - no second action row, no omitted cell.
   const cellCounts = await page.locator('tbody tr').evaluateAll((rows) => rows.map((r) => r.querySelectorAll('td').length));
-  expect(cellCounts.every((n) => n === 7)).toBe(true);
+  expect(cellCounts.every((n) => n === 8)).toBe(true);
 
   // Newest first: every consecutive pair of parseable timestamps is non-increasing.
   const times = await page.locator('tbody tr td:first-child').allTextContents();

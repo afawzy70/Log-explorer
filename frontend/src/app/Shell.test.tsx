@@ -100,6 +100,8 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     buildClassificationSampleScope: vi.fn(() => null),
     classificationWorkspaceOpen: false,
     classificationWorkspaceEvent: null,
+    classificationWorkspaceIntent: null,
+    openClassificationExtractionFromEvent: vi.fn(),
     classificationWorkspaceKey: 0,
     openClassificationWorkspace: vi.fn(),
     openClassificationRuleFromEvent: vi.fn(),
