@@ -125,7 +125,9 @@ All commands were run in this working tree; outcomes are reported as run.
 | Typecheck | `npx tsc -b --noEmit` (frontend) | **PASS** |
 | Production build | `npm run build` (frontend) | **PASS** — built in 983 ms |
 | E2E (Playwright, real backend `SPRING_PROFILES_ACTIVE=dev`, Fixture source) | `npx playwright test` | **PASS** — 321 passed, 1 skipped, 0 failed (13.7 min) |
-| Windows / macOS desktop packaging | GitHub Actions `Windows Desktop`, `macOS Desktop` | run by the PR (they trigger on `backend/**`, `frontend/**`); not runnable on this Linux host — `BLOCKED` locally, see §6 |
+| Windows desktop packaging + packaged smoke test | GitHub Actions `Windows Desktop` (PR #60) | **PASS** — 3m51s (build → install → launch → health → UI → API → shutdown → uninstall on a real Windows runner) |
+| macOS desktop packaging + packaged smoke test | GitHub Actions `macOS Desktop` (PR #60) | **PASS** — 1m42s |
+| CI (Backend / Frontend / E2E jobs) | GitHub Actions `CI` (PR #60) | **PASS** — 1m57s / 1m30s / 7m47s |
 
 Existing tests were updated only where this recovery deliberately changed a
 contract, never to make something pass:
@@ -232,9 +234,11 @@ merging.
 ## 6. Honest limitations
 
 - **Windows and macOS desktop packaging were not run on this host** (Linux).
-  Both workflows trigger on this PR because it touches `backend/**` and
-  `frontend/**`; their result is CI evidence, not a local claim. `BLOCKED`
-  until those runs finish.
+  Both ran on PR #60's real Windows and macOS runners and passed, including
+  the packaged install → launch → health → UI → API → shutdown → uninstall
+  smoke test. That is CI evidence of *packaging*, not of this feature's
+  behaviour against real Docker logs — which is what §5 asks the owner to
+  check.
 - **Real Docker / OpenShift sources were not exercised.** Every automated
   check ran against the deterministic Fixture source through the same
   `LogSource` abstraction; the sample collector is source-neutral by
