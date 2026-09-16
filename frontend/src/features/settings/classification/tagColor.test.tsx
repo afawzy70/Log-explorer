@@ -242,17 +242,20 @@ describe('Tag colour - what actually reaches the server', () => {
 });
 
 describe('Tag colour - the rules list', () => {
-  it('draws every rule\'s tags as chips in that rule\'s colour, with the tag text always present', async () => {
+  it("draws each rule's FIRST tag as a real chip in that rule's colour, plus a neutral \"+n\" for the rest - never a chip per tag, never a second coloured chip (§22.11 A11/A3)", async () => {
     renderWorkspace();
     const table = await screen.findByRole('table', { name: 'Classification rules' });
     const rows = within(table).getAllByRole('row').slice(1);
     expect(rows).toHaveLength(3);
 
-    expect(tagChipsIn(rows[0])).toEqual([
-      { text: 'middleware', color: 'BLUE' },
-      { text: 'gateway', color: 'BLUE' },
-    ]);
+    // Two tags (middleware, gateway): one real chip for the first, a neutral +1 for the rest - the tag text is
+    // never lost, it just moves from a second coloured chip into the row's accessible name.
+    expect(tagChipsIn(rows[0])).toEqual([{ text: 'middleware', color: 'BLUE' }]);
+    expect(within(rows[0]).getByText('+1')).toBeInTheDocument();
+    expect(within(rows[0]).getByRole('cell', { name: 'Tags: middleware, gateway' })).toBeInTheDocument();
+
     expect(tagChipsIn(rows[1])).toEqual([{ text: 'payments', color: 'RED' }]);
+    expect(within(rows[1]).queryByText(/^\+\d+$/)).not.toBeInTheDocument();
     // No colour saved yet: the neutral palette entry, never an invented one, and never a chip with no text.
     expect(tagChipsIn(rows[2])).toEqual([{ text: 'legacy', color: 'GRAY' }]);
   });

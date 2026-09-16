@@ -20,7 +20,7 @@ import type {
   RuleMatchDto,
 } from '../../../shared/api/types';
 import type { ClassificationWorkspaceIntent } from '../../../app/useSearchState';
-import { TagChip } from '../../../shared/ui/TagChip';
+import { TagChip, TagCountBadge } from '../../../shared/ui/TagChip';
 import { RuleEditor } from './RuleEditor';
 import type { EditorMode, StepId } from './RuleEditor';
 import { ImportPanel } from './ImportPanel';
@@ -468,12 +468,11 @@ export function ClassificationRulesWorkspace({
                             <span className={styles.ruleName}>{rule.name}</span>
                             {rule.description ? <span className={styles.hint}>{rule.description}</span> : null}
                           </td>
-                          <td>
+                          <td aria-label={rule.tags.length > 1 ? `Tags: ${rule.tags.join(', ')}` : undefined}>
                             {rule.tags.length > 0 ? (
-                              <span className={styles.chooserTags}>
-                                {rule.tags.map((tag) => (
-                                  <TagChip key={tag} tag={tag} color={rule.displayColor} />
-                                ))}
+                              <span className={styles.chooserTags} title={rule.tags.length > 1 ? rule.tags.join(', ') : undefined}>
+                                <TagChip tag={rule.tags[0]} color={rule.displayColor} />
+                                {rule.tags.length > 1 ? <TagCountBadge count={rule.tags.length - 1} title={rule.tags.join(', ')} /> : null}
                               </span>
                             ) : (
                               '—'

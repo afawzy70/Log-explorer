@@ -761,7 +761,9 @@ export function RuleEditor({
           <legend>Tag colour</legend>
           <span id={`${id}-color-help`} className={styles.hint}>
             How these tags are shown in search results and the inspector. Colour is a label, not a severity, and
-            every tag always shows its name. A tag already used by another rule keeps that rule's colour.
+            every tag always shows its name. A tag keeps one colour everywhere: if another rule already uses one of
+            these tags, choosing a different colour here is refused, not silently kept as that rule's colour — the
+            refusal is named below if it happens.
           </span>
           <div className={styles.colorChoices} role="radiogroup" aria-describedby={`${id}-color-help`}>
             {TAG_COLORS.map((color) => (

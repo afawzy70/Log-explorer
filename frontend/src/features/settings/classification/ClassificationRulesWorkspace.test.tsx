@@ -257,6 +257,28 @@ describe('ClassificationRulesWorkspace - list', () => {
     expect(screen.queryByRole('status', { name: /recovered/i })).not.toBeInTheDocument();
   });
 
+  it('a rule with several tags shows the first as a real chip plus a NEUTRAL "+n" counter - never a chip per tag, never a second coloured chip (§22.11 A11/A3)', async () => {
+    mockFetch.mockResolvedValue(rulesState({ rules: [{ ...RULE_A, tags: ['middleware', 'payments', 'slow'] }] }));
+    renderWorkspace();
+    const table = await screen.findByRole('table', { name: 'Classification rules' });
+    const row = within(table).getAllByRole('row')[1];
+
+    const coloured = within(row).getAllByText((_, el) => el?.hasAttribute('data-tag-color') === true);
+    expect(coloured).toHaveLength(1);
+    expect(coloured[0]).toHaveTextContent('middleware');
+
+    expect(within(row).getByText('+2')).toBeInTheDocument();
+    // The complete list is discoverable, not only in a hover: the cell's own accessible name carries it.
+    expect(within(row).getByRole('cell', { name: 'Tags: middleware, payments, slow' })).toBeInTheDocument();
+  });
+
+  it('a rule with one tag shows no overflow counter at all', async () => {
+    renderWorkspace();
+    const table = await screen.findByRole('table', { name: 'Classification rules' });
+    const row = within(table).getAllByRole('row')[1];
+    expect(within(row).queryByText(/^\+\d+$/)).not.toBeInTheDocument();
+  });
+
   it('shows a status banner with the server message when status is not OK', async () => {
     mockFetch.mockResolvedValue(rulesState({ status: 'RECOVERED_FROM_BACKUP', statusMessage: 'Primary file was unreadable.' }));
     renderWorkspace();
