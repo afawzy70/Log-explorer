@@ -189,9 +189,9 @@ function importPreview(overrides: Partial<ImportPreviewResult> = {}): ImportPrev
     conflicts: 1,
     invalid: 0,
     items: [
-      { index: 0, id: 'new-rule', name: 'New rule A', tags: ['x'], status: 'NEW', existingName: null, errors: [] },
-      { index: 1, id: 'mw-call', name: 'Middleware call v2', tags: ['middleware'], status: 'CONFLICT', existingName: 'Middleware call', errors: [] },
-      { index: 2, id: 'pay-fail', name: 'Payment failure', tags: ['payments'], status: 'IDENTICAL', existingName: null, errors: [] },
+      { index: 0, id: 'new-rule', name: 'New rule A', tags: ['x'], status: 'NEW', existingName: null, errors: [], displayColor: 'CYAN' },
+      { index: 1, id: 'mw-call', name: 'Middleware call v2', tags: ['middleware'], status: 'CONFLICT', existingName: 'Middleware call', errors: [], displayColor: 'BLUE' },
+      { index: 2, id: 'pay-fail', name: 'Payment failure', tags: ['payments'], status: 'IDENTICAL', existingName: null, errors: [], displayColor: 'RED' },
     ],
     currentRevision: 9,
     tagColorConflicts: [],
@@ -416,6 +416,42 @@ describe('ClassificationRulesWorkspace - import', () => {
     expect(mockPreview).not.toHaveBeenCalled();
   });
 
+  it('draws each pack rule\'s tags as a real coloured chip, in that rule\'s OWN colour, never the matched rule\'s colour (§22.11 A12)', async () => {
+    const user = userEvent.setup();
+    mockPreview.mockResolvedValue(importPreview());
+    renderWorkspace();
+    await screen.findByRole('table');
+    await uploadPack(user);
+    await screen.findByRole('heading', { name: 'Import classification rules' });
+
+    const newRow = screen.getByText('New rule A').closest('li') as HTMLElement;
+    const newChip = within(newRow).getByText('x').closest('[data-tag-color]') as HTMLElement;
+    expect(newChip).toHaveAttribute('data-tag-color', 'CYAN');
+
+    // CONFLICT: the pack rule's own colour (BLUE), never the existing "Middleware call" rule's colour - here they
+    // happen to coincide, which would hide a bug that substitutes one for the other, so also proved below with a
+    // pack whose colour genuinely differs from the existing rule's.
+    const conflictRow = screen.getByText('Middleware call v2').closest('li') as HTMLElement;
+    expect(within(conflictRow).getByText('middleware').closest('[data-tag-color]')).toHaveAttribute('data-tag-color', 'BLUE');
+  });
+
+  it('a CONFLICT item keeps drawing the PACK rule\'s own colour even when it genuinely differs from the existing rule\'s (never silently substituted)', async () => {
+    const user = userEvent.setup();
+    mockPreview.mockResolvedValue(
+      importPreview({
+        conflicts: 1,
+        items: [
+          { index: 0, id: 'mw-call', name: 'Middleware call v2', tags: ['middleware'], status: 'CONFLICT', existingName: 'Middleware call', errors: [], displayColor: 'PURPLE' },
+        ],
+      }),
+    );
+    renderWorkspace();
+    await screen.findByRole('table');
+    await uploadPack(user);
+    const row = (await screen.findByText('Middleware call v2')).closest('li') as HTMLElement;
+    expect(within(row).getByText('middleware').closest('[data-tag-color]')).toHaveAttribute('data-tag-color', 'PURPLE');
+  });
+
   it('previews counts; merge with conflicts requires a resolution; Apply sends the preview revision and shows the summary', async () => {
     const user = userEvent.setup();
     mockPreview.mockResolvedValue(importPreview());
@@ -501,7 +537,7 @@ describe('ClassificationRulesWorkspace - import', () => {
         conflicts: 0,
         invalid: 1,
         items: [
-          { index: 0, id: 'broken', name: 'Broken rule', tags: [], status: 'INVALID', existingName: null, errors: [{ path: 'tags', message: 'At least one tag is required' }] },
+          { index: 0, id: 'broken', name: 'Broken rule', tags: [], status: 'INVALID', existingName: null, errors: [{ path: 'tags', message: 'At least one tag is required' }], displayColor: 'GRAY' },
         ],
       }),
     );

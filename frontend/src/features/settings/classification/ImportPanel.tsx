@@ -1,5 +1,6 @@
 import { useId, useState } from 'react';
 import { Button } from '../../../shared/ui/Button';
+import { TagChip } from '../../../shared/ui/TagChip';
 import {
   applyClassificationImport,
   isRulesRevisionConflict,
@@ -166,7 +167,17 @@ export function ImportPanel({ fileName, packText, initialPreview, onReloadRules,
               {item.status === 'CONFLICT' && item.existingName ? (
                 <span className={styles.hint}> (existing rule: {item.existingName})</span>
               ) : null}
-              {item.tags.length > 0 ? <span className={styles.hint}> Tags: {item.tags.join(', ')}</span> : null}
+              {item.tags.length > 0 ? (
+                <span className={styles.hint}>
+                  {' '}
+                  Tags:{' '}
+                  <span className={styles.chooserTags}>
+                    {item.tags.map((tag) => (
+                      <TagChip key={tag} tag={tag} color={item.displayColor ?? undefined} />
+                    ))}
+                  </span>
+                </span>
+              ) : null}
               {item.errors.length > 0 ? (
                 <ul className={styles.errorList}>
                   {item.errors.map((err, i) => (

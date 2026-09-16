@@ -919,6 +919,13 @@ export interface ImportPreviewItem {
   status: ImportItemStatus;
   existingName: string | null;
   errors: RuleValidationError[];
+  /**
+   * The pack rule's OWN colour (its deterministic default when it chose none) - never the existing/matched
+   * rule's colour, so a reviewer can see what colour importing this rule would actually bring (owner mission
+   * §22.11 A12). `null` only when the pack entry could not be parsed into a rule at all (a genuinely malformed
+   * JSON entry, distinct from a rule that parsed but failed validation).
+   */
+  displayColor: TagColor | null;
 }
 
 /** `/import/preview` writes nothing. */

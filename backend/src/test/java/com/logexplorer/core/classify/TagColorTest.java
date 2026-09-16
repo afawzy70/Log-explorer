@@ -129,6 +129,67 @@ class TagColorTest {
   }
 
   @Test
+  void everyImportPreviewItemCarriesThePackRulesOwnColourNeverTheExistingRulesColour() {
+    // Owner mission §22.11 A12: the preview draws each pack row in the colour that rule ITSELF would bring, so a
+    // reviewer can judge it before deciding - never the colour of whatever it happens to conflict/match with.
+    ClassificationRuleService service = service();
+    long revision = service.create(0L, rule("a", "middleware", TagColor.BLUE)).document().revisionOrZero();
+    byte[] pack = """
+        {"format":"log-explorer-classification-pack","schemaVersion":1,
+         "rules":[
+           {"id":"b","name":"New rule","tags":["fresh"],"displayColor":"AMBER",
+            "conditions":[{"field":"message","matcher":"CONTAINS","value":"x"}]},
+           {"id":"a","name":"Rule a","tags":["middleware"],"displayColor":"BLUE",
+            "conditions":[{"field":"message","matcher":"CONTAINS","value":"webhook"}]},
+           {"id":"c","name":"Bad rule","tags":[],
+            "conditions":[{"field":"message","matcher":"REGEX","value":"(\\\\w)\\\\1"}]},
+           {"id":"d","name":"Unparseable","tags":["x"],"matchMode":"NOT_A_REAL_MODE",
+            "conditions":[{"field":"message","matcher":"EXACT","value":"z"}]}
+         ]}"""
+        .getBytes(StandardCharsets.UTF_8);
+
+    ClassificationRuleService.ImportPreview preview = service.previewImport(pack);
+    assertThat(preview.items()).hasSize(4);
+
+    var newItem = preview.items().stream().filter(i -> "b".equals(i.id())).findFirst().orElseThrow();
+    assertThat(newItem.status()).isEqualTo(ClassificationRuleService.ImportItem.Status.NEW);
+    assertThat(newItem.displayColor()).isEqualTo(TagColor.AMBER);
+
+    var identicalItem = preview.items().stream().filter(i -> "a".equals(i.id())).findFirst().orElseThrow();
+    assertThat(identicalItem.status()).isEqualTo(ClassificationRuleService.ImportItem.Status.IDENTICAL);
+    // Same colour as the existing rule here, but that is coincidence (the pack said BLUE too) - not the server
+    // substituting the existing rule's colour; verified against a pack that disagrees below.
+    assertThat(identicalItem.displayColor()).isEqualTo(TagColor.BLUE);
+
+    // Parseable but invalid (a real rule object, just failing validation - empty tags): still gets the
+    // deterministic default for its (empty) tag list, GRAY - never an invented colour, never omitted.
+    var invalidButParseableItem = preview.items().stream().filter(i -> "c".equals(i.id())).findFirst().orElseThrow();
+    assertThat(invalidButParseableItem.status()).isEqualTo(ClassificationRuleService.ImportItem.Status.INVALID);
+    assertThat(invalidButParseableItem.displayColor()).isEqualTo(TagColor.GRAY);
+
+    // Genuinely unparseable (an invalid enum value - no rule object could be built at all): no colour to report,
+    // correctly null rather than a guessed default.
+    var unparseableItem = preview.items().stream()
+        .filter(i -> i.id() == null && i.status() == ClassificationRuleService.ImportItem.Status.INVALID)
+        .findFirst().orElseThrow();
+    assertThat(unparseableItem.displayColor()).isNull();
+
+    // A CONFLICT item still carries the PACK rule's own colour, not the existing rule's - the two can legitimately
+    // differ (that is what state 91's tag-colour-conflict panel is drawn for) without the preview confusing them.
+    byte[] conflictingColourPack = """
+        {"format":"log-explorer-classification-pack","schemaVersion":1,
+         "rules":[{"id":"a","name":"Rule a","tags":["different-tag"],"displayColor":"PURPLE",
+                   "conditions":[{"field":"message","matcher":"CONTAINS","value":"changed"}]}]}"""
+        .getBytes(StandardCharsets.UTF_8);
+    ClassificationRuleService.ImportPreview conflictPreview = service.previewImport(conflictingColourPack);
+    assertThat(conflictPreview.items()).singleElement().satisfies(item -> {
+      assertThat(item.status()).isEqualTo(ClassificationRuleService.ImportItem.Status.CONFLICT);
+      assertThat(item.displayColor()).isEqualTo(TagColor.PURPLE);
+    });
+    assertThat(service.state().document().rules().get(0).displayColor()).isEqualTo(TagColor.BLUE);
+  }
+
+  @Test
   void anImportThatWouldGiveOneTagTwoColoursIsReportedAndRefused() {
     ClassificationRuleService service = service();
     long revision = service.create(0L, rule("a", "middleware", TagColor.BLUE)).document().revisionOrZero();
