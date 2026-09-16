@@ -155,7 +155,7 @@ test.describe('Legacy Remediation Slice 7 — Conservative free-text sensitive-d
     const row = await findSensitiveRow(page);
 
     // "Find this Trace ID" - the slot-10 fixture event's own stable, unique traceId.
-    await row.locator('td').nth(5).getByRole('button').click();
+    await row.locator('td').nth(6).getByRole('button').click();
     await expect(page.getByRole('heading', { name: /trace:/i })).toBeVisible({ timeout: 10_000 });
 
     const journeyView = page.getByTestId('journey-view');

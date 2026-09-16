@@ -36,9 +36,17 @@ fields.
 2. **Start the rule.** Choose **Create tag rule from this event**.
 3. **Source.** Pick the field to classify on. `message` is selected when the event has one. The current value is
    shown so you can check it.
-4. **Detect.** Choose **Detect pattern**. Log Explorer reads a bounded sample of up to 200 events from your current
-   search scope — the same source, project, time range, services, and severities — and compares them with the
-   selected event. You see:
+4. **Detect.** Choose **Detect pattern**. Log Explorer reads a bounded sample of up to 200 events **from the search
+   you are looking at** — the same source, project, time range, services, severities, search text, query and
+   advanced filters — and compares them with the selected event. If you can see events in the results table, the
+   sample comes from that same population; the selected event always takes part, even if the sample would
+   otherwise have stopped short of it.
+
+   One filter is deliberately left out: a **classification tag** filter. Tags only exist after your saved rules
+   have run, so sampling through them while you are writing a rule would make the evidence depend on the
+   classification you are creating.
+
+   You see:
    - **Sampled**: how many events were really read (fewer than 200 if fewer exist);
    - **Similar**: how many look structurally like the selected event;
    - **Stable structure**: the fixed text they share, for example `Make webhook call to`, `responseCode=`,
@@ -48,9 +56,21 @@ fields.
      match.
 
    Choose **Use this suggestion** to copy it into the rule, or skip and write the conditions yourself.
-5. **Classification.** Enter the rule name and tags, for example `middleware`. Conditions are under **Advanced**.
-6. **Extraction.** Review the suggested extractions — for example `url`, `responseCode`, `durationMs`. You can
-   rename, remove, add, or edit them.
+5. **Classification.** Enter the rule name and tags, for example `middleware`, and choose a **tag colour**. The
+   preview chip shows how the tag will look in search results and the inspector. Colour is only a label — it never
+   means severity or success — and the tag text is always shown, so nothing depends on seeing colour. A tag that
+   another rule already uses keeps that rule's colour. Conditions are under **Advanced**.
+6. **Extraction.** Extraction pulls named values out of matching events — a URL, a status, a duration, a request
+   path — so you can read them in the inspector instead of hunting through the message.
+
+   Log Explorer looks at the events this rule actually matches in your current search and suggests values it can
+   read deterministically, each with how many of those events it really found a value in (for example
+   *Found in 17 / 18*). Tick the ones you want, rename them, mark any that must never be shown, and choose **Add
+   selected values**. You can also add one yourself; the regular expression or JSON pointer behind a value lives
+   under **Advanced: how this value is read**.
+
+   If nothing can be inferred safely, Log Explorer says so and offers **Detect extractable values again**, **Add
+   extraction manually**, or **Skip extraction** — a rule works perfectly well with no extractions at all.
 7. **Test.** Choose **Test rule**. The rule runs against a new bounded real sample without saving anything. You see:
    - matched and not-matched counts;
    - extraction coverage per value, for example *Response code 17 / 17*;
@@ -82,12 +102,29 @@ Detection prefers the simplest matcher that works:
 Values that vary between events, such as IDs, numbers, durations, and URLs, are never copied into a suggestion as
 fixed text, so a rule does not end up tied to one customer's or one request's values.
 
+## Add extraction from an event you are looking at
+
+When an event is already classified, the Event Inspector offers **Add extraction from this event**. It opens the
+rule that classified it, on the extraction step, with suggestions read from your current search. If several rules
+classified the event, Log Explorer asks which one to extend. Nothing changes until you choose **Save rule**, and
+the save is refused if someone else changed the rules in the meantime.
+
+The same inspector also offers **Create another tag rule** when you want a new rule instead of extending one.
+
 ## After saving
 
 - New searches, investigations, surroundings, and new Live events are classified with the saved rule.
 - Events already on screen are not changed. You see: **Rule saved. Re-run Search to classify currently loaded
   results.**
 - In Live, only events that arrive after the save are classified with the new rule.
+
+## Tags in the results table
+
+After you re-run Search, every matching event shows its classification in the **Tags** column, in the rule's
+colour: the first tag, plus **+n** when the event has more. The full list is in the cell's tooltip and screen
+reader label, and in the Event Inspector. You do not have to open an event to see that it is classified.
+
+You can hide or move the column like any other, under **Columns**.
 
 ## Tags and extracted values in the Event Inspector
 

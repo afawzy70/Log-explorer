@@ -8,7 +8,13 @@ import java.util.List;
  * flat map) so two rules extracting a field with the same name can never
  * silently overwrite each other.
  */
-public record RuleMatch(String ruleId, String ruleName, List<String> tags, List<ExtractedField> extracted) {
+public record RuleMatch(String ruleId, String ruleName, List<String> tags, String displayColor,
+    List<ExtractedField> extracted) {
+
+  /** Pre-colour arity, kept so existing callers keep compiling. */
+  public RuleMatch(String ruleId, String ruleName, List<String> tags, List<ExtractedField> extracted) {
+    this(ruleId, ruleName, tags, null, extracted);
+  }
 
   public RuleMatch {
     tags = tags == null ? List.of() : List.copyOf(tags);

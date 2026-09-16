@@ -422,3 +422,105 @@
   border-radius: var(--radius-sm);
   font-size: var(--font-size-sm);
 }
+
+/*
+ * Assisted extraction and tag colour (owner mission "Classification real search scope, assisted extraction, and
+ * visual tagging"). Suggestions are a distinct block from the values the rule will actually save, so "suggested"
+ * and "confirmed" never read as the same thing.
+ */
+.subsection {
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-canvas);
+}
+
+.suggestionList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suggestionRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg);
+}
+
+.suggestionName {
+  font-weight: 600;
+}
+
+.suggestionCoverage {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.colorChoices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.colorChoice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.colorChoice:has(input:checked) {
+  border-color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+.previewRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 0;
+}
+
+/* "Add extraction from this event" when several rules matched: one row per rule, never an ambiguous default. */
+.chooserList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chooserRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg);
+}
+
+.chooserName {
+  font-weight: 600;
+}
+
+.chooserTags {
+  display: inline-flex;
+  gap: 4px;
+}

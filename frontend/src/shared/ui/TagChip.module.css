@@ -1,0 +1,67 @@
+/*
+ * One classification tag, drawn in its rule's semantic colour.
+ *
+ * The text is always present - colour never carries meaning on its own (CLAUDE.md §7), so the chip stays
+ * readable for colour-blind users, in high contrast, and in print. Height is capped so a tagged results row is
+ * exactly as tall as an untagged one.
+ */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: var(--tag-bg, var(--color-tag-gray-bg));
+  color: var(--tag-fg, var(--color-tag-gray));
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gray {
+  --tag-fg: var(--color-tag-gray);
+  --tag-bg: var(--color-tag-gray-bg);
+}
+.blue {
+  --tag-fg: var(--color-tag-blue);
+  --tag-bg: var(--color-tag-blue-bg);
+}
+.cyan {
+  --tag-fg: var(--color-tag-cyan);
+  --tag-bg: var(--color-tag-cyan-bg);
+}
+.green {
+  --tag-fg: var(--color-tag-green);
+  --tag-bg: var(--color-tag-green-bg);
+}
+.amber {
+  --tag-fg: var(--color-tag-amber);
+  --tag-bg: var(--color-tag-amber-bg);
+}
+.orange {
+  --tag-fg: var(--color-tag-orange);
+  --tag-bg: var(--color-tag-orange-bg);
+}
+.red {
+  --tag-fg: var(--color-tag-red);
+  --tag-bg: var(--color-tag-red-bg);
+}
+.purple {
+  --tag-fg: var(--color-tag-purple);
+  --tag-bg: var(--color-tag-purple-bg);
+}
+
+/* High contrast / forced colours: keep the text, drop the tint. */
+@media (forced-colors: active) {
+  .chip {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+}

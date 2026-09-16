@@ -271,6 +271,18 @@ public class FixtureCorpusGenerator {
   private static final List<Integer> WEBHOOK_RESPONSE_CODES = List.of(200, 200, 404, 500, 201);
 
   /**
+   * Owner mission "Classification real search scope, assisted extraction, and visual tagging" — a second,
+   * differently shaped synthetic family (multi-line, labelled key/value structure) at fixed filler slots of
+   * every cycle. It exists so a search narrowed by free text has many matching events to sample from, which is
+   * exactly what the reported defect was about; the structure is also what assisted extraction suggests values
+   * from. Entirely made up — never copied from real logs.
+   */
+  private static final List<String> API_PATHS = List.of(
+      "/payments/authorize", "/accounts/summary", "/customers/profile", "/notifications/send");
+  private static final List<String> API_METHODS = List.of("POST", "GET", "GET", "POST");
+  private static final List<Integer> API_STATUSES = List.of(200, 200, 404, 201);
+
+  /**
    * Owner mission "Event Classification, Extraction, and Portable Rules" —
    * synthetic, deterministic events for classification testing, at fixed
    * filler slots of every cycle: five middleware-like webhook calls with
@@ -295,6 +307,20 @@ public class FixtureCorpusGenerator {
     if (slot == 26) {
       return "Webhook call to " + WEBHOOK_TARGETS.get(cycleIndex % WEBHOOK_TARGETS.size())
           + " skipped: circuit open responseCode=503";
+    }
+    if (slot >= 27 && slot <= 30) {
+      int k = slot - 27;
+      int durationMs = 30 + ((cycleIndex * 53 + slot * 17) % 500);
+      return "API_LOGS:\n"
+          + "[API]: " + API_METHODS.get(k) + " https://fixture.internal" + API_PATHS.get(k)
+          + " - [Status]: " + API_STATUSES.get(k) + "\n"
+          + "==>RequestPath: " + API_PATHS.get(k) + "\n"
+          + "==>Duration: " + durationMs + "ms";
+    }
+    if (slot == 31) {
+      // Deliberately similar but NOT an API_LOGS event: a rule anchored on "API_LOGS:" must not tag it,
+      // while a free-text search for API_LOGS still returns it (so the sample is honestly mixed).
+      return "API_LOGS_SUMMARY: " + (4 + (cycleIndex % 5)) + " api calls in the last minute";
     }
     return null;
   }

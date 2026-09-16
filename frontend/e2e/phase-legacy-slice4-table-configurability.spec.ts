@@ -8,7 +8,7 @@ import { headerLabel } from './inspector-helpers';
  * CONTROLS. Browser checks required by the owner-approved plan
  * (docs/LEGACY_TO_NEW_REMEDIATION_PLAN.md §"Slice 4"):
  *
- *  1. Verify initial seven-column default exactly.
+ *  1. Verify the initial default column set exactly.
  *  2. Open Columns control.
  *  3. Enable at least two optional safe columns.
  *  4. Reorder one column using keyboard-accessible controls.
@@ -19,13 +19,13 @@ import { headerLabel } from './inspector-helpers';
  *  9. Refresh and prove configuration remains while search semantics
  *     remain correct.
  * 10. Reload browser and prove safe table preferences persist.
- * 11. Reset table and prove exact seven-column default restored.
+ * 11. Reset table and prove the exact default column set is restored.
  * 12. Verify no query/filter/result values were persisted.
  * 13. Narrow viewport/table overflow remains usable.
  *
  * "Do not replace existing E2E coverage; extend it" - this is a new file,
  * every existing spec (including phase-g-results-table.spec.ts's own
- * seven-column/geometry checks) runs unmodified alongside it.
+ * default-column/geometry checks) runs unmodified alongside it.
  *
  * Requires the real backend running (`SPRING_PROFILES_ACTIVE=dev`, Fixture
  * source) and the frontend dev server, matching every other live
@@ -40,8 +40,10 @@ import { headerLabel } from './inspector-helpers';
  * earlier test.
  */
 
-const DEFAULT_HEADERS = ['Time', 'Level', 'Service', 'What happened', 'User/Customer', 'Correlation/Trace', 'Actions'];
-const CUSTOMIZED_HEADERS = ['Time', 'Service', 'Level', 'What happened', 'User/Customer', 'Correlation/Trace', 'Logger', 'Trace ID', 'Actions'];
+// Tags joined the default set with the owner mission "Classification real search scope, assisted extraction, and
+// visual tagging" (CLAUDE.md §4, register §27 CSX-8) - a saved rule must be visible in the table after a re-search.
+const DEFAULT_HEADERS = ['Time', 'Level', 'Service', 'What happened', 'Tags', 'User/Customer', 'Correlation/Trace', 'Actions'];
+const CUSTOMIZED_HEADERS = ['Time', 'Service', 'Level', 'What happened', 'Tags', 'User/Customer', 'Correlation/Trace', 'Logger', 'Trace ID', 'Actions'];
 const STORAGE_KEY = 'logexplorer.tablePreferences.v1';
 
 async function gotoFixtureAllLevels(page: Page) {
@@ -84,13 +86,13 @@ async function customizeTableColumns(page: Page) {
 }
 
 test.describe('Legacy Remediation Slice 4 — results table configurability & power-user controls', () => {
-  test('1-6. default seven columns, then two optional columns shown, one column reordered by keyboard, Compact density applied', async ({ page }) => {
+  test('1-6. default columns, then two optional columns shown, one column reordered by keyboard, Compact density applied', async ({ page }) => {
     await gotoFixtureAllLevels(page);
     await search(page);
 
-    // 1. Exact seven-column default.
+    // 1. Exact default column set.
     expect(await headers(page)).toEqual(DEFAULT_HEADERS);
-    await captureScreenshot(page, 'legacy-slice4', 'default-seven-columns');
+    await captureScreenshot(page, 'legacy-slice4', 'default-columns');
 
     // 2-6.
     await customizeTableColumns(page);
@@ -174,7 +176,7 @@ test.describe('Legacy Remediation Slice 4 — results table configurability & po
     await captureScreenshot(page, 'legacy-slice4', 'preferences-survive-reload');
   });
 
-  test('11. Reset table restores the exact seven-column default, discarding every customization', async ({ page }) => {
+  test('11. Reset table restores the exact default column set, discarding every customization', async ({ page }) => {
     await gotoFixtureAllLevels(page);
     await search(page);
     await customizeTableColumns(page);

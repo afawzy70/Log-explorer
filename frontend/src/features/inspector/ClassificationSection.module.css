@@ -31,3 +31,17 @@
   font-weight: 600;
   color: var(--color-text);
 }
+
+/* The rule's own tags beside its name, in the same colours the results table uses. */
+.ruleHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ruleTags {
+  display: inline-flex;
+  gap: 4px;
+  vertical-align: middle;
+}

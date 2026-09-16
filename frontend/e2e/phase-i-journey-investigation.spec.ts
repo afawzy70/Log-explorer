@@ -57,7 +57,8 @@ test('clicking a real Trace ID in the results table opens the journey timeline w
   page,
 }) => {
   await runRealSearch(page);
-  const idCell = page.locator('tbody tr').first().locator('td').nth(5);
+  // Correlation/Trace: the 7th cell since Tags joined the default columns (CLAUDE.md §4).
+  const idCell = page.locator('tbody tr').first().locator('td').nth(6);
   const idText = (await idCell.textContent()) ?? '';
   const idValue = idText.replace(/^.*ID:/i, '').trim();
   expect(idValue.length).toBeGreaterThan(0);
@@ -158,7 +159,7 @@ test('"Back to search results" restores the original results table untouched', a
   await runRealSearch(page);
   const firstRowMessageBefore = await page.locator('tbody tr').first().locator('td').nth(3).textContent();
 
-  const idCell = page.locator('tbody tr').first().locator('td').nth(5);
+  const idCell = page.locator('tbody tr').first().locator('td').nth(6);
   await idCell.getByRole('button').click();
   await expect(page.getByRole('heading', { name: /trace:|correlation:/i })).toBeVisible();
 
@@ -195,7 +196,7 @@ for (const width of REQUIRED_WIDTHS) {
   test(`no page overflow with the journey timeline open at ${width}px`, async ({ page }) => {
     await runRealSearch(page);
     await setViewport(page, width);
-    const idCell = page.locator('tbody tr').first().locator('td').nth(5);
+    const idCell = page.locator('tbody tr').first().locator('td').nth(6);
     await idCell.getByRole('button').click();
     await expect(page.getByRole('heading', { name: /trace:|correlation:/i })).toBeVisible();
 
@@ -209,7 +210,7 @@ for (const zoom of ZOOM_LEVELS) {
   test(`no page overflow with the journey timeline open at ${zoom}% zoom`, async ({ page }) => {
     await runRealSearch(page);
     await setViewport(page, 1280);
-    const idCell = page.locator('tbody tr').first().locator('td').nth(5);
+    const idCell = page.locator('tbody tr').first().locator('td').nth(6);
     await idCell.getByRole('button').click();
     await expect(page.getByRole('heading', { name: /trace:|correlation:/i })).toBeVisible();
     await setZoom(page, zoom);
@@ -221,7 +222,7 @@ for (const zoom of ZOOM_LEVELS) {
 
 test('never renders a raw sensitive value anywhere in the journey timeline', async ({ page }) => {
   await runRealSearch(page);
-  const idCell = page.locator('tbody tr').first().locator('td').nth(5);
+  const idCell = page.locator('tbody tr').first().locator('td').nth(6);
   await idCell.getByRole('button').click();
   await expect(page.getByRole('heading', { name: /trace:|correlation:/i })).toBeVisible();
 

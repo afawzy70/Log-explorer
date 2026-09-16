@@ -12,26 +12,43 @@ import { fullEvent, sparseEvent } from '../inspector/testEventFixture';
 const SENSITIVE_FIELDS = ['cif', 'userName', 'customerId', 'deviceId', 'deviceIp'];
 
 describe('columnRegistry', () => {
-  it('has exactly seven default-visible columns, in the required order, with the required labels', () => {
+  /*
+   * The default set was seven columns until the owner mission "Classification real search scope, assisted
+   * extraction, and visual tagging" §"Fourth owner requirement" made classification visible in the table by
+   * default: a saved rule must be discoverable after a re-search without opening the inspector. Tags is the
+   * eighth column, formally superseding the previous contract (CLAUDE.md §4, docs/governance/
+   * OWNER_REQUIREMENTS_REGISTER.md). Everything else about the contract is unchanged - one table, one colgroup,
+   * one row per event, no omitted cells, "What happened" message-only, Actions pinned last.
+   */
+  it('has exactly eight default-visible columns, in the required order, with the required labels', () => {
     const defaults = COLUMN_REGISTRY.filter((c) => c.defaultVisible);
-    expect(defaults.map((c) => c.id)).toEqual(['time', 'level', 'service', 'whatHappened', 'userCustomer', 'correlationTrace']);
+    expect(defaults.map((c) => c.id)).toEqual([
+      'time',
+      'level',
+      'service',
+      'whatHappened',
+      'tags',
+      'userCustomer',
+      'correlationTrace',
+    ]);
     expect(defaults.map((c) => c.label)).toEqual([
       'Time',
       'Level',
       'Service',
       'What happened',
+      'Tags',
       'User/Customer',
       'Correlation/Trace',
     ]);
-    // Note: "Actions" is the 7th column but is deliberately not a registry
+    // Note: "Actions" is the last column but is deliberately not a registry
     // entry at all (see ResultsTable.tsx/columnRegistry.tsx's own comments) -
-    // six registry defaults + the structurally-pinned Actions column = seven.
+    // seven registry defaults + the structurally-pinned Actions column = eight.
   });
 
-  it('has 23 columns total, all with unique ids', () => {
-    expect(COLUMN_REGISTRY.length).toBe(23);
+  it('has 24 columns total, all with unique ids', () => {
+    expect(COLUMN_REGISTRY.length).toBe(24);
     const ids = new Set(ALL_COLUMN_IDS);
-    expect(ids.size).toBe(23);
+    expect(ids.size).toBe(24);
   });
 
   it('never defines "actions" as a registry column id', () => {

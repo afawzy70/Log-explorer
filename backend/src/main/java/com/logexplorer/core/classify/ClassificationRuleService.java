@@ -63,8 +63,13 @@ public class ClassificationRuleService {
     public enum Status { NEW, IDENTICAL, CONFLICT, INVALID }
   }
 
+  /**
+   * {@code tagColorConflicts} are the same-tag/different-colour conflicts applying this pack would create
+   * ({@link TagColorPolicy}) — reported before anything is written, because neither mode may pick a winner.
+   */
   public record ImportPreview(ClassificationPack.PackInfo pack, int rulesInPack, int newRules, int identical,
-      int conflicts, int invalid, List<ImportItem> items, long currentRevision) {
+      int conflicts, int invalid, List<ImportItem> items, long currentRevision,
+      List<RuleValidationError> tagColorConflicts) {
   }
 
   public record ImportResult(State state, int added, int replaced, int unchanged, int keptExisting, int removed) {
@@ -171,6 +176,10 @@ public class ClassificationRuleService {
         throw new RuleValidationException(List.of(new RuleValidationError("rules[" + i + "].id", "Duplicate rule id")));
       }
       compiled.add(compiler.compile(rule));
+    }
+    List<RuleValidationError> colorConflicts = TagColorPolicy.conflicts(compiled.stream().map(CompiledRule::rule).toList());
+    if (!colorConflicts.isEmpty()) {
+      throw new RuleValidationException(colorConflicts);
     }
     return compiled;
   }
@@ -383,7 +392,7 @@ public class ClassificationRuleService {
       }
     }
     return new ImportPreview(parsed.info(), parsed.items().size(), newRules, identical, conflicts, invalid, items,
-        current.document().revisionOrZero());
+        current.document().revisionOrZero(), importColorConflicts(current.document().rules(), parsed));
   }
 
   public ImportResult applyImport(byte[] body, ImportMode mode, ConflictResolution resolution, Long expectedRevision,
@@ -470,6 +479,21 @@ public class ClassificationRuleService {
     } finally {
       writeLock.unlock();
     }
+  }
+
+  /**
+   * The colour conflicts a MERGE of this pack would create: every valid imported rule replaces the rule it shares
+   * an id with, and the rest of the current set stays. REPLACE_ALL can only ever be a subset of these, since it
+   * keeps none of the rules the pack does not carry.
+   */
+  private static List<RuleValidationError> importColorConflicts(List<ClassificationRule> current, ParsedPack parsed) {
+    Map<String, ClassificationRule> merged = new LinkedHashMap<>(byId(current));
+    for (ParsedItem item : parsed.items()) {
+      if (item.errors().isEmpty() && item.rule() != null && item.rule().id() != null) {
+        merged.put(item.rule().id(), item.rule());
+      }
+    }
+    return TagColorPolicy.conflicts(List.copyOf(merged.values()));
   }
 
   private static Map<String, ClassificationRule> byId(List<ClassificationRule> rules) {

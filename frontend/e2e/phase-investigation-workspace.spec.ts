@@ -97,7 +97,7 @@ test('Show Surroundings launched from inside a Trace view, then Back to Trace, r
 }) => {
   await runRealSearch(page);
 
-  const idCell = page.locator('tbody tr').first().locator('td').nth(5);
+  const idCell = page.locator('tbody tr').first().locator('td').nth(6);
   const idText = (await idCell.textContent()) ?? '';
   const traceIdValue = idText.replace(/^.*ID:/i, '').trim();
   await idCell.getByRole('button').click();

@@ -114,7 +114,8 @@ public class EventMapper {
     List<ExtractedFieldDto> extracted = match.extracted().stream()
         .map(field -> toDto(event, field))
         .toList();
-    return new ClassificationDto(match.ruleId(), match.ruleName(), match.tags(), extracted);
+    return new ClassificationDto(match.ruleId(), match.ruleName(), match.tags(), match.displayColor(),
+        extracted);
   }
 
   private ExtractedFieldDto toDto(CanonicalLogEvent event, ExtractedField field) {

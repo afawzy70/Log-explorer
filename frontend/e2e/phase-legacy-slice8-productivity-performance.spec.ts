@@ -252,7 +252,7 @@ test.describe('Legacy Remediation Slice 8 — productivity, safe preferences & f
     await search(page);
 
     // Journey (lazy chunk) - "Find this Trace ID" on the Correlation/Trace column.
-    await page.locator('tbody tr').first().locator('td').nth(5).getByRole('button').click();
+    await page.locator('tbody tr').first().locator('td').nth(6).getByRole('button').click();
     await expect(page.getByRole('heading', { name: /trace:/i })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('journey-view')).toBeVisible();
     await page.getByRole('button', { name: /back to search results/i }).click();

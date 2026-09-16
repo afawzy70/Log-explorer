@@ -815,7 +815,10 @@ Classification rules tag events with your own labels (for example
 `middleware` or `external-api`) and extract structured values such as a
 URL, response code, or duration. Create one from any event with **Create
 tag rule from this event** in the Event Inspector, detect a pattern from
-a bounded sample, test it, and save it. Rules are saved on the server as
+a bounded sample of the search you are looking at, test it, and save it.
+After you re-run Search, matching events show their tag — in the colour
+you chose for the rule — in the **Tags** column, without opening anything.
+Rules are saved on the server as
 a JSON configuration file (never a database, never your logs) and can be
 exported and imported as portable rule packs. Full guide:
 [Event classification rules](EVENT_CLASSIFICATION_RULES.md).

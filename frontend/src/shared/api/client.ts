@@ -2,6 +2,8 @@ import type {
   CanonicalFieldKey,
   ClassificationRule,
   ClassificationRulesState,
+  ExtractionSuggestionRequest,
+  ExtractionSuggestionResult,
   ImportApplyRequest,
   ImportApplyResult,
   ImportPreviewResult,
@@ -682,6 +684,23 @@ export async function detectClassificationPattern(
 }
 
 /** Evaluates a draft rule against a bounded sample - nothing is persisted. */
+/**
+ * Suggests extractable values from the events a rule matches in the committed search scope. Deterministic and
+ * server-side (the same detector Detect pattern uses); saves nothing.
+ */
+export async function suggestClassificationExtractions(
+  body: ExtractionSuggestionRequest,
+  signal?: AbortSignal,
+): Promise<ExtractionSuggestionResult> {
+  const response = await fetch(`${CLASSIFICATION_RULES_BASE}/extractions/suggest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+  return parseJsonOrThrow<ExtractionSuggestionResult>(response);
+}
+
 export async function testClassificationRule(body: RuleTestRequest, signal?: AbortSignal): Promise<RuleTestResult> {
   const response = await fetch(`${CLASSIFICATION_RULES_BASE}/test`, {
     method: 'POST',
