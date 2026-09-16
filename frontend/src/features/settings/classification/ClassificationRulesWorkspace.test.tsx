@@ -194,6 +194,7 @@ function importPreview(overrides: Partial<ImportPreviewResult> = {}): ImportPrev
       { index: 2, id: 'pay-fail', name: 'Payment failure', tags: ['payments'], status: 'IDENTICAL', existingName: null, errors: [] },
     ],
     currentRevision: 9,
+    tagColorConflicts: [],
     ...overrides,
   };
 }
@@ -429,6 +430,46 @@ describe('ClassificationRulesWorkspace - import', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/Revision 10/)).toBeInTheDocument();
     expect(onRulesChanged).toHaveBeenCalled();
+  });
+
+  it('surfaces a tag colour conflict BEFORE Apply and blocks both MERGE and REPLACE_ALL until it is resolved outside the app (§22.11 A1a)', async () => {
+    const user = userEvent.setup();
+    mockPreview.mockResolvedValue(
+      importPreview({
+        conflicts: 0,
+        tagColorConflicts: [
+          { path: 'rules[0].displayColor', message: 'Tag "payments" is already shown in BLUE by "Payment failure". Every rule that uses a tag must show it in the same colour — change one of the two colours.' },
+        ],
+      }),
+    );
+    renderWorkspace();
+    await screen.findByRole('table');
+    await uploadPack(user);
+
+    expect(await screen.findByText('Tag colour conflicts: 1')).toBeInTheDocument();
+    expect(screen.getByText(/Tag "payments" is already shown in BLUE by "Payment failure"/)).toBeInTheDocument();
+    expect(screen.getByText(/resolve it by editing the pack file or an existing rule's colour/)).toBeInTheDocument();
+
+    // MERGE is blocked, with no resolution radios offered for a colour conflict - there is nothing to pick between.
+    const apply = screen.getByRole('button', { name: 'Apply import' });
+    expect(apply).toBeDisabled();
+
+    // Blocked under REPLACE_ALL too, even after its own confirmation is checked - the colour conflict is a
+    // separate, independent blocker that survives switching modes.
+    await user.click(screen.getByRole('radio', { name: 'Replace all rules' }));
+    await user.click(screen.getByRole('checkbox', { name: 'I understand this deletes every existing rule that is not in this pack' }));
+    expect(apply).toBeDisabled();
+    expect(mockApply).not.toHaveBeenCalled();
+  });
+
+  it('a clean pack (no colour conflict) shows the zero count and never blocks on it', async () => {
+    const user = userEvent.setup();
+    mockPreview.mockResolvedValue(importPreview({ conflicts: 0, tagColorConflicts: [] }));
+    renderWorkspace();
+    await screen.findByRole('table');
+    await uploadPack(user);
+    expect(await screen.findByText('Tag colour conflicts: 0')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Apply import' })).toBeEnabled();
   });
 
   it('disables Apply with an explanation when the pack contains invalid rules', async () => {

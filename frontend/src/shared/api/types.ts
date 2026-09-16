@@ -931,6 +931,14 @@ export interface ImportPreviewResult {
   invalid: number;
   items: ImportPreviewItem[];
   currentRevision: number;
+  /**
+   * Same-tag/different-colour conflicts applying this pack would create
+   * (`TagColorPolicy`), reported before anything is written - neither
+   * MERGE nor REPLACE_ALL may pick a winner (owner mission "Classification
+   * real search scope, assisted extraction, and visual tagging" §22.11
+   * A1a). Empty when the pack introduces no colour conflict.
+   */
+  tagColorConflicts: RuleValidationError[];
 }
 
 export type ImportMode = 'MERGE' | 'REPLACE_ALL';

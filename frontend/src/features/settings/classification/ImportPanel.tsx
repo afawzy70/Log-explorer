@@ -48,6 +48,7 @@ export function ImportPanel({ fileName, packText, initialPreview, onReloadRules,
   const [conflict, setConflict] = useState(false);
 
   const needsResolution = mode === 'MERGE' && preview.conflicts > 0;
+  const tagColorConflicts = preview.tagColorConflicts ?? [];
   const blockers: string[] = [];
   if (preview.invalid > 0) {
     blockers.push(
@@ -59,6 +60,17 @@ export function ImportPanel({ fileName, packText, initialPreview, onReloadRules,
   }
   if (mode === 'REPLACE_ALL' && !confirmReplace) {
     blockers.push('Confirm that every existing rule not in this pack will be deleted.');
+  }
+  if (tagColorConflicts.length > 0) {
+    // A tag keeps one colour everywhere - neither MERGE nor REPLACE_ALL may
+    // silently pick a winner (owner mission §22.11 A1a). Executing a
+    // resolution (A1b) is a separate, not-yet-approved server change (D39);
+    // the only safe action here is to block and say what to fix.
+    blockers.push(
+      `${tagColorConflicts.length} tag colour conflict${tagColorConflicts.length === 1 ? '' : 's'} — resolve ${
+        tagColorConflicts.length === 1 ? 'it' : 'them'
+      } by editing the pack file or an existing rule's colour, then import again.`,
+    );
   }
   const canApply = blockers.length === 0 && !applying;
 
@@ -122,8 +134,27 @@ export function ImportPanel({ fileName, packText, initialPreview, onReloadRules,
         <li>New: {preview.newRules}</li>
         <li>Identical: {preview.identical}</li>
         <li>Conflicts: {preview.conflicts}</li>
+        <li>Tag colour conflicts: {tagColorConflicts.length}</li>
         <li>Invalid: {preview.invalid}</li>
       </ul>
+
+      {tagColorConflicts.length > 0 ? (
+        <div role="alert" className={styles.error}>
+          <p>
+            {tagColorConflicts.length === 1 ? 'One tag' : `${tagColorConflicts.length} tags`} in this pack would be
+            shown in a different colour than {tagColorConflicts.length === 1 ? 'it already is' : 'they already are'}{' '}
+            here. A tag keeps one colour everywhere, so this must be settled before importing — neither Merge nor
+            Replace all will choose a colour for you.
+          </p>
+          <ul className={styles.errorList}>
+            {tagColorConflicts.map((err, i) => (
+              <li key={i}>
+                <span className={styles.mono}>{err.path}</span>: {err.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {preview.items.length > 0 ? (
         <ul className={styles.itemList} aria-label="Rules in this pack">
