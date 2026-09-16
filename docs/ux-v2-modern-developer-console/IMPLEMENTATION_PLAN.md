@@ -153,7 +153,7 @@ No new slice is created: each piece lands in the slice that already owns its sur
 |---|---|---|---|
 | **B1** Foundations | Tag icon set (`tag`, `tags`, `flask-conical`, `upload`, `download`, `file-json`, `circle-plus`, `equal`, `list-checks`, `trash-2`, `pencil-line`, `shield-alert`); tag chip, banner and count-tag primitives in the shared UI kit | — | Contrast of §21.13 pairs in the rendered app |
 | **B2** Search chrome | Source field as a styled native select (D26) keeping SSEL order/disabled Loki; Classification tags group in More filters; `Tag <name>` chips; 24 px chip targets; tag-filter readout copy | 40, 41, 42, 79, 80 | `source-selector-availability.spec.ts`; tag filter part of `classification-rules.spec.ts`; no request for `openshift-loki` |
-| **B3** Results | Optional **Tags** column (D19), tag cell + `+N` + tooltip; tag-filter footnote | 42, 43 | Geometry spec with the Tags column on and off; seven default columns unchanged |
+| **B3** Results | ~~Optional **Tags** column (D19)~~ — **superseded by §2.2 / D30: the column is visible by default and the default set is eight columns.** Tag cell + `+N` + tooltip and the tag-filter footnote still apply | 42, 43, 92 | Geometry spec with the Tags column on and off; see §2.2 for the current column gate |
 | **B4** Inspector | Create tag rule action; Classification section value states (§21.5); lowercase tags (D20); Rule link (D29) | 44, 45, 46 | Five tabs unchanged; redacted values have no copy action; `ClassificationSection` tests re-pointed, not weakened |
 | **B5** Investigation | Tags column and `Tagged n of N` in captures (D25) | 72 | No extra requests; bounded DOM |
 | **B6** Settings | Settings › Classification rules (D17), rules table/list, banners, delete dialog (D27), file name only (D28); **rule builder workspace** (D18, D21, D23) with Detect evidence vs suggestion, extraction table, test results, save conflict; **import** preview, conflicts, replace-all danger zone (D24), Re-run search action (D22) | 47–71, 74–78, 81 | Full `classification-rules.spec.ts`; revision-conflict unit tests; import blockers; Test/Detect never write |
@@ -162,6 +162,24 @@ No new slice is created: each piece lands in the slice that already owns its sur
 Dependencies: B6's builder reuses B4's value-state primitives and B3's tag cell, so B6 follows B3 and B4 (already the
 plan order). B5 and B7 only add the tag cell. Shell button removal (Classification rules) happens in B6 together with
 the Settings entry, with `classification-rules.spec.ts` selectors migrated in the same PR.
+
+### 2.2 The PR #60 additions, mapped into the same slices
+
+**These behaviours already ship.** Every row below is a **RESTYLE / RECOMPOSE** of working production code, never a
+reimplementation: the endpoints, the sample scope, the suggestion engine, the colour storage and the conflict rules
+are done and tested. A slice that finds itself rewriting one of them has misread this plan.
+
+| Slice | PR #60 scope | Nature | Prototype states | Extra gates |
+|---|---|---|---|---|
+| **B1** Foundations | The eight `--tag-*` hue/tint token pairs (light + dark companion); the chip as tinted pill + dot + neutral text (D31); the colour-swatch primitive (D32) | New tokens + restyle of an existing chip | 83, 93 | §22.2 contrast pairs recomputed in the rendered app; `forced-colors` check |
+| **B2** Search chrome | The **Sampled from this search** scope component (D33), reused by Detect, Test and suggestions; unchanged tag filter | New component, existing data | 82 | The scope shown equals the committed request body, field for field |
+| **B3** Results | Tags column **visible by default** (D30), neutral `+N`, `—` when unclassified, 156/132 px, message floor kept | Restyle + default change | 92, 93, 43 | Geometry with the column on; a classified row is the same height as an unclassified one; `ResultsTable.classification.test.tsx` re-pointed, not weakened |
+| **B4** Inspector | Colour parity with the table; **Add extraction from this event** and **Create another tag rule** as structurally distinct actions (D34); the extend frame (D37) | Recompose of shipped actions | 87, 88, 89, 90 | Five tabs unchanged; the two actions never collapse into one control; stale-rule recovery reachable |
+| **B5** Investigation | Coloured tags in captures and Live, same chip | Restyle | 72, 73 | No extra requests |
+| **B6** Settings | Assisted extraction: suggestion list with measured coverage, confirmed values, the real no-suggestion state (D35); colour picker in the Classification step (D32); save-time colour conflict (D36); import colour conflict (D36); rules list with colours | Recompose of shipped flows | 85, 86, 84, 91, 94 | `ExtractionSuggestionIntegrationTest` semantics preserved; a conflict blocks both import modes; Test/Detect still never write |
+| **B7** Responsive, a11y | Suggestion rows, chooser rows and the conflict block stack instead of scrolling; colour is never the only signal; axe over states 82–94 | Restyle | responsive sets | axe 0 on 82–94 at 1440/768/390; keyboard walk of the picker and the suggestion list |
+
+Nothing in §2.1 is withdrawn except D19's "hidden by default", which D30 replaces.
 
 ## 3. Owner decisions required before or during implementation
 
@@ -186,7 +204,7 @@ the Settings entry, with `classification-rules.spec.ts` selectors migrated in th
 | D16 | The five level chips move into the Severity popover. The **All levels** and **Errors only** quick actions stay one click, as a small segmented control at the start of the scope strip (`01`) | Presentation change (no loss of one-click behaviour) | Approve | B2 |
 | D17 | Classification rules move from the shell button into **Settings › Classification rules** (same model as D3) | IA change | Approve | B6 |
 | D18 | The rule builder is a workspace with a step rail and a draft panel; from an event, **Back to event** returns to Search with that event in the Inspector (production returns to the rules list inside the workspace) | Interaction change | Approve | B6 |
-| D19 | Result-row tags as an **optional Tags column, hidden by default** (keeps the seven-column invariant). Alternative: visible by default, which amends CLAUDE.md §4 | Presentation / invariant | Optional column | B3 |
+| ~~D19~~ | ~~Result-row tags as an **optional Tags column, hidden by default**~~ — **SUPERSEDED by D30 (PR #60)**: production made classification visible without the Inspector and formally amended the seven-column invariant. Kept as the record of the first-pass decision | Presentation / invariant | **Superseded** | B3 |
 | D20 | Tags displayed lowercase as stored everywhere (the Inspector uppercases today) | Presentation change | Approve | B4 |
 | D21 | Extraction values carry a client-side **Suggested / Confirmed** draft state with a Keep action (not persisted) | UI-only state | Approve | B6 |
 | D22 | **Re-run search** action in the Rule saved and Import applied banners (production shows text only) | Interaction addition | Approve | B6 |
@@ -197,6 +215,25 @@ the Settings entry, with `classification-rules.spec.ts` selectors migrated in th
 | D27 | Delete rule confirmation becomes a modal alertdialog with a danger button (production: inline box, primary button) | Presentation change | Approve | B6 |
 | D28 | The rules list shows the storage file name, not the full server path (production shows the full path) | Copy change | Approve | B6 |
 | D29 | Inspector classification blocks link to the rule in Settings | Navigation addition | Approve | B4, B6 |
+
+### 3.1 Decisions from the post-PR #60 sync (D30–D40)
+
+These follow production, they do not propose changing it. "Approve" means: implement it this way when the B-slices
+restyle the behaviour that already ships.
+
+| # | Decision | Kind | Status | Slice |
+|---|---|---|---|---|
+| D30 | Result-row tags as a **Tags column visible by default**, first tag + neutral `+N`, full list in the accessible name and tooltip. **Supersedes D19** and follows the amended CLAUDE.md §4 (eight default columns) | Presentation / invariant | Approve — production truth | B3 |
+| D31 | The classification chip is a **tinted pill + colour dot + neutral text**, deliberately a different visual grammar from severity's coloured ink + level mark, so a RED tag can never read as an ERROR level | Presentation | Approve | B1, B3 |
+| D32 | The eight production palette names are drawn in B1's muted register with their own tokens (light + dark companion); the picker offers swatches **with their colour names**, never a free colour field, and choosing stays optional | Presentation | Approve | B1, B6 |
+| D33 | Detect/Test state their scope as **"Sampled from this search"** — source, project, time, query, services, severity — plus the single honest omission (a classification tag filter is not applied). *Also a recommended production copy fix: the current Detect hint predates PR #60 and understates the scope* | Copy / presentation | Approve + recommend to production | B2, B6 |
+| D34 | **Add extraction from this event** and **Create another tag rule** are separated structurally (frame title, trail, step count, badge), not only by label. Preferred alternative wording, recorded but not applied: *Add fields to the "middleware" rule* / *Create another classification* | Interaction / copy | Approve (structure) · Recommend (wording) | B4, B6 |
+| D35 | The assisted-extraction step always shows one of three states — suggestions with measured coverage, confirmed values, or a real **no-suggestion** state with three ways forward. Never a blank technical form | Interaction | Approve | B6 |
+| D36 | A **tag-colour conflict** is a first-class, named state on save and on import, with two explicit resolutions; it blocks MERGE and REPLACE ALL alike | Interaction / copy | Approve | B6 |
+| D37 | Extending a rule uses its **own 3-step frame** (Values · Test · Save) titled by the rule, with a chooser when several rules matched and a truthful stale-rule recovery. **Chrome only** — the same editor component and the same revision-protected save (DESIGN_SYSTEM §22.8) | Interaction | Approve | B4, B6 |
+| D38 | Correct the shipping picker hint "A tag already used by another rule keeps that rule's colour" — nothing is kept, the write is refused. A second production copy fix beside D33 | Copy fix (production) | Approve | B6 |
+| D39 | **Import tag-colour resolution needs an API decision.** Surfacing the conflict before Apply is frontend-only (§22.11 A1a). Carrying out either drawn resolution is not: the apply request has no tag-colour field, and *"change every rule using this tag"* would rewrite saved rules outside the pack — **including rules that do not carry the tag at all**, because a colour covers all of a rule's tags, so the repaint follows every shared-tag link (in the drawn pack it reaches four rules, three of them repainted, and recolours `partner` — and `pci` too, but only on the *Use imported* branch of the separate rule-conflict choice). No import mode does anything like this today, and the halfway version — recolouring only the rules that hold the named tag — is refused by `TagColorPolicy`, so there is no smaller variant to fall back on. A slice may ship the panel with the resolutions disabled until this is decided | **Owner decision + server change** | Decide before building A1b | B6 |
+| D40 | **Should colour belong to the rule or to the tag?** Production stores one colour per *rule* and paints all its tags in it, so two rules sharing a tag must share a colour and a cluster of rules linked by shared tags collapses to one colour (verified against `TagColorPolicy`). With a vocabulary where a tag like `external-api` is widely shared, the palette stops distinguishing much. Two independent reviewers reached this through the drawn states rather than the code, and it is the root cause of the most serious finding in each of the last two passes (AK1, AL1). Measured in this fixture: one shared tag (`external-api`) already forces three rules onto one colour, and a second shared tag (`partner`) entangles a fourth. Per-tag colour would remove this whole class of conflict but is a data-model change; this package designs the model that ships | **Owner decision + possible data-model change** | Raise before the palette is relied on operationally | B1, B6 |
 
 ## 4. Deferred lanes (explicitly not part of this plan)
 

@@ -17,17 +17,50 @@ col.w-tags { width: 156px; }
 .tag-cell { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; vertical-align: middle; }
 /* In a cell the chip shrinks only when it must; the overflow count never shrinks. */
 .tag-cell .tag-chip { max-width: none; flex: 0 1 auto; }
+/*
+ * B1 classification chip (DESIGN_SYSTEM §22.2). Three parts, deliberately in a different visual grammar from
+ * severity: a light hue TINT, a small hue DOT, and NEUTRAL text. Severity speaks with coloured ink and a level
+ * mark; a tag speaks with a tinted pill and a dot. A RED tag therefore never reads as an ERROR level, and the
+ * text still carries the whole meaning when colour is unavailable.
+ */
 .tag-chip {
-  display: inline-flex; align-items: center; gap: 3px; min-width: 0; max-width: 96px; height: 18px; padding: 0 5px;
-  border: var(--bw) solid var(--line); border-radius: var(--r-xs); background: var(--surface-sunken);
-  font: 500 12px/16px var(--font-ui); color: var(--ink-1); white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 96px; height: 18px; padding: 0 6px 0 5px;
+  border: var(--bw) solid transparent; border-radius: var(--r-xs);
+  background: var(--tag-tint, var(--neutral-tint));
+  font: 500 12px/16px var(--font-ui); color: var(--tag-ink); white-space: nowrap;
+}
+.tag-chip::before {
+  content: ""; flex: none; width: 6px; height: 6px; border-radius: var(--r-xs);
+  background: var(--tag-hue, var(--tag-gray));
 }
 .tag-list .tag-chip { max-width: 160px; }
 .tag-chip .t { overflow: hidden; text-overflow: ellipsis; }
-.tag-chip .ic { width: 11px; height: 11px; color: var(--ink-3); }
-.tag-chip.lg { height: 22px; max-width: none; padding: 0 7px; gap: 4px; }
-.tag-chip.lg .ic { width: 12px; height: 12px; }
-.tag-more { flex: none; height: 18px; padding: 0 4px; border-radius: var(--r-xs); background: var(--neutral-tint); font: 500 11px/18px var(--font-ui); color: var(--ink-2); }
+/* The tag glyph is redundant with the dot inside a chip; it stays only where a chip is used as a field label. */
+.tag-chip .ic { display: none; }
+.tag-chip.lg { height: 22px; max-width: none; padding: 0 8px 0 7px; gap: 6px; }
+.tag-chip.lg::before { width: 7px; height: 7px; }
+
+/* One colour class per production palette entry - the design never invents a hue outside it. */
+.tag-gray { --tag-hue: var(--tag-gray); --tag-tint: var(--tag-gray-tint); }
+.tag-blue { --tag-hue: var(--tag-blue); --tag-tint: var(--tag-blue-tint); }
+.tag-cyan { --tag-hue: var(--tag-cyan); --tag-tint: var(--tag-cyan-tint); }
+.tag-green { --tag-hue: var(--tag-green); --tag-tint: var(--tag-green-tint); }
+.tag-amber { --tag-hue: var(--tag-amber); --tag-tint: var(--tag-amber-tint); }
+.tag-orange { --tag-hue: var(--tag-orange); --tag-tint: var(--tag-orange-tint); }
+.tag-red { --tag-hue: var(--tag-red); --tag-tint: var(--tag-red-tint); }
+.tag-purple { --tag-hue: var(--tag-purple); --tag-tint: var(--tag-purple-tint); }
+
+/*
+ * The overflow counter is deliberately NOT a second coloured chip: it counts identities, it is not one, so it
+ * stays neutral and quieter than the tag beside it (LERUX-1 post-PR60 §AD).
+ */
+.tag-more { flex: none; height: 18px; padding: 0 5px; border-radius: var(--r-xs); background: transparent; border: var(--bw) solid var(--line); font: 500 11px/16px var(--font-ui); color: var(--ink-3); }
+
+/* Forced colours: the tint and dot fall away, the tag text does not. */
+@media (forced-colors: active) {
+  .tag-chip { border-color: CanvasText; background: Canvas; color: CanvasText; }
+  .tag-chip::before { background: CanvasText; }
+}
 .tag-list { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .tip { position: absolute; z-index: 30; padding: 6px 8px; background: var(--surface-raised); border: var(--bw) solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow-pop); font: var(--text-meta); color: var(--ink-1); white-space: nowrap; }
 .tip .tag-list { margin-top: 4px; }
@@ -364,7 +397,7 @@ table.import { min-width: 860px; }
 /* Row menus open below the table so they never cover other row controls (axe target-size, sync review). */
 .menu-anchor { position: relative; height: 0; max-width: 1180px; }
 
-/* Optional Tags column: the table grows inside its scroll wrapper so What happened keeps a 240 px floor
+/* Tags column (visible by default since PR #60, decision D30): the table grows inside its scroll wrapper so What happened keeps a 240 px floor
    (LERUX-1 pass 2 N1). Fixed columns 728 px + Tags 156 px + 240 px = 1124 px. Captures and Live add the same room. */
 table.results.has-tags { min-width: 1124px; }
 table.seq.has-tags { min-width: 1276px; }
@@ -426,3 +459,146 @@ table.live-grid.has-tags { min-width: 916px; }
 
 /* Z8: the rule heading wraps on narrow screens instead of cutting the tag list. */
 @media (max-width: 767px) { .cls-rule-head { flex-wrap: wrap; } .cls-rule-tags { white-space: normal; } }
+
+/* ================================================================== PR #60 design sync
+ * Scope summary, colour picker, assisted-extraction suggestions, rule chooser, coverage table and the
+ * tag-colour conflict. All reuse existing B1 primitives — no second visual language for the same ideas.
+ */
+
+/* --- "Sampled from this search": the scope a bounded sample was read from (DESIGN_SYSTEM §22.6) --- */
+.scope-summary { margin: 0 0 12px; padding: 10px 12px; border: var(--bw) solid var(--line-subtle); border-radius: var(--r-md); background: var(--surface-sunken); }
+.ss-head { display: flex; align-items: center; gap: 8px; }
+.ss-head h3 { margin: 0; font: 600 13px/18px var(--font-ui); color: var(--ink-1); }
+.ss-head .ic { color: var(--ink-3); }
+.ss-head .btn { margin-left: auto; }
+.ss-facts { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 8px 0 0; }
+.ss-facts > div { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.ss-facts dt { font: var(--text-meta); color: var(--ink-3); }
+.ss-facts dd { margin: 0; font: 500 12px/18px var(--font-ui); color: var(--ink-1); }
+.ss-facts dd.mono { font: var(--text-data); }
+.ss-note { display: flex; gap: 6px; margin: 8px 0 0; font: var(--text-meta); color: var(--ink-2); }
+.ss-note .ic { flex: none; margin-top: 2px; color: var(--ink-3); }
+
+/* --- Tag colour: a controlled palette, never a free colour field --- */
+.colour-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+.colour-picker .sw { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px 0 7px; border: var(--bw) solid var(--line); border-radius: var(--r-sm); background: var(--surface-work); font: 500 12px/26px var(--font-ui); color: var(--ink-1); cursor: pointer; }
+.colour-picker .sw input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.colour-picker .sw:hover { background: var(--hover); }
+.colour-picker .sw.is-on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.colour-picker .sw:focus-within { outline: var(--focus-w) solid var(--focus); outline-offset: 1px; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: var(--r-sm); background: var(--tag-hue, var(--tag-gray)); }
+.colour-preview { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; font: var(--text-meta); color: var(--ink-2); }
+
+/* --- Assisted extraction suggestions --- */
+.sg-read { display: flex; gap: 6px; margin: 0 0 10px; font: var(--text-meta); color: var(--ink-2); }
+.sg-read .ic { flex: none; margin-top: 2px; color: var(--ink-3); }
+.sg-read b { color: var(--ink-1); font-weight: 600; }
+.sg-list { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.sg-row { display: grid; grid-template-columns: minmax(140px, 1.1fr) max-content minmax(140px, 1fr) 104px 118px 30px 30px; align-items: center; gap: 10px; padding: 8px 10px; border: var(--bw) solid var(--line-subtle); border-radius: var(--r-sm); background: var(--surface-work); }
+.sg-pick { display: inline-flex; align-items: center; gap: 8px; min-width: 0; cursor: pointer; }
+.sg-name { font: 600 13px/18px var(--font-ui); color: var(--ink-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sg-cov { display: inline-flex; align-items: center; gap: 6px; font: var(--text-meta); color: var(--ink-2); white-space: nowrap; }
+.sg-out { gap: 2px; }
+.sg-out .input { height: 26px; }
+.sg-kind { font: var(--text-meta); color: var(--ink-2); }
+.sg-sens { gap: 6px; font: var(--text-meta); color: var(--ink-2); white-space: nowrap; }
+
+/* --- Which rule should these values be added to? --- */
+.rc-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.rc-row { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border: var(--bw) solid var(--line); border-radius: var(--r-md); background: var(--surface-work); }
+.rc-main { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+.rc-name { font: 600 13px/18px var(--font-ui); color: var(--ink-1); }
+.rc-facts { display: inline-flex; align-items: center; gap: 6px; width: 100%; font: var(--text-meta); color: var(--ink-2); }
+
+/* --- Extending a saved rule: the frame says so --- */
+.rb-kind { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding: 0 8px; height: 22px; border-radius: var(--r-xs); background: var(--neutral-tint); font: var(--text-meta); color: var(--ink-2); }
+.rb-kind .ic { color: var(--ink-3); }
+table.cov { width: 100%; margin-top: 12px; }
+table.cov .out { font: 500 13px/18px var(--font-ui); color: var(--ink-1); }
+
+/* --- Tag colour conflict --- */
+.cc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; padding: 10px 12px; border: var(--bw) solid var(--warning); border-left-width: 2px; border-radius: var(--r-sm); background: var(--warning-tint); }
+.cc-tag { display: inline-flex; align-items: center; gap: 6px; font: var(--text-meta); color: var(--ink-2); }
+.cc-side { display: inline-flex; flex-direction: column; gap: 2px; }
+.cc-k { font: var(--text-meta); color: var(--ink-2); }
+.cc-v { display: inline-flex; align-items: center; gap: 6px; font: 600 13px/18px var(--font-ui); color: var(--ink-1); }
+.cc-by { font: var(--text-meta); font-weight: 400; color: var(--ink-2); }
+
+/* --- Responsive: every new block stacks rather than scrolling the page --- */
+@media (max-width: 1479px) {
+  .sg-row {
+    /* Explicit tracks: a `max-content` column plus a row that spans every column sizes the whole grid to that
+       row's content, which is what blew the row open (AH4). */
+    grid-template-columns: minmax(0, 1fr) 124px 30px 30px;
+    grid-template-areas:
+      "pick pick pick pick"
+      "cov  cov  cov  cov"
+      "out  kind kind kind"
+      "sens sens act1 act2";
+    gap: 8px 10px;
+  }
+  .sg-row > * { min-width: 0; }
+  .sg-kind select, .sg-out .input { width: 100%; }
+  .sg-pick { grid-area: pick; }
+  .sg-cov { grid-area: cov; }
+  .sg-out { grid-area: out; }
+  .sg-kind { grid-area: kind; }
+  .sg-sens { grid-area: sens; }
+  /* Each action gets its own track: two end-aligned items in one area sit exactly on top of each other. */
+  .sg-row > .btn:nth-of-type(1) { grid-area: act1; }
+  .sg-row > .btn:nth-of-type(2) { grid-area: act2; }
+  .sg-row > .btn { justify-self: end; margin-left: 0; }
+}
+@media (max-width: 767px) {
+  /* AI8: Output name is the control the user actually edits, so it takes the row; Type is capped. */
+  .sg-row { grid-template-columns: minmax(0, 1fr) 96px 30px 30px; grid-template-areas: "pick pick pick pick" "cov cov cov cov" "out out out out" "kind kind kind kind" "sens sens act1 act2"; }
+  .ss-facts { gap: 4px 12px; }
+  .rc-row { flex-direction: column; align-items: stretch; gap: 10px; }
+  .rc-row .btn { align-self: flex-start; }
+  .cc-row { flex-direction: column; align-items: stretch; }
+}
+
+/* --- LERUX-1 post-PR60 fixes --- */
+/* AE2: the extend frame carries no draft rail, so its grid is two columns — the third was left empty. */
+.rb-body.is-extend { grid-template-columns: 236px minmax(0, 1fr); }
+@media (max-width: 1023px) { .rb-body.is-extend { grid-template-columns: minmax(0, 1fr); } }
+
+/* AE1 / AF2: coverage is these states' payload; each table scrolls in its own named region instead of crushing a
+   column, or forcing the whole builder column (rail, headings and footer) to scroll to reveal a denominator. */
+.cov-wrap { margin-top: 12px; overflow-x: auto; }
+.cov-wrap table.cov { min-width: 520px; }
+.cov-wrap table.grid.mini.cov { min-width: 320px; }
+/* The Test step's two panels stack before either can be squeezed. */
+@media (max-width: 1023px) { .test-grid { grid-template-columns: minmax(0, 1fr); } }
+.cov-wrap:focus-visible { outline: var(--focus-w) solid var(--focus); outline-offset: 2px; }
+
+/* AE9: a wider track so 18/18, 17/18 and 16/18 are actually distinguishable. */
+.sg-cov .evidence .bar, table.cov .evidence .bar { width: 88px; }
+
+/* AE3: a sentence is one inline flow, never a row of flex items that each wrap in their own box. */
+.inline-error > span, .help-row > span, .sg-read > span, .ss-note > span { display: block; min-width: 0; }
+.help-row em { font-style: normal; font-weight: 600; color: var(--ink-1); }
+
+/* AF3: an honest, non-alarming marker where a design target is drawn ahead of the API that would execute it. */
+.inline-note { display: flex; gap: 6px; margin: 10px 0 0; padding: 8px 10px; border: var(--bw) solid var(--line); border-radius: var(--r-sm); background: var(--surface-sunken); font: var(--text-meta); color: var(--ink-2); }
+.inline-note .ic { flex: none; margin-top: 2px; color: var(--ink-3); }
+.inline-note > span { display: block; min-width: 0; }
+.inline-note b { color: var(--ink-1); font-weight: 600; }
+
+/* A resolution that cannot act yet is drawn as unavailable, matching the note beneath it. Declared BEFORE the
+   forced-colours block so that block's full-contrast override actually wins (LERUX-1 post-PR60 AH8). */
+.radio-row.is-disabled { opacity: 0.55; }
+.radio-row.is-disabled .radio { border-style: dashed; }
+.cp-note { color: var(--ink-3); }
+
+/* AG5 / AG14: forced colours removes every hue, so selection and switch state need a non-colour cue. */
+@media (forced-colors: active) {
+  .colour-picker .sw { border: 1px solid CanvasText; }
+  .colour-picker .sw.is-on { border-width: 3px; }
+  .colour-picker .sw.is-on .w::after { content: " ✓"; }
+  .switch .track { border: 1px solid CanvasText; }
+  .switch[aria-checked="true"] .track { background: Highlight; }
+  .radio-row.is-disabled { opacity: 1; }
+  .radio-row.is-disabled .t::after { content: " (not available yet)"; font-weight: 400; }
+}
+

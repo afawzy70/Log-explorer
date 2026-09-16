@@ -162,7 +162,7 @@
 
     const readout = o.readout != null ? o.readout : `<strong>${D.results.length}</strong> loaded<span class="sep">·</span>more available<span class="extra"><span class="sep">·</span>total not reported by this source</span>`;
     return `<div class="scope-strip" style="position:relative">
-      <div class="chips" aria-label="Active filters">${chips.join('')}</div>${o.noClear ? '' : '<button class="btn btn-ghost btn-sm strip-clear">Clear all</button>'}
+      <div class="chips" role="group" aria-label="Active filters">${chips.join('')}</div>${o.noClear ? '' : '<button class="btn btn-ghost btn-sm strip-clear">Clear all</button>'}
       <div class="strip-right">
         <span class="readout num" aria-live="polite">${readout}</span>
         <span class="strip-divider"></span>
@@ -193,12 +193,19 @@
   function colgroup(o = {}) {
     return `<colgroup><col class="w-time"><col class="w-level"><col class="w-svc"><col>${o.tagsCol ? '<col class="w-tags">' : ''}<col class="w-actor"><col class="w-rel"><col class="w-act"></colgroup>`;
   }
-  // Classification tags as a compact cell: first tag + overflow count; the full list is the accessible name (DESIGN_SYSTEM §21.3).
+  /**
+   * The palette entry a tag is drawn in. One normalized tag resolves to exactly one colour across the whole
+   * product (production refuses a conflicting second colour), so this is a lookup, never a per-surface choice.
+   */
+  function tagClass(t) {
+    return 'tag-' + ((window.LX_TAG_COLOR && window.LX_TAG_COLOR[t]) || 'gray');
+  }
+  // Classification tags as a compact cell: first tag + overflow count; the full list is the accessible name (DESIGN_SYSTEM §22.3).
   function tagCell(e) {
     const t = e.tags || [];
     if (!t.length) return '<td class="c-tags"><span class="empty-cell">—</span></td>';
     const more = t.length - 1;
-    return `<td class="c-tags" title="${esc(t.join(', '))}"><span class="tag-cell" aria-hidden="true"><span class="tag-chip">${I('tag', 'ic-xs')}<span class="t">${esc(t[0])}</span></span>${more ? `<span class="tag-more">+${more}</span>` : ''}</span><span class="vh">${t.length === 1 ? 'Tag' : 'Tags'}: ${esc(t.join(', '))}</span></td>`;
+    return `<td class="c-tags" title="${esc(t.join(', '))}"><span class="tag-cell" aria-hidden="true"><span class="tag-chip ${tagClass(t[0])}"><span class="t">${esc(t[0])}</span></span>${more ? `<span class="tag-more">+${more}</span>` : ''}</span><span class="vh">Tags: ${esc(t.join(', '))}</span></td>`;
   }
   function head(o = {}) {
     const time = o.fixedSort
@@ -234,6 +241,9 @@
     </tr>`;
   }
   function resultsTable(list, o = {}) {
+    // PR #60 made classification visible in the table by default, superseding decision D19's "optional, hidden
+    // by default". `noTags` exists only for the Columns-settings state, which shows the column being hidden.
+    o = Object.assign({}, o, { tagsCol: o.noTags ? false : o.tagsCol !== false });
     const gaps = o.gaps ? gapsOf(list, 5) : [];
     const body = list.map((e, i) => {
       const g = gaps.find((x) => x.after === e.id);
@@ -333,7 +343,11 @@
         <div class="insp-actions">
           ${o.noContext ? '' : `<button class="btn btn-secondary btn-sm">${I('history', 'ic-sm')}Show surroundings<kbd>X</kbd></button>`}
           ${e.trace ? `<button class="btn btn-secondary btn-sm">${I('waypoints', 'ic-sm')}View trace</button>` : ''}
-          ${e.malformed ? '' : `<button class="btn btn-ghost btn-sm">${I('tag', 'ic-sm')}Create tag rule</button>`}
+          ${e.malformed ? '' : (e.tags && e.tags.length
+            // A classified event offers two different intentions, never one vague action (DESIGN_SYSTEM §22.8):
+            // add INFORMATION to a rule that already matched, or add another IDENTITY.
+            ? `<button class="btn btn-ghost btn-sm">${I('circle-plus', 'ic-sm')}Add extraction from this event</button><button class="btn btn-ghost btn-sm">${I('tag', 'ic-sm')}Create another tag rule</button>`
+            : `<button class="btn btn-ghost btn-sm">${I('tag', 'ic-sm')}Create tag rule from this event</button>`)}
           <div class="insp-nav"><span class="pos num" aria-live="polite">${pos}</span>
             <button class="btn btn-ghost btn-sm btn-icon" aria-label="Previous event ([)">${I('chevron-left')}</button>
             <button class="btn btn-ghost btn-sm btn-icon" aria-label="Next event (])">${I('chevron-right')}</button>
@@ -850,7 +864,7 @@
   ];
 
   if (typeof window.LX_EXT === 'function') {
-    STATES.push(...window.LX_EXT({ D, I, esc, sev, short, page, shell, queryBar, scopeStrip, searchChrome, resultsTable, results, inspector, compactScope, settingsNav, filtersPanel, capture, live, LOAD_MORE, ROOT, tagCell, msgHtml, highlightJson, row }));
+    STATES.push(...window.LX_EXT({ D, I, esc, sev, short, page, shell, queryBar, scopeStrip, searchChrome, resultsTable, results, inspector, compactScope, settingsNav, filtersPanel, capture, live, LOAD_MORE, ROOT, tagCell, tagClass, msgHtml, highlightJson, row }));
   }
 
   function stateError() {

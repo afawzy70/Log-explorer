@@ -1,6 +1,6 @@
 {
   "axe": "4.12.1",
-  "runs": 121,
+  "runs": 174,
   "totalViolations": 0,
   "results": [
     {
@@ -332,6 +332,62 @@
       "violations": []
     },
     {
+      "state": "b1/82-rule-detect-scope-summary",
+      "violations": []
+    },
+    {
+      "state": "b1/83-rule-classification-colour",
+      "violations": []
+    },
+    {
+      "state": "b1/84-rule-colour-conflict",
+      "violations": []
+    },
+    {
+      "state": "b1/85-rule-extraction-suggestions",
+      "violations": []
+    },
+    {
+      "state": "b1/86-rule-extraction-no-suggestion",
+      "violations": []
+    },
+    {
+      "state": "b1/87-extend-choose-rule",
+      "violations": []
+    },
+    {
+      "state": "b1/88-extend-suggestions",
+      "violations": []
+    },
+    {
+      "state": "b1/89-extend-test-coverage",
+      "violations": []
+    },
+    {
+      "state": "b1/90-extend-stale-rule",
+      "violations": []
+    },
+    {
+      "state": "b1/91-import-colour-conflict",
+      "violations": []
+    },
+    {
+      "state": "b1/92-results-tags-default-column",
+      "violations": []
+    },
+    {
+      "state": "b1/93-results-tag-not-severity",
+      "violations": []
+    },
+    {
+      "state": "b1/94-rules-list-colours",
+      "violations": []
+    },
+    {
+      "state": "b1/95-inspector-unclassified-actions",
+      "violations": []
+    },
+    {
       "state": "b1-dark/45-inspector-multiple-classifications",
       "violations": []
     },
@@ -345,6 +401,22 @@
     },
     {
       "state": "b1-dark/68-import-preview-conflicts",
+      "violations": []
+    },
+    {
+      "state": "b1-dark/92-results-tags-default-column",
+      "violations": []
+    },
+    {
+      "state": "b1-dark/93-results-tag-not-severity",
+      "violations": []
+    },
+    {
+      "state": "b1-dark/83-rule-classification-colour",
+      "violations": []
+    },
+    {
+      "state": "b1-dark/85-rule-extraction-suggestions",
       "violations": []
     },
     {
@@ -485,6 +557,146 @@
     },
     {
       "state": "responsive/68-import-preview-conflicts-390x844",
+      "violations": []
+    },
+    {
+      "state": "responsive/82-rule-detect-scope-summary-1920x1080",
+      "violations": []
+    },
+    {
+      "state": "responsive/82-rule-detect-scope-summary-1366x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/82-rule-detect-scope-summary-1024x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/82-rule-detect-scope-summary-768x1024",
+      "violations": []
+    },
+    {
+      "state": "responsive/82-rule-detect-scope-summary-390x844",
+      "violations": []
+    },
+    {
+      "state": "responsive/83-rule-classification-colour-1920x1080",
+      "violations": []
+    },
+    {
+      "state": "responsive/83-rule-classification-colour-1366x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/83-rule-classification-colour-1024x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/83-rule-classification-colour-768x1024",
+      "violations": []
+    },
+    {
+      "state": "responsive/83-rule-classification-colour-390x844",
+      "violations": []
+    },
+    {
+      "state": "responsive/85-rule-extraction-suggestions-1920x1080",
+      "violations": []
+    },
+    {
+      "state": "responsive/85-rule-extraction-suggestions-1366x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/85-rule-extraction-suggestions-1024x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/85-rule-extraction-suggestions-768x1024",
+      "violations": []
+    },
+    {
+      "state": "responsive/85-rule-extraction-suggestions-390x844",
+      "violations": []
+    },
+    {
+      "state": "responsive/87-extend-choose-rule-1920x1080",
+      "violations": []
+    },
+    {
+      "state": "responsive/87-extend-choose-rule-1366x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/87-extend-choose-rule-1024x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/87-extend-choose-rule-768x1024",
+      "violations": []
+    },
+    {
+      "state": "responsive/87-extend-choose-rule-390x844",
+      "violations": []
+    },
+    {
+      "state": "responsive/91-import-colour-conflict-1920x1080",
+      "violations": []
+    },
+    {
+      "state": "responsive/91-import-colour-conflict-1366x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/91-import-colour-conflict-1024x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/91-import-colour-conflict-768x1024",
+      "violations": []
+    },
+    {
+      "state": "responsive/91-import-colour-conflict-390x844",
+      "violations": []
+    },
+    {
+      "state": "responsive/92-results-tags-default-column-1920x1080",
+      "violations": []
+    },
+    {
+      "state": "responsive/92-results-tags-default-column-1366x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/92-results-tags-default-column-1024x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/92-results-tags-default-column-768x1024",
+      "violations": []
+    },
+    {
+      "state": "responsive/92-results-tags-default-column-390x844",
+      "violations": []
+    },
+    {
+      "state": "responsive/94-rules-list-colours-1920x1080",
+      "violations": []
+    },
+    {
+      "state": "responsive/94-rules-list-colours-1366x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/94-rules-list-colours-1024x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/94-rules-list-colours-768x1024",
+      "violations": []
+    },
+    {
+      "state": "responsive/94-rules-list-colours-390x844",
       "violations": []
     }
   ]

@@ -2460,6 +2460,61 @@ UNTRACKED_OWNER_REQUIREMENTS=0
 | MDC-24 | Independent LERUX-1 review of the synced design, with fixes and a fresh second review | `VERIFIED` | `README.md` §Post-feature design sync review | See README for verdicts |
 | MDC-25 | Owner decisions D17–D29 raised by the sync | `OPEN_UNDECIDED` | `IMPLEMENTATION_PLAN.md` §3 | Owner review of the refreshed design required before production implementation |
 
+### 25.2 Modern Developer Console — final design sync (after PR #60)
+
+`MODERN_DEVELOPER_CONSOLE_FINAL_POST_PR60_DESIGN_SYNC` — the paused design
+lane synchronised against `main` `6e71af8`, i.e. after **both** PR #59
+(classification, extraction, packs) and **PR #60** (search-scope recovery,
+assisted extraction, visible Tags column, semantic tag colours). Design,
+prototype and documentation only; PR #58 remains unmerged and no production
+implementation has begun.
+
+```
+DESIGN_BASELINE_MAIN_SHA=6e71af8d901418d65de2bebb472240db27779147
+POST_PR60_DESIGN_SYNC=COMPLETE
+
+CLASSIFICATION_CURRENT_SEARCH_SCOPE_DESIGNED=YES
+ASSISTED_EXTRACTION_DESIGNED=YES
+EXTRACTION_NO_SUGGESTION_DESIGNED=YES
+ADD_EXTRACTION_FROM_EVENT_DESIGNED=YES
+
+VISIBLE_TAGS_COLUMN_DESIGNED=YES
+TAGS_HIDDEN_BY_DEFAULT=SUPERSEDED
+MULTIPLE_TAG_FIRST_PLUS_COUNT_DESIGNED=YES
+
+RULE_COLOR_SELECTION_DESIGNED=YES
+RULE_COLOR_PALETTE_DESIGNED=YES
+SAME_TAG_COLOR_CONFLICT_DESIGNED=YES
+IMPORT_COLOR_CONFLICT_DESIGNED=YES
+
+INSPECTOR_CLASSIFICATION_COLOR_DESIGNED=YES
+EXTRACTED_VALUE_STATES_DESIGNED=YES
+
+OPENSHIFT_LOKI_VISIBLE_IN_DESIGN=YES
+OPENSHIFT_LOKI_DISABLED_IN_DESIGN=YES
+
+PRODUCTION_FRONTEND_CODE_CHANGED=NO
+PRODUCTION_BACKEND_CODE_CHANGED=NO
+PRODUCTION_IMPLEMENTATION_STARTED=NO
+UNTRACKED_OWNER_REQUIREMENTS=0
+FINAL_TARGETED_VERIFICATION=PASS
+```
+
+| ID | NAME | STATUS | EVIDENCE | NOTES |
+|---|---|---|---|---|
+| MDC-26 | Design baseline refreshed to `main` `6e71af8`, with real BEFORE evidence of the post-PR #60 application | `VERIFIED` | `baseline/pr60/` (21 captures + manifest + README), `CURRENT_BASELINE_INVENTORY.md` §14 (C-12 … C-24, risk notes 19–24) | Real backend, deterministic Fixture source, synthetic data only; one capture (the native source list) cannot be shown open headless and says so |
+| MDC-27 | Detect/Test scope designed as the committed search, with the tag-filter omission stated | `VERIFIED` | `DESIGN_SYSTEM.md` §22.6, state `82-rule-detect-scope-summary`; rail and panel generated from one fact list | Includes D33: the shipping Detect hint predates PR #60 and is recommended for correction |
+| MDC-28 | Assisted extraction designed: suggestions with measured coverage, confirmed values, and a real no-suggestion state | `VERIFIED` | §22.7, states `85`, `86`; D35 | Suggestion coverage bar, value-type control and per-row preview are design additions (§22.11 A6) |
+| MDC-29 | "Add extraction from this event" designed as structurally distinct from "Create another tag rule", with rule chooser and stale-rule recovery | `VERIFIED` | §22.8, states `87`–`90`; D34, D37 | D37 is chrome only: the same editor component and the same revision-protected save, never a fork |
+| MDC-30 | Classification visible in the results table by default; D19 superseded | `VERIFIED` | §22.3, states `92`, `93`; `IMPLEMENTATION_PLAN.md` D19 (struck) → **D30**; CLAUDE.md §4 and §27 CSX-8 | Tagged and untagged rows both measure 28 px; eight default columns |
+| MDC-31 | Semantic tag colour designed: eight-entry palette, optional deterministic default, picker with named swatches, live preview | `VERIFIED` | §22.2, §22.4, states `83`, `94`; D31, D32 | Chip is tinted pill + dot + neutral text so colour never competes with severity (state `93` is the check) |
+| MDC-32 | Same-tag colour conflict designed for save and import, with explicit resolutions; never silently resolved | `VERIFIED` | §22.5, §22.9, states `84`, `91`; D36 | Import surfacing is a design addition (§22.11 A1): the server already returns `tagColorConflicts`, the frontend does not read it |
+| MDC-33 | Accessibility of the colour system | `VERIFIED` | Rendered measurement: light text ≥ 7.04:1 and dots ≥ 3.76:1 on their tint; dark companion text ≥ 7.46:1, dots ≥ 5.09:1; forced-colors keeps the text; axe 174 runs / 0 violations (nine independent LERUX-1 review passes since this section was first written; see README.md) | Colour is never the only signal — every chip carries its tag text |
+| MDC-34 | Everything the design adds beyond shipping production is listed in one place | `VERIFIED` | `DESIGN_SYSTEM.md` §22.11 (A1a, A1b, A2–A13) | Added after an independent check found §22 initially overstating production in seven places; the table grew and split across nine subsequent LERUX-1 passes as further gaps and a rule/tag colour cascade (D40) were found |
+| MDC-35 | Owner decisions D30–D40 raised by this sync | `OPEN_UNDECIDED` | `IMPLEMENTATION_PLAN.md` §3.1 | D39 (import colour-conflict resolution needs an API change) and D40 (should colour belong to the rule or the tag?) were added by later review passes; owner visual approval still required before any B-slice implementation |
+| MDC-36 | Production copy fixes recommended by the design, not applied here | `OPEN_UNDECIDED` | D33 (Detect hint understates the scope), D38 (picker hint claims a conflicting tag "keeps" its colour — it is refused) | Both are production code changes and deliberately out of scope for a design mission |
+| MDC-37 | Nine independent LERUX-1 review passes run after this sync, each fresh, each with fixes; a tenth was interrupted before completing; a final targeted verification (not a fresh independent pass) then re-checked all nine passes' fixes, D40, import colour semantics, sample math, branch-specific wording, forced-colors, ARIA and responsive behaviour | `VERIFIED` | `README.md` post-PR #60 pass 1–9; final targeted verification: 0 open blockers/majors/minors | Production `frontend`/`backend` confirmed unchanged from `6e71af8` throughout; owner/independent visual review of the finished package is still the next required step before any B-slice implementation |
+
 ---
 
 ## 26. Event Classification, Extraction, and Portable Rules

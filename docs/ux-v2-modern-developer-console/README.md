@@ -19,13 +19,13 @@ frontend (`frontend/`) and backend (`backend/`) are unchanged.
 | [`CURRENT_BASELINE_INVENTORY.md`](CURRENT_BASELINE_INVENTORY.md) | What latest `main` does today, screen by screen: new screens and workflows since PR #54, §13 Event Classification (PR #59) and the source-selector policy, and design risk notes |
 | [`baseline/`](baseline/README.md) | 31 real BEFORE screenshots of `main` `3f6b1b4`, plus 32 BEFORE captures of the PR #59 classification UI on `51f06e5` in `baseline/classification/` |
 | [`CURRENT_MAIN_VISUAL_AUDIT.md`](CURRENT_MAIN_VISUAL_AUDIT.md) | Evidence-based audit of `main`, what to preserve, functional gaps G1–G5 |
-| [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) | §21 Event classification primitives and decisions; philosophy, three product modes, tokens for four value sets with computed contrast, type, spacing, density, radii, elevation, icons, controls, tables, tabs, chips, panels, code, focus, selection and trigger, status, responsive, dark/light decision, accessibility, detector triage |
+| [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) | §22 Classification scope, assisted extraction and tag colour (current truth; §22.10 supersessions, §22.11 what the design adds beyond production); §21 the earlier classification primitives it supersedes; philosophy, three product modes, tokens for four value sets with computed contrast, type, spacing, density, radii, elevation, icons, controls, tables, tabs, chips, panels, code, focus, selection and trigger, status, responsive, dark/light decision, accessibility, detector triage |
 | [`MOTION_SYSTEM.md`](MOTION_SYSTEM.md) | Motion tokens, per-interaction specs, reduced-motion table, budget rules |
 | [`COMPONENT_INVENTORY.md`](COMPONENT_INVENTORY.md) | Every production component classified KEEP / RESTYLE / RECOMPOSE / REPLACE_VISUALLY / DEPRECATE_AFTER_IMPLEMENTATION |
 | [`VISUAL_TREATMENT_COMPARISON.md`](VISUAL_TREATMENT_COMPARISON.md) | B1 vs B2 vs B3 on the 12 required criteria, with the recommendation |
-| [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) | Slices V2-B1 to V2-B7, per-slice gates, owner decisions D0–D16, deferred lanes |
-| [`prototype/`](prototype/) | Static HTML/CSS/JS prototype: 82 states (40 first pass + 42 classification sync), 3 treatments plus dark companion |
-| [`screenshots/`](screenshots/) | 169 captures of the prototype, plus `capture-report.json` and `axe-report.json` |
+| [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) | Slices V2-B1 to V2-B7, per-slice gates, owner decisions D0–D40, deferred lanes |
+| [`prototype/`](prototype/) | Static HTML/CSS/JS prototype: 96 states (40 first pass + 42 PR #59 sync + 14 PR #60 sync), 3 treatments plus dark companion |
+| [`screenshots/`](screenshots/) | 222 captures of the prototype, plus `capture-report.json` and `axe-report.json` |
 
 ## Viewing the prototype
 
@@ -99,12 +99,12 @@ capture script also records page overflow, fully visible rows, tab rows and clip
 
 | Folder | Content | Count |
 |---|---|---|
-| `screenshots/b1/` | All 82 states, B1 light, 1440×900 (all re-captured in the sync) | 82 |
-| `screenshots/b1-dark/` | 01, 04, 09, 11, 13, 18 plus classification states 45, 48, 57, 68 in the B1 dark companion | 10 |
+| `screenshots/b1/` | All 96 states, B1 light, 1440×900 (all re-captured in the PR #60 sync) | 96 |
+| `screenshots/b1-dark/` | 01, 04, 09, 11, 13, 18 plus classification states 45, 48, 57, 68 and the colour-carrying states 83, 85, 92, 93 in the B1 dark companion | 14 |
 | `screenshots/b2/` | 01, 04, 09, 11, 13, 18 in B2 Night Bench | 6 |
 | `screenshots/b3/` | The same six states in B3 Enterprise Workbench | 6 |
-| `screenshots/responsive/` | 01, 04, 09, 13, 16, 18 and classification states 42, 45, 48, 57, 61, 63, 68 at 1920×1080, 1366×768, 1024×768, 768×1024, 390×844 (1440 is in `b1/`) | 65 |
-| **Total** | | **169** |
+| `screenshots/responsive/` | 01, 04, 09, 13, 16, 18 and classification states 42, 45, 48, 57, 61, 63, 68, 82, 83, 85, 87, 91, 92, 94 at 1920×1080, 1366×768, 1024×768, 768×1024, 390×844 (1440 is in `b1/`) | 100 |
+| **Total** | | **222** |
 
 ## Data, privacy and licences
 
@@ -260,8 +260,18 @@ versus CLAUDE.md §2.1 (G5 and SSMP-6).
 
 ## Owner action
 
-Review this package. Approve the recommended B visual treatment, or choose B2 or B3, and decide D0–D16 in
+Review this package. Approve the recommended B visual treatment, or choose B2 or B3, and decide D0–D40 in
 `IMPLEMENTATION_PLAN.md` §3 before any production implementation starts.
+
+Two of those decisions block drawn states rather than only styling them, so they are worth reading first:
+
+- **D39 — import tag-colour resolution.** Surfacing the conflict before Apply is frontend-only; *carrying out*
+  either resolution drawn in `91-import-colour-conflict` needs a new field on the import request, and one option
+  rewrites saved rules that are not in the pack. Both choices are drawn **disabled** until this is decided.
+- **D40 — does colour belong to the rule or to the tag?** Production stores one colour per *rule*, so two rules
+  sharing a tag must share a colour, and a cluster of rules linked by shared tags collapses to one colour. The
+  prototype fixture obeys that model, verified by running the real `TagColorPolicy`. Moving colour to the tag
+  would remove a whole class of conflict, and is a server decision.
 
 ---
 
@@ -281,9 +291,13 @@ change, nothing implemented, PR #58 not merged.
 
 ### Results-row tag decision
 
-**Optional Tags column** (first tag + `+N`, full list in the accessible name and tooltip), hidden by default so the
-seven default columns and message-only “What happened” stay intact. Visible-by-default is owner decision D19.
-Rationale and rejected options: `DESIGN_SYSTEM.md` §21.3.
+> **Superseded by PR #60 — see “Final design sync (PR #60)” below.** The Tags column is **visible by default**
+> (decision **D30**), and CLAUDE.md §4 now specifies eight default columns. The paragraph below is kept as the
+> record of the first-pass decision.
+
+~~**Optional Tags column** (first tag + `+N`, full list in the accessible name and tooltip), hidden by default so the
+seven default columns and message-only “What happened” stay intact. Visible-by-default is owner decision D19.~~
+Rationale and rejected options: `DESIGN_SYSTEM.md` §21.3, superseded by §22.3.
 
 ### Classification states (40–81)
 
@@ -533,5 +547,261 @@ geometry delta of 0.00 px. Findings, all fixed:
 | AC3 | MINOR | The row overflow menu (75) was drawn far from its trigger, with no visual tie to its row | The menu is anchored 4 px under its own row, right-aligned with the trigger, and the row is scrolled into view with it (§21.10) |
 | AC4 | MINOR | The invalid-regex alert (60) extended the server string with “Shown when you test or save.” | The alert carries the server string only; the timing note moved to the field help |
 
-<!-- LERUX_SYNC_REVIEW_12 -->
+## Final design sync (PR #60)
+
+**Mission:** `MODERN_DEVELOPER_CONSOLE_FINAL_POST_PR60_DESIGN_SYNC`. Design only: no production frontend or backend
+change, nothing implemented, PR #58 not merged. `git diff 6e71af8 -- frontend backend` is empty.
+
+- **Baseline refreshed** to `main` `6e71af8` (PR #59 *and* PR #60) by merging `main` into the design branch — a
+  clean merge, no conflicts.
+- **BEFORE evidence**: 21 captures of the real post-PR #60 application in `baseline/pr60/` (real backend, Fixture
+  source, synthetic data only), indexed in `baseline/pr60/README.md`; inventory `CURRENT_BASELINE_INVENTORY.md`
+  §14 (observations C-12 … C-24, risk notes 19–24).
+- **Design**: `DESIGN_SYSTEM.md` **§22** is now the current truth for classification (§21 is kept as the
+  first-pass record); `IMPLEMENTATION_PLAN.md` §2.2 maps PR #60 into the slices as **restyle / recompose of
+  shipping behaviour**, decisions **D30–D38**, with **D19 marked superseded**; `COMPONENT_INVENTORY.md` extended.
+- **Prototype**: 14 new states (82–95), the eight-colour tag palette in `tokens.css` (light + dark companion), the
+  chip redrawn as tinted pill + dot + neutral text, and the Tags column made a default column.
+
+### What changed in the design, and why
+
+| Production truth after PR #60 | Design response |
+|---|---|
+| Detect/Test sample the committed search | A **Sampled from this search** component states the scope, including the one filter deliberately left out (§22.6) |
+| Extraction is assisted | Suggestions with measured coverage, confirmed values, and a real **no-suggestion** state — never a blank form (§22.7) |
+| A classified event can be extended in place | *Add extraction from this event* and *Create another tag rule* are separated by frame, trail, step count and badge — not just wording (§22.8) |
+| Classification is visible in the table | Tags is a **default** column: first tag + a **neutral** `+N`, full list in the accessible name (§22.3, D30) |
+| Rules carry a semantic colour | Eight palette entries in B1's muted register, drawn as **tinted pill + dot + neutral text** so a RED tag never reads as an ERROR level (§22.2, D31) |
+| One tag keeps one colour; conflicts refused | Named, resolvable conflict states on save and on import (§22.5, §22.9, D36) |
+
+**What the design adds beyond production** is listed in one table — `DESIGN_SYSTEM.md` §22.11 (A1a, A1b, A2–A13) — so no
+reader mistakes a proposal for shipped behaviour. The largest is **A1b**, and it is the only row that is not
+frontend-only: executing either resolution drawn in `91-import-colour-conflict` needs the import request to carry a
+tag-colour resolution, and one of the two rewrites saved rules that are not in the pack — open decision **D39**.
+Its frontend-only half, **A1a**, is the highest-value addition here: the server already returns `tagColorConflicts`
+on the import preview and already refuses the write, but the frontend never reads it, so today the refusal arrives
+*after* Apply.
+
+### Classification states (82–95)
+
+| Area | States |
+|---|---|
+| Sample scope | `82-rule-detect-scope-summary` |
+| Tag colour | `83-rule-classification-colour`, `84-rule-colour-conflict`, `94-rules-list-colours` |
+| Assisted extraction | `85-rule-extraction-suggestions`, `86-rule-extraction-no-suggestion` |
+| Extend a rule from an event | `87-extend-choose-rule`, `88-extend-suggestions`, `89-extend-test-coverage`, `90-extend-stale-rule` |
+| Import | `91-import-colour-conflict` |
+| Results table | `92-results-tags-default-column`, `93-results-tag-not-severity` |
+| Inspector actions | `95-inspector-unclassified-actions` (the control case: an unclassified event offers only *Create tag rule from this event*) |
+
+`93-results-tag-not-severity` exists to be checked on one point: a red `issuer` tag sits on INFO rows directly
+above ERROR rows, so a reviewer can confirm colour identity never reads as severity.
+
+### Automated checks (PR #60 build)
+
+| Check | Result |
+|---|---|
+| Captures | **222**, 0 page overflow at 1920 / 1440 / 1366 / 1024 / 768 / 390; results header/cell within 2 px |
+| axe-core 4.12.1 | **174 runs, 0 violations** (all 96 B1 states, the dark companion set, and states 82–94 across five widths) |
+| Tag palette contrast | Light: text ≥ 7.04:1, dots ≥ 3.76:1 on their tint. Dark companion: text ≥ 7.46:1, dots ≥ 5.09:1. Measured on the rendered chips, both themes |
+| Row height | A classified row is **28 px**, exactly like an unclassified one; 8 default columns |
+| Reduced motion | 0 elements animating or transitioning under `prefers-reduced-motion: reduce` |
+| Colour picker | 8 named swatches in one radiogroup, 2 px visible focus ring, keyboard reachable |
+| `+N` counter | Transparent/neutral, never the tag's tint; full list in the accessible name (`Tags: …`) and tooltip |
+| Impeccable detector | **0 anti-patterns**; 2 advisories, both pre-existing `#000` mask-image stops (a mask gradient needs a literal stop) |
+
+The detector's one real finding this pass — a 2 px left accent bar on the scope summary, flagged as `side-tab` —
+was accepted and removed; the block is grouped by its sunken surface alone. Two radius values were moved onto the
+documented `--r-xs` / `--r-sm` tokens.
+
+### Review record
+
+#### LERUX-1 post-PR #60 pass 1 (fresh reviewer): verdict ACCEPT_WITH_CHANGES (0 BLOCKER, 5 MAJOR, 7 MINOR)
+
+The reviewer rendered 126 light + 26 dark captures with layout probes, ran 52 axe runs (0 violations) and 8
+keyboard walks (168 stops, 0 without a visible indicator), and read the production code at `6e71af8` to check
+every claim in §22.11. Criteria 2, 3, 4, 5, 7, 8, 9 and 11 passed outright — including the table geometry
+(header↔row delta **0.00 px** across all eight columns), the 28 px row height for classified and unclassified
+rows alike, and the tag/severity separation in both themes. Findings, all fixed:
+
+| ID | Severity | Finding | Fix |
+|---|---|---|---|
+| AE1 | MAJOR | `89`: the coverage column was crushed to 12 px with **no scrollable ancestor**, so the coverage figures — the payload of that state — were unreachable at 390 px | The table scrolls in its own labelled region with a 520 px floor; the State column widened to 150 px. No tight cell at any width |
+| AE2 | MAJOR | `87`–`90`: the heading, sub-line and footer sat **flush against the viewport edge** at every width — they were siblings of `.rb-body`, which owns no gutter | Moved inside `.rb-main`, exactly as the six-step builder does. Gutter now 260 px at 1440 and 12 px at 390 — identical to state `61` |
+| AE3 | MAJOR | `84`, `87`: the two sentences the design leans on hardest were flex rows of bare text runs, so each run wrapped in its own narrow box — up to **six ragged columns** at 390 px | Each sentence is one inline flow (icon + a single `<span>`). Two flex items, full-width text, normal wrapping |
+| AE4 | MAJOR | `86`: the draft rail collapsed into the content column and the step footer rendered **inside** the warning callout | Root cause was an unclosed `<div>` in the panel markup, which made the parser nest the rail. Closed; the three-column grid is restored |
+| AE5 | MAJOR | §22.11 A1 costed the import colour conflict as "read one existing field; one panel", but **neither drawn resolution can be executed by the shipping API** — no tag-colour field on the apply request, and one option would rewrite saved rules outside the pack | Split into **A1a** (surface the conflict — frontend only) and **A1b** (execute a resolution — server work, named explicitly), the section's closing claim corrected, §22.9 given the same caveat, and the prototype state label now names the dependency |
+| AE6 | MINOR | `91`: the count row omitted the colour conflict | A fifth count chip, "Tag colour conflicts 1" |
+| AE7 | MINOR | §22.6 claimed every builder step carries a scope block | Bounded the claim, and recorded that the states which report numbers keep their bounded wording at every width. *The bound itself was still wrong and was corrected in pass 7 — see AK7.* |
+| AE8 | MINOR | `85`: value type was static text, documented as a control | A real `<select>` per suggestion row |
+| AE9 | MINOR | `85`: a 44 px coverage track made 16/18 and 18/18 nearly identical | Track widened to 88 px |
+| AE10 | MINOR | §22.2 said the dot "falls away" under forced colours; measured, it persists as `CanvasText` | Sentence corrected to the measured behaviour |
+| AE11 | MINOR | `87`: a cross-reference to another control was styled like a link | Plain emphasis, and the sentence now names it as the event's own action |
+| AE12 | — | Tags off-screen at 390 via table scroll | No change: CLAUDE.md §4 requires exactly this (the page never overflows; the table scrolls) |
+
+#### LERUX-1 post-PR #60 pass 2 (fresh reviewer): verdict ACCEPT_WITH_CHANGES (0 BLOCKER, 2 MAJOR, 6 MINOR)
+
+All eleven pass-1 items verified **FIXED** except AE9, which was fixed but caused a regression (AF1). 166 captures,
+56 axe runs (0 violations), 212 keyboard stops across 10 walks (0 without a visible focus indicator), and every
+row of §22.11 re-checked against the code at `6e71af8` and confirmed true. Findings, all fixed:
+
+| ID | Severity | Finding | Fix |
+|---|---|---|---|
+| AF1 | MAJOR | **Regression from AE9's own fix.** Widening the coverage bar to 88 px inside an unchanged fixed 150 px grid track made `.sg-cov` overflow by 42 px, so the Output-name field painted over the denominator — the very numbers AE9 set out to make readable were the ones lost, at 1920/1440/1366 | The coverage track sizes to its content (`max-content`) and the type track was widened for its new select. Measured: `scrollWidth === clientWidth` on every suggestion row at 1920/1440/1366/390 |
+| AF2 | MAJOR | The same crushing AE1 was raised for still applied to the **other** coverage tables (`82`, `57`, `63`) at 390: the only scrollable ancestor was the builder column itself, so reading a denominator dragged the rail, headings and footer with it | AE1's fix applied consistently: each table sits in its own named `overflow-x:auto` region with a min-width floor, and the Test step's two panels stack below 1024. Measured at 390: the builder column no longer scrolls in any of them, and no cell sits outside it |
+| AF3 | MINOR | `91` drew two resolutions the shipping API cannot execute with no on-page marker — the caveat lived only in the docs, and §22.9 itself says "what must not happen is drawing two buttons that cannot act" | A visible note in the panel names it as a design target, points at decision **D39**, and states the honest interim: ship the panel with the choices disabled until the API question is decided |
+| AF4 | MINOR | §22.2's chip cap was wrong and inverted (96 px "in a cell"; the cell actually removes the cap, and a rendered chip is ~131 px) | Corrected to the drawn rule |
+| AF5 | MINOR | The README Contents table still said "82 states" and "169 captures" while the same file said 96/222 elsewhere | Both figures corrected |
+| AF6 | MINOR | `84` showed the draft "Middleware HTTP call" conflicting with a saved rule of the same name — the canonical colour-conflict illustration appeared to conflict with itself | The colliding saved rule is now "Partner webhook call" |
+| AF7 | MINOR | The same badge was spelled "Suggestion · not saved" and "Suggestion · nothing saved" | One spelling: *Suggestion · not saved* |
+| AF8 | MINOR | `89`'s coverage table adds a State column production's plain list does not have — an addition missing from §22.11 | Recorded as **A10**, with its cost: frontend only, both columns derivable client-side |
+
+#### LERUX-1 post-PR #60 pass 3 (fresh reviewer): verdict ACCEPT_WITH_CHANGES (0 BLOCKER, 5 MAJOR, 10 MINOR)
+
+204 captures, 56 axe runs (0 violations), 212 keyboard stops across 13 walks, width sweeps at 20 px steps, and a
+line-by-line re-check of §22.11 against the code at `6e71af8`. Pass-2 items were confirmed fixed except AF1,
+which was fixed but left a residue. Findings, all fixed:
+
+| ID | Severity | Finding | Fix |
+|---|---|---|---|
+| AG2 | MAJOR | **The prototype drew a colour model production cannot hold.** A rule stores *one* colour and paints *every* tag of that rule in it, so the fixture's two-colour rules were impossible — and worse, two rules sharing `external-api` in different colours is a write the server **refuses** | Each rule now carries one colour and the tag map is *derived* exactly as `TagColorPolicy` derives it. Verified by running the real policy over the prototype's own fixture: **0 conflicts**, and the derived map matches the prototype's byte for byte. The deeper consequence — a cluster of rules linked by a shared tag collapses to one colour — is documented in §22.2 and raised as decision **D40** |
+| AG1 | MAJOR | A `min-width` added by the pass-2 fix applied to *every* `.cov` table, so the Test step's table painted 217 px outside its own card at 1920/1440 | Both floors scoped to the wrapped, scrollable variant only. Measured: no coverage table escapes its card at any width |
+| AG3 | MAJOR | Below 1280 both suggestion-row actions shared one grid area, perfectly superimposed — **Preview values was unreachable by pointer** at 1024/768/390 | Each action has its own track. Hit-tested across ten widths from 390 to 1920: "Preview URL values" is the element at that point everywhere |
+| AG4 | MAJOR | The suggestion row still overflowed by 38 px in the narrow 1440–1460 band, where the draft rail appears before the main column grows | The stacked layout now covers everything below 1480. `scrollWidth === clientWidth` on every row at all ten swept widths |
+| AG5 | MAJOR | In forced colours every swatch computed identically — the **selected colour was indistinguishable** | The checked swatch gains a 3 px border and a ✓, so selection survives without hue. Measured under `forcedColors: 'active'` |
+| AG6 | MINOR | `93` claimed a red tag sat "directly above" an ERROR row; it was nine rows away | The tag is placed on the rows adjacent to the first ERROR row. Measured: tag row WARN, row below ERROR |
+| AG7 | MINOR | `88` and `89` told contradictory stories about which values were already saved | One consistent set across both steps |
+| AG8 | MINOR | `82` stated the scope twice — the panel and the rail's block | The rail suppresses its block on the step that shows the panel |
+| AG9 | MINOR | The rules list truncates tags where production draws every chip — an addition missing from §22.11 | Recorded as **A11**, and the state's label corrected |
+| AG10 | MINOR | `91` drew the two un-executable resolutions as live radios | Both drawn disabled, matching the note beside them |
+| AG11 | MINOR | The extend frame said "Add extraction to **this event**" before a rule was chosen | Pre-choice frame is named by the action; post-choice by the rule |
+| AG12 | MINOR | The colour preview showed every tag; production previews one chip | One chip, plus a line stating all the rule's tags use it |
+| AG13 | MINOR | The conflict named a rule absent from the package's own fixture | Uses "Acquirer partner call", which owns `external-api` in the drawn rule set |
+| AG14 | MINOR | The Enabled switch vanished in forced colours (pre-existing) | A `CanvasText` border and a `Highlight` track |
+| AG15 | MINOR | A single-tag cell announced "Tag:"; production always says "Tags:" | Matches production |
+
+#### LERUX-1 post-PR #60 pass 4 (fresh reviewer): verdict ACCEPT_WITH_CHANGES (0 BLOCKER, 4 MAJOR, 7 MINOR)
+
+230 render probes, 86 axe runs (0 violations), 14 keyboard walks, a width sweep at 20 px steps, and a Java
+harness running the real `TagColorPolicy` over the prototype's own fixture. Pass-3's fixes held, with four
+exceptions found and fixed here:
+
+| ID | Severity | Finding | Fix |
+|---|---|---|---|
+| AH1 | MAJOR | **The pass-3 colour fix was incomplete.** The rules list, Inspector and chooser were converted to the rule-level model, but the **import preview** still resolved chips per tag — six pack rows drawn in two or three colours, the exact state §22.2 says the data model cannot hold. It also drew `pci` grey, a colour `TagColor.defaultFor` never returns | Every pack item carries one colour, like any rule. Verified across all four import states: each rule row draws exactly one colour |
+| AH2 | MAJOR | `84` contradicted itself three ways: the draft tag read `middleware`, the error named `external-api`/Purple, and the button offered "Use Blue" — which would not have resolved the stated conflict | The state is one story: draft tag `external-api` in Red, error naming Purple and "Acquirer partner call", resolution **Use Purple** |
+| AH3 | MAJOR | `91` credited the pack side to "Imported middleware", a rule absent from the pack listed three rows above | The conflict is attributed to **Card issuer callback**, which the pack really contains and which now visibly brings `external-api` in Red |
+| AH4 | MAJOR | **Regression from the pass-3 grid rewrite.** The Type select landed on the two 30 px action tracks and rendered 70 px wide, clipping "Integer"/"Decimal" at five of the six target widths | Explicit tracks with a row of its own. Measured at 14 widths from 390 to 1920: the select is ≥ 104 px, no row overflows, the page never overflows |
+| AH5 | MINOR | `93` put the red tag on a WARN and an ERROR row while the title and §22.2 said INFO — and a red tag *on* an error row weakens the very demonstration | Placed on the two nearest INFO rows above the first ERROR row |
+| AH6 | MINOR | §22.11 lacked a row for the import preview drawing coloured chips where production renders plain text | Recorded as **A12** |
+| AH7 | MINOR | `89` listed 2 already-saved values while `87`/`88` said 6 | All six listed |
+| AH8 | MINOR | The forced-colours opacity override was declared before an equal-specificity rule, so it was dead | Ordering fixed; measured opacity 1 in forced colours |
+| AH10 | MINOR | A required radiogroup whose options are all disabled | `aria-required` dropped, group described by the D39 note |
+| AH11 | MINOR | The chooser implied a preferred rule | Both rows carry the same primary action, as production does |
+
+#### LERUX-1 post-PR #60 pass 5 (fresh reviewer): verdict ACCEPT_WITH_CHANGES (0 BLOCKER, 2 MAJOR, 8 MINOR)
+
+1,152 renders (96 states × 6 widths × light and dark) with **zero page-level horizontal overflow anywhere**, a
+table-geometry sweep with 0 misalignments, 70 axe runs (0 violations), 8 keyboard walks, and a Java harness
+running the real `TagColorPolicy` over the prototype's fixture merged with its own import pack. All four pass-4
+MAJOR fixes were confirmed to hold; the reviewer also independently re-derived §14 of the baseline inventory and
+found no place where the package overstates what ships. Findings, all fixed:
+
+| ID | Severity | Finding | Fix |
+|---|---|---|---|
+| AI1 | MAJOR | **The pass-4 fix moved a contradiction instead of removing it.** State `84`'s *form* was made consistent (`external-api` in Red), but the draft rail and compact bar still showed the default draft — `middleware` in blue. The one screen whose subject is "one tag, one colour" showed its own draft under two tags in two colours | The step's draft summary is derived from the tag and colour the step actually draws. Verified at all six widths: form, rail and compact bar all read `external-api` in red |
+| AI2 | MAJOR | The step rail still said "2 tags · 5 conditions" after the fixture rewrite reduced the rule to one tag — a stale count in six builder states | "1 tag · 5 conditions", matching the one chip the draft panel lists |
+| AI3 | MINOR | §22.2 said the red tag sits "directly above" ERROR rows; three WARN rows intervene | Matches the prototype caption: the two nearest INFO rows above the first ERROR row |
+| AI4 | MINOR | The import conflict's explanation reached the table row but not the card layout at ≤768 | Carried into the card |
+| AI6 | MINOR | A11's claim is width-dependent — the narrow card layout draws every chip | Stated in A11 |
+| AI7 | MINOR | `88` reused "a rule being written must not be evidence for itself" while extending an **already saved** rule | **This row was wrong when written.** The edit changed a different sentence and the rendered state was never re-checked, so the defect survived. Found again as AJ2 and fixed properly in pass 6 |
+| AI8 | MINOR | At phone width the Output name field (96 px) was narrower than the Type select (204 px) — the narrower control was the one being edited | Output name takes the row; Type is capped. Swept at 12 widths × 2 states with no overflow |
+| AI9 / AI10 | MINOR | §22.11 rows out of order; a stale "Optional Tags column" CSS comment | Sorted; comment updated to D30 |
+
+#### LERUX-1 post-PR #60 pass 6 (fresh reviewer): verdict ACCEPT_WITH_CHANGES (0 BLOCKER, 2 MAJOR, 6 MINOR)
+
+264 renders with 0 page overflow and 0 table-geometry misalignments, **108 axe runs (0 violations, `target-size`
+included)**, 9 keyboard walks plus 2 arrow-key walks, a forced-colours render, 16 measured contrast pairs, and a
+Java harness running the real `TagColorPolicy` — which confirmed the fixture is conflict-free and that both drawn
+conflicts are the exact errors production emits. §22.11 was verified row by row against `6e71af8` and found
+complete and honestly costed. Findings, all fixed:
+
+| ID | Severity | Finding | Fix |
+|---|---|---|---|
+| AJ2 | MAJOR | **A verification failure, not just a defect.** Pass 5's table recorded AI7 as fixed; the rendered state was byte-identical to what had been reported. The edit had changed the suggestion read-out while the wrong sentence lived in the scope summary, and a dead `extendNote` branch no state passed. The defect is minor; asserting a fix the rendering contradicts is not (CLAUDE.md §3) | The scope summary takes an explicit reason, so each frame states what is true of it: the create flow says a rule being written must not be evidence for itself; the extend flow says the sample is picked by your search, not by the tag this rule already applies. **Verified by rendering both states**, and the pass-5 row above is corrected rather than left standing |
+| AJ1 | MAJOR | States `85`/`86` carried the *extend* flow's 18-event sample into the *create* flow, so the step rail read "17 similar of 200 read" beside a panel reading "18 matching events" with every denominator `/18` — while `61`, `63`, `64` and `74` all said 17. The draft's Extracts count also ran backwards, 5 → none, between `83` and `85` | Both states use the create flow's 17-of-200 sample and its draft. Measured: no state in that flow now renders "18" anywhere, and `85` carries the same 5 values as the step before it |
+| AJ3 | MINOR | The scope heading rule targeted `h4` while the markup emits `h3`, so it fell back to UA defaults — 15.2 px/700 in a 50 px block, louder than the panel headings beside it | Selector corrected; measured 13 px/600 in a 24 px block |
+| AJ4 | MINOR | Below 1480 the row actions were drawn on the first line but came last in DOM order, so focus ran to the bottom of the card then jumped back to its top-right | Actions moved to the final line. Measured at 1440/768/390: focus now advances monotonically down the row |
+| AJ5 | MINOR | The decisions heading said D30–D37 while the table held D30–D40, with the last three rows out of order | Retitled and sorted |
+| AJ6 | MINOR | §21.10's "≤ 767 px" rules-list breakpoint is stale; the real one is ≤ 1023 px | Named in §22.10's supersession table |
+| AJ7 / AJ8 | MINOR | Selected-vs-focus ring similarity in the picker; a hanging separator at 390 and the stale rail on the gone-rule state | Accepted as preferences and left as drawn — the reviewer explicitly classified them as not gating, and each is a deliberate B1 economy |
+
+<!-- LERUX_PR60_REVIEW_7 -->
+
+#### LERUX-1 post-PR #60 pass 7 (fresh reviewer): verdict ACCEPT_WITH_CHANGES (0 BLOCKER, 1 MAJOR, 7 MINOR)
+
+The reviewer again compiled a harness against `backend/target/classes` and ran the real `TagColorPolicy` over the
+pack the prototype draws — and that is what caught the MAJOR. Findings, all fixed:
+
+| ID | Severity | Finding | Fix |
+|---|---|---|---|
+| AK1 | MAJOR | **The fix for AH1 broke three states.** Giving the shared `conflicts` pack a `card-issuer-callback` rule tagged `external-api` in RED made that one pack contain a tag-colour clash — so `68`, `70` and `71` drew an import the real policy refuses (`rules[…].displayColor — Tag "external-api" is already shown in PURPLE`) with no conflict chip, no panel and no blocker, while `91` drew the same pack *with* all three. One file, two stories | The clash now has a pack of its own, `partner-integration-rules.json`, used only by `91`; `shared-integration-rules.json` returns to `['issuer']` and is a pack production would accept. Verified by running the real policy over every pack outcome: `base` 0 conflicts, `clean` 0, `conflicts` 0, `colourConflict` exactly 1, naming `external-api`. Verified by rendering: `68`/`70` carry four count chips and no colour blocker, `91` carries five and two blockers, `71`'s banner names the pack from `68` |
+| — | (same fix) | The colour panel credited "Acquirer partner call" as the existing claimant, but that rule is itself in the pack; the real error names `acquirer-response-details` | The panel names both purple rules, and the second resolution says how many saved rules it would rewrite |
+| AK2 | MINOR | §22.11 had no row for Detect's evidence tables and coverage bars, which production renders as three plain `<ul>` lists and one sentence (`RuleEditor.tsx`) | Added as **A13**, frontend-only, no new data |
+| AK3 | MINOR | README still said "§22.11 (A1–A9)" and "the largest is A1" after the A1a/A1b split and the A10–A12 additions | Corrected to A1a, A1b, A2–A13, and the largest row named as A1b — the only one that is not frontend-only |
+| AK4 | MINOR | The Contents table pointed at §21 (superseded) and the owner action said D0–D16 | §22 named first with §21 marked as what it supersedes; D0–D40, with D39 and D40 spelled out as the two that block drawn states |
+| AK5 | MINOR | `86`'s narrative — five conditions and zero extracted values — is unreachable through "Use this suggestion" | The state says on the page that its conditions were written by hand, which is the path that reaches it |
+| AK6 | MINOR | At 390 px `89`'s third coverage column sits outside the viewport | Left as drawn: the column is inside a `.cov-wrap` with `overflow-x: auto` (measured `scrollWidth` 520 / `clientWidth` 332), which is the table-scroll invariant of CLAUDE.md §4, not a clip. Recorded rather than silently accepted |
+| AK7 | MINOR | §22.6's caveat was width-scoped and the width was wrong | Measured at seven widths: the rail is never hidden — its **draft panel** collapses below 1440 px — and the *extend* frame carries no scope block at **any** width. Both exceptions now stated, and the pass-3 row that introduced the wrong bound is corrected in place |
+| AK8 | MINOR | `92`'s label said "one tag per row" beside a row drawing `+2` | Label says what it draws: the first tag as a chip plus a neutral `+N` |
+
+Re-verified after the fixes: **222 captures, 0 layout problems, 174 axe runs, 0 violations**; Impeccable detector
+0 anti-patterns (2 pre-existing `#000` mask-image advisories).
+
+<!-- LERUX_PR60_REVIEW_8 -->
+
+#### LERUX-1 post-PR #60 pass 8 (fresh reviewer): verdict ACCEPT_WITH_CHANGES (0 BLOCKER, 2 MAJOR, 4 MINOR)
+
+The widest sweep yet — **all 96 states × 6 viewports**: 0 page overflows, 0 geometry violations (max
+header-vs-body delta **0.000 px**), 0 page errors, 0 axe violations at 1440 including `target-size`, with an
+injected-`<img>` canary proving the axe harness was live rather than silently passing. The reviewer independently
+re-ran the real `TagColorPolicy` over the fixture extracted from a rendered page and confirmed every drawn pack
+is accepted or refused exactly as drawn. Findings, all fixed:
+
+| ID | Severity | Finding | Fix |
+|---|---|---|---|
+| AL1 | MAJOR | **`91` drew a resolution the shipped policy refuses, and called it safe.** *Change every "external-api" rule to Red* would recolour `acquirer-partner-call` and `acquirer-response-details` — but both also carry `partner`, held in PURPLE by `acquirer-decline`, so the real policy returns two refusals on `partner`. The panel's *"either answer is safe"* was false as drawn. Not the D39/A1b caveat: the **end state** violates an invariant that already ships | The cascade is now the design, because it is the truth: the option reads *Change "external-api" to Red everywhere*, states that `Acquirer decline` is repainted too although it does not carry that tag, counts the rules and explains why the halfway state is refused. *Two details in this row were still wrong and were corrected in pass 9 — see AM2 and AM3: the reach is four rules but only three are repainted, and `pci` turns Red on only one branch of the separate rule-conflict choice.* The reassurance now distinguishes **safety** from **reach**. Verified with the real policy: Keep Purple ACCEPTED; resolution 2 as previously drawn REFUSED (2 errors on `partner`); resolution 2 with the cascade ACCEPTED |
+| AL2 | MAJOR | **§22.5, §22.9 and `COMPONENT_INVENTORY` still named *Keep Blue* / *"middleware"* / *Use Blue*** after the fixture was rewritten, so §22.9 and §22.11 made directly contradictory statements about the same named state — and `COMPONENT_INVENTORY` is what a B6 slice builds from | All three updated to the rendered pair (*Use Purple* / *Rename this tag…*; on import *Keep Purple* / *Change "external-api" to Red everywhere*), and §22.9 gained the cascade paragraph with its policy evidence |
+| AL3 | MINOR | §22.7 and `COMPONENT_INVENTORY` still specified the *extend* flow's "18 matching events" and `Found in 17 / 18` for state `85`, re-introducing in the normative spec the leak AJ1 closed in the render | Both corrected to 17 of 200 and `17 / 17`, each stating that the create and extend flows keep separate samples |
+| AL4 | MINOR | §22.2 said the multi-colour case "is what states `92`/`93` draw" — measured, every Tags cell in both draws one chip plus a neutral `+N`, which is what §22.3 specifies | Points at `45-inspector-multiple-classifications` (measured: purple, purple, blue on one event) and says explicitly that the table draws one colour per row by design |
+| AL5 | MINOR | Detect said *"0 of 181 other events that were read"* beside *"Read 200"*; 181 is 198 − 17, the with-a-message subset, so "read" meant 200 on one line and 198 on another | Checked against `PatternDetector` (`other` is drawn from the values that carry the field, so 181 is the right number): the **rendered** sentence now says "other events with a message" and reconciles 17 + 181 = 198 against the 200 read. *The normative §21.7 spec still carried the old wording and was missed here; pass 9 caught it as AM1.* |
+| AL6 | MINOR | §22.11's preamble read as an absolute index, but two prototype additions are tracked elsewhere (Inspector tag casing; the Replace-all enumeration and *What applying does* column) | The preamble is scoped to §22 and cross-references §21.11 / D24 and `CURRENT_BASELINE_INVENTORY.md` §14 C-19 / C-7, which do carry them |
+
+Re-verified after the fixes: **222 captures, 0 layout problems, 174 axe runs, 0 violations**; state `91` measured
+at 1440/768/390 with no overflow; Impeccable detector 0 anti-patterns (2 pre-existing `#000` advisories).
+
+<!-- LERUX_PR60_REVIEW_9 -->
+
+#### LERUX-1 post-PR #60 pass 9 (fresh reviewer): verdict ACCEPT_WITH_CHANGES (0 BLOCKER, 2 MAJOR, 6 MINOR)
+
+The reviewer re-derived the pass-8 cascade independently against the real `TagColorPolicy` and reproduced all six
+branches, including the halfway-state refusal — then found that the fix had not reached one normative document, and
+that one of its consequences is branch-dependent. 96 states × 6 viewports: 0 overflow, 0 geometry deviations, 0 axe
+violations at 1440, with the instrument validated (24–27 `passes` per state) before its zeros were trusted. All 13
+§22.11 rows were re-verified against `6e71af8` source and **no addition was found without a row**. Findings, all
+fixed:
+
+| ID | Severity | Finding | Fix |
+|---|---|---|---|
+| AM1 | MAJOR | **§21.7 still specified the sentence AL5 said was fixed.** The render said "other events with a message"; the normative *Suggested rule* spec a build slice works from still said "…other events **that were read**" beside "Read 200" — 200 − 17 = 183, not 181. Exactly the package's declared failure mode, with a README row asserting the fix | §21.7 carries the rendered wording and the 198-vs-200 reconciliation; the AL5 row above is corrected rather than left standing |
+| AM2 | MAJOR | **`91` asserted `pci` turns Red, which is false on one of two live branches.** `pci` exists only on the *imported* `Acquirer partner call`; the rule-conflict choice on the same screen is Required and unanswered, so under *Keep existing* `pci` is not in the rule set at all. The panel whose whole purpose is exact disclosure of reach stated an unconditional consequence — replicated across four more documents | The clause is scoped to its branch on the page and in §22.9, D39, `COMPONENT_INVENTORY` and the README row. Verified with the real policy on **both** branches: cascade ACCEPTED either way, `pci=RED` only under *Use imported* |
+| AM3 | MINOR | "repaints four" over-counted: three saved rules change colour; the fourth arrives in Red | "four rules reached, three of them repainted", in the panel and §22.9 |
+| AM4 | MINOR | `Suggestion · nothing saved` survived in §22.7 and `COMPONENT_INVENTORY` after AF7 declared one spelling | Both say *Suggestion · not saved*, matching §21.7 and the render |
+| AM5 | MINOR | §22.6's stat row said *Sampled · With this field · Similar*; the render and §21.7 both say *Read · With a message · Similar to this event*, and the bounded-sample sentence it cited renders only on Test and extend steps | §22.6 carries the rendered labels and attributes the sentence to the steps that show it |
+| AM6 | MINOR | The tag-colour-conflict count was drawn only when non-zero, so a clean pack gave no evidence the check ran — against §21.11's "a zero count is dashed and tertiary" and §22.9's claim that it is a peer of the other four outcomes | Always drawn; measured on `67`/`68`/`69` as `Tag colour conflicts 0` and on `91` as `1` |
+| AM7 | MINOR | `aria-label` on a plain `<div>` (Active filters) is prohibited on the `generic` role, so the name never reaches the accessibility tree — axe needs-review, not a violation | Prototype draws `role="group"`. **This is a production defect**, not a prototype slip (`ActiveFilters.tsx:78`), so it is recorded as `CURRENT_BASELINE_INVENTORY.md` **C-25** rather than silently corrected |
+| AM8 | MINOR | `partner-integration-rules.json` claimed one tag in two colours *inside itself*, so `compileAll` means no installation could have held or exported it — yet the state labels it "Exported 2026-09-15" | The pack's own `Acquirer partner call` no longer claims `external-api`. Verified: the pack **on its own** is now ACCEPTED, while merging it still refuses on `external-api` under both branches — a file an installation could really have exported, clashing only with this server |
+
+Re-verified after the fixes: **222 captures, 0 layout problems, 174 axe runs, 0 violations**; Impeccable detector
+0 anti-patterns (2 pre-existing `#000` advisories).
 

@@ -194,5 +194,6 @@ Design implications taken into §21 of `DESIGN_SYSTEM.md`: split evidence from s
 an explicit edit path (C-3); compact test examples beside a result summary (C-4); danger styling for destructive
 actions (C-5); stacked rule rows at narrow widths (C-6); one lowercase tag grammar everywhere (C-7); plain-language
 matchers (C-8); file name instead of a server path (C-9); UI type for status lines (C-10); tags in results, captures
-and Live without breaking the seven-column invariant (C-11).
+and Live without breaking the seven-column invariant (C-11). *(Superseded by PR #60: the default set is eight
+columns, Tags included — `DESIGN_SYSTEM.md` §22.3, `CURRENT_BASELINE_INVENTORY.md` §14, CLAUDE.md §4.)*
 

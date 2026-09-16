@@ -1,0 +1,92 @@
+{
+  "capturedAt": "2026-09-16T10:04:18.763Z",
+  "main": "6e71af8d901418d65de2bebb472240db27779147",
+  "source": "fixture (synthetic)",
+  "viewport": "1440x900",
+  "files": [
+    {
+      "file": "01-source-selector-loki-unavailable.png",
+      "note": "Source selector: Docker → OpenShift → OpenShift Loki — Not available (disabled option)."
+    },
+    {
+      "file": "02-search-before-any-rule.png",
+      "note": "Search narrowed to API_LOGS before any rule exists: Tags column present, every row \"—\"."
+    },
+    {
+      "file": "03-inspector-unclassified-actions.png",
+      "note": "Unclassified event: only \"Create tag rule from this event\" is offered."
+    },
+    {
+      "file": "04-rule-builder-source-step.png",
+      "note": "Rule builder, Source step: the anchor field and the selected event's value."
+    },
+    {
+      "file": "05-rule-builder-detect-initial.png",
+      "note": "Detect step before running: what the sample will be read from."
+    },
+    {
+      "file": "06-rule-builder-detected-current-scope.png",
+      "note": "Detect result on the CURRENT search population (PR #60): sampled/similar counts, stable structure, variable parts, suggested pattern and suggested extractions."
+    },
+    {
+      "file": "07-rule-builder-classification-colour.png",
+      "note": "Classification step: name, tags and the Tag colour palette with a live preview chip."
+    },
+    {
+      "file": "08-rule-builder-extraction-confirmed.png",
+      "note": "Extraction step: values adopted from the detector, and the suggestion panel reporting what it read and what is already extracted."
+    },
+    {
+      "file": "09-extraction-suggestions.png",
+      "note": "Assisted extraction: suggestions measured on the matching events (Found in n / m), each with an output name, sensitivity and Remove."
+    },
+    {
+      "file": "10-rule-builder-test-results.png",
+      "note": "Test results against the current-search sample: matched / not matched, extraction coverage, matched and borderline examples, review note."
+    },
+    {
+      "file": "11-rule-builder-save-review.png",
+      "note": "Save step: the review summary before an explicit save."
+    },
+    {
+      "file": "12-rule-saved-notice.png",
+      "note": "Saved: truthful guidance that already-loaded results are not silently mutated."
+    },
+    {
+      "file": "13-search-tags-visible-coloured.png",
+      "note": "PR #60 core outcome: the Tags column is visible by default and matching rows carry the tag in the rule colour — no inspector needed."
+    },
+    {
+      "file": "14-search-multiple-tags-first-plus-count.png",
+      "note": "Two rules match: the first tag chip plus \"+1\", with the full list in the accessible name and tooltip."
+    },
+    {
+      "file": "15-tag-filter-panel.png",
+      "note": "Tag filter in More filters: ANY selected tag, applied server-side after classification."
+    },
+    {
+      "file": "16-inspector-classified-actions.png",
+      "note": "Classified event: \"Add extraction from this event\" and \"Create another tag rule\" — two distinct actions."
+    },
+    {
+      "file": "17-inspector-classification-blocks.png",
+      "note": "Inspector Classification: tag identity in the same colour as the table, one block per matching rule, extracted values."
+    },
+    {
+      "file": "18-add-extraction-rule-chooser.png",
+      "note": "Add extraction from this event, several matching rules: the user chooses which rule to extend — never an ambiguous default."
+    },
+    {
+      "file": "19-add-extraction-editor.png",
+      "note": "The chosen rule opens on its extraction step, with the event as the anchor for suggestions."
+    },
+    {
+      "file": "20-rules-list-with-colours.png",
+      "note": "Settings › Classification rules: each rule with its tags drawn in its own colour, matcher summary, extract count, enabled switch and actions."
+    },
+    {
+      "file": "21-import-preview-tag-colour-conflict.png",
+      "note": "Import preview of a pack whose rule gives an existing tag a different colour — the conflict is reported before anything is written."
+    }
+  ]
+}

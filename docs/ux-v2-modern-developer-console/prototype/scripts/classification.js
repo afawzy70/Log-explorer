@@ -37,26 +37,26 @@
   // ------------------------------------------------------------------ saved rules (generic: none is special-cased)
   const X = (name, label, from, type, expr, valueType = 'STRING', o = {}) => Object.assign({ name, label, sourceField: from, type, expression: expr, valueType, sensitive: false }, o);
   const RULES = [
-    { id: 'middleware-http-call', name: 'Middleware HTTP call', description: 'Outbound calls made through the integration middleware', tags: ['middleware', 'external-api'], enabled: true, matchMode: 'ALL',
+    { id: 'middleware-http-call', displayColor: 'blue', name: 'Middleware HTTP call', description: 'Outbound calls made through the integration middleware', tags: ['middleware'], enabled: true, matchMode: 'ALL',
       conditions: [{ field: 'message', matcher: 'STARTS_WITH', value: 'Make webhook call to' }, { field: 'message', matcher: 'CONTAINS', value: 'method=' }, { field: 'message', matcher: 'CONTAINS', value: 'requestId=' }, { field: 'message', matcher: 'CONTAINS', value: 'responseCode=' }, { field: 'message', matcher: 'CONTAINS', value: 'duration=' }],
       extractions: [X('url', 'URL', 'message', 'REGEX', '\\bto\\s+(?P<url>\\S+)'), X('method', 'Method', 'message', 'REGEX', 'method=(?P<method>[^\\s,;]+)'), X('requestId', 'Request ID', 'message', 'REGEX', 'requestId=(?P<requestId>[^\\s,;]+)'), X('responseCode', 'Response code', 'message', 'REGEX', 'responseCode=(?P<responseCode>[-+]?\\d+)', 'INTEGER'), X('durationMs', 'Duration (ms)', 'message', 'REGEX', 'duration=(?P<durationMs>\\d+(?:\\.\\d+)?)ms', 'INTEGER'), X('requestBody', 'Request body', 'extra.request', 'JSON_POINTER', '/body', 'STRING', { sensitive: true })] },
-    { id: 'acquirer-partner-call', name: 'Acquirer partner call', description: 'Card acquirer requests, with request and response payloads', tags: ['external-api', 'partner'], enabled: true, matchMode: 'ALL',
+    { id: 'acquirer-partner-call', displayColor: 'purple', name: 'Acquirer partner call', description: 'Card acquirer requests, with request and response payloads', tags: ['external-api', 'partner'], enabled: true, matchMode: 'ALL',
       conditions: [{ field: 'message', matcher: 'CONTAINS', value: '/partners/acquirer/' }, { field: 'service', matcher: 'EXACT', value: 'payments-api' }],
       extractions: [X('partner', 'Partner', 'message', 'REGEX', '/partners/(?P<partner>[^/]+)/'), X('customerId', 'Customer ID', 'extra.request', 'JSON_POINTER', '/customer/id'), X('authorization', 'Authorization header', 'extra.request', 'JSON_POINTER', '/headers/Authorization', 'STRING', { sensitive: true }), X('requestBody', 'Request body', 'extra.request', 'JSON_POINTER', '/body'), X('responseBody', 'Response body', 'extra.response', 'JSON_POINTER', '/body'), X('retryAfter', 'Retry-After (s)', 'extra.response', 'JSON_POINTER', '/headers/Retry-After', 'INTEGER')] },
-    { id: 'acquirer-decline', name: 'Acquirer decline', description: 'Marks declined acquirer authorizations', tags: ['partner'], enabled: true, matchMode: 'ALL',
+    { id: 'acquirer-decline', displayColor: 'purple', name: 'Acquirer decline', description: 'Marks declined acquirer authorizations', tags: ['partner'], enabled: true, matchMode: 'ALL',
       conditions: [{ field: 'message', matcher: 'STARTS_WITH', value: 'Acquirer rejected authorization' }], extractions: [] },
-    { id: 'acquirer-response-details', name: 'Acquirer response details', description: 'Response payloads of declined authorizations', tags: ['external-api', 'partner'], enabled: true, matchMode: 'ALL',
+    { id: 'acquirer-response-details', displayColor: 'purple', name: 'Acquirer response details', description: 'Response payloads of declined authorizations', tags: ['external-api', 'partner'], enabled: true, matchMode: 'ALL',
       conditions: [{ field: 'message', matcher: 'CONTAINS', value: 'Acquirer rejected authorization' }, { field: 'service', matcher: 'EXACT', value: 'payments-api' }],
       extractions: [X('responseBody', 'Response body', 'extra.response', 'JSON_POINTER', '/body'), X('callbackUrl', 'Callback URL', 'extra.request', 'JSON_POINTER', '/callbackUrl'), X('errorDetail', 'Error detail', 'extra.response', 'JSON_POINTER', '/detail')] },
-    { id: 'gateway-http-response', name: 'Gateway HTTP response', description: '', tags: ['gateway-response'], enabled: true, matchMode: 'ALL',
+    { id: 'gateway-http-response', displayColor: 'cyan', name: 'Gateway HTTP response', description: '', tags: ['gateway-response'], enabled: true, matchMode: 'ALL',
       conditions: [{ field: 'service', matcher: 'EXACT', value: 'api-gateway' }, { field: 'message', matcher: 'CONTAINS', value: ' completed with ' }],
       extractions: [X('method', 'Method', 'message', 'REGEX', '^(?P<method>[A-Z]+) '), X('path', 'Path', 'message', 'REGEX', ' (?P<path>/\\S+) '), X('status', 'Status', 'message', 'REGEX', 'with (?P<status>\\d{3})', 'INTEGER'), X('durationMs', 'Duration (ms)', 'message', 'REGEX', 'in (?P<durationMs>\\d+) ms', 'INTEGER')] },
-    { id: 'slow-ledger-reservation', name: 'Slow ledger reservation', description: 'Ledger waits longer than normal for the database', tags: ['database-call'], enabled: true, matchMode: 'ALL',
+    { id: 'slow-ledger-reservation', displayColor: 'green', name: 'Slow ledger reservation', description: 'Ledger waits longer than normal for the database', tags: ['database-call'], enabled: true, matchMode: 'ALL',
       conditions: [{ field: 'service', matcher: 'EXACT', value: 'ledger-service' }, { field: 'message', matcher: 'REGEX', value: '(pending after|took) \\d+ ms' }],
       extractions: [X('waitMs', 'Wait (ms)', 'message', 'REGEX', '(?:after|took) (?P<waitMs>\\d+) ms', 'INTEGER')] },
-    { id: 'mobile-client-call', name: 'Mobile client call', description: 'Paused while the channel field is remapped', tags: ['mobile-call'], enabled: false, matchMode: 'ALL',
+    { id: 'mobile-client-call', displayColor: 'gray', name: 'Mobile client call', description: 'Paused while the channel field is remapped', tags: ['mobile-call'], enabled: false, matchMode: 'ALL',
       conditions: [{ field: 'mdc.channel', matcher: 'EXACT', value: 'MOBILE' }], extractions: [] },
-    { id: 'frontend-call', name: 'Frontend call', description: '', tags: ['frontend-call'], enabled: true, matchMode: 'ANY',
+    { id: 'frontend-call', displayColor: 'orange', name: 'Frontend call', description: '', tags: ['frontend-call'], enabled: true, matchMode: 'ANY',
       conditions: [{ field: 'extra.uiElement', matcher: 'STARTS_WITH', value: 'checkout.' }, { field: 'extra.uiElement', matcher: 'STARTS_WITH', value: 'login.' }], extractions: [X('uiElement', 'UI element', 'extra.uiElement', 'REGEX', '^(?P<uiElement>.+)$')] },
   ];
   // Server order: priority, then id. The rule editor sets no priority (all 100), so rules are listed and evaluated in id order.
@@ -67,7 +67,7 @@
   const P = (name, label, value, o = {}) => Object.assign({ name, label, value, status: 'PRESENT', redacted: false, truncated: false }, o);
   const REQUEST_BODY = JSON.stringify({ merchantId: 'm-100245', amount: { value: '42.500', currency: 'KWD' }, card: { token: '[REDACTED]', brand: 'VISA' }, captureMode: 'AUTO', reference: 'rsv-7c1f9e', callbackUrl: 'https://payments.example.internal/api/v2/payments/callbacks/acquirer?reference=rsv-7c1f9e&attempt=0&channel=MOBILE&tenant=retail&signatureVersion=2' }, null, 2);
   const W1_CLS = [
-    { ruleId: 'middleware-http-call', ruleName: 'Middleware HTTP call', tags: ['middleware', 'external-api'], extracted: [P('url', 'URL', '/partners/acquirer/authorize'), P('method', 'Method', 'POST'), P('requestId', 'Request ID', 'req-4f1c20'), P('responseCode', 'Response code', '502'), P('durationMs', 'Duration (ms)', '5012'), P('requestBody', 'Request body', '[REDACTED]', { redacted: true })] },
+    { ruleId: 'middleware-http-call', ruleName: 'Middleware HTTP call', tags: ['middleware'], extracted: [P('url', 'URL', '/partners/acquirer/authorize'), P('method', 'Method', 'POST'), P('requestId', 'Request ID', 'req-4f1c20'), P('responseCode', 'Response code', '502'), P('durationMs', 'Duration (ms)', '5012'), P('requestBody', 'Request body', '[REDACTED]', { redacted: true })] },
     { ruleId: 'acquirer-partner-call', ruleName: 'Acquirer partner call', tags: ['external-api', 'partner'], extracted: [
       P('partner', 'Partner', 'acquirer'),
       P('customerId', 'Customer ID', '84***31', { redacted: true }),
@@ -78,11 +78,11 @@
     ] },
   ];
   W1.classifications = [W1_CLS[1], W1_CLS[0]]; W1.tags = ['external-api', 'partner', 'middleware'];
-  W2.classifications = [{ ruleId: 'middleware-http-call', ruleName: 'Middleware HTTP call', tags: ['middleware', 'external-api'], extracted: [P('url', 'URL', '/partners/acquirer/authorize'), P('method', 'Method', 'POST'), P('requestId', 'Request ID', 'req-4f1c31'), P('responseCode', 'Response code', '201'), P('durationMs', 'Duration (ms)', '388'), P('requestBody', 'Request body', null, { status: 'ABSENT' })] }, { ruleId: 'acquirer-partner-call', ruleName: 'Acquirer partner call', tags: ['external-api', 'partner'], extracted: [P('partner', 'Partner', 'acquirer'), P('customerId', 'Customer ID', null, { status: 'ABSENT' }), P('authorization', 'Authorization header', null, { status: 'ABSENT' }), P('requestBody', 'Request body', null, { status: 'ABSENT' }), P('responseBody', 'Response body', null, { status: 'ABSENT' }), P('retryAfter', 'Retry-After (s)', null, { status: 'ABSENT' })] }];
+  W2.classifications = [{ ruleId: 'middleware-http-call', ruleName: 'Middleware HTTP call', tags: ['middleware'], extracted: [P('url', 'URL', '/partners/acquirer/authorize'), P('method', 'Method', 'POST'), P('requestId', 'Request ID', 'req-4f1c31'), P('responseCode', 'Response code', '201'), P('durationMs', 'Duration (ms)', '388'), P('requestBody', 'Request body', null, { status: 'ABSENT' })] }, { ruleId: 'acquirer-partner-call', ruleName: 'Acquirer partner call', tags: ['external-api', 'partner'], extracted: [P('partner', 'Partner', 'acquirer'), P('customerId', 'Customer ID', null, { status: 'ABSENT' }), P('authorization', 'Authorization header', null, { status: 'ABSENT' }), P('requestBody', 'Request body', null, { status: 'ABSENT' }), P('responseBody', 'Response body', null, { status: 'ABSENT' }), P('retryAfter', 'Retry-After (s)', null, { status: 'ABSENT' })] }];
   W2.classifications.reverse();
   W2.tags = ['external-api', 'partner', 'middleware'];
-  W3.classifications = [{ ruleId: 'middleware-http-call', ruleName: 'Middleware HTTP call', tags: ['middleware', 'external-api'], extracted: [P('url', 'URL', '/partners/kyc/verify'), P('method', 'Method', 'GET'), P('requestId', 'Request ID', 'req-4f1b88'), P('responseCode', 'Response code', '200'), P('durationMs', 'Duration (ms)', '142'), P('requestBody', 'Request body', null, { status: 'ABSENT' })] }];
-  W3.tags = ['middleware', 'external-api'];
+  W3.classifications = [{ ruleId: 'middleware-http-call', ruleName: 'Middleware HTTP call', tags: ['middleware'], extracted: [P('url', 'URL', '/partners/kyc/verify'), P('method', 'Method', 'GET'), P('requestId', 'Request ID', 'req-4f1b88'), P('responseCode', 'Response code', '200'), P('durationMs', 'Duration (ms)', '142'), P('requestBody', 'Request body', null, { status: 'ABSENT' })] }];
+  W3.tags = ['middleware'];
   const ERROR_DETAIL = Array.from({ length: 40 }, (_, i) => `attempt ${i + 1}: issuer ISS-0442 did not answer within 2500 ms; acquirer AQ-5301 scheduled retry ${i + 2};`).join(' ').slice(0, 2000);
   const LONG = mk('14:02:12.020', 'ERROR', 'payments-api', 'Acquirer rejected authorization for reference rsv-7c1f9e', { trace: D.TRACE.t1, corr: D.CORR.c1, errorCode: 'PAY-4107' });
   LONG.classifications = [
@@ -145,14 +145,35 @@
   const item = (index, id, name, tags, status, o = {}) => Object.assign({ index, id, name, tags, status, existingName: null, errors: [] }, o);
   const IMPORTS = {
     clean: { file: 'payments-team-rules.json', pack: { name: 'Payments team rules', version: 3, exportedAt: '2026-09-12' }, rulesInPack: 2, newRules: 2, identical: 0, conflicts: 0, invalid: 0,
-      items: [item(0, 'card-issuer-callback', 'Card issuer callback', ['external-api', 'issuer'], 'NEW'), item(1, 'mobile-login', 'Mobile login', ['mobile-call'], 'NEW')] },
+      items: [item(0, 'card-issuer-callback', 'Card issuer callback', ['issuer'], 'NEW', { colour: 'red' }), item(1, 'mobile-login', 'Mobile login', ['mobile-call'], 'NEW', { colour: 'gray' })] },
     conflicts: { file: 'shared-integration-rules.json', pack: { name: 'Shared integration rules', version: 7, exportedAt: '2026-09-14' }, rulesInPack: 5, newRules: 1, identical: 3, conflicts: 1, invalid: 0,
-      items: [item(0, 'middleware-http-call', 'Middleware HTTP call', ['middleware', 'external-api'], 'IDENTICAL'), item(1, 'acquirer-partner-call', 'Acquirer partner call', ['external-api', 'partner', 'pci'], 'CONFLICT', { existingName: 'Acquirer partner call' }), item(2, 'gateway-http-response', 'Gateway HTTP response', ['gateway-response'], 'IDENTICAL'), item(3, 'slow-ledger-reservation', 'Slow ledger reservation', ['database-call'], 'IDENTICAL'), item(4, 'card-issuer-callback', 'Card issuer callback', ['external-api', 'issuer'], 'NEW')] },
+      items: [item(0, 'middleware-http-call', 'Middleware HTTP call', ['middleware'], 'IDENTICAL', { colour: 'blue' }), item(1, 'acquirer-partner-call', 'Acquirer partner call', ['external-api', 'partner', 'pci'], 'CONFLICT', { existingName: 'Acquirer partner call', colour: 'purple' }), item(2, 'gateway-http-response', 'Gateway HTTP response', ['gateway-response'], 'IDENTICAL', { colour: 'cyan' }), item(3, 'slow-ledger-reservation', 'Slow ledger reservation', ['database-call'], 'IDENTICAL', { colour: 'green' }), item(4, 'card-issuer-callback', 'Card issuer callback', ['issuer'], 'NEW', { colour: 'red' })] },
+    /*
+     * The tag-colour clash is a pack of its own (state 91): `Card issuer callback` brings `external-api` in RED
+     * while this server shows it PURPLE. Keeping it separate means the ordinary conflict pack above stays a pack
+     * production would accept, so 68/70/71 and 91 never tell two stories about one file.
+     */
+    colourConflict: { file: 'partner-integration-rules.json', pack: { name: 'Partner integration rules', version: 2, exportedAt: '2026-09-15' }, rulesInPack: 5, newRules: 1, identical: 3, conflicts: 1, invalid: 0,
+      items: [item(0, 'middleware-http-call', 'Middleware HTTP call', ['middleware'], 'IDENTICAL', { colour: 'blue' }), item(1, 'acquirer-partner-call', 'Acquirer partner call', ['partner', 'pci'], 'CONFLICT', { existingName: 'Acquirer partner call', colour: 'purple' }), item(2, 'gateway-http-response', 'Gateway HTTP response', ['gateway-response'], 'IDENTICAL', { colour: 'cyan' }), item(3, 'slow-ledger-reservation', 'Slow ledger reservation', ['database-call'], 'IDENTICAL', { colour: 'green' }), item(4, 'card-issuer-callback', 'Card issuer callback', ['external-api', 'issuer'], 'NEW', { colour: 'red' })] },
     invalid: { file: 'partner-rules-draft.json', pack: { name: 'Partner rules (draft)', version: 1, exportedAt: '2026-09-15' }, rulesInPack: 3, newRules: 1, identical: 1, conflicts: 0, invalid: 1,
-      items: [item(0, 'middleware-http-call', 'Middleware HTTP call', ['middleware', 'external-api'], 'IDENTICAL'), item(1, 'card-issuer-callback', 'Card issuer callback', ['external-api', 'issuer'], 'NEW'), item(2, 'lookahead-partner', 'Lookahead partner rule', ['partner'], 'INVALID', { errors: [{ path: 'rules[2].conditions[0].value', message: 'Invalid or unsupported regular expression: invalid or unsupported Perl syntax' }] })] },
+      items: [item(0, 'middleware-http-call', 'Middleware HTTP call', ['middleware'], 'IDENTICAL', { colour: 'blue' }), item(1, 'card-issuer-callback', 'Card issuer callback', ['issuer'], 'NEW', { colour: 'red' }), item(2, 'lookahead-partner', 'Lookahead partner rule', ['partner'], 'INVALID', { colour: 'purple', errors: [{ path: 'rules[2].conditions[0].value', message: 'Invalid or unsupported regular expression: invalid or unsupported Perl syntax' }] })] },
   };
 
-  D.CLS = { RULES, TAGS, tags: TAGS, W1, W2, W3, NEAR, LONG, clsResults, tagFiltered, DETECT, NO_SAFE, TEST, IMPORTS, REVISION: 13, STORAGE_FILE: 'classification-rules.json', RUNTIME: { eventsEvaluated: 4812, ruleMatches: 1207, evaluationFailures: 0 } };
+  /*
+   * The colour each tag is drawn in (production truth after PR #60: a rule carries a semantic palette name, and
+   * one normalized tag resolves to exactly one colour across the product). `issuer` is deliberately RED on INFO
+   * rows in the drawn states, so a reviewer can check that a red TAG never reads as an error LEVEL.
+   */
+  const TAG_COLOR = {};
+  for (const r of RULES) {
+    for (const t of r.tags) {
+      if (!(t in TAG_COLOR)) TAG_COLOR[t] = r.displayColor || 'gray';
+    }
+  }
+  TAG_COLOR.issuer = 'red';   // only supplied by the imported "Card issuer callback" rule (states 71, 93)
+  window.LX_TAG_COLOR = TAG_COLOR;
+
+  D.CLS = { RULES, TAGS, tags: TAGS, TAG_COLOR, W1, W2, W3, NEAR, LONG, clsResults, tagFiltered, DETECT, NO_SAFE, TEST, IMPORTS, REVISION: 13, STORAGE_FILE: 'classification-rules.json', RUNTIME: { eventsEvaluated: 4812, ruleMatches: 1207, evaluationFailures: 0 } };
 })();
 
 window.LX_EXT = function (api) {
@@ -162,8 +183,14 @@ window.LX_EXT = function (api) {
   const fmt = (x) => Number(x).toLocaleString('en-US');
 
   // ------------------------------------------------------------------ shared primitives (DESIGN_SYSTEM §21)
-  const tagChip = (t, lg) => `<span class="tag-chip${lg ? ' lg' : ''}">${I('tag', 'ic-xs')}<span class="t">${esc(t)}</span></span>`;
-  const tagList = (tags, lg, label = 'Tags') => `<ul class="tag-list" aria-label="${label}">${tags.map((t) => `<li>${tagChip(t, lg)}</li>`).join('')}</ul>`;
+  const tagClass = (t) => 'tag-' + ((window.LX_TAG_COLOR && window.LX_TAG_COLOR[t]) || 'gray');
+  const tagChip = (t, lg) => `<span class="tag-chip ${tagClass(t)}${lg ? ' lg' : ''}"><span class="t">${esc(t)}</span></span>`;
+  /**
+   * A rule's tags all carry that rule's one colour (production: `rule.displayColor` for every chip). Only an
+   * EVENT's tag set can show several colours, because those tags come from several rules — and then each tag
+   * resolves through the shared map, exactly as the server derives it.
+   */
+  const tagList = (tags, lg, label = 'Tags', ruleColour) => `<ul class="tag-list" aria-label="${label}">${tags.map((t) => `<li>${ruleColour ? `<span class="tag-chip tag-${ruleColour}${lg ? ' lg' : ''}"><span class="t">${esc(t)}</span></span>` : tagChip(t, lg)}</li>`).join('')}</ul>`;
   const tagFilterChip = (t) => `<span class="chip is-tag">${I('tag')}Tag <b>${esc(t)}</b><button class="x" aria-label="Remove tag filter ${esc(t)}">${I('x')}</button></span>`;
   const MATCHER = { EXACT: 'is', CONTAINS: 'contains', STARTS_WITH: 'starts with', REGEX: 'matches pattern' };
   const FIELD = { message: 'Message', service: 'Service', logger: 'Logger' };
@@ -245,14 +272,14 @@ window.LX_EXT = function (api) {
     const rows = rules.map((r) => `<tr class="${r.enabled ? '' : 'is-disabled'}${sel.includes(r.id) ? ' is-selected' : ''}" aria-selected="${sel.includes(r.id)}">
       <td>${box(sel.includes(r.id), `Select ${r.name} for export`)}</td>
       <td><span class="rule-name">${esc(r.name)}</span>${r.description ? `<span class="rule-desc">${esc(r.description)}</span>` : ''}</td>
-      <td><span class="tag-cell">${tagChip(r.tags[0])}${r.tags.length > 1 ? `<span class="tag-more" title="${esc(r.tags.join(', '))}">+${r.tags.length - 1}</span>` : ''}</span><span class="vh">Tags: ${esc(r.tags.join(', '))}</span></td>
+      <td><span class="tag-cell"><span class="tag-chip tag-${r.displayColor || 'gray'}"><span class="t">${esc(r.tags[0])}</span></span>${r.tags.length > 1 ? `<span class="tag-more" title="${esc(r.tags.join(', '))}">+${r.tags.length - 1}</span>` : ''}</span><span class="vh">Tags: ${esc(r.tags.join(', '))}</span></td>
       <td>${conditionText(r)}</td>
       <td class="num-cell">${r.extractions.length ? `${r.extractions.length} value${r.extractions.length > 1 ? 's' : ''}` : '<span class="empty-cell">None</span>'}</td>
       <td>${sw(r.enabled, r.name)}</td>
       <td class="c-act"><button class="btn btn-ghost btn-sm" aria-label="Test ${esc(r.name)}">${I('flask-conical', 'ic-sm')}Test</button><button class="btn btn-ghost btn-sm" aria-label="Edit ${esc(r.name)}">${I('pencil', 'ic-sm')}Edit</button><button class="btn btn-ghost btn-sm btn-icon" aria-label="More actions for ${esc(r.name)}: Duplicate, Export, Delete" aria-haspopup="menu" aria-expanded="${!!o.menu && r.id === 'frontend-call'}">${I('ellipsis')}</button></td>
     </tr>`).join('');
     const cards = rules.map((r) => `<li class="${r.enabled ? '' : 'is-disabled'}">${box(sel.includes(r.id), `Select ${r.name} for export`)}
-      <div class="rl-main"><span class="rule-name">${esc(r.name)}</span>${tagList(r.tags)}${conditionText(r)}<span class="rule-desc">${r.extractions.length} extracted value${r.extractions.length === 1 ? '' : 's'}</span></div>
+      <div class="rl-main"><span class="rule-name">${esc(r.name)}</span>${tagList(r.tags, false, 'Tags', r.displayColor)}${conditionText(r)}<span class="rule-desc">${r.extractions.length} extracted value${r.extractions.length === 1 ? '' : 's'}</span></div>
       <div class="rl-side">${sw(r.enabled, r.name)}<button class="btn btn-ghost btn-sm btn-icon" aria-label="Actions for ${esc(r.name)}: Test, Edit, Duplicate, Export, Delete" aria-haspopup="menu" aria-expanded="${!!o.menu && r.id === 'frontend-call'}">${I('ellipsis')}</button></div></li>`).join('');
     return `<h1>Classification rules</h1><p class="ws-sub">Rules add your own tags to events and pull out named values, such as a URL or a response code. The server applies saved rules to every event that Search, Investigation, Surroundings and Live read.</p>${meta}${banners}${toolbar}
       <div class="rules-wrap" role="region" aria-label="Classification rules table" tabindex="0"><table class="grid rules" aria-label="Classification rules">
@@ -303,17 +330,17 @@ window.LX_EXT = function (api) {
   function rbRail(cur, st, edit) {
     return `<nav class="rb-rail" aria-label="Rule steps"><ol class="rb-steps">${STEPS.filter(([k]) => !edit || k !== 'source').map(([k, l], i) => { const x = st[k] || {}; return `<li><button class="rb-step${x.done ? ' done' : ''}"${k === cur ? ' aria-current="step"' : ''}><span class="n" aria-hidden="true">${x.done ? I('check') : i + 1}</span><span class="l">${l}${x.done ? '<span class="vh">, completed</span>' : ''}</span><span class="st">${esc(x.text || '')}</span></button></li>`; }).join('')}</ol><p class="rail-note">Every step stays reachable, in any order. Nothing is saved until Save rule.</p></nav>`;
   }
-  function rbDraft(o) {
+  function rbDraft(o, hideScope) {
     const conds = o.conds ? `<ul class="draft-cond">${o.conds.map((c, i) => `<li>${i ? (o.mode === 'ALL' ? 'and ' : 'or ') : ''}${fieldName(c.field)} ${MATCHER[c.matcher]} <span class="mono">“${esc(c.value)}”</span></li>`).join('')}</ul>` : '<span class="empty-cell">No conditions yet</span>';
     return `<aside class="rb-draft" aria-label="Draft rule" tabindex="0">
       <h2 class="sec-h">Draft rule<span class="aside">not saved</span></h2>
       <dl class="kv"><dt>Name</dt><dd>${o.name ? esc(o.name) : '<span class="empty-cell">Not named yet</span>'}</dd>
-      <dt>Tags</dt><dd>${o.tags ? tagList(o.tags) : '<span class="empty-cell">None yet (required)</span>'}</dd>
+      <dt>Tags</dt><dd>${o.tags ? tagList(o.tags, false, 'Tags', o.tagColour) : '<span class="empty-cell">None yet (required)</span>'}</dd>
       <dt>Matches when</dt><dd>${conds}</dd>
       <dt>Extracts</dt><dd>${o.x || '<span class="empty-cell">Nothing yet</span>'}</dd></dl>
       <h2 class="sec-h">Tested</h2><p class="draft-state">${I(o.tested ? 'flask-conical' : 'circle-dashed')}${o.tested || 'Not tested yet. Testing is recommended before saving.'}</p>
-      <h2 class="sec-h">Sample scope</h2><dl class="kv"><dt>Source</dt><dd>Local Docker · payments-stack</dd><dt>Time</dt><dd>Last 1 day</dd><dt>Services</dt><dd>All except 2</dd><dt>Severity</dt><dd>Info, Warn, Error</dd></dl>
-      <p class="help">Detect and Test read up to 200 events from the current search scope. Change it with Edit search.</p></aside>`;
+      ${hideScope ? '' : `<h2 class="sec-h">Sample scope</h2><dl class="kv"><dt>Source</dt><dd>Local Docker · payments-stack</dd><dt>Time</dt><dd>Last 1 day</dd><dt>Query</dt><dd class="mono">“webhook”</dd><dt>Services</dt><dd>All except 2</dd><dt>Severity</dt><dd>Info, Warn, Error</dd></dl>
+      <p class="help">Detect and Test read up to 200 events from <strong style="color:var(--ink-1);font-weight:500">this search</strong> — every filter above applies, except a classification tag filter. Change it with Edit search.</p>`}</aside>`;
   }
   const compactDraft = (o) => `<div class="rb-compact-draft" role="note" aria-label="Draft rule summary"><span>Draft <b>${o.name ? esc(o.name) : 'not named yet'}</b></span><span>Tags <b>${o.tags ? o.tags.join(', ') : 'none yet'}</b></span><span>Conditions <b>${o.conds ? o.conds.length : 0}</b></span><span>Extracts <b>${o.xCount || 0}</b></span><span>${o.tested ? esc(o.tested) : 'Not tested'}</span></div>`;
   const rbNav = (prev, next, o = {}) => `<div class="rb-nav"><button class="btn btn-ghost">Cancel</button><div class="push">${prev ? `<button class="btn btn-secondary">${I('arrow-left', 'ic-sm')}${prev}</button>` : ''}${next ? `<button class="btn ${o.nextPrimary ? 'btn-primary' : 'btn-secondary'}">${next}${I('arrow-right', 'ic-sm')}</button>` : ''}</div></div>`;
@@ -338,7 +365,7 @@ window.LX_EXT = function (api) {
           ${content}
           ${o.nav || ''}
         </div>
-        ${rbDraft(draft)}
+        ${rbDraft(draft, o.scopeShown)}
       </div></section>`;
     return page({ shell: o.edit ? { trail: ['Settings', 'Classification rules', o.newRule ? 'New rule' : 'Edit rule'], active: 'settings' } : { trail: ['Search', 'Create tag rule'] }, chrome: compactScope('Detect and Test sample this search scope', { services: 'All except 2' }), column: col });
   }
@@ -347,14 +374,14 @@ window.LX_EXT = function (api) {
   const ST = {
     source: { done: true, text: 'Message' },
     detect: { done: true, text: '17 similar of 200 read' },
-    classification: { done: true, text: '2 tags · 5 conditions' },
+    classification: { done: true, text: '1 tag · 5 conditions' },
     extraction: { done: true, text: '6 values' },
     test: { done: true, text: '17 of 200 matched' },
   };
   const pick = (...keys) => Object.fromEntries(keys.map((k) => [k, ST[k]]));
   const DRAFT_EMPTY = {};
   const DRAFT_SUGGESTED = { conds: DETECTED.conditions, mode: 'ALL', x: '5 suggested values', xCount: 5 };
-  const DRAFT_NAMED = { name: 'Middleware HTTP call', tags: ['middleware', 'external-api'], conds: DETECTED.conditions, mode: 'ALL', x: '5 suggested values', xCount: 5 };
+  const DRAFT_NAMED = { name: 'Middleware HTTP call', tags: ['middleware'], conds: DETECTED.conditions, mode: 'ALL', x: '5 suggested values', xCount: 5 };
   const DRAFT_X = Object.assign({}, DRAFT_NAMED, { x: '6 values (3 suggested, 3 confirmed)', xCount: 6 });
   const DRAFT_TESTED = Object.assign({}, DRAFT_X, { tested: '17 of 200 sampled events matched' });
 
@@ -387,9 +414,9 @@ window.LX_EXT = function (api) {
     const d = DETECTED;
     const xs = d.suggestedExtractions.map(([l, a, b]) => `<tr><td>${l}</td><td>${bar(a, b)}</td></tr>`).join('');
     return panel('Suggested rule', `${condList(d.conditions, d.matchMode)}
-      <p class="measure">On this sample it matches <strong>${d.coverage.matchedSimilar} of ${d.coverage.similar}</strong> similar events and <strong>${d.coverage.matchedOther} of ${d.coverage.other}</strong> other events that were read.</p>
+      <p class="measure">On this sample it matches <strong>${d.coverage.matchedSimilar} of ${d.coverage.similar}</strong> similar events and <strong>${d.coverage.matchedOther} of ${d.coverage.other}</strong> other events with a message. (The two add up to the 198 events that carried this field, not to the 200 read — 2 had no message.)</p>
       <h4 class="sec-h" style="margin:14px 0 6px">Suggested values to extract</h4>
-      <table class="grid mini cov" aria-label="Suggested values to extract"><colgroup><col style="width:180px"><col></colgroup><thead><tr><th scope="col">Value</th><th scope="col">Extracted from similar events</th></tr></thead><tbody>${xs}</tbody></table>
+      <div class="cov-wrap" role="region" aria-label="Suggested values to extract" tabindex="0"><table class="grid mini cov" aria-label="Suggested values to extract"><colgroup><col style="width:180px"><col></colgroup><thead><tr><th scope="col">Value</th><th scope="col">Extracted from similar events</th></tr></thead><tbody>${xs}</tbody></table></div>
       ${d.warnings.map((w) => `<p class="help-row">${I('info')}${esc(w)}</p>`).join('')}`,
     { cls: 'is-suggestion reveal', tag: `<span class="tag tag-suggestion">Suggestion · not saved</span>`,
       foot: applied ? `<span class="note" role="status">${I('circle-check')}Copied into the draft. Nothing is saved yet; review it in the next steps.</span><button class="btn btn-secondary">${I('pencil')}Edit conditions</button>`
@@ -405,12 +432,20 @@ window.LX_EXT = function (api) {
 
   // Step 3 — classification
   function classificationStep(advanced, extra = {}) {
+    // `colour`/`conflict` are the PR #60 additions; they belong to the step, not to the page shell.
+    const colour = extra.colour;
+    const conflict = extra.conflict;
+    extra = Object.assign({}, extra);
+    delete extra.colour;
+    delete extra.conflict;
     const typedRegex = { field: 'message', matcher: 'REGEX', value: 'call to (?=/partners)' };
     const conds = advanced ? [...DETECTED.conditions, typedRegex] : DETECTED.conditions;
-    const tokens = `<div class="tokens" role="group" aria-label="Tags">${['middleware', 'external-api'].map((t) => `<span class="tag-chip">${I('tag', 'ic-xs')}<span class="t">${t}</span><button class="x" aria-label="Remove tag ${t}">${I('x')}</button></span>`).join('')}<input aria-label="Add a tag" placeholder="Add a tag and press Enter"></div>`;
+    const draftTags = conflict ? ['external-api'] : ['middleware'];
+    const tokens = `<div class="tokens" role="group" aria-label="Tags">${draftTags.map((t) => `<span class="tag-chip tag-${colour || tagClass('middleware').slice(4)}"><span class="t">${t}</span><button class="x" aria-label="Remove tag ${t}">${I('x')}</button></span>`).join('')}<input aria-label="Add a tag" placeholder="Add a tag and press Enter"></div>`;
     const names = `<div class="form-stack">
       <label class="lbl-field">Rule name<input class="input" value="Middleware HTTP call"></label>
       <div class="lbl-field">Tags<span class="vh"> (required)</span>${tokens}<span class="help" style="margin:0">Lowercase letters, digits, dots, dashes and underscores. Up to 5 tags, 40 characters each.</span></div>
+      ${colour ? colorPicker(colour, { conflict }) : ''}
       <label class="lbl-field">Description (optional)<textarea class="input" rows="2">Outbound calls made through the integration middleware</textarea></label>
       <div class="switch-inline"><button class="switch" role="switch" aria-checked="true" aria-label="Enabled"><span class="track"></span><span class="word">Enabled</span></button><span class="help" style="margin:0">Applies to new searches once saved.</span></div></div>`;
     const matcher = (sel) => `<select class="input">${['Is exactly', 'Contains', 'Starts with', 'Regular expression (RE2)'].map((m) => `<option${m === sel ? ' selected' : ''}>${m}</option>`).join('')}</select>`;
@@ -423,8 +458,11 @@ window.LX_EXT = function (api) {
         ${condRow(1, 'message', 'Starts with', 'Make webhook call to')}${condRow(2, 'message', 'Contains', 'method=')}${condRow(3, 'message', 'Contains', 'requestId=')}${condRow(4, 'message', 'Contains', 'responseCode=')}${condRow(5, 'message', 'Contains', 'duration=')}
         ${advanced ? condRow(6, 'message', 'Regular expression (RE2)', 'call to (?=/partners)', { mono: true, help: 'RE2 syntax runs in linear time. Lookahead, lookbehind and backreferences are not supported. The server checks the expression when you test or save.', error: 'Invalid or unsupported regular expression: invalid or unsupported Perl syntax' }) : ''}
         <div class="editor-row"><button class="btn btn-secondary btn-sm">${I('plus', 'ic-sm')}Add condition</button><span class="help" style="margin:0">Up to 10 conditions.</span></div></div></details>`;
+    const stepDraft = conflict
+      ? Object.assign({}, DRAFT_NAMED, { tags: draftTags, tagColour: colour })
+      : advanced ? Object.assign({}, DRAFT_NAMED, { conds }) : DRAFT_NAMED;
     return rbPage('classification', panel('Name and tags', names) + panel('Matches when', matchBody, { tag: extra.edit ? '' : '<span class="tag tag-neutral">From the suggestion</span>' }),
-      Object.assign({ sub: 'Name the rule and choose the tags it adds. The conditions come from the suggestion; edit them only if you need to.', status: pick('source', 'detect'), draft: advanced ? Object.assign({}, DRAFT_NAMED, { conds }) : DRAFT_NAMED, nav: rbNav('Detect', 'Extraction') }, extra));
+      Object.assign({ sub: 'Name the rule and choose the tags it adds. The conditions come from the suggestion; edit them only if you need to.', status: pick('source', 'detect'), draft: stepDraft, nav: rbNav('Detect', 'Extraction') }, extra));
   }
 
   // Step 4 — extraction
@@ -513,10 +551,10 @@ window.LX_EXT = function (api) {
   }
   function importPreview(key, o = {}) {
     const pk = C.IMPORTS[key];
-    const rows = pk.items.map((it) => `<tr class="${it.status === 'INVALID' ? 'is-invalid-row' : ''}"><td>${impStatus(it.status)}</td><td><span class="rule-name">${esc(it.name)}</span><span class="out-key mono" style="display:block;font:400 12px/14px var(--font-mono);color:var(--ink-3)">${esc(it.id)}</span></td><td>${tagList(it.tags)}</td><td class="effect">${effectText(it, o)}</td></tr>
+    const rows = pk.items.map((it) => `<tr class="${it.status === 'INVALID' ? 'is-invalid-row' : ''}"><td>${impStatus(it.status)}</td><td><span class="rule-name">${esc(it.name)}</span><span class="out-key mono" style="display:block;font:400 12px/14px var(--font-mono);color:var(--ink-3)">${esc(it.id)}</span></td><td>${tagList(it.tags, false, 'Tags', it.colour)}</td><td class="effect">${effectText(it, o)}</td></tr>
       ${it.status === 'CONFLICT' ? `<tr class="detail is-conflict-detail"><td colspan="4"><span class="help-row" style="margin:0">${I('info')}Same id as the existing rule “${esc(it.existingName)}”, with different content.</span></td></tr>` : ''}
       ${it.errors.length ? `<tr class="detail"><td colspan="4">${it.errors.map((e) => `<span class="imp-err">${I('circle-alert', 'ic-sm')}<span><code>${esc(e.path)}</code> ${esc(e.message)}</span></span>`).join('')}</td></tr>` : ''}`).join('');
-    const cards = pk.items.map((it) => `<li><div class="top">${impStatus(it.status)}<span class="rule-name">${esc(it.name)}</span></div>${tagList(it.tags)}<span class="effect help" style="margin:0">${effectText(it, o)}</span>${it.errors.map((e) => `<span class="imp-err">${I('circle-alert', 'ic-sm')}<span><code>${esc(e.path)}</code> ${esc(e.message)}</span></span>`).join('')}</li>`).join('');
+    const cards = pk.items.map((it) => `<li><div class="top">${impStatus(it.status)}<span class="rule-name">${esc(it.name)}</span></div>${tagList(it.tags, false, 'Tags', it.colour)}<span class="effect help" style="margin:0">${effectText(it, o)}</span>${it.status === 'CONFLICT' ? `<span class="help-row" style="margin:0">${I('info')}<span>Same id as the existing rule “${esc(it.existingName)}”, with different content.</span></span>` : ''}${it.errors.map((e) => `<span class="imp-err">${I('circle-alert', 'ic-sm')}<span><code>${esc(e.path)}</code> ${esc(e.message)}</span></span>`).join('')}</li>`).join('');
     const itemsPanel = panel('Rules in this pack', `<div class="imp-wrap" role="region" aria-label="Rules in this pack" tabindex="0"><table class="grid import" aria-label="Rules in this pack"><colgroup><col style="width:130px"><col style="width:280px"><col style="width:260px"><col></colgroup><thead><tr><th scope="col">Status</th><th scope="col">Rule</th><th scope="col">Tags</th><th scope="col">What applying does</th></tr></thead><tbody>${rows}</tbody></table><ul class="imp-list" aria-label="Rules in this pack">${cards}</ul></div>`, { flush: true, h: 'h2' });
     const mode = o.mode || 'MERGE';
     const modePanel = pk.invalid ? '' : panel('How to apply', `<div class="choice-grid" role="radiogroup" aria-label="Import mode">
@@ -534,8 +572,19 @@ window.LX_EXT = function (api) {
         <ul>${removed.map((r) => `<li><strong style="font-weight:600">${esc(r.name)}</strong> <span style="color:var(--ink-2)">(${r.tags.join(', ')})</span></li>`).join('')}</ul>
         <p style="margin:0;color:var(--ink-2)">The conflicting rule is replaced by its imported version. This cannot be undone; export all rules first to keep a copy.</p>
         <label class="confirm-row">${box(!!o.confirmed, 'I understand this deletes every existing rule that is not in this pack')}<span>I understand this deletes every existing rule that is not in this pack</span></label></div>` : '';
+    const colourPanel = o.colourConflict ? panel('Tag colour conflict (1)', `<p style="margin:0 0 10px;color:var(--ink-2)">One tag in this pack is shown in a different colour here. A tag keeps one colour everywhere, so this has to be settled before the import — neither Merge nor Replace all will choose for you.</p>
+        <div class="cc-row"><span class="cc-tag">Tag<span class="tag-chip tag-purple"><span class="t">external-api</span></span></span>
+          <span class="cc-side"><span class="cc-k">On this server</span><span class="cc-v"><span class="dot tag-purple" aria-hidden="true"></span>Purple<span class="cc-by">“Acquirer response details”, “Acquirer partner call”</span></span></span>
+          <span class="cc-side"><span class="cc-k">In this pack</span><span class="cc-v"><span class="dot tag-red" aria-hidden="true"></span>Red<span class="cc-by">“Card issuer callback”</span></span></span></div>
+        <div class="resolution" role="radiogroup" aria-label="How to settle the tag colour" aria-describedby="cc-d39" style="margin-top:10px">
+          <div class="radio-row is-disabled"><span class="radio" role="radio" aria-checked="false" aria-disabled="true" tabindex="0" aria-labelledby="c1"></span><span class="t" id="c1">Keep Purple</span><span class="d">The imported rule is saved with the colour this tag already uses here.</span></div>
+          <div class="radio-row is-disabled"><span class="radio" role="radio" aria-checked="false" aria-disabled="true" tabindex="-1" aria-labelledby="c2"></span><span class="t" id="c2">Change “external-api” to Red everywhere</span><span class="d">Not only the rules that show this tag. They also carry “partner”, and one colour covers all of a rule’s tags, so “Acquirer decline” is repainted too: <b>four rules reached, three of them repainted</b> — the imported rule arrives in Red rather than changing — and “partner” turns Red with them. Whether “pci” does depends on the still-unanswered question above: only <em>Use imported</em> brings it onto a Red rule.</span></div></div>
+        <p class="help-row">${I('git-branch')}<span><b>Why the second answer reaches further than the tag you clicked.</b> A colour belongs to the <em>rule</em>, so it covers every tag that rule carries. Recolouring one tag therefore recolours every rule linked to it by any shared tag. Log Explorer refuses the halfway state: saving only the two “external-api” rules in Red leaves “partner” claimed in two colours, which is the same error this panel exists to prevent.</span></p>
+        <p class="help-row">${I('info')}<span>Colour is identity only — it never means severity or outcome — so neither answer can break an investigation. They differ in <em>reach</em>: the first settles one imported rule, the second repaints three saved ones and reaches a fourth. Log Explorer will not guess which identity you meant, and it will not silently perform the second one’s cascade either.</span></p>
+        <p class="inline-note" role="note" id="cc-d39">${I('shield-alert', 'ic-sm')}<span><b>Design target — both choices are drawn disabled.</b> Carrying either out needs the import request to accept a tag-colour resolution, and the second one rewrites saved rules that are not in this pack — including one that does not carry this tag at all — open decision <b>D39</b> (DESIGN_SYSTEM §22.11 A1b). Until it is decided, a slice ships this panel with the choices disabled and one instruction: fix the pack, or change the colour on this server first.</span></p>`, { h: 'h2', tag: '<span class="tag tag-partial">Required</span>' }) : '';
     const blockers = [];
     if (pk.invalid) blockers.push(`This pack contains ${pk.invalid} invalid rule, so it cannot be applied. Fix the file and import it again.`);
+    if (o.colourConflict) blockers.push('Settle the tag colour for “external-api”.');
     if (needsResolution && !o.resolution) blockers.push('Choose how to handle the conflicting rule.');
     if (mode === 'REPLACE_ALL' && !o.confirmed) blockers.push('Confirm the deletion of rules that are not in this pack.');
     if (o.conflict) blockers.push('Reload the latest rules and preview the pack again.');
@@ -548,8 +597,8 @@ window.LX_EXT = function (api) {
       ${o.conflict ? banner('danger', 'circle-alert', '<strong>The rules on this server changed after this preview was made.</strong> Nothing was imported and nothing was overwritten. Reload the latest rules to preview this pack again.', `<button class="btn btn-secondary btn-sm">${I('rotate-cw', 'ic-sm')}Reload and preview again</button>`) : ''}
       ${importProcess('Preview')}
       <div class="ws-meta" style="margin:12px 0"><span>${I('file-json', 'ic-sm')} <span class="mono">${esc(pk.file)}</span></span><span>${esc(pk.pack.name)} · version ${pk.pack.version}</span><span>Exported ${pk.pack.exportedAt}</span></div>
-      <div class="counts" style="margin-bottom:12px">${countTag('ALL', pk.rulesInPack, 'Rules in pack')}${countTag('NEW', pk.newRules, 'New')}${countTag('IDENTICAL', pk.identical, 'Identical')}${countTag('CONFLICT', pk.conflicts, 'Conflicts')}${countTag('INVALID', pk.invalid, 'Invalid')}</div>
-      ${itemsPanel}${modePanel}${resolutionPanel}${replacePanel}
+      <div class="counts" style="margin-bottom:12px">${countTag('ALL', pk.rulesInPack, 'Rules in pack')}${countTag('NEW', pk.newRules, 'New')}${countTag('IDENTICAL', pk.identical, 'Identical')}${countTag('CONFLICT', pk.conflicts, 'Conflicts')}${countTag('CONFLICT', o.colourConflict ? 1 : 0, 'Tag colour conflicts')}${countTag('INVALID', pk.invalid, 'Invalid')}</div>
+      ${itemsPanel}${modePanel}${resolutionPanel}${colourPanel}${replacePanel}
       <div class="action-bar" style="margin-top:14px;border:var(--bw) solid var(--line);border-radius:var(--r-md);max-width:1180px">
         ${blockers.length ? `<ul class="blockers" id="imp-blockers">${blockers.map((b) => `<li>${I('info')}${esc(b)}</li>`).join('')}</ul>` : `<span class="status" id="imp-blockers">${summary}</span>`}
         <div class="push">${pk.invalid ? `<button class="btn btn-secondary">${I('upload')}Choose another file</button>` : ''}<button class="btn btn-secondary">Cancel</button>${applyBtn}</div></div>`;
@@ -566,7 +615,7 @@ window.LX_EXT = function (api) {
   add('68-import-preview-conflicts', 'Import preview — new, identical and a conflict; resolution required', () => importPreview('conflicts'));
   add('69-import-invalid-pack', 'Import preview — invalid rule blocks the import', () => importPreview('invalid'));
   add('70-import-replace-all-confirmation', 'Import — Replace all: destructive scope and required confirmation', () => importPreview('conflicts', { mode: 'REPLACE_ALL' }));
-  const IMPORTED_RULE = { id: 'card-issuer-callback', name: 'Card issuer callback', description: '', tags: ['external-api', 'issuer'], enabled: true, priority: 100, matchMode: 'ALL', conditions: [{ field: 'message', matcher: 'STARTS_WITH', value: 'Card issuer callback received' }, { field: 'message', matcher: 'CONTAINS', value: 'issuer=' }], extractions: [] };
+  const IMPORTED_RULE = { id: 'card-issuer-callback', displayColor: 'red', name: 'Card issuer callback', description: '', tags: ['issuer'], enabled: true, priority: 100, matchMode: 'ALL', conditions: [{ field: 'message', matcher: 'STARTS_WITH', value: 'Card issuer callback received' }, { field: 'message', matcher: 'CONTAINS', value: 'issuer=' }], extractions: [] };
   const RULES_AFTER_IMPORT = [...C.RULES, IMPORTED_RULE].sort((a, b) => a.id.localeCompare(b.id));
   add('71-import-applied', 'Import applied — result summary on the rules list', () => rulesPage({ rules: RULES_AFTER_IMPORT, revision: 14, banners: [banner('success', 'circle-check', 'Import from <span class="mono" style="font:var(--text-data)">shared-integration-rules.json</span> applied: 1 added, 0 replaced, 3 unchanged, 1 kept existing, 0 removed. Re-run Search to classify loaded results.', `<button class="btn btn-secondary btn-sm">${I('rotate-cw', 'ic-sm')}Re-run search</button>`)] }));
 
@@ -600,6 +649,173 @@ window.LX_EXT = function (api) {
   const tagOfMsg = (e) => (e.unknown && typeof e.unknown.uiElement === 'string' && /^(checkout|login)\./.test(e.unknown.uiElement) ? ['frontend-call'] : / completed with /.test(e.message || '') && e.service === 'api-gateway' ? ['gateway-response'] : e.service === 'ledger-service' && /(pending after|took) \d+ ms/.test(e.message || '') ? ['database-call'] : []);
   add('72-investigation-trace-tags', 'Investigation — Trace with a Tags column and tagged-event count', () => page({ shell: { trail: ['Search', 'Trace'] }, chrome: compactScope('Search filters are kept — return with Back'), column: capture('trace', { tags: tagOfMsg, tagStat: `<span class="stat"><span class="k">Tagged</span><span class="v">${D.traceCapture.filter((e) => tagOfMsg(e).length).length} of ${D.traceCapture.length}</span></span>` }) }));
   add('73-live-tags', 'Live — tags on arriving events', () => page({ shell: { trail: ['Live'] }, chrome: compactScope('Live shows new events for this source and project', { noTime: true, services: 'All services' }), column: live('live', { tags: tagOfMsg, extraNote: `<div class="live-note">${I('tag')}<span>Tags come from the rules saved on the server. A rule saved after Start applies only to events that arrive after the save.</span></div>` }) }));
+
+  // ================================================================== PR #60 design sync
+  /*
+   * Production truth after PR #60 (main 6e71af8): Detect and Test sample the committed search itself, extraction
+   * is assisted, a classified event can be extended in place, classification is visible in the results table, and
+   * a rule carries a semantic colour. States 82-94 draw that truth in B1.
+   */
+
+  /**
+   * "This sample is taken from your current search", shown wherever a bounded sample is read (Detect, Test,
+   * suggestions). It names the scope in the same order the toolbar reads, and states the one filter that is
+   * deliberately left out, so the omission is never a silent surprise (DESIGN_SYSTEM §22.6).
+   */
+  const SCOPE_FACTS = [
+    ['Source', 'Local Docker · payments-stack'], ['Time', 'Last 1 day'], ['Query', '“webhook”'],
+    ['Services', 'All except 2'], ['Severity', 'Info, Warn, Error'],
+  ];
+  function scopeSummary(o = {}) {
+    const parts = o.parts || SCOPE_FACTS;
+    return `<div class="scope-summary" role="group" aria-label="Sample scope">
+      <div class="ss-head">${I('list-checks', 'ic-sm')}<h3>Sampled from this search</h3><button class="btn btn-ghost btn-sm">${I('sliders-horizontal', 'ic-sm')}Change filters</button></div>
+      <dl class="ss-facts">${parts.map(([k, v]) => `<div><dt>${k}</dt><dd${k === 'Query' ? ' class="mono"' : ''}>${esc(v)}</dd></div>`).join('')}</dl>
+      <p class="ss-note">${I('info', 'ic-sm')}<span>Every filter of the search you are looking at applies${o.reason === 'extend'
+        ? ', except a classification tag filter: the sample is picked by your search, not by the tag this rule already applies.'
+        : o.reason === 'none' ? '.' : ', except a classification tag filter: a rule being written must not be evidence for itself.'}</span></p></div>`;
+  }
+
+  /** The controlled palette, as the rule builder offers it. Colour is identity; the tag text always carries the meaning. */
+  const PALETTE = ['gray', 'blue', 'cyan', 'green', 'amber', 'orange', 'red', 'purple'];
+  const COLOR_WORD = { gray: 'Grey', blue: 'Blue', cyan: 'Cyan', green: 'Green', amber: 'Amber', orange: 'Orange', red: 'Red', purple: 'Purple' };
+  function colorPicker(selected, o = {}) {
+    const swatches = PALETTE.map((c) => `<label class="sw${c === selected ? ' is-on' : ''}"><input type="radio" name="tag-colour" ${c === selected ? 'checked' : ''} aria-label="${COLOR_WORD[c]}"><span class="dot tag-${c}" aria-hidden="true"></span><span class="w">${COLOR_WORD[c]}</span></label>`).join('');
+    return `<div class="lbl-field">Tag colour<span class="help" style="margin:2px 0 6px">Optional. Without a choice Log Explorer uses one derived from the tag, so the same tag looks the same everywhere. Colour is a label — never severity, success or failure — and the tag text is always shown.</span>
+      <div class="colour-picker" role="radiogroup" aria-label="Tag colour">${swatches}</div>
+      <p class="colour-preview"><span>In results and the Inspector:</span><span class="tag-chip tag-${selected}"><span class="t">${o.conflict ? 'external-api' : 'middleware'}</span></span><span class="cp-note">All of this rule's tags use this one colour.</span></p>
+      ${o.conflict ? `<p class="inline-error" role="alert" style="margin:8px 0 0">${I('circle-alert', 'ic-sm')}<span>The tag <b>external-api</b> is already shown in <b>Purple</b> by the saved rule “Acquirer partner call”. Choose Purple for this rule, or use a different tag — every rule that uses a tag shows it in the same colour.</span></p>
+      <div class="editor-row" style="margin:8px 0 0"><button class="btn btn-secondary btn-sm"><span class="dot tag-purple" aria-hidden="true" style="margin-right:6px"></span>Use Purple</button><button class="btn btn-ghost btn-sm">Rename this tag…</button></div>` : ''}</div>`;
+  }
+
+  /** Assisted extraction: what the server could read from the events this rule actually matches. */
+  /* Create flow: the same 17-of-200 sample every other step of that flow reports. */
+  const SUGGESTED_X = [
+    { label: 'Status', name: 'status', kind: 'Integer', cov: [17, 17], on: true },
+    { label: 'Request path', name: 'requestPath', kind: 'Text', cov: [16, 17], on: true },
+    { label: 'Retry-After (s)', name: 'retryAfter', kind: 'Integer', cov: [14, 17], on: false },
+  ];
+  function suggestionList(rows, o = {}) {
+    const selected = rows.filter((r) => r.on).length;
+    const items = rows.map((r) => `<li class="sg-row">
+      <label class="sg-pick">${box(r.on, `Add ${r.label}`)}<span class="sg-name">${esc(r.label)}</span></label>
+      <span class="sg-cov">Found in ${bar(r.cov[0], r.cov[1])}</span>
+      <label class="lbl-field sg-out">Output name<input class="input mono" value="${esc(r.name)}"></label>
+      <label class="lbl-field sg-kind">Type<select class="input">${['Text', 'Integer', 'Decimal', 'Boolean'].map((t) => `<option${t === r.kind ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
+      <label class="confirm-row sg-sens">${box(false, `Never show ${r.label}`)}<span>Never show</span></label>
+      <button class="btn btn-ghost btn-sm btn-icon" aria-label="Preview ${r.label} values">${I('flask-conical', 'ic-sm')}</button>
+      <button class="btn btn-ghost btn-sm btn-icon" aria-label="Remove suggestion ${r.label}">${I('x', 'ic-sm')}</button></li>`).join('');
+    return panel('Suggested values', `<p class="sg-read">${I('info', 'ic-sm')}<span>Read from <b>${o.matched || 17} matching events</b> in this search, out of <b>200 sampled</b>. Each count below is measured on those events — nothing is estimated.</span></p>
+      <ul class="sg-list" aria-label="Suggested extractions">${items}</ul>`, {
+      tag: '<span class="tag tag-suggestion">Suggestion · not saved</span>',
+      flush: false,
+      foot: `<button class="btn btn-primary btn-sm">${I('check', 'ic-sm')}Add ${selected} selected value${selected === 1 ? '' : 's'}</button><button class="btn btn-secondary btn-sm">${I('rotate-cw', 'ic-sm')}Detect extractable values again</button><span class="note" style="margin:0 0 0 auto">${I('info')}${o.already || 'Already extracted by this rule: none yet.'}</span>`,
+    });
+  }
+
+  const noSuggestionPanel = () => `<div class="state-panel is-warning reveal" role="status" style="margin:0;max-width:none">${I('triangle-alert')}<div>
+    <h2>No extraction could be suggested safely from the sampled events</h2>
+    <p>The 17 matching events do not share enough fixed structure around their changing parts for Log Explorer to read a value the same way every time. It will not guess.</p>
+    <p class="help" style="margin:8px 0 0">Extraction pulls named values out of matching events — a URL, a status, a duration — so the Inspector can show them without you reading the whole message. A rule works perfectly well with none.</p>
+    <div class="actions"><button class="btn btn-secondary">${I('rotate-cw')}Detect extractable values again</button><button class="btn btn-secondary">${I('plus')}Add extraction manually</button><button class="btn btn-ghost">Skip extraction</button></div></div></div>`;
+
+  // --- states: scope, colour, assisted extraction ---
+  add('82-rule-detect-scope-summary', 'Detect — the sample scope is the current search (PR #60), stated before the evidence', () => rbPage('detect',
+    scopeSummary() + evidencePanel() + suggestionPanel(false),
+    { sub: 'What Log Explorer observed in the sample, and the rule it would suggest from that evidence.', status: pick('source'), draft: DRAFT_EMPTY, scopeShown: true, nav: rbNav('Source', 'Classification') }));
+
+  add('83-rule-classification-colour', 'Classification — tag colour from the controlled palette, with a live preview', () => classificationStep(false, { colour: 'blue' }));
+  add('84-rule-colour-conflict', 'Classification — the tag already has a colour elsewhere: explicit resolution, never a silent winner', () => classificationStep(false, { colour: 'red', conflict: true }));
+
+  add('85-rule-extraction-suggestions', 'Extraction — assisted suggestions measured on the matching events', () => rbPage('extraction',
+    suggestionList(SUGGESTED_X, { already: 'Already extracted by this rule: url, method, requestId, responseCode, durationMs.' }),
+    { sub: 'Extraction answers “what values should Log Explorer pull out of matching events?”. It is optional.', status: pick('source', 'detect', 'classification'), draft: DRAFT_NAMED, nav: rbNav('Classification', 'Test') }));
+
+  add('86-rule-extraction-no-suggestion', 'Extraction — the suggestion was skipped and nothing could be inferred safely: explained, with three ways forward', () => rbPage('extraction',
+    noSuggestionPanel(),
+    { sub: 'The conditions here were written by hand rather than taken from the suggestion, so this rule has no values yet. Extraction answers “what values should Log Explorer pull out of matching events?”. It is optional.', status: pick('source', 'detect', 'classification'), draft: Object.assign({}, DRAFT_NAMED, { x: 'none yet', xCount: 0, tags: DRAFT_NAMED.tags }), nav: rbNav('Classification', 'Test') }));
+
+  // --- Add extraction from this event: extend a rule that already classified it ---
+  /*
+   * Distinct from "Create another tag rule" by construction, not only by label: this frame is titled by the RULE
+   * being extended, its trail ends in that rule, and its rail is the extraction half of the builder only. Adding
+   * an identity and adding information are never the same screen (DESIGN_SYSTEM §22.8).
+   */
+  const EXTEND_STEPS = [['extraction', 'Values'], ['test', 'Test'], ['save', 'Save']];
+  function extendPage(step, content, o = {}) {
+    const trail = o.rule ? ['Search', 'Event', o.rule] : ['Search', 'Event', 'Add extraction'];
+    const rail = `<nav class="rb-rail" aria-label="Steps"><ol class="rb-steps">${EXTEND_STEPS.map(([k, l], i) => `<li><button class="rb-step${o.done && o.done.includes(k) ? ' done' : ''}"${k === step ? ' aria-current="step"' : ''}><span class="n" aria-hidden="true">${o.done && o.done.includes(k) ? I('check') : i + 1}</span><span class="l">${l}</span><span class="st">${(o.status && o.status[k]) || ''}</span></button></li>`).join('')}</ol><p class="rail-note">This changes one existing rule. Nothing is saved until Save changes.</p></nav>`;
+    return page({ shell: { trail, active: 'search' }, chrome: '', column: `<section class="column rb" aria-label="Add extraction">
+      <div class="mode-bar"><button class="btn btn-secondary btn-sm">${I('arrow-left', 'ic-sm')}Back to event</button><h1>${o.rule ? `Add extraction to <b>${esc(o.rule)}</b>` : 'Add extraction from this event'}</h1><span class="rb-kind">${I('pencil-line', 'ic-sm')}Extending a saved rule</span></div>
+      <div class="rb-body is-extend">${rail}
+        <div class="rb-main" role="region" aria-label="${o.rule ? 'Add extraction to ' + esc(o.rule) : 'Add extraction from this event'}" tabindex="0">
+          <h2 class="rb-h">${esc(o.heading || 'Values to add')}</h2><p class="rb-sub">${o.sub || ''}</p>
+          ${content}
+          <div class="rb-nav"><button class="btn btn-ghost">Cancel</button><div class="push">${o.prev ? `<button class="btn btn-secondary">${I('arrow-left', 'ic-sm')}${o.prev}</button>` : ''}${o.next ? `<button class="btn ${o.nextPrimary ? 'btn-primary' : 'btn-secondary'}">${o.next}${I('arrow-right', 'ic-sm')}</button>` : ''}</div></div>
+        </div></div></section>` });
+  }
+
+  const ruleChoice = (r, o = {}) => `<li class="rc-row">
+    <div class="rc-main"><span class="rc-name">${esc(r.name)}</span>${tagList(r.tags, false, `Tags of ${r.name}`, r.colour)}<span class="rc-facts">${esc(r.match)}<span class="sep">·</span>${r.x} extracted value${r.x === 1 ? '' : 's'}</span></div>
+    <button class="btn btn-primary btn-sm">${I('circle-plus', 'ic-sm')}Add values to this rule</button></li>`;
+
+  add('87-extend-choose-rule', 'Add extraction from this event — two rules classified it, so the user chooses which to extend', () => extendPage('extraction',
+    `<div class="panel"><div class="panel-head"><h3 class="vh">Rules that classified this event</h3><span class="tag tag-neutral">2 rules matched</span></div><div class="panel-body">
+      <p style="margin:0 0 10px;color:var(--ink-2)">Both rules classified this event. Extraction belongs to one rule at a time, and nothing changes until you save.</p>
+      <ul class="rc-list" aria-label="Rules that classified this event">
+        ${ruleChoice({ name: 'Middleware HTTP call', tags: ['middleware'], colour: 'blue', match: 'Message starts with “Make webhook call to”', x: 6 }, { primary: true })}
+        ${ruleChoice({ name: 'Acquirer partner call', tags: ['external-api', 'partner'], colour: 'purple', match: 'Message contains “/partners/acquirer/”', x: 6 })}
+      </ul>
+      <p class="help-row">${I('info')}<span>Looking for a new identity for this event instead? The event's own <em>Create another tag rule</em> action does that — it adds a tag, while this adds information to a tag the event already has.</span></p></div></div>`,
+    { heading: 'Which rule should these values be added to?', sub: 'Adding extracted values to a rule that already classifies this event.', next: null }));
+
+  /* What this edit adds, versus what the rule already extracts — 88 and 89 must tell one story. */
+  const EXTEND_NEW_X = [
+    { label: 'Status', name: 'status', kind: 'Integer', cov: [18, 18], on: true },
+    { label: 'Request path', name: 'requestPath', kind: 'Text', cov: [17, 18], on: true },
+  ];
+  add('88-extend-suggestions', 'Add extraction from this event — suggestions for the chosen rule, measured on its own matching events', () => extendPage('extraction',
+    scopeSummary({ reason: 'extend' }) + suggestionList(EXTEND_NEW_X, { matched: 18, already: 'Already extracted by this rule: url, method, requestId, responseCode, durationMs, requestBody.' }),
+    { rule: 'Middleware HTTP call', heading: 'Values to add', sub: 'Read from the events this rule matches in your current search.', done: [], status: { extraction: '2 suggested' }, next: 'Test', nextPrimary: true }));
+
+  add('89-extend-test-coverage', 'Add extraction from this event — test before saving: coverage for the values being added', () => extendPage('test',
+    panel('Result on this sample', `<div class="stat-row"><span class="stat"><span class="k">Sampled</span><span class="v">200</span></span><span class="stat"><span class="k">Rule matched</span><span class="v">18</span></span><span class="stat"><span class="k">Not matched</span><span class="v">182</span></span></div>
+      <div class="cov-wrap" role="region" aria-label="Extraction coverage" tabindex="0"><table class="grid cov" aria-label="Extraction coverage"><colgroup><col style="width:190px"><col style="width:150px"><col></colgroup>
+      <thead><tr><th scope="col">Value</th><th scope="col">State</th><th scope="col">Extracted from</th></tr></thead><tbody>
+      ${[['Status', 'New', 18, 18], ['Request path', 'New', 17, 18], ['URL', 'Already saved', 18, 18], ['Method', 'Already saved', 18, 18], ['Request ID', 'Already saved', 18, 18], ['Response code', 'Already saved', 18, 18], ['Duration (ms)', 'Already saved', 16, 18], ['Request body', 'Already saved', 1, 18]].map(([l, st, a, b]) => `<tr><td><span class="out">${l}</span></td><td>${st === 'New' ? '<span class="st-tag st-suggested">' + I('circle-plus') + 'Adding</span>' : '<span class="st-tag st-confirmed">' + I('circle-check') + 'Already saved</span>'}</td><td>${bar(a, b)}</td></tr>`).join('')}</tbody></table></div>
+      <p class="help-row">${I('info')}<span>Counts describe this bounded sample only, not the whole source. A value that is missing on some events is normal — the Inspector shows “Not found in this event”.</span></p>`, { tag: '<span class="tag tag-neutral">Measured</span>' }),
+    { rule: 'Middleware HTTP call', heading: 'Test', sub: 'What the added values would produce on the events this rule matches.', done: ['extraction'], status: { extraction: '2 added', test: '18 matched' }, prev: 'Values', next: 'Save', nextPrimary: true }));
+
+  add('90-extend-stale-rule', 'Add extraction from this event — the rule was deleted meanwhile: truthful recovery, nothing authored silently', () => extendPage('extraction',
+    `<div class="state-panel is-warning" role="alert" style="margin:0;max-width:none">${I('shield-alert')}<div>
+      <h2>“Middleware HTTP call” no longer exists</h2>
+      <p>The rule that classified this event was deleted or renamed elsewhere since this event was loaded, so there is nothing to extend. Nothing was created or changed.</p>
+      <div class="actions"><button class="btn btn-secondary">${I('rotate-cw')}Reload rules</button><button class="btn btn-secondary">${I('list-checks')}Choose another rule…</button><button class="btn btn-ghost">${I('circle-plus')}Create a tag rule from this event instead</button></div></div></div>`,
+    { heading: 'This rule is gone', sub: 'The rule this event was classified by is gone.', next: null }));
+
+  // --- import: tag-colour conflict ---
+  add('91-import-colour-conflict', 'Import preview — a different pack whose rule gives an existing tag a second colour: named, resolvable, never silently chosen (target design; carrying out either resolution needs the import API change costed as §22.11 A1b — surfacing the conflict, A1a, is frontend-only)', () => importPreview('colourConflict', { colourConflict: true }));
+
+  // --- the results table after PR #60 ---
+  add('92-results-tags-default-column', 'Search results — classification is visible in the table by default (supersedes D19): the first tag as a chip plus a neutral +N', () => page({ shell: {}, chrome: searchChrome({}, { readout: loadedReadout(C.clsResults.length) }), column: results({ table: clsTable(C.clsResults, { after: loadMoreN(C.clsResults.length) }) }) }));
+
+  add('93-results-tag-not-severity', 'Search results — a RED tag on an INFO row beside an ERROR row: colour is identity, severity is level', () => {
+    const base = C.clsResults.slice(0, 14);
+    const firstError = base.findIndex((e) => e.level === 'ERROR');
+    // The two nearest INFO rows above the first ERROR row: a red tag on a row that is NOT an error is exactly
+    // what must not read as an error.
+    const neighbours = new Set(base.map((e, i) => (i < firstError && e.level === 'INFO' ? i : -1)).filter((i) => i >= 0).slice(-2));
+    const rows = base.map((e, i) => (neighbours.has(i) ? Object.assign({}, e, { tags: ['issuer', ...(e.tags || [])] }) : e));
+    return page({ shell: {}, chrome: searchChrome({}, { readout: loadedReadout(rows.length) }), column: results({ table: clsTable(rows, { after: `<p class="help" style="padding:10px 14px;margin:0">A red <b>issuer</b> tag sits on the two nearest <b>INFO</b> rows above the first ERROR row. Those ERROR rows keep their own red ink, level mark and row tint; the tag is a tinted pill with a dot and neutral text — two different visual grammars, so neither is read as the other.</p>` }) }) });
+  });
+
+  add('94-rules-list-colours', 'Settings › Classification rules — each rule shows its own colour: the first tag as a chip plus a neutral +N (production draws a chip per tag; see §22.11 A11)', () => rulesPage({}));
+
+  add('95-inspector-unclassified-actions', 'Inspector — an unclassified event offers only Create tag rule from this event (the control case for §22.8)', () => page({
+    shell: {}, chrome: searchChrome({}, { readout: loadedReadout(C.clsResults.length) }),
+    column: results({ withInspector: true, table: resultsTable(C.clsResults, { selectedId: C.NEAR.id, after: loadMoreN(C.clsResults.length) }) }),
+    inspector: inspector(C.NEAR, 'overview', { pos: `${C.clsResults.indexOf(C.NEAR) + 1} of ${C.clsResults.length} loaded` }),
+  }));
 
   return STATES;
 };

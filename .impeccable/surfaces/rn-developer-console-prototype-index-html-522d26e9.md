@@ -9,7 +9,7 @@ related_targets: []
 
 Scope: isolated design prototype of the whole Log Explorer workstation (Search, Results, Inspector, Investigation, Context, Field Mapping, Settings, Live, global states). Visitor mode: **Operate**. Not production code.
 
-Audience: developers, support engineers and incident investigators in long, time-pressured sessions on office laptops and external monitors, often screen-sharing into incident calls. Job: find the event, understand it, follow related events, return and refine. Constraints: owner brief pins Direction B "Modern Developer Console"; latest main (51f06e5, after PR #59 Event Classification; first pass 3f6b1b4) is the functional baseline; FUNCTIONAL_BEHAVIOR_LOSS_ALLOWED=NO; no fabricated capability or causality; light theme required (CLAUDE.md §7).
+Audience: developers, support engineers and incident investigators in long, time-pressured sessions on office laptops and external monitors, often screen-sharing into incident calls. Job: find the event, understand it, follow related events, return and refine. Constraints: owner brief pins Direction B "Modern Developer Console"; latest main (6e71af8, after PR #59 Event Classification and PR #60 classification search-scope recovery, assisted extraction, visible Tags column and semantic tag colours; earlier passes 51f06e5 and 3f6b1b4) is the functional baseline; FUNCTIONAL_BEHAVIOR_LOSS_ALLOWED=NO; no fabricated capability or causality; light theme required (CLAUDE.md §7).
 
 Unresolved decisions (owner): which of the three B visual treatments ships; whether the dark companion theme ships in the first implementation wave.
 

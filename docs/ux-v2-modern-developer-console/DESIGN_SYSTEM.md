@@ -3,8 +3,9 @@
 This is the design proposal for owner-approved Direction B. It was written by LERDESIGN-1 and has not been
 implemented in production. **Owner visual approval is required before any production work.**
 
-- Functional baseline: latest `main` `51f06e51709455f2c20dcf5c1b32e2dd67443377` (after PR #59). The first pass used
-  `3f6b1b4`; §21 adds Event Classification, and §9 records the source-selector policy.
+- Functional baseline: latest `main` `6e71af8d901418d65de2bebb472240db27779147` (after PR #59 **and** PR #60).
+  Earlier passes used `51f06e5` and `3f6b1b4`. **§22 is the current truth for classification**; §21 is kept as the
+  PR #59 record and is superseded where the two disagree (§22.10). §9 records the source-selector policy.
 - Reference implementation: the isolated prototype in [`prototype/`](prototype/). Tokens are in
   `prototype/styles/tokens.css` and components in `prototype/styles/app.css`.
 - Related documents: [`MOTION_SYSTEM.md`](MOTION_SYSTEM.md), [`COMPONENT_INVENTORY.md`](COMPONENT_INVENTORY.md),
@@ -476,6 +477,11 @@ same).
 
 ### 21.3 Results table: tag presentation decision
 
+> **SUPERSEDED by §22.3 (PR #60).** Production made classification visible without the Inspector and formally
+> amended the column invariant: the default set is **eight** columns, Tags among them (decision **D30**, CLAUDE.md
+> §4, register §27 CSX-8). The evaluation below is kept as the record of how the first-pass decision was reached —
+> its "Chosen" verdict is no longer the design's answer.
+
 PR #59 deferred result-row tags to this sync. Options evaluated against CLAUDE.md §4:
 
 | Option | Scanning | Invariants | Verdict |
@@ -595,7 +601,7 @@ the suggested values → Test → Save, with no expression visible. Expressions 
 | Panel | Treatment | Content |
 |---|---|---|
 | **Observed in this sample** | Solid panel, neutral “Measured” tag | Stat row Read · With a message · Similar to this event; the **decode lane**; a “Changing parts” table (part, kind, example from this event: the API returns one example per changing part, taken from the redacted anchor) |
-| **Suggested rule** | **Dashed** panel border, dashed “Suggestion · not saved” tag | Plain-language conditions; “On this sample it matches **17 of 17** similar events and **0 of 181** other events that were read”; suggested values with evidence bars; warnings; Use this suggestion / Write conditions manually |
+| **Suggested rule** | **Dashed** panel border, dashed “Suggestion · not saved” tag | Plain-language conditions; “On this sample it matches **17 of 17** similar events and **0 of 181** other events **with a message**” — the two add up to the 198 events that carried the field, not to the 200 read, and the panel says so; suggested values with evidence bars; warnings; Use this suggestion / Write conditions manually |
 
 **Only API data is drawn.** The Changing parts table shows one example per part from the (redacted) anchor event, and
 suggested values show counts only (“16 / 17”). Values from other sampled events are never shown, and warnings are the
@@ -754,3 +760,313 @@ Chip and fixed-segment borders are decorative; the text or icon carries the mean
 - Whatever a layer covers is inert: the results behind the Inspector sheet (< 1366 px) and behind the open More
   filters panel, and everything behind a modal alertdialog (delete rule), so keyboard focus never lands under a layer
   (WCAG 2.4.11). At ≥ 1366 px the docked Inspector and the results stay operable side by side.
+
+---
+
+## 22. Classification after PR #60 (final production sync)
+
+Baseline: `main` `6e71af8` — PR #59 (classification, extraction, packs) **and** PR #60 (search-scope recovery,
+assisted extraction, visible tags, tag colours). Where this section and §21 disagree, **this section is current
+truth** and §21 stands as the record of the first pass. Every superseded item is named in §22.10.
+
+### 22.1 What PR #60 changed for design
+
+| Production truth | Design consequence |
+|---|---|
+| Detect and Test sample the **committed search itself** (text, query DSL, raw LogQL, identifiers, mapped advanced filters, protected filters, services + mode, severities, project, window) | The builder must *state its scope*, not imply the whole source — §22.6 |
+| A classification **tag filter is never carried** into an authoring sample | Stated once, where the sample is described; never repeated into ordinary search UX |
+| The selected event is **guaranteed** as the detection anchor | The anchor strip stays, and counts stay truthful when the anchor is added |
+| Extraction is **assisted**: suggestions mined from the events the rule really matches, with measured coverage | Extraction stops being a blank technical form — §22.7 |
+| A classified event can be **extended in place** ("Add extraction from this event") | A second, clearly distinct authoring entry — §22.8 |
+| Classification is **visible in the results table by default** | The Tags column is part of the default column set — §22.3 |
+| A rule carries a **semantic colour**, one colour per tag, conflicts refused | §22.2, §22.4, §22.9 |
+
+### 22.2 The classification chip (final)
+
+Three parts, and the split is the whole point:
+
+| Part | Role | Token |
+|---|---|---|
+| Tinted pill | Quiet surface that groups the identity | `--tag-<hue>-tint` |
+| 6 px dot | The colour identity itself | `--tag-<hue>` |
+| Text | **The meaning**, always present | `--tag-ink` (= `--ink-2`) |
+
+**Why not coloured text.** Severity already speaks with coloured ink plus a level mark and a row tint. If a tag
+also spoke with coloured ink, a `RED` tag would read as an error and an `AMBER` tag as a warning. Tags therefore
+use a different grammar — *tinted pill + dot + neutral text* — so the two systems never compete. Prototype state
+`93-results-tag-not-severity` exists to be checked on exactly this point: a red `issuer` tag sits on the two
+nearest INFO rows above the first ERROR row.
+
+Geometry: 18 px tall in a 28 px row (a classified row is never taller than an unclassified one), 22 px in the
+`.lg` variant used in panels. The base cap is 96 px and lists raise it to 160 px; **inside a results cell the cap
+is removed** so the chip can use the column and shrink only when it must (a rendered cell chip measures ~131 px in
+the 156 px column). The text ellipsises, the dot never shrinks.
+
+**Palette** — the eight production names, drawn in B1's muted register. Text is `--ink-2` on every tint
+(≥ 7.0:1); dots are identity only and clear the 3:1 non-text bar on their own tint and on white:
+
+| Name | Hue | Tint | Text on tint | Dot on tint |
+|---|---|---|---|---|
+| GRAY | `#5f6a77` | `#eef1f4` | 7.21 | 4.86 |
+| BLUE | `#2f6ec2` | `#e9f0fa` | 7.12 | 4.43 |
+| CYAN | `#17788d` | `#e4f2f5` | 7.13 | 4.46 |
+| GREEN | `#2f7d53` | `#e8f4ea` | 7.22 | 4.44 |
+| AMBER | `#9c751b` | `#faf1dd` | 7.27 | 3.76 |
+| ORANGE | `#b96322` | `#fbeee4` | 7.18 | 3.79 |
+| RED | `#c0453b` | `#fbecea` | 7.11 | 4.40 |
+| PURPLE | `#7959b3` | `#f1ecf8` | 7.04 | 4.65 |
+
+The dark companion defines its own eight pairs (text ≥ 7.4:1, dots ≥ 5.0:1) — never an inversion of the light set.
+Under `forced-colors` the chip keeps its text and gains a `CanvasText` border; the tint drops to `Canvas` and the
+dot is redrawn in `CanvasText`, so the marker survives as shape while the colour identity is gone — which is the
+correct outcome, because the tag name was always the thing carrying the meaning.
+
+**Colour is identity only.** Never severity, success, failure, health or causality. Colour is never the only
+signal: the tag text is always rendered, so the chip survives colour blindness, forced colours and print.
+
+**Colour belongs to the rule, and therefore to every tag the rule carries.** This is production's model, not a
+design choice: `ClassificationRule` stores one `TagColor`, and both the rules list and the Inspector paint every
+tag of a rule in it. `TagColorPolicy.tagColors` then resolves each tag to the colour of the first rule that
+claims it. Two consequences the design must honour, both verified by running the real `TagColorPolicy`:
+
+1. **Within one rule, all tags are one colour.** A picker preview that showed two tags in two colours would be
+   drawing a state the data model cannot hold.
+2. **Two rules that share a tag must carry the same colour**, or the save is refused — so a *cluster* of rules
+   linked by shared tags collapses to a single colour. In a real vocabulary where something like `external-api`
+   is used widely, that cluster can be most of the rule set, and the palette stops distinguishing much. The
+   package's own fixture had to be rewritten for this: `middleware-http-call` (blue) and the acquirer rules
+   (purple) both carried `external-api`, which the real policy rejects with
+   *"Tag "external-api" is already shown in PURPLE by …"*.
+
+An **event** may still show several colours at once, because its tags come from several rules — that is the one
+legitimate multi-colour case, and it is drawn in `45-inspector-multiple-classifications`, where one event's chips
+measure `external-api` purple, `partner` purple and `middleware` blue, exactly as `TagColorPolicy.tagColors`
+resolves them. The **results table** is not where that shows: §22.3 gives each row one chip plus a neutral `+N`, so
+`92` and `93` draw a single colour per row by design. Whether colour should instead be a property of a *tag* is an
+open product question, recorded as decision **D40**; this package designs the model that ships.
+
+### 22.3 Results table: the Tags column (supersedes D19)
+
+Visible **by default**, between *What happened* and *User / Customer*:
+
+```
+… What happened …          │ Tags                  │ User / Customer │
+  Make webhook call to /p…  │ ● middleware   +2     │ User ra**07     │
+  Payment authorized        │ —                     │ User ra**07     │
+```
+
+- First tag as a chip, then a **neutral** `+N` counter. The counter is deliberately *not* a second coloured chip:
+  it counts identities, it is not one.
+- The full list is the cell's accessible name (`Tags: middleware, external-api, partner`) and its tooltip — never
+  discoverable only on hover.
+- An unclassified event renders `—`, never an absent cell.
+- Width: the design uses 156 px, narrowing to 132 px when the Inspector is docked (production ships a single
+  150 px, with no docked variant — the narrowing is a design proposal, §22.11). The message column keeps its
+  240 px floor either way.
+- The column can still be hidden or moved under **Columns**, like any other.
+
+### 22.4 Tag colour picker (rule builder, Classification step)
+
+- Eight swatches, each a dot **and its colour name** — never colour alone, and never a free hex field. The stored
+  value is the production name (`GRAY`); the word shown is the product's own spelling (*Grey*). The design never
+  invents a ninth colour.
+
+> **Production copy bug (design finding, D38).** The shipping picker hint says "A tag already used by another rule
+> keeps that rule's colour." Nothing is kept: the write is *refused* (§22.5). The design's copy says so instead.
+- Choosing is optional: without a choice the server derives one deterministically from the first tag, so the same
+  tag looks the same on every installation. The copy says so rather than forcing a decision.
+- A live preview chip shows the tag exactly as Search and the Inspector will draw it.
+- Keyboard: one radio group, arrow keys move, the selected swatch carries the accent ring; focus is visible on the
+  label, not only the hidden input.
+
+### 22.5 Same-tag colour conflict
+
+One normalized tag resolves to one colour. A rule that would give an existing tag a second colour is **refused**,
+never silently resolved — and the design says so in the user's own words, not as a validation code:
+
+> The tag **middleware** is already shown in **Blue** by "Middleware HTTP call". Choose Blue for this rule, or use
+> a different tag — one tag keeps one colour everywhere.
+
+Two resolutions are offered inline: **Use Purple**, or **Rename this tag…** — the colour named is whichever one the
+tag already has, drawn in `84-rule-colour-conflict` as Purple for `external-api`. The import variant (§22.9) names
+both sides and offers *Keep Purple* or *Change "external-api" to Red everywhere*.
+
+**What ships today:** the refusal is real and server-enforced (`TagColorPolicy.conflicts`), but its error path is
+`rules[i].displayColor`, which the editor's field-level lookup does not match — so the message lands in the generic
+"This rule is not valid yet" list rather than under the Tag colour field. Putting it inline, in these words, with
+the two resolutions, is the design's addition (§22.11).
+
+### 22.6 Sample scope: "Sampled from this search"
+
+Detect, Test and the suggestion pass all read one bounded sample of the committed search. The builder states that
+in one component, used in one place per screen:
+
+- **Detect** shows the full `scope-summary` panel: source · project · time · query · services · severity, a
+  *Change filters* affordance, and the one honest omission — a classification tag filter is not applied, because a
+  rule being written must not be evidence for itself.
+- **Every other builder step** relies on the rail's own *Sample scope* block, which carries the identical facts.
+  The two are generated from one list, so they cannot drift. Verified at 1920 and 1440.
+- **Two measured exceptions, and the package claims neither away.** The rail itself is never hidden, but its
+  draft panel — which carries the *Sample scope* block — collapses to a one-line summary below 1440 px
+  (pre-existing behaviour for every builder step, not new here), so between 390 px and 1439 px only Detect's own
+  panel states the scope. And the *Add extraction from this event* frame (states 87–90) carries a rail with no
+  scope block at **any** width, because that flow never runs Detect: its numbers come from the chosen rule's own
+  matching events, which each panel states in its own words. Measured at 1920/1440/1439/1366/1024/768/390.
+  The steps that *report numbers* — Detect, the suggestion panel, Test — keep their own bounded wording at every
+  width ("out of 200 sampled", "Counts describe this bounded sample only, not the whole source"), so nothing ever
+  implies source-wide exhaustiveness. Giving narrow widths, and the extend frame, a collapsed scope affordance is
+  an open improvement, not a claim this package makes.
+
+Counts stay measured and bounded. Detect’s stat row is *Read 200 · With a message 198 · Similar to this event 17*
+(the labels §21.7 specifies and the render draws). The Test and extend steps add "Counts describe this
+bounded sample only, not the whole source." Nothing implies source-wide exhaustiveness.
+
+> **Recommended production copy fix (design finding, not changed here).** The current Detect hint still reads
+> "…from the current search scope (source, project, services, severity and time range)", which predates PR #60 and
+> understates it. It should name the search itself, as the design does. Tracked as decision **D33**.
+
+### 22.7 Assisted extraction
+
+The step opens by saying what extraction *is* — "Extraction answers 'what values should Log Explorer pull out of
+matching events?'. It is optional." — then shows one of three states:
+
+1. **Suggestions** (`85-rule-extraction-suggestions`). A panel tagged *Suggestion · not saved* (one spelling, matching §21.7 and the render), a read-out
+   ("Read from **17 matching events** in this search, out of **200 sampled**" — the create flow's own sample; the
+   *extend* flow (§22.8) reads 18 of 200, and the two never borrow each other's numbers), and one row per candidate:
+   checkbox · name · `Found in 17 / 17` coverage · editable output name · value type · *Never show* · preview ·
+   remove. The footer adds *Add n selected values* and *Detect extractable values again*, and states what the rule
+   already extracts.
+   **Ships today:** checkbox, name, coverage as text, output name, *Never show*, remove, and both footer actions.
+   **Design additions** (§22.11): the coverage *bar*, the value-type control (`valueType` already exists on the
+   definition) and the per-row preview.
+2. **Confirmed values** — the existing suggested/confirmed table (§21.8) is unchanged and remains the record of
+   what will be saved. *Suggested* and *Confirmed* stay visually distinct.
+3. **Nothing could be inferred** (`86-rule-extraction-no-suggestion`). Never a blank page: a titled explanation,
+   why it happened, what extraction is for, and three ways forward — *Detect extractable values again*, *Add
+   extraction manually*, *Skip extraction*.
+
+Manual authoring stays first-class: Output name · From field · Method · Type · Sensitive in the normal form, with
+RE2 pattern, capture group and JSON pointer behind **Advanced: how this value is read**. Regex never dominates the
+ordinary path.
+
+### 22.8 Add extraction from this event vs Create another tag rule
+
+Two different intentions, so two different frames — the distinction is structural, not just wording:
+
+| | Add extraction from this event | Create another tag rule |
+|---|---|---|
+| Changes | *What information* an existing classification pulls out | *Which identity* the event has |
+| Frame title | **Add extraction to "Middleware HTTP call"** | **Create tag rule** |
+| Trail | Search › Event › *the rule* | Search › Create tag rule |
+| Steps | Values · Test · Save (3) | Source · Detect · Classification · Extraction · Test · Save (6) |
+| Badge | *Extending a saved rule* | — |
+| Result | One rule gains fields | The event gains a second tag |
+
+Flow: event → *Add extraction from this event* → (choose the rule if several matched) → suggestions from this
+rule's own matching events → review/edit → **Test** → coverage → **Save changes**, revision-protected.
+
+- **One matching rule** → it is preselected and the editor opens directly on its values. *(Ships today.)*
+- **Several** (`87-extend-choose-rule`) → a chooser lists each rule with its coloured tags, matcher summary and
+  current extract count; each row's action is *Add values to this rule*. The panel also points at the other
+  intention: "Looking for a new identity for this event instead? Use **Create another tag rule**."
+  *(The chooser ships; the matcher summary, the extract count and that pointer are design additions.)*
+- **Stale/deleted rule** (`90-extend-stale-rule`) → a truthful recovery state: nothing was created or changed,
+  with *Reload rules*, *Choose another rule…* and *Create a tag rule from this event instead*. *(Production
+  handles the case correctly today but says so as a plain notice on the rules list; the recovery panel is a
+  design addition.)*
+
+> **Implementation note for B4/B6 — do not fork the editor.** Production reaches this flow by opening the existing
+> six-step editor in `edit` mode at `initialStep: 'extraction'`. The three-step frame is *chrome*: the same editor
+> component, the same revision-protected save, the same limits and help, with its rail and title recomposed when
+> the entry intent is "extend". Duplicating the save path to get a shorter rail would be a regression, not a
+> restyle.
+
+**Wording recommendation for production (D34).** The current labels are already unambiguous once the frames
+differ, so no rename is required. If further clarity is wanted, the design's preferred pair is *Add fields to the
+**middleware** rule* and *Create another classification* — both name the object being changed. This is recorded,
+not applied, because it is production copy.
+
+### 22.9 Import: tag-colour conflict
+
+The import preview gains a fifth thing it can report, beside new / identical / rule conflict / invalid: a
+**tag-colour conflict**. It shows the tag, the colour it has on this server and who gives it, the colour the pack
+brings and who gives it, and requires an explicit choice. It is a blocker for both modes — MERGE and REPLACE ALL —
+because neither may pick a winner.
+
+**What ships today:** the server already computes the conflicts and returns them on the preview
+(`ImportPreview.tagColorConflicts`), and it already refuses the write. The *frontend does not read that field*, so
+today a user only meets the conflict after pressing Apply. Surfacing it before Apply is therefore new UI over an
+invariant that already holds (§22.11 **A1a**), and it is the highest-value single addition in this sync.
+
+**The second resolution cascades, and the panel says so.** Because a colour belongs to the *rule* and covers all of
+its tags (D40), recolouring a tag recolours every rule linked to it by **any** shared tag. In the drawn pack the two
+rules holding `external-api` also hold `partner`, which `Acquirer decline` holds in Purple — so *Change
+"external-api" to Red everywhere* **reaches four rules, three of them repainted** (the imported rule arrives in Red
+rather than changing) and turns `partner` Red with them. Whether `pci` turns Red depends on the *other*, still
+unanswered choice on that screen: it exists only on the imported version of `Acquirer partner call`, so it joins the
+Red set under *Use imported* and not under *Keep existing*. A panel whose purpose is exact disclosure of reach must
+not state a consequence that holds on only one branch. Saving only
+the two `external-api` rules in Red is not a smaller version of that choice: the real `TagColorPolicy` refuses it,
+with the same error on `partner` that this panel exists to prevent (verified by running the policy against
+`backend/target/classes`; see §22.11 A1b). The panel therefore states the reach of each answer and never calls
+both of them local.
+
+**What the drawn resolutions still need (§22.11 A1b).** Neither *Keep Purple* nor *Change "external-api" to Red
+everywhere* can be carried out by the shipping API: the apply request has no tag-colour field, its
+`conflictResolution` is the rule-level `KEEP_EXISTING`/`USE_IMPORTED` enum, and `applyImport` never rewrites a
+`displayColor` — and the second option would rewrite saved rules that are **not in the pack**, including one that
+does not carry the conflicting tag at all. A slice may
+ship the panel with both options **disabled** and a single honest instruction (fix the pack, or change the colour
+on this server first) and add the resolutions when A1b is decided. What must not happen is drawing two buttons
+that cannot act.
+
+### 22.10 Superseded by this section
+
+| Was | Now | Where |
+|---|---|---|
+| "Exactly seven default columns" | Eight, with **Tags** among them | §22.3, CLAUDE.md §4, register §27 CSX-8 |
+| D19 — tags as an optional column, hidden by default | **D30** — visible by default | IMPLEMENTATION_PLAN §3 |
+| Neutral, colourless tag chips | Semantic palette, one colour per tag | §22.2 |
+| Extraction step as a technical form | Assisted, with suggestions and a real empty state | §22.7 |
+| "Detect samples the current search scope (source, project, services, severity, time)" | The committed search, minus the tag filter | §22.6 |
+| §21.10's "≤ 767 px: stacked rule rows" | The rules list becomes cards at **≤ 1023 px**, and those cards draw every tag chip (§22.11 A11) | §22.3, A11 |
+
+§21 is kept intact as the first-pass record. Nothing there is deleted; where it conflicts, this section governs.
+
+### 22.11 What this design ADDS beyond current production
+
+**Scope of this table: everything §22 specifies follows production unless it appears here.** These are proposals a
+B-slice must *build*, not restyle. Each was checked against the code on `6e71af8`, and each is recorded in
+`CURRENT_BASELINE_INVENTORY.md` §14.
+
+It is not the package's only such table, and it does not claim to be: additions this sync did not introduce are
+recorded where they were raised — §21.11 holds the earlier import additions (its items table's plain-language
+*What applying does* column, and the Replace-all danger zone that enumerates the rules a pack would delete, where
+production ships only the bare confirmation checkbox — decision **D24**), and
+`CURRENT_BASELINE_INVENTORY.md` holds the Inspector's tag casing (§14 **C-19**, with the earlier half at **C-7**) (production upper-cases the
+event's tag row while rendering the per-rule blocks in stored lowercase, so one panel shows both spellings; the
+prototype draws one). Read §22.11 together with those, not instead of them.
+
+| # | Addition | Why | Slice | Cost |
+|---|---|---|---|---|
+| A1a | **Import preview surfaces the tag-colour conflict.** The server already returns `tagColorConflicts` on the preview and already refuses the write; the frontend never reads it, so the refusal arrives after Apply | Moves a guaranteed refusal from after the commit to before it — the single highest-value addition here | B6 | Frontend only: read one existing field, render one panel, add it to the blockers |
+| A1b | **Executing either resolution** drawn in `91-import-colour-conflict` (*Keep Purple* / *Change every "external-api" rule to Red*) | The panel is only honest if the choice can be carried out — otherwise it is a question with no answer | B6 | **Server work, not a restyle.** `ImportApplyRequestDto` has no tag-colour field, `ConflictResolution` is the rule-level `KEEP_EXISTING`/`USE_IMPORTED` enum, and `applyImport` never rewrites a `displayColor`. *Keep Purple* needs a new request field and a documented write rule; *Change every … to Red* additionally rewrites **saved rules that are not in the pack**, which no import mode does today and which needs an explicit owner decision before it is built |
+| A2 | **Save-time colour conflict is shown under the Tag colour field**, in the words of §22.5, with two resolutions | Today the same refusal lands in the generic "not valid yet" list, addressed to nobody | B6 | Field-level error mapping for `rules[i].displayColor` |
+| A3 | **The `+N` counter is neutral**, not a second chip in the first tag's colour | It counts identities; it is not one. Production tints it like the tag | B3 | CSS only |
+| A4 | **Chip grammar: tinted pill + dot + neutral text** (production: coloured text on a tint) | Keeps tags from competing with severity's coloured ink — see `93-results-tag-not-severity` | B1, B3 | CSS only |
+| A5 | **"Sampled from this search" scope component** on Detect, and the query line in the rail's scope block | Production still describes the pre-PR #60 scope in its Detect hint (D33) | B2, B6 | One component + a copy fix |
+| A6 | **Suggestion row gains a coverage bar, a value-type control and a per-row preview** | `valueType` already exists on the definition; the bar makes coverage scannable | B6 | Three controls on an existing row |
+| A7 | **Extend-a-rule chrome**: three-step rail, title naming the rule, "Extending a saved rule" badge, chooser extras (matcher summary, extract count), and a stale-rule recovery panel | Makes "add information" structurally unmistakable from "add identity" (D34, D37) | B4, B6 | Chrome only — **reuse the existing editor and its save**, see §22.8 |
+| A8 | **Tags column narrows to 132 px when the Inspector is docked** (production: a flat 150 px) | Protects the message column at the width where it is most squeezed | B3 | One rule |
+| A9 | **Picker hint corrected** (D38) and the tag-filter omission stated where the sample is described | Current hint claims a conflicting tag "keeps that rule's colour"; it does not — it is refused | B6 | Copy only |
+| A10 | **Test-step extraction coverage as a table with a State column** ("Adding" / "Already saved") and a bar, where production renders a plain list of `label — extracted / of` | Separates what this edit adds from what the rule already extracted, at the moment the user is deciding whether to save | B6 | Frontend only; both columns are derivable client-side from the draft and the saved rule — no new data |
+| A11 | **The rules *table* shows the first tag plus a neutral `+N`** where production renders a chip for every tag. Below ~1000 px the list becomes cards and draws every chip, as production does | Keeps the table scannable when a rule carries up to five tags; the full list stays in the accessible name, and the card layout has room for all of them | B6 | Frontend only |
+| A12 | **Import preview draws each pack rule's tags as coloured chips** (production renders them as plain comma-separated text, `ImportPanel.tsx`), and gives every candidate row in the rule chooser the same primary action — production already does the latter, so only the chips are new | A pack is judged on what it would change; seeing the colour a rule brings is the whole point of the conflict panel above it | B6 | Frontend only; the colour is the pack rule's own |
+| A13 | **Detect's evidence is drawn as tables and coverage bars** — *Stable structure*, *Changing parts* (Part · Kind · Example from this event) and *Suggested values* (name, coverage bar, `n / m`) — where production renders three plain `<ul>` lists and one coverage sentence (`RuleEditor.tsx`, "Stable structure" / "Variable parts" / "Suggested extractions", and the `Matches n of m similar events` hint) | Detect's whole job is to let someone judge a suggestion before adopting it; a bar and an aligned column are read at a glance, a bulleted sentence is not. No number changes — the same `sampledEvents`, `valuesWithField`, `similarEvents`, `coverage` and `suggestedExtractions` fields, drawn differently | B2, B6 | Frontend only; every value is already on the `DetectionResult` the endpoint returns |
+
+**A1b is the one exception, and it is deliberate:** every other row here is presentation over behaviour that
+already ships, and none of them changes an endpoint, a limit or a security guarantee. A1b does change the import
+request and the write semantics, so it is called out separately rather than hidden inside a "one panel" costing.
+A slice may ship **A1a alone** — surfacing the conflict before Apply is worthwhile even while both resolutions
+still say *reload and fix the pack* — and treat A1b as its own decision. If a slice other than A1b finds itself
+altering what the server does, it has misread this table.

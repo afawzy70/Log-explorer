@@ -157,6 +157,23 @@
   --danger: #b42318;   --danger-tint: #fcebea;   --danger-line: #efb4ae;
   --neutral-tint: #eef1f4;
 
+  /*
+   * Classification tag palette (production truth after PR #60: a controlled semantic palette persisted as a
+   * name, never a CSS value). B1 draws a tag as a TINTED PILL + COLOURED DOT + NEUTRAL TEXT, deliberately a
+   * different visual grammar from severity, which is coloured ink + a row/level mark. That separation is what
+   * stops a RED tag from reading as an ERROR level (DESIGN_SYSTEM §22.2). The text carries the meaning and is
+   * always ink-2 (>= 7:1 on every tint); the dot is redundant identity only (>= 3.7:1 on its own tint).
+   */
+  --tag-gray: #5f6a77;    --tag-gray-tint: #eef1f4;
+  --tag-blue: #2f6ec2;    --tag-blue-tint: #e9f0fa;
+  --tag-cyan: #17788d;    --tag-cyan-tint: #e4f2f5;
+  --tag-green: #2f7d53;   --tag-green-tint: #e8f4ea;
+  --tag-amber: #9c751b;   --tag-amber-tint: #faf1dd;
+  --tag-orange: #b96322;  --tag-orange-tint: #fbeee4;
+  --tag-red: #c0453b;     --tag-red-tint: #fbecea;
+  --tag-purple: #7959b3;  --tag-purple-tint: #f1ecf8;
+  --tag-ink: var(--ink-2);
+
   --masked: #5d6670;   --masked-tint: #eef1f4;
 
   --shadow-pop: 0 1px 2px rgba(16, 22, 28, 0.06), 0 6px 18px rgba(16, 22, 28, 0.10);
@@ -208,6 +225,14 @@
   --warning: #e2ad57; --warning-tint: #2a2214;
   --danger: #f28b82;  --danger-tint: #2a1818; --danger-line: #6b3430;
   --neutral-tint: #1d2329;
+  --tag-gray: #8c96a0;    --tag-gray-tint: #1f262d;
+  --tag-blue: #69a6e8;    --tag-blue-tint: #16222f;
+  --tag-cyan: #53b3c8;    --tag-cyan-tint: #13242a;
+  --tag-green: #5db989;   --tag-green-tint: #14251c;
+  --tag-amber: #c7a04a;   --tag-amber-tint: #251f12;
+  --tag-orange: #dd8b52;  --tag-orange-tint: #271d15;
+  --tag-red: #e4796f;     --tag-red-tint: #2a1a18;
+  --tag-purple: #ab8cdf;  --tag-purple-tint: #221c2e;
   --masked: #9aa3ac;  --masked-tint: #1d2329;
   --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 22px rgba(0, 0, 0, 0.45);
   --shadow-sheet: 0 12px 36px rgba(0, 0, 0, 0.55);
@@ -259,6 +284,14 @@
   --warning: #e8b35c; --warning-tint: #292012;
   --danger: #ff8f85;  --danger-tint: #2a1616; --danger-line: #6e332e;
   --neutral-tint: #1a2126;
+  --tag-gray: #8c96a0;    --tag-gray-tint: #1f262d;
+  --tag-blue: #69a6e8;    --tag-blue-tint: #16222f;
+  --tag-cyan: #53b3c8;    --tag-cyan-tint: #13242a;
+  --tag-green: #5db989;   --tag-green-tint: #14251c;
+  --tag-amber: #c7a04a;   --tag-amber-tint: #251f12;
+  --tag-orange: #dd8b52;  --tag-orange-tint: #271d15;
+  --tag-red: #e4796f;     --tag-red-tint: #2a1a18;
+  --tag-purple: #ab8cdf;  --tag-purple-tint: #221c2e;
   --masked: #97a2aa;  --masked-tint: #1a2126;
   --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.5);
   --shadow-sheet: 0 12px 40px rgba(0, 0, 0, 0.6);

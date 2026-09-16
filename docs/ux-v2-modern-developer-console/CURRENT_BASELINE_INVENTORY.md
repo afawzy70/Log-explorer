@@ -2,6 +2,9 @@
 
 **Baseline:** `main` @ `51f06e51709455f2c20dcf5c1b32e2dd67443377` (refreshed after PR #59; §1–§12 were written at
 `3f6b1b4` and remain accurate except where §13 says otherwise)
+**Refreshed again:** `main` @ `6e71af8d901418d65de2bebb472240db27779147` (after PR #60). §14 records what production
+does now; where §13 and §14 disagree, **§14 is current truth** and §13 stands as the PR #59 record. Every superseded
+line in §13 is marked in place — nothing is deleted.
 **Compared against:** PR #54's frozen design baseline `ed6dbf5` (`functional-baseline-pre-ux-redesign`, #53)
 **Method:** read directly from `frontend/src` on latest `main` (not from docs), cross-checked with
 `git diff ed6dbf5 origin/main -- frontend/src` and `git log ed6dbf5..origin/main`.
@@ -14,6 +17,7 @@ Commits on `main` since PR #54's baseline:
 | `c74e318` | #56 | Mapping Save now persists drafts (`PUT` per edited field before `/save`); "Unsaved changes" badge; Verify disabled while a draft is pending |
 | `3f6b1b4` | #57 | Service Include/Exclude mode + "All except …" / "Excluding: …" summaries; owner-approved default mapping starts Verified (scan hint suppressed for Verified fields) |
 | `51f06e5` | #59 | Event Classification rules workspace, Create tag rule from event, Detect pattern, Test rule, structured extraction, Classification section in the Inspector, Classification tags filter and chips, JSON rule pack import/export, source-selector policy with OpenShift Loki visible but not selectable (see §13) |
+| `6e71af8` | #60 | Classification sampling corrected to the committed search, guaranteed selected-event anchor, assisted extraction with measured coverage, "Add extraction from this event", **Tags column visible by default** (eight default columns), rule tag colours and same-tag colour conflicts (see §14) |
 
 Flag legend: `NEW_SINCE_PR54` (did not exist at `ed6dbf5`) · `CHANGED_SINCE_PR54` (existed, visibly/behaviourally changed) · `UNCHANGED`.
 
@@ -528,7 +532,9 @@ profile, Fixture source; three states route-mocked and labelled).
 - Step buttons `1. Source … 6. Save` (Source only in fromEvent), `Step n of 6: <step>` heading receives focus on
   change; Back / Next / Cancel. Every step reachable.
 - **Source**: Time, Service, Severity summary; Field select (message preselected); read-only Sample value.
-- **Detect**: explanation (samples up to 200 events from the current search scope; suggestion only); **Detect
+- **Detect**: explanation (samples up to 200 events from the current search scope; suggestion only)
+  — ~~"current search scope"~~ **SUPERSEDED by PR #60 / §14 C-12**: the sample is now the committed search itself.
+  The on-screen hint copy did *not* change and is now an understatement — see C-14; **Detect
   pattern** / **Skip / write conditions manually**; `Detecting…`; error alert. Result: Sampled / With this field /
   Similar; Stable structure (quoted mono list); Variable parts (name, kind, example); Suggested pattern; “Matches n of
   n similar events; also matches n other sampled events.”; Suggested extractions “extracted from n of n similar
@@ -538,7 +544,9 @@ profile, Fixture source; three states route-mocked and labelled).
 - **Classification**: Rule name, Tags (comma-separated, lowercase note, chip preview), Description, Enabled; conditions
   overview sentence; **Advanced**: match mode radios ALL/ANY, condition fieldsets (field with datalist, matcher
   Exact/Contains/Starts with/Regex, value, ignore case, remove), Add condition (limit).
-- **Extraction**: one fieldset per extraction — Name, Label, Source field, Type (Regular expression (RE2) / JSON
+- **Extraction** — **EXTENDED by PR #60 / §14 C-15…C-17** (a suggestion panel with measured coverage, a real
+  no-suggestion state, and per-value "Advanced: how this value is read" now sit around this form; the form itself
+  survives): one fieldset per extraction — Name, Label, Source field, Type (Regular expression (RE2) / JSON
   pointer), Expression, Group, Value type (Text/Integer/Decimal/Boolean), “Never show this value”, Remove; Add
   extraction; Preview values (jumps to Test and runs it).
 - **Test**: **Test rule** / `Testing…`; Sampled events / Matched / Not matched; sample-limit note; Extraction coverage
@@ -567,12 +575,16 @@ profile, Fixture source; three states route-mocked and labelled).
   the server to the events each search retrieves.”; checkbox per tag; loading / error / “No classification tags
   yet.”; draft until Apply; count badge includes tags.
 - Active filters: one chip per tag `Tag: <name>` with remove.
-- **Results rows, Investigation, Surroundings and Live show no tags today** (deferred to this sync).
+- ~~**Results rows, Investigation, Surroundings and Live show no tags today** (deferred to this sync).~~
+  **SUPERSEDED by PR #60 / §14 C-16**: a **Tags** column is visible by default in the results table. Investigation,
+  Surroundings and Live still show no tags.
 
 ### 13.7 Persistence and runtime truth the design must not contradict
 - Rules are server-side JSON (revisioned, atomic write, backup); no database; events and extracted values are never
   stored. Rules apply to future reads only; loaded results and existing Live rows are not reclassified.
 - Detect and Test read a bounded sample (default 200, max 500) of the committed search scope and never write.
+  **CLARIFIED by PR #60 / §14 C-12**: at PR #59 "committed search scope" meant source, project, window, services and
+  severities only. It now means the committed search body, minus direction/limit/cursor and the tag filter.
 - Tag filtering runs after retrieval; it does not read more history.
 
 ### 13.8 BEFORE observations (feed the design; not functional defects)
@@ -585,11 +597,11 @@ profile, Fixture source; three states route-mocked and labelled).
 | C-4 | Test results render five full cards with every extracted value; the page reaches 2,140 px and the review note sits at the bottom | FUNCTIONAL_GOOD_VISUALLY_WEAK |
 | C-5 | Delete confirmation uses the primary (accent) button style for a destructive action | VISUAL_WEAKNESS |
 | C-6 | Rules table at 390 px: columns collapse to character-wide text, actions cut off | LAYOUT_DEFECT (narrow) |
-| C-7 | Tags are plain comma text in the list and uppercase badges in the Inspector | COPY / consistency |
+| C-7 | ~~Tags are plain comma text in the list~~ and uppercase badges in the Inspector | COPY / consistency — **partly superseded by PR #60 / §14 C-20**: the rules list now draws tags as coloured chips. The Inspector's uppercase-vs-lowercase split survives (§14 C-19) |
 | C-8 | Matcher shown as enum text (`message · STARTS_WITH`) | COPY |
 | C-9 | Full server storage path in the meta line | COPY (disclosure of a server path) |
 | C-10 | Extracted-value status lines render in monospace (“Not found in this event”) | VISUAL_WEAKNESS |
-| C-11 | Tags absent from result rows, captures and Live | Deferred by PR #59 |
+| C-11 | ~~Tags absent from result rows~~, captures and Live | Deferred by PR #59 — **partly superseded by PR #60 / §14 C-16**: result rows now carry tags by default. Captures and Live still do not |
 
 ### 13.9 Source selector policy (register §26.1)
 Options are ordered by stable id, never API order: `local-docker` (Local Docker / Local Docker Compose), `openshift`,
@@ -603,8 +615,104 @@ source. Evidence: `baseline/classification/source-select-options.json`, `c00-*.p
 14. **Revision concurrency.** Every write sends the last-read revision; a redesign must keep the conflict path visible
     and keep drafts on conflict.
 15. **Five tabs.** Classification stays inside Overview.
-16. **Seven columns.** Result-row tags must not enter “What happened” or become a default eighth column without an
-    owner decision (D19).
+16. ~~**Seven columns.** Result-row tags must not enter “What happened” or become a default eighth column without an
+    owner decision (D19).~~ **SUPERSEDED by PR #60.** The owner decision was taken and shipped: the default set is
+    **eight** columns, with **Tags** between "What happened" and "User/Customer". See §14 C-16, CLAUDE.md §4 (amended)
+    and `docs/governance/OWNER_REQUIREMENTS_REGISTER.md` §27 CSX-8. The rest of the note stands: tags must still never
+    render inside "What happened", and every other table invariant is unchanged.
 17. **Native disabled Loki option.** Replacing the Source select with a custom listbox breaks SSEL-2 and its tests.
 18. **Bounded samples.** Detect/Test copy must say “sample” and must not claim false-positive rates or completeness.
 
+
+---
+
+## 14. CLASSIFICATION AFTER PR #60 (`6e71af8`) — current production behaviour
+
+Read from `frontend/src` and `backend/src/main/java` on `main` `6e71af8`, and checked against 21 real captures in
+[`baseline/pr60/`](baseline/pr60/README.md) (real backend, `SPRING_PROFILES_ACTIVE=dev`, Fixture source, synthetic
+data, 1440×900, no route mocking). The production record of the change is
+`docs/governance/OWNER_REQUIREMENTS_REGISTER.md` §27 (CSX-1…CSX-13) and
+`docs/verification/CLASSIFICATION_SCOPE_EXTRACTION_VISUAL_TAGGING_REPORT.md`.
+
+This section records **what production does now**, not what the design proposes. Where the Modern Developer Console
+design deliberately diverges, the divergence is named as a design decision, not written up as a defect —
+`DESIGN_SYSTEM.md` §22 and `IMPLEMENTATION_PLAN.md` §3.1 (D30–D37) are the design side of the same facts.
+
+### 14.1 Sample scope — Detect, Test and suggestions read the committed search
+
+`useSearchState.buildClassificationSampleScope` takes the **committed search request body** and removes exactly three
+things before sending it as the sample scope; `ClassificationSampleScopeDto` mirrors `SearchRequestDto` field for
+field and rebuilds the request through the one real `RequestMapper`, so every filter behaves exactly as it does for
+Search.
+
+Carried: `sourceId`, `composeProject`, `start`, `end`, `services`, `serviceFilterMode`, `levels`, `text`, `traceId`,
+`spanId`, `correlationId`, `journeyId`, `journeyName`, `eventId`, `errorCode`, `businessStep`, `uiIdentifier`,
+`loggerContains`, `devicePlatform`, `language`, the five protected filters (`cif`, `userName`, `customerId`,
+`deviceId`, `deviceIp`), `query` and `rawLogQl`, plus `anchorTimestamp`.
+
+Not carried, and each for its own reason:
+
+| Excluded | Why |
+|---|---|
+| `direction`, `limit`, `cursor` | A sample is one bounded newest-first page of its own size (default 200, max 500). |
+| `tags` | Deliberate. Tags only exist after classification by the *saved* rules, so sampling through a tag filter while a rule is being written would make the evidence depend on the classification being created. |
+
+### 14.2 BEFORE observations (continuing §13.8's series)
+
+| # | Observation | Classification |
+|---|---|---|
+| C-12 | Detect, Test and the extraction-suggestion pass all read **one bounded sample of the committed search** (§14.1), built from the same request body through the same mapper — so the same rule sees the same population at every step. Verified in `baseline/pr60/06-*.png`: a search narrowed by free text to `API_LOGS` reports `Sampled: 30 · With this field: 30 · Similar: 24`, i.e. the narrowed result set, not the newest 200 of the whole source | BEHAVIOUR (fixed in #60) |
+| C-13 | The selected event is **guaranteed** to take part in detection: the scope carries `anchorTimestamp`, and when the bounded page stops short of it the collector makes one extra strictly bounded read of that single millisecond with identical filters and merges the event in, de-duplicated. The reported counts stay exactly what was evaluated | BEHAVIOUR (fixed in #60) |
+| C-14 | **The Detect hint copy still predates PR #60 and understates the scope.** `RuleEditor.tsx` reads "Detect samples up to {n} events from the current search scope (source, project, services, severity and time range) and suggests conditions." (`baseline/pr60/05-*.png`), and the Test hint reads "Runs the draft rule against up to {n} events from the current search scope." Neither names the free text, query DSL, raw LogQL, identifiers or advanced filters that are in fact carried, and neither names the one honest omission (the tag filter). **Risk:** an investigator reading the hint has no reason to believe the narrowed search is respected — which is exactly the misreading that produced the original "matched 1 of 200" defect report. The design proposes correcting this copy (D33, §22.6); it is production copy and has not been changed | COPY — stale, understated, actively misleading |
+| C-15 | **Assisted extraction exists and is measured, not estimated.** `POST /extractions/suggest` samples the committed scope, keeps only the events the draft rule actually matches, and runs the same deterministic detector Detect uses (RE2 named captures, JSON pointer, labelled key/value and stable-literal analysis — no external service, no invented confidence score). The step shows a read-out ("Read from 24 matching events in the current search, out of 30 sampled. Counts describe this bounded sample only.") and one row per candidate: checkbox · name · **`Found in 24 / 24`** · editable Output name · *Never show this value* · Remove; then **Add n selected value(s)** and **Detect extractable values again**. `alreadyDefined` is surfaced as "Already extracted by this rule: api, url, requestPath, duration." so a suggestion can never silently duplicate a confirmed value. Evidence: `baseline/pr60/09-*.png`. Note for the design: coverage is **text** today, not a bar, and the suggestion row carries **no value-type control and no preview** — §22.7 adds all three | FUNCTIONAL_GOOD_VISUALLY_WEAK |
+| C-16 | **The Tags column is visible by default**, so classification is discoverable without opening the Inspector. `columnRegistry.tsx` defines `tags` with `defaultVisible: true` and `width: '150px'`, positioned between `whatHappened` and `userCustomer` — the default set is now **eight** columns (register §27 CSX-8, CLAUDE.md §4 as amended). The cell renders the first tag as an 18 px chip plus a `+N` counter, `—` when the event is unclassified, the full comma list as the cell's accessible name (`Tags: a, b, c`) and as its `title`, and the header is sortable on the first tag. Chip height (18 px) sits below the row height, so a classified row is not taller than an unclassified one. Evidence: `baseline/pr60/02-*.png` (all `—`), `13-*.png`, `14-*.png`. **Production draws the `+N` counter as a second chip in the same colour as the first tag**; the design makes it a neutral counter instead, because it counts identities rather than being one — that is a design decision (D30, §22.3), not a defect | BEHAVIOUR (new in #60) + design divergence |
+| C-17 | The extraction step has a real **no-suggestion** state rather than a blank form: the server's own reason, then *Detect extractable values again*, *Add extraction manually* and *Skip extraction*. Skipping is stated truthfully afterwards ("Extraction skipped. The rule will still tag matching events.") | FUNCTIONAL_GOOD |
+| C-18 | **Two distinct authoring actions on a classified event.** `InspectorHeader.tsx` shows *Add extraction from this event* only when the event is classified, and the second action reads *Create another tag rule* when classified and *Create tag rule from this event* when not (`baseline/pr60/03-*.png` vs `16-*.png`). Resolution in `ClassificationRulesWorkspace.tsx`: exactly one matching **saved** rule opens straight on its extraction step; several open a chooser ("Which rule should this value be added to?", one row per rule: name · its coloured tags · *Add extraction to \<rule name\>* · Cancel — `18-*.png`); none still saved yields a notice, "The rules that classified this event are no longer saved. Choose a rule to edit, or create a new one."; and a rule that disappears between choosing and opening yields "That rule no longer exists. Reload the rules and try again." Nothing is mutated without an explicit, revision-protected save. **Two things the design must not mistake for existing behaviour:** production reuses the **full six-step editor in `edit` mode opened at step 4** (`19-*.png`), not a separate three-step frame (D37 proposes that); and the chooser rows show **no matcher summary and no extract count** (§22.8 proposes both) | FUNCTIONAL_GOOD_VISUALLY_WEAK + design divergence |
+| C-19 | **Tag chip grammar in production is a tinted background plus text in the same hue** (`TagChip.module.css`: `--tag-fg`/`--tag-bg` per colour, 18 px tall, 11 px/600, ellipsised, `forced-colors` drops the tint and keeps the text). There is **no dot**. The design deliberately changes this to *tinted pill + 6 px dot + neutral text*, so a RED tag can never read as an ERROR level (D31, §22.2) — a design decision about grammar, not a fix. Within the Inspector the event's own tag row still renders **uppercase** (`tag.toUpperCase()`) while the per-rule blocks render the stored lowercase tags, so both spellings appear in one panel (`17-*.png`) — the unresolved half of C-7 | VISUAL / design divergence |
+| C-20 | **Rules list after PR #60** (`baseline/pr60/20-*.png`): the Tags column now draws **coloured chips** instead of comma text — this supersedes half of C-7. Everything else §13.2 describes still holds, including the two copy observations that PR #60 did not touch: the **full server storage path** in the meta line (C-9) and the matcher shown as enum text `message · STARTS_WITH` (C-8). The list still has no Extracts-count column | Partly fixed; C-8 and C-9 still open |
+| C-21 | **The colour model is a closed eight-name palette**, `GRAY BLUE CYAN GREEN AMBER ORANGE RED PURPLE` (`TagColor.java`), persisted and exported as the **name**, never a CSS value, so a pack from another installation can never inject styling. A rule that chooses nothing gets a deterministic default derived from its first tag (`TagColor.defaultFor`, GRAY reserved for a rule with no tag), so the same tag lands on the same colour on every installation and older rules files and packs keep loading with no schema change. `TagColorPolicy.tagColors` resolves **one colour per normalized tag**; `TagChip.tagColorsOf` applies that same rule client-side from the matched rules, so table and Inspector cannot disagree | BEHAVIOUR (new in #60) |
+| C-22 | **The colour picker** is a `role="radiogroup"` of eight radios, each labelled by a chip drawn in that colour and carrying the colour's own name (Grey, Blue, Cyan, Green, Amber, Orange, Red, Purple — note the UI spells the enum's `GRAY` as "Grey"), with a live `Preview:` chip below (`baseline/pr60/07-*.png`). There is no free colour field. **Its hint copy is wrong about the policy:** "A tag already used by another rule keeps that rule's colour." Nothing keeps anything — `TagColorPolicy.conflicts` rejects the write (C-23). **Risk:** the copy promises silent resolution and the server refuses instead, so the user meets an error they were told would not happen | COPY — contradicts the enforced behaviour |
+| C-23 | **Same-tag/different-colour conflicts are genuinely refused, but the UI under-surfaces them.** `ClassificationRuleService.compileAll` throws on any conflict, so no write — save, import MERGE or import REPLACE_ALL — can create one. What the user sees is weaker than the guarantee: the rule editor renders every validation error in one generic list as `<path>: <message>` ("This rule is not valid yet:", the path in monospace), and because the conflict's path is `rules[i].displayColor` it does **not** land under the Tag colour field's own `FieldErrors`. Worse on import: the backend preview carries `tagColorConflicts`, but `tagColorConflicts` **appears nowhere in `frontend/src`** — `ImportPanel.tsx` never reads it, so the preview reports `Conflicts: 0` and leaves **Apply import** enabled for a pack that cannot be applied (`baseline/pr60/21-*.png` is exactly this case). The conflict then surfaces only as a validation error after the user commits. The design's named, resolvable state with two explicit resolutions (D36, §22.5 / §22.9) is therefore **new UI over an existing backend invariant**, not a restyle of something that ships | GAP between enforced behaviour and the UI |
+| C-24 | Everything PR #59 established about persistence and bounds is unchanged: rules are server-side JSON, revisioned, atomically written and backed up; there is no database; events and extracted values are never stored; rules apply to future reads only (the saved notice still says so — `baseline/pr60/12-*.png`); sampling stays bounded at 200/500; the tag filter still runs after retrieval and reads no extra history; extraction stays backend-authoritative and passes the existing masking/redaction boundary | UNCHANGED — must stay true |
+| C-25 | **The Active filters bar is named with `aria-label` on a plain `<div>`** (`features/search/ActiveFilters.tsx:78`, `<div className={styles.row} aria-label="Active filters">`). ARIA 1.2 prohibits `aria-label` on the implicit `generic` role, so the name is dropped and the region reaches assistive technology unnamed — axe reports it as `aria-prohibited-attr` (needs-review, not a violation). The prototype draws the corrected form, `role="group"`, which is a one-attribute fix; §21.14's keyboard model assumes that region is labelled | A11Y — **production defect the design corrects**; not classification-specific, so it is recorded here rather than in §22.11 |
+
+### 14.3 What PR #60 did **not** change
+
+- The Inspector still has exactly five tabs, and Classification still lives **inside Overview** (§13.5, risk note 15).
+- Source-selector policy is untouched (§13.9): native `<select>`, `openshift-loki` a native disabled option.
+- Investigation captures, Surroundings and Live still show **no** tags (the surviving half of C-11).
+- The Classification rules workspace is still reached from a **shell button**, not from Settings (D17 is still a
+  design proposal — `baseline/pr60/20-*.png` shows the shell button row).
+- The rules-list narrow-width defect (C-6) and the long Test-results page (C-4) were not addressed; no 390 px capture
+  of the PR #60 surfaces exists, so their narrow behaviour is **unverified**, not verified-good.
+
+### 14.4 Design risk notes added by PR #60 (continuing §13.10)
+
+19. **One scope, one component, one source of truth.** Detect, Test and the suggestion pass read the same sample
+    today because they send the same body. B2's "Sampled from this search" component must be *generated from the
+    committed request body*, not re-derived from UI state — a second derivation is a second truth, and the thing that
+    broke in the first place was a scope rebuilt from a subset of fields. If the component and the request can ever
+    disagree, the component is lying.
+20. **Eight default columns is the contract now.** `Tags` is `defaultVisible: true` between "What happened" and
+    "User/Customer" (C-16, CSX-8, CLAUDE.md §4 as amended). A slice that "restores seven columns" for geometry
+    reasons is reintroducing the defect PR #60 closed. The column-contract and
+    `ResultsTable.classification.test.tsx` assertions are to be re-pointed, never weakened, and geometry must be
+    re-measured **with the column on** — no rendered-width measurement exists for it (the PR #60 baseline has no
+    `measurements.json`).
+21. **Tag colour and severity must not share a grammar.** Production already pairs a tint with same-hue text, which
+    is the same grammar severity uses for ERROR/WARN. B1/B3 changing to tint + dot + neutral text (D31) is the whole
+    point of the change; if any part of it is dropped for visual convenience, a RED tag on an INFO row reads as an
+    error. `93-results-tag-not-severity` exists to be checked on exactly that case, and colour must never become the
+    only signal — the tag text is always rendered.
+22. **Neutralising `+N` must not cost the full list.** The complete comma list lives in the cell's accessible name
+    and its `title` today (C-16). Restyling the counter, truncating the chip, or moving the overflow into a hover
+    affordance must keep both; nothing about an event's tags may be discoverable only on hover.
+23. **The colour conflict is a backend invariant the UI has to catch up with, not invent.** B6 adds presentation
+    (a named state, two resolutions, a blocker on both import modes — D36); it must not add a client-side resolution,
+    must not let the import preview claim a pack is applicable when `tagColorConflicts` is non-empty, and must not
+    weaken `TagColorPolicy`'s refusal into a "last writer wins". The correct first move is simply to read the field
+    the API already returns (C-23).
+24. **Extending a rule is one editor, not two.** Production reuses the six-step editor in `edit` mode opened at the
+    extraction step (C-18). D37's three-step frame is a *framing* of that same editor — B4/B6 must not fork
+    `RuleEditor.tsx` into a second implementation, or the revision-protected save, the limits from
+    `rulesState.limits` and the RE2/JSON-pointer help all acquire a second copy that can drift.
