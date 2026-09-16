@@ -138,9 +138,12 @@ should say "frontend + a small additive backend field", not "frontend only".
 - Backend tests — through commit `8e35289`, not run (zero backend files touched; CI's own Backend job also
   confirms this passed on that commit). From `d94b0ac` (A12) onward, the **full** backend suite was run twice
   locally (`mvn test`, no filter) — **1424/1424 PASS** both times, before and after adding the new field's own
-  test. **CI confirmed on the latest push (`dabf489`, which supersedes `d94b0ac`): all 5 jobs PASS** — Backend
-  (2m8s), Frontend (1m31s), E2E (7m2s), Windows desktop build+smoke-test (4m52s), macOS desktop build+smoke-test
-  (2m10s). `gh pr checks 61` re-run and read directly (not assumed) at 23:01 Kuwait time.
+  test.
+- **CI confirmed green twice more since**, each on the actual latest push at the time, not assumed:
+  - On `dabf489` (polish commit, supersedes `d94b0ac`) at 23:01 Kuwait: Backend (2m8s), Frontend (1m31s), E2E
+    (7m2s), Windows (4m52s), macOS (2m10s) — all 5 PASS.
+  - On `0ef2827` (B4 Inspector width/tabs, latest as of this checkpoint) at 23:26 Kuwait: Backend (2m5s), Frontend
+    (1m28s), E2E (6m41s), Windows (3m41s), macOS (2m1s) — all 5 PASS.
 
 ### Known regressions
 
@@ -213,17 +216,19 @@ timestamp and final verification numbers.
 ## Resuming tomorrow — exact next task
 
 1. **Re-verify the branch is where this file says it is**: `git log --oneline -10` on `ux/v2-modern-developer-
-   console` — check what's at HEAD against this file's own record. As of this checkpoint, HEAD is a polish/
-   documentation commit on top of `d94b0ac` (A12); **CI confirmed all 5 jobs PASS** (Backend, Frontend, E2E,
-   Windows, macOS) on that push — re-run `gh pr checks 61` for whatever commit is actually at HEAD now, don't
+   console` — check what's at HEAD against this file's own record. As of this checkpoint, HEAD is `0ef2827` (B4
+   Inspector width/tabs); **CI confirmed all 5 jobs PASS** (Backend, Frontend, E2E, Windows, macOS) on that exact
+   commit at 23:26 Kuwait time — re-run `gh pr checks 61` for whatever commit is actually at HEAD now, don't
    assume it's still green without looking (a later session may have pushed since).
-2. **B3's literal row-height item is done** (`739d6f3` — 29px, matching the 28px target within a 1px border
-   tolerance, Actions hit target untouched, regression test added). **A12 is also done** (`d94b0ac` — the one
-   backend change this session, full backend + frontend suites green, real end-to-end verified). What's left in
+2. **Done this session**: B3's literal row-height (`739d6f3` — 29px), A12 (`d94b0ac` — full backend+frontend
+   suites green, real end-to-end verified), B4's Inspector width + five-tabs-on-one-row (`0ef2827`). What's left in
    B3: sticky header, selection/error/root/trigger row states, and the loading/re-search/empty/error panels are
    all still v1-token-styled — restyling them to v2 tokens is the next contained B3 piece, verified structurally
    already in place (position: sticky exists, severity row marking exists) so this is a genuine RESTYLE, not new
-   behaviour.
+   behaviour. **Also flagged for a separate lane, not part of this redesign**: a pre-existing WCAG AA
+   `color-contrast` defect affecting 593 elements (`--color-text-tertiary` on tinted row backgrounds) - see its
+   own entry above for the measured evidence; fixing it properly needs an audit of every state background that
+   token appears against, real scope of its own.
 3. **Then B2 Search Shell.** Checked `COMPONENT_INVENTORY.md` (design branch) precisely for what this actually
    requires, rather than assuming: `app/Shell.tsx` is marked **RECOMPOSE**, not restyle —
    (a) the three separate settings popover triggers (**Privacy & masking**, **Docker settings**, **OpenShift**)
