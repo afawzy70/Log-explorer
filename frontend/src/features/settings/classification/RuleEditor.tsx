@@ -589,8 +589,10 @@ export function RuleEditor({
           </>
         )}
         <p className={styles.hint}>
-          Detect samples up to {sampleSize} events from the current search scope (source, project, services, severity and
-          time range) and suggests conditions. It is a suggestion only; nothing is saved.
+          Detect samples up to {sampleSize} events from the current search scope (source, project, time range,
+          services, severity and any search text or ID) and suggests conditions - except a classification tag
+          filter, which is never applied here, so a rule being written can never be evidence for itself. It is a
+          suggestion only; nothing is saved.
         </p>
         {!anchorValue ? (
           <p className={styles.hint} id={`${id}-detect-why`}>
