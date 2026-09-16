@@ -8,8 +8,8 @@
 .tablist {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-1);
-  padding: 0 var(--space-4);
+  gap: 2px;
+  padding: 0 var(--space-3);
   border-bottom: var(--border-width) solid var(--color-border);
   background: var(--color-bg-raised);
   position: sticky;
@@ -23,10 +23,20 @@
   border: none;
   background: transparent;
   cursor: pointer;
-  padding: var(--space-3) var(--space-2);
+  /*
+   * Tighter than the general `--space-2` horizontal padding, and a
+   * slightly smaller font than `--font-size-sm` (13px) - together these
+   * let all five fixed tabs (Overview, Actor & client, Request flow,
+   * Business / error, Technical / all fields) fit on one row at the
+   * panel's 500px default width, measured in the real rendered app
+   * (previously wrapped to two rows even at 500px with the general
+   * scale). Vertical padding is untouched, so the touch target height
+   * is unaffected.
+   */
+  padding: var(--space-3) 4px;
   margin-bottom: -1px;
   font: inherit;
-  font-size: var(--font-size-sm);
+  font-size: 12px;
   font-weight: 600;
   color: var(--color-text-secondary);
   border-bottom: 2px solid transparent;

@@ -242,3 +242,22 @@ test('the resize handle keeps the panel within its documented min/max bounds', a
 
   await assertNoHorizontalOverflow(page);
 });
+
+test('at the default panel width, all five fixed tabs render on one row - the default was widened from 420px to the design\'s 500px specifically because they used to wrap to two rows', async ({
+  page,
+}) => {
+  await runRealSearch(page);
+  await setViewport(page, 1920);
+  await openInspectorOnRow(page, 0);
+
+  const handle = page.getByRole('separator', { name: /resize event details panel/i });
+  const width = Number(await handle.getAttribute('aria-valuenow'));
+  expect(width).toBe(500);
+
+  const tabs = page.getByRole('tab');
+  await expect(tabs).toHaveCount(5);
+  const tops = new Set((await tabs.evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)))));
+  expect(tops.size).toBe(1); // one distinct `top` value - every tab shares one row, none has wrapped below the rest.
+
+  await assertNoHorizontalOverflow(page);
+});

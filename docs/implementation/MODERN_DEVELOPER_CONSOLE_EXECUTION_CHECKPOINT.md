@@ -56,16 +56,31 @@ deferred — see "Next exact task" below):
 | `8e35289` | **A2**: a save-time tag-colour conflict now shows scoped under the Tag colour field, not only in the generic error list. Root cause verified against the real backend: `TagColorPolicy` validates across the *whole* rule list, so even a single-rule save returns `rules[N].displayColor` (never bare `displayColor`), which `errorsAt`'s field-level lookup didn't match. Fixed in `errorsAt` itself (accepts an optional `rules[N].` prefix), not a new special case — verified this doesn't affect any other field (a missing-tags error returns plain `"tags"` from the real backend). | typecheck, 1089/1089, build, `classification-rules.spec.ts` 2/2, end-to-end against the real running app via network interception with the real server's captured error shape |
 | `739d6f3` | **B3**: compact rows now measure ~29px, matching the design's `--v2-h-row: 28px` target (was 36-37px). Root cause traced precisely: the Actions column's trigger button is a deliberate, untouched 28×28px WCAG 2.5.8 hit target; the cell's own 4px top/bottom compact padding around it alone forced the whole row taller than every other (shorter-content) column needed. Fix scoped to exactly `.compact td.actionsCell` (padding-top/bottom: 0) — the button's own size is completely untouched, comfortable density untouched (different rule). | typecheck, 1089/1089, build, a new permanent E2E regression test (row height in a 26-31px band, button ≥28×28px and still clickable) plus every E2E spec touching table geometry/density (`geometry.spec.ts`, `phase-g-results-table.spec.ts` 10/10, `phase-legacy-slice4` 8/8, `phase-legacy-slice8` 28/28, `classification-rules.spec.ts` 2/2) — 58 E2E tests total this check, all PASS |
 | `d94b0ac` | **A12 — the one backend change this session** (design's own "frontend only" claim was checked and found wrong before starting, not assumed correct). `ImportItem` (backend record) gains `displayColor` — the pack rule's OWN `effectiveDisplayColor()`, never the existing/matched rule's colour (explicitly proven for a CONFLICT item with a colour genuinely differing from the existing rule's), `null` only for a genuinely-unparseable pack entry (distinct from one that parsed but failed validation, which still gets its real default). `ImportPreviewItem` (frontend type) + `ImportPanel.tsx` updated to draw each pack rule's tags with the shared `TagChip` in that colour, replacing plain `Tags: a, b, c` text. | **Backend**: full suite **1424/1424 PASS** (was 1423, +1 new test). **Frontend**: typecheck, full suite **1091/1091 PASS** (3 new tests), build. **End-to-end**: dev backend killed and restarted on the freshly-`mvn test`-verified compiled code, then a real pack file uploaded through the actual browser file-picker rendered a real AMBER-tinted chip with the correct background colour, 0 console errors. `classification-rules.spec.ts` 2/2. |
+| *(uncommitted, see below)* | **B4**: the Inspector's default panel width becomes 500px (`--v2-w-inspector`), up from 420px — measured in the real app that the five fixed tabs (Overview, Actor & client, Request flow, Business / error, Technical / all fields) genuinely wrapped to two rows at 420px, confirming the design's number is solving a real problem, not an arbitrary preference. 500px alone was not enough with the *existing* tab CSS (needs ~572px) — also tightened `InspectorTabs.module.css`'s tab padding/gap/font-size (13px → 12px, close to the design's own 11-12px scale) so all five genuinely fit on one row at 500px, verified by measuring distinct `top` values in the real rendered app, not assumed from the width number alone. `MIN_PANEL_WIDTH`/`MAX_PANEL_WIDTH` (320/720) untouched, so 500 is comfortably in range. | typecheck, full suite 1091/1091, build, full `phase-h-event-inspector.spec.ts` (16/16, one new permanent regression test asserting all 5 tabs share one row), real-browser screenshot confirming a clean, legible, non-cramped one-row tab bar |
+
+**Discovered, not caused, while verifying the tab fix — a second pre-existing accessibility defect** (in addition
+to the 390px overflow one below): running axe on the Inspector-open state found **593 elements** failing WCAG AA
+`color-contrast` (serious) — `--color-text-tertiary` (`#868d99`) on various row-state backgrounds (selected,
+hover, error-tinted), specifically the Results table's de-emphasised date text (`.timeDatePart`) and ID field
+labels (`.idLabel`, e.g. "Trace ID:"). Measured contrast as low as 2.94:1 against the 4.5:1 AA minimum. **Verified
+pre-existing, not introduced by this session**: reproduced identically with `git stash` reverting every change
+this session made to the Inspector. Nothing in this session touches `--color-text-tertiary`, `.timeDatePart`, or
+`.idLabel`. This is a significant finding (593 nodes, not a one-off) but fixing it properly means auditing every
+state background `--color-text-tertiary` appears against across the whole Results table, which is real, separate
+scope — not touched here, per this mission's "functional defects outside this redesign must remain separate
+lanes" policy. **Flag this for a dedicated accessibility pass, not folded into this redesign.**
 
 **Not started this session:** the remainder of B3 (sticky header already works structurally — `position: sticky`
 already present in `ResultsTable.module.css:84` — but its visual treatment is still v1 tokens; selection/error/
 root/trigger row states exist structurally (`UX-R4 §15` severity row marking) but are still v1-styled; loading/
 re-search/empty/error panel restyle not started), B2 Search Shell (query bar, scope strip, severity popover,
-source/project/time controls — assessed briefly, see below), B4 Inspector visual composition (the 500px width and
-5-tab styling — but **the action-hierarchy requirement ("Add extraction from this event" vs "Create another tag
-rule" as structurally distinct actions) is already true in production**, shipped by PR #60, verified in
-`features/inspector/InspectorHeader.tsx:98,103` — nothing to build there, only to restyle visually later). B5
-Investigation, B6 Settings/Mapping (beyond the classification-rules pieces above), B7 — not started.
+source/project/time controls — assessed as genuinely large IA work, see below), B4 Inspector: **the 500px width
+and 5-tab-on-one-row fit are now done** (see the table row above) — remaining B4 scope is the rest of the panel's
+visual composition (colour parity is already inherited via the shared `TagChip` restyle from `5af4436`), and **the
+action-hierarchy requirement ("Add extraction from this event" vs "Create another tag rule" as structurally
+distinct actions) is already true in production**, shipped by PR #60, verified in
+`features/inspector/InspectorHeader.tsx:98,103` — nothing to build there. B5 Investigation, B6 Settings/Mapping
+(beyond the classification-rules pieces above), B7 — not started.
 
 ### A12 — done after all (design's own cost estimate was wrong)
 
@@ -122,9 +137,10 @@ should say "frontend + a small additive backend field", not "frontend only".
     investigate, not evidence against this session's changes specifically.
 - Backend tests — through commit `8e35289`, not run (zero backend files touched; CI's own Backend job also
   confirms this passed on that commit). From `d94b0ac` (A12) onward, the **full** backend suite was run twice
-  (`mvn test`, no filter) — **1424/1424 PASS** both times, before and after adding the new field's own test. Check
-  `gh pr checks 61` for CI's Backend job result on `d94b0ac` when resuming (not yet confirmed as of this
-  checkpoint being written — see the final status line at the bottom of this file).
+  locally (`mvn test`, no filter) — **1424/1424 PASS** both times, before and after adding the new field's own
+  test. **CI confirmed on the latest push (`dabf489`, which supersedes `d94b0ac`): all 5 jobs PASS** — Backend
+  (2m8s), Frontend (1m31s), E2E (7m2s), Windows desktop build+smoke-test (4m52s), macOS desktop build+smoke-test
+  (2m10s). `gh pr checks 61` re-run and read directly (not assumed) at 23:01 Kuwait time.
 
 ### Known regressions
 
@@ -197,10 +213,10 @@ timestamp and final verification numbers.
 ## Resuming tomorrow — exact next task
 
 1. **Re-verify the branch is where this file says it is**: `git log --oneline -10` on `ux/v2-modern-developer-
-   console` should show `d94b0ac` (or a later checkpoint commit) at HEAD, nine-plus commits ahead of `6e71af8`.
-   Re-check `gh pr checks 61` for `d94b0ac` specifically (its CI result was not yet confirmed as of this
-   checkpoint being written — this was the first commit touching `backend/`, so its Backend/Windows/macOS CI jobs
-   matter more than usual) before trusting the branch is green without looking.
+   console` — check what's at HEAD against this file's own record. As of this checkpoint, HEAD is a polish/
+   documentation commit on top of `d94b0ac` (A12); **CI confirmed all 5 jobs PASS** (Backend, Frontend, E2E,
+   Windows, macOS) on that push — re-run `gh pr checks 61` for whatever commit is actually at HEAD now, don't
+   assume it's still green without looking (a later session may have pushed since).
 2. **B3's literal row-height item is done** (`739d6f3` — 29px, matching the 28px target within a 1px border
    tolerance, Actions hit target untouched, regression test added). **A12 is also done** (`d94b0ac` — the one
    backend change this session, full backend + frontend suites green, real end-to-end verified). What's left in
@@ -208,11 +224,17 @@ timestamp and final verification numbers.
    all still v1-token-styled — restyling them to v2 tokens is the next contained B3 piece, verified structurally
    already in place (position: sticky exists, severity row marking exists) so this is a genuine RESTYLE, not new
    behaviour.
-3. **Then B2 Search Shell**, scoped as a real slice (workspace trail, query bar, scope strip, severity popover,
-   source/project/time controls) — this needs actual layout decisions, not just a token rename (a token-only pass
-   on `Shell.module.css`/`Toolbar.module.css` was assessed this session and found low-value: the nearest v1/v2
-   token pairs are nearly identical colours); read `DESIGN_SYSTEM.md` §9 and the corresponding prototype states
-   before starting.
+3. **Then B2 Search Shell.** Checked `COMPONENT_INVENTORY.md` (design branch) precisely for what this actually
+   requires, rather than assuming: `app/Shell.tsx` is marked **RECOMPOSE**, not restyle —
+   (a) the three separate settings popover triggers (**Privacy & masking**, **Docker settings**, **OpenShift**)
+   consolidate into ONE **Settings** entry point with sections, (b) Scope trail moves from the Shell into the
+   query bar's Source/Project fields, (c) a new **workspace trail** breadcrumb (Search › Trace) is added, (d) the
+   standalone **Classification rules** button is deprecated in favour of Settings › Classification rules. The
+   inventory itself flags the real risk: **"existing E2E selectors migrated"** - this touches selectors across
+   many existing specs, not just this session's own. This is genuine, judgement-heavy IA work, not a token swap
+   (confirms the earlier assessment that a `Shell.module.css`/`Toolbar.module.css` colour-only pass would be
+   low-value) - scope it as its own deliberate slice with real planning time, not squeezed into a session's
+   remaining hours.
 4. Keep running the full typecheck/test/build/targeted-E2E discipline after every bounded change, and the full
    E2E suite (frontend) / full `mvn test` (if backend is touched again) at the next wave boundary — not after
    every small CSS edit (this mission's own testing policy).

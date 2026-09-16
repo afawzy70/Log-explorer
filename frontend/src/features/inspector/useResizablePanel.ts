@@ -2,7 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 export const MIN_PANEL_WIDTH = 320;
 export const MAX_PANEL_WIDTH = 720;
-const DEFAULT_PANEL_WIDTH = 420;
+/**
+ * Modern Developer Console (B1) `--v2-w-inspector`: 500px is not an
+ * arbitrary preference - measured in the real running app, the five
+ * fixed tabs (Overview, Actor & client, Request flow, Business / error,
+ * Technical / all fields) wrap onto two rows at the previous 420px
+ * default, and fit on one row at 500px.
+ */
+const DEFAULT_PANEL_WIDTH = 500;
 
 /**
  * "Safe min/max resizing" (IMPLEMENTATION_PLAN.md "Phase H") - width is
