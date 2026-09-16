@@ -154,12 +154,22 @@ export function toWritableRule(rule: ClassificationRule, keepId = true): Classif
   return out;
 }
 
-/** Errors whose path is `root` itself or indexes into it (`conditions[0].value`, `conditions.0.value`, `conditions/0`). */
+/**
+ * Errors whose path is `root` itself or indexes into it (`conditions[0].value`, `conditions.0.value`,
+ * `conditions/0`).
+ *
+ * <p>One field, `displayColor`, is a documented exception (owner mission §22.11 A2, D36): a same-tag/different-
+ * colour conflict is checked across the WHOLE rule list (`TagColorPolicy`), not this one rule alone, so the
+ * server's real path is `rules[N].displayColor` even when saving a single rule - verified against the running
+ * backend (`POST /classification-rules` with a colour already claimed by another rule returns exactly
+ * `{"path":"rules[1].displayColor", ...}`, never bare `"displayColor"`). Every other field's own validation stays
+ * rule-scoped and returns a bare path, so the optional `rules[N].` prefix below is accepted, never required.
+ */
 export function errorsAt(errors: RuleValidationError[], root: string, index?: number): RuleValidationError[] {
   const escaped = root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const pattern =
     index == null
-      ? new RegExp(`^/?${escaped}($|[.[/])`)
+      ? new RegExp(`^/?(?:rules\\[\\d+\\]\\.)?${escaped}($|[.[/])`)
       : new RegExp(`^/?${escaped}(\\[${index}\\]|[./]${index})($|[.[/])`);
   return errors.filter((e) => pattern.test(e.path));
 }
