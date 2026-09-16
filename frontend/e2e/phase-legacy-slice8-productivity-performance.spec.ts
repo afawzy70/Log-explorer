@@ -240,9 +240,9 @@ test.describe('Legacy Remediation Slice 8 — productivity, safe preferences & f
     await gotoFixture(page);
     await search(page); // the Columns control only renders once results exist
     // The app started normally and the table settings control still works,
-    // showing the default (comfortable) density rather than crashing.
+    // showing the default (compact, D1) density rather than crashing.
     await page.getByRole('button', { name: /^columns$/i }).click();
-    await expect(page.getByRole('button', { name: /^comfortable$/i })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: /^compact$/i })).toHaveAttribute('aria-pressed', 'true');
     await page.keyboard.press('Escape');
     await expect(page.locator('tbody tr').first()).toBeVisible();
   });

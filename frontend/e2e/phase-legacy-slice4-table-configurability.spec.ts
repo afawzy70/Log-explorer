@@ -187,7 +187,9 @@ test.describe('Legacy Remediation Slice 4 — results table configurability & po
     await page.getByRole('button', { name: 'Close' }).click();
 
     expect(await headers(page)).toEqual(DEFAULT_HEADERS);
-    await expect(page.locator('table')).not.toHaveClass(/compact/i);
+    // Modern Developer Console (B1) owner decision D1: compact (28px rows) is
+    // now the default density, so a reset lands back on it.
+    await expect(page.locator('table')).toHaveClass(/compact/i);
     await captureScreenshot(page, 'legacy-slice4', 'reset-to-default');
   });
 

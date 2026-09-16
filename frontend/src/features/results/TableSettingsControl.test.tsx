@@ -101,13 +101,13 @@ describe('TableSettingsControl', () => {
 
     await user.click(screen.getByRole('checkbox', { name: 'Logger' })); // show an optional column
     await user.click(screen.getByRole('checkbox', { name: 'Time' })); // hide a default column
-    await user.click(screen.getByRole('button', { name: 'Compact' }));
+    await user.click(screen.getByRole('button', { name: 'Comfortable' })); // switch away from the default (compact, D1)
 
     await user.click(screen.getByRole('button', { name: 'Reset table' }));
 
     expect(screen.getByRole('checkbox', { name: 'Time' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'Logger' })).not.toBeChecked();
-    expect(screen.getByRole('button', { name: 'Comfortable' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Compact' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('disables the checkbox for the only remaining visible column, with a describing hint (never zero visible data columns)', async () => {
