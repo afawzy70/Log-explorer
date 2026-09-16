@@ -9,6 +9,7 @@ import { useSearchState } from './useSearchState';
 import { useOpenShiftScopeSummary } from '../features/settings/useOpenShiftScopeSummary';
 import { useProductivityShortcuts } from './useProductivityShortcuts';
 import { ShortcutRegistryProvider } from '../shared/keyboard/ShortcutRegistry';
+import { useTheme } from '../shared/theme/useTheme';
 import styles from './App.module.css';
 
 /**
@@ -71,6 +72,14 @@ export default function App() {
   // Context.Provider it renders itself, only one an ancestor renders, so
   // this thin outer component exists purely to put the Provider above
   // AppContent (Legacy Remediation Slice 8).
+  //
+  // Modern Developer Console, Wave 1 Foundations: `useTheme` sets
+  // `data-theme` on `<html>` from the persisted appearance preference
+  // (system by default). Side-effect only tonight - no component reads
+  // `[data-theme='dark']` yet except the additive `tokensV2.css` custom
+  // properties, so this call changes no rendered pixel until a later
+  // slice restyles a surface against the v2 tokens.
+  useTheme();
   return (
     <ShortcutRegistryProvider>
       <AppContent />

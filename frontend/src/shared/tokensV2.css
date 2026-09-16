@@ -1,0 +1,337 @@
+/*
+ * Modern Developer Console - B1 "Instrument Neutral" design tokens
+ * (Wave 1 Foundations of `MODERN_DEVELOPER_CONSOLE_PRODUCTION_IMPLEMENTATION`).
+ *
+ * Source of truth: the owner-approved design package on
+ * `design/v2-modern-developer-console` (PR #58),
+ * `docs/ux-v2-modern-developer-console/prototype/styles/tokens.css`
+ * `[data-treatment="b1"]` block and its dark companion - copied here
+ * verbatim for the light/dark values (only the B1 treatment; B2/B3 were
+ * comparison alternatives, never shipped).
+ *
+ * ADDITIVE, not a replacement: `shared/tokens.css` (the v1 token set) is
+ * untouched and every existing component keeps reading it exactly as
+ * before. Nothing in this file is consumed by any component yet except
+ * where a later Wave 1 slice explicitly restyles it - this slice only
+ * establishes the vocabulary, self-hosted fonts, icon stroke width,
+ * motion scale and the light/dark value sets themselves, verified by
+ * rendering a token smoke-test, not by any visual change to the shipped
+ * app tonight.
+ *
+ * Theme selection: `useTheme` (`shared/theme/useTheme.ts`) sets
+ * `data-theme="light"|"dark"` on `<html>`, resolving a `'system'`
+ * preference via `prefers-color-scheme`. No component reads
+ * `prefers-color-scheme` directly - only this file does, and only as the
+ * fallback for the very first paint before the app's effect runs.
+ */
+
+@font-face {
+  font-family: 'Inter Var';
+  src: url('../assets/fonts/inter-latin-wght-normal.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono Var';
+  src: url('../assets/fonts/jetbrains-mono-latin-wght-normal.woff2') format('woff2');
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* ---- Typography ---- */
+  --v2-font-ui: 'Inter Var', 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --v2-font-mono: 'JetBrains Mono Var', ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas, monospace;
+  --v2-font-features-ui: 'tnum' 1, 'cv11' 1, 'ss03' 1;
+  --v2-font-features-mono: 'zero' 1, 'calt' 0;
+
+  --v2-text-title: 600 20px/26px var(--v2-font-ui);
+  --v2-text-workspace: 600 16px/22px var(--v2-font-ui);
+  --v2-text-section: 600 13px/20px var(--v2-font-ui);
+  --v2-text-body: 400 13px/20px var(--v2-font-ui);
+  --v2-text-body-strong: 550 13px/20px var(--v2-font-ui);
+  --v2-text-label: 500 12px/16px var(--v2-font-ui);
+  --v2-text-colhead: 600 12px/16px var(--v2-font-ui);
+  --v2-text-meta: 400 12px/16px var(--v2-font-ui);
+  --v2-text-caps: 600 11px/16px var(--v2-font-ui);
+  --v2-tracking-caps: 0.06em;
+  --v2-text-message: 400 13px/20px var(--v2-font-ui);
+  --v2-text-data: 400 12px/18px var(--v2-font-mono);
+  --v2-text-code: 400 12px/19px var(--v2-font-mono);
+
+  /* ---- Spacing (4px base, 2px half-step for dense rows) ---- */
+  --v2-sp-0-5: 2px;
+  --v2-sp-1: 4px;
+  --v2-sp-1-5: 6px;
+  --v2-sp-2: 8px;
+  --v2-sp-3: 12px;
+  --v2-sp-4: 16px;
+  --v2-sp-5: 20px;
+  --v2-sp-6: 24px;
+  --v2-sp-8: 32px;
+
+  /* ---- Density ---- */
+  --v2-h-shell: 44px;
+  --v2-h-querybar: 44px;
+  --v2-h-scope: 32px;
+  --v2-h-control: 30px;
+  --v2-h-control-sm: 24px;
+  --v2-h-row: 28px;
+  --v2-h-row-comfortable: 34px;
+  --v2-h-row-header: 30px;
+  --v2-w-gutter: 22px;
+  --v2-w-inspector: 500px;
+  --v2-gutter-panel: 16px;
+
+  /* ---- Shape ---- */
+  --v2-r-xs: 2px;
+  --v2-r-sm: 3px;
+  --v2-r-md: 4px;
+  --v2-r-lg: 6px;
+  --v2-r-full: 999px;
+  --v2-bw: 1px;
+  --v2-focus-w: 2px;
+
+  /* ---- Motion (see docs/ux-v2-modern-developer-console/MOTION_SYSTEM.md) ---- */
+  --v2-dur-instant: 80ms;
+  --v2-dur-fast: 120ms;
+  --v2-dur-base: 160ms;
+  --v2-dur-panel: 200ms;
+  --v2-dur-view: 240ms;
+  --v2-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --v2-ease-in: cubic-bezier(0.5, 0, 0.75, 0);
+  --v2-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---- Icons (lucide-react, see `shared/ui/icon` usage) ---- */
+  --v2-icon-sm: 14px;
+  --v2-icon-md: 16px;
+  --v2-icon-lg: 20px;
+  --v2-icon-stroke: 1.75;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --v2-dur-instant: 0ms;
+    --v2-dur-fast: 0ms;
+    --v2-dur-base: 60ms;
+    --v2-dur-panel: 0ms;
+    --v2-dur-view: 0ms;
+  }
+}
+
+/* =====================================================================
+   Light (default, and the fallback for the very first paint)
+   ===================================================================== */
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
+  --v2-bg-app: #eceef1;
+  --v2-surface-shell: #f9fafb;
+  --v2-surface-work: #ffffff;
+  --v2-surface-bar: #f9fafb;
+  --v2-surface-inspector: #f7f8fa;
+  --v2-surface-capture: #f3f5f7;
+  --v2-surface-raised: #ffffff;
+  --v2-surface-sunken: #f1f3f5;
+  --v2-surface-code: #f4f6f8;
+
+  --v2-line-subtle: #e6e9ed;
+  --v2-line: #d6dbe1;
+  --v2-line-strong: #adb5bf;
+  --v2-control-border: #808993;
+  --v2-ruler: #c9d0d8;
+
+  --v2-ink-1: #14181d;
+  --v2-ink-2: #48505a;
+  --v2-ink-3: #636b75;
+  --v2-ink-disabled: #9aa2ab;
+  --v2-ink-inverse: #ffffff;
+
+  --v2-accent: #0b6975;
+  --v2-accent-hover: #09565f;
+  --v2-accent-ink: #0a5e69;
+  --v2-accent-tint: #e3f0f1;
+  --v2-accent-tint-strong: #cfe5e7;
+  --v2-focus: #0b6975;
+
+  --v2-hover: #f1f4f6;
+  --v2-selected: #e3f0f1;
+  --v2-selected-hover: #d8eaec;
+  --v2-trigger-line: #0b6975;
+
+  --v2-sev-error: #b42318;
+  --v2-sev-error-mark: #d92d20;
+  --v2-sev-error-row: #fdf3f2;
+  --v2-sev-warn: #8a5300;
+  --v2-sev-warn-mark: #b06d05;
+  --v2-sev-warn-row: transparent;
+  --v2-sev-info: #2c5d95;
+  --v2-sev-info-mark: #4a7fbd;
+  --v2-sev-debug: #5d6670;
+  --v2-sev-debug-mark: #8c949c;
+  --v2-sev-trace: #6a5a8c;
+  --v2-sev-trace-mark: #9d8fbd;
+
+  --v2-success: #1d7042;
+  --v2-success-tint: #e7f3ec;
+  --v2-warning: #8a5300;
+  --v2-warning-tint: #fbf1dc;
+  --v2-danger: #b42318;
+  --v2-danger-tint: #fcebea;
+  --v2-danger-line: #efb4ae;
+  --v2-neutral-tint: #eef1f4;
+
+  /*
+   * Classification tag palette (production truth after PR #60,
+   * `TagColor`/`TagColorPolicy`): a tinted pill + coloured dot + neutral
+   * text, deliberately different from severity's coloured ink + level
+   * mark, so a RED tag never reads as an ERROR level
+   * (DESIGN_SYSTEM.md §22.2). Text is always ink-2 (>=7:1 on its tint);
+   * the dot is redundant identity only (>=3.7:1 on its tint).
+   */
+  --v2-tag-gray: #5f6a77;
+  --v2-tag-gray-tint: #eef1f4;
+  --v2-tag-blue: #2f6ec2;
+  --v2-tag-blue-tint: #e9f0fa;
+  --v2-tag-cyan: #17788d;
+  --v2-tag-cyan-tint: #e4f2f5;
+  --v2-tag-green: #2f7d53;
+  --v2-tag-green-tint: #e8f4ea;
+  --v2-tag-amber: #9c751b;
+  --v2-tag-amber-tint: #faf1dd;
+  --v2-tag-orange: #b96322;
+  --v2-tag-orange-tint: #fbeee4;
+  --v2-tag-red: #c0453b;
+  --v2-tag-red-tint: #fbecea;
+  --v2-tag-purple: #7959b3;
+  --v2-tag-purple-tint: #f1ecf8;
+  --v2-tag-ink: var(--v2-ink-2);
+
+  --v2-masked: #5d6670;
+  --v2-masked-tint: #eef1f4;
+
+  --v2-shadow-pop: 0 1px 2px rgba(16, 22, 28, 0.06), 0 6px 18px rgba(16, 22, 28, 0.1);
+  --v2-shadow-sheet: 0 10px 32px rgba(16, 22, 28, 0.18);
+  --v2-scrim: rgba(16, 22, 28, 0.32);
+
+  --v2-lane-1: #5b6fb8;
+  --v2-lane-2: #3f8f5a;
+  --v2-lane-3: #8a6fb3;
+  --v2-lane-4: #7a8a3a;
+  --v2-lane-5: #5f7285;
+  --v2-lane-6: #a35b8f;
+  --v2-lane-7: #3d8a9c;
+}
+
+/* =====================================================================
+   Dark companion - a defined token set, not an inversion filter.
+   ===================================================================== */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --v2-bg-app: #0e1114;
+  --v2-surface-shell: #121619;
+  --v2-surface-work: #15191d;
+  --v2-surface-bar: #171b20;
+  --v2-surface-inspector: #191e23;
+  --v2-surface-capture: #12171b;
+  --v2-surface-raised: #1d2329;
+  --v2-surface-sunken: #111519;
+  --v2-surface-code: #111519;
+  --v2-line-subtle: #222930;
+  --v2-line: #2c343c;
+  --v2-line-strong: #46515c;
+  --v2-control-border: #707b86;
+  --v2-ruler: #34404a;
+  --v2-ink-1: #e5e9ed;
+  --v2-ink-2: #aeb6bf;
+  --v2-ink-3: #8c96a0;
+  --v2-ink-disabled: #5d6670;
+  --v2-ink-inverse: #0e1114;
+  --v2-accent: #4fb3bd;
+  --v2-accent-hover: #6cc3cb;
+  --v2-accent-ink: #7ccbd2;
+  --v2-accent-tint: #173034;
+  --v2-accent-tint-strong: #1d3c41;
+  --v2-focus: #6cc3cb;
+  --v2-hover: #1b2126;
+  --v2-selected: #173034;
+  --v2-selected-hover: #1c393d;
+  --v2-trigger-line: #4fb3bd;
+  --v2-sev-error: #f28b82;
+  --v2-sev-error-mark: #ef6a60;
+  --v2-sev-error-row: #231718;
+  --v2-sev-warn: #e2ad57;
+  --v2-sev-warn-mark: #d69a3a;
+  --v2-sev-info: #86ade0;
+  --v2-sev-info-mark: #6d99d2;
+  --v2-sev-debug: #9aa3ac;
+  --v2-sev-debug-mark: #6f7881;
+  --v2-sev-trace: #b4a6d6;
+  --v2-sev-trace-mark: #8e80b3;
+  --v2-success: #6cc28f;
+  --v2-success-tint: #16281f;
+  --v2-warning: #e2ad57;
+  --v2-warning-tint: #2a2214;
+  --v2-danger: #f28b82;
+  --v2-danger-tint: #2a1818;
+  --v2-danger-line: #6b3430;
+  --v2-neutral-tint: #1d2329;
+  --v2-tag-gray: #8c96a0;
+  --v2-tag-gray-tint: #1f262d;
+  --v2-tag-blue: #69a6e8;
+  --v2-tag-blue-tint: #16222f;
+  --v2-tag-cyan: #53b3c8;
+  --v2-tag-cyan-tint: #13242a;
+  --v2-tag-green: #5db989;
+  --v2-tag-green-tint: #14251c;
+  --v2-tag-amber: #c7a04a;
+  --v2-tag-amber-tint: #251f12;
+  --v2-tag-orange: #dd8b52;
+  --v2-tag-orange-tint: #271d15;
+  --v2-tag-red: #e4796f;
+  --v2-tag-red-tint: #2a1a18;
+  --v2-tag-purple: #ab8cdf;
+  --v2-tag-purple-tint: #221c2e;
+  --v2-tag-ink: var(--v2-ink-2);
+  --v2-masked: #9aa3ac;
+  --v2-masked-tint: #1d2329;
+  --v2-shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 22px rgba(0, 0, 0, 0.45);
+  --v2-shadow-sheet: 0 12px 36px rgba(0, 0, 0, 0.55);
+  --v2-scrim: rgba(0, 0, 0, 0.5);
+  --v2-lane-1: #8793e0;
+  --v2-lane-2: #6fb88a;
+  --v2-lane-3: #a893d6;
+  --v2-lane-4: #a9b86a;
+  --v2-lane-5: #8d9fb0;
+  --v2-lane-6: #d77fc0;
+  --v2-lane-7: #6cb8d4;
+}
+
+/*
+ * System-preference fallback for the instant between the stylesheet
+ * loading and `useTheme`'s effect running (both happen before first
+ * paint in this pure-CSR app, but the attribute selector above is the
+ * authoritative source once it is set - this block only covers a
+ * `data-theme`-less root, e.g. a component test that mounts CSS without
+ * the hook).
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='dark']) {
+    color-scheme: dark;
+  }
+}
+
+/*
+ * Focus-visible system (CLAUDE.md §7 "visible focus"; WCAG 2.4.11/2.4.13
+ * via `--v2-focus-w`). Additive: does not touch v1 `:focus-visible`
+ * rules already in `shared/tokens.css`, and applies only inside a v2
+ * surface (`[data-v2-scope]`, set by the first restyled component in a
+ * later slice) so no existing v1-only screen changes focus rendering
+ * tonight.
+ */
+[data-v2-scope] :focus-visible {
+  outline: var(--v2-focus-w) solid var(--v2-focus);
+  outline-offset: 2px;
+}
