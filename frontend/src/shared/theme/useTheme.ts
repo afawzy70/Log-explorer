@@ -24,12 +24,15 @@ function resolveTheme(preference: ThemePreference): 'light' | 'dark' {
 
 /**
  * Applies `data-theme` on the document root so every B1 token block in
- * `tokensV2.css` (`:root[data-theme="light"|"dark"]`) resolves without a
- * flash-of-wrong-theme render: the effect runs before paint via
- * `useLayoutEffect`-equivalent timing is not required here because the
- * app is pure CSR (no SSR, `main.tsx` mounts synchronously) - the
- * attribute is set on the very first render pass, before the browser's
- * first paint of anything that reads it.
+ * `tokensV2.css` (`:root[data-theme="light"|"dark"]`) can resolve. A plain
+ * `useEffect` (used here, not `useLayoutEffect`) is not guaranteed to run
+ * before the browser's first paint, so an explicit `dark` preference can
+ * in principle show one frame of the light fallback first - accepted for
+ * this pure-CSR app (no SSR/blocking script to set the attribute earlier).
+ * In practice this has not been observed: `tokensV2.css`'s bare `:root`
+ * selector already matches the design's own light values as the fallback,
+ * so the common case (system/light) has no flash to begin with, and only
+ * an explicit `dark` choice is even theoretically affected.
  */
 export function useTheme(): {
   preference: ThemePreference;

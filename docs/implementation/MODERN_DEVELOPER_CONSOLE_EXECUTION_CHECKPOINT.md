@@ -90,13 +90,14 @@ should say "frontend + a small additive backend field", not "frontend only".
   etc.), not a token rename on an already-similar palette. Genuine B2 work should be scoped as its own slice next
   session, not squeezed in as a low-value token swap.
 
-### Tests run this session (cumulative, at the final commit `8e35289`)
+### Tests run this session (cumulative, at the final code commit `d94b0ac`)
 
 - `npm run typecheck` — PASS (every commit).
-- `npm test` — **1089/1089 PASS** (final full run). Ran the complete suite after every commit; every regression
-  found (5 total, across 3 commits) was a genuine, deliberate behavioural change this session made on purpose
-  (never a weakened assertion) — see each commit's own description above and in git history for the exact
-  before/after.
+- `npm test` — **1091/1091 PASS** (final full run, after `d94b0ac`). Ran the complete suite after every commit;
+  every regression the suite ever caught mid-session was a genuine, deliberate behavioural change this session
+  made on purpose (the `+N` chip shape, the compact-density default, the rules-list truncation, the "reset table"
+  density) — see each commit's own description above and in git history for the exact before/after. None were
+  weakened assertions.
 - `npm run build` — PASS, every commit (bundle size checked; `lucide-react`/`Icon.tsx` confirmed tree-shaken out
   until a future commit actually imports it).
 - Targeted Playwright specs — PASS in isolation after every relevant commit: `classification-rules.spec.ts`,
@@ -151,8 +152,7 @@ should say "frontend + a small additive backend field", not "frontend only".
 
 ### Files currently being worked on
 
-None — the working tree is clean at the last commit (`8e35289`), nothing mid-edit, nothing uncommitted (aside
-from this checkpoint file itself, being written now and committed before the session ends).
+None — the working tree is clean at the last code commit (`d94b0ac`), nothing mid-edit, nothing uncommitted.
 
 ### Design states used as reference
 
@@ -161,7 +161,7 @@ from this checkpoint file itself, being written now and committed before the ses
 `91-import-colour-conflict` (A1a's target UX, though its two *resolution* buttons remain intentionally disabled
 per D39/A1b — not built), `92-results-tags-default-column` / `93-results-tag-not-severity` (chip grammar in
 Results), `94-rules-list-colours` (A11's target — first tag + neutral counter). `DESIGN_SYSTEM.md` §22 (current
-truth), §22.11 (A1a/A1b/A2–A13 — what the design adds beyond production, the source for tonight's A1a/A2/A9/A11
+truth), §22.11 (A1a/A1b/A2–A13 — what the design adds beyond production, the source for tonight's A1a/A2/A9/A11/A12
 work).
 
 ### Owner decisions assumed (per this mission's explicit Phase 2 policy — not invented)

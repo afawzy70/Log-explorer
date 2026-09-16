@@ -15,7 +15,7 @@ const COLOR_CLASS: Record<TagColor, string> = {
 export interface TagChipProps {
   tag: string;
   color?: TagColor | null;
-  /** Rendered instead of the tag name (for the "+2" overflow chip), which still needs its own accessible label. */
+  /** Rendered instead of the tag name (e.g. the colour picker's swatch labels - "Blue", "Purple" - which still need their own accessible label). Overflow counts use `TagCountBadge` below, never this prop. */
   label?: string;
   title?: string;
 }
