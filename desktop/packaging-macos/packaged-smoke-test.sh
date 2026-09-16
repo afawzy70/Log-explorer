@@ -19,9 +19,30 @@ DMG_PATH="${1:?Usage: packaged-smoke-test.sh <path-to-generated-dmg>}"
 INSTALL_DIR="$(mktemp -d /tmp/logexplorer-macos-install-XXXXXX)"
 MOUNT_POINT=""
 APP_PID=""
+# Where the launcher tells the backend to persist classification rules
+# (AppPaths.DATA_DIRECTORY, passed as LOGEXPLORER_DATA_DIR).
+RULES_DATA_DIR="$HOME/Library/Application Support/LogExplorer/data"
+# Set once this script has saved any pre-existing rules data aside;
+# restore_rules_data puts it back (or removes what the smoke rule created)
+# so a developer machine or CI runner is left exactly as it was found.
+RULES_BACKUP_DIR=""
 
 step() { echo; echo "=== $1 ==="; }
 fail() { echo "FAIL: $1" >&2; cleanup; exit 1; }
+
+restore_rules_data() {
+  [ -n "$RULES_BACKUP_DIR" ] || return 0
+  for name in classification-rules.json classification-rules.json.bak; do
+    if [ -f "$RULES_BACKUP_DIR/$name" ]; then
+      cp -p "$RULES_BACKUP_DIR/$name" "$RULES_DATA_DIR/$name" 2>/dev/null || true
+    else
+      rm -f "$RULES_DATA_DIR/$name"
+    fi
+  done
+  rmdir "$RULES_DATA_DIR" 2>/dev/null || true
+  rm -rf "$RULES_BACKUP_DIR"
+  RULES_BACKUP_DIR=""
+}
 
 cleanup() {
   if [ -n "$APP_PID" ] && kill -0 "$APP_PID" 2>/dev/null; then
@@ -30,6 +51,7 @@ cleanup() {
   if [ -n "$MOUNT_POINT" ]; then
     hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || true
   fi
+  restore_rules_data
 }
 trap cleanup EXIT
 
@@ -105,6 +127,39 @@ if ! echo "$SOURCES_BODY" | grep -Eq '"id":"(fixture|local-docker|openshift-loki
 fi
 echo 'API call returned real source data'
 
+step 'Classification rules persist under ~/Library/Application Support/LogExplorer/data (never inside the app bundle)'
+RULES_URL="http://127.0.0.1:${PORT}/api/v1/settings/classification-rules"
+# Save any pre-existing rules data aside before the smoke rule touches it.
+RULES_BACKUP_DIR="$(mktemp -d /tmp/logexplorer-smoke-rules-XXXXXX)"
+for name in classification-rules.json classification-rules.json.bak; do
+  if [ -f "$RULES_DATA_DIR/$name" ]; then cp -p "$RULES_DATA_DIR/$name" "$RULES_BACKUP_DIR/"; fi
+done
+
+RULES_STATE="$(curl -s -m 10 "$RULES_URL")" || fail "GET $RULES_URL failed"
+REVISION="$(printf '%s' "$RULES_STATE" | grep -Eo '"revision":[0-9]+' | head -n1 | cut -d: -f2 || true)"
+STORAGE_FILE="$(printf '%s' "$RULES_STATE" | grep -Eo '"storageFile":"[^"]*"' | head -n1 | sed -e 's/^"storageFile":"//' -e 's/"$//' || true)"
+if [ -z "$REVISION" ]; then fail 'classification rules response has no revision'; fi
+if [ -z "$STORAGE_FILE" ]; then fail 'classification rules response has no storageFile'; fi
+echo "Rules storageFile (from the API): $STORAGE_FILE"
+case "$STORAGE_FILE" in
+  "$RULES_DATA_DIR"/*) : ;;
+  *) fail "rules storageFile '$STORAGE_FILE' is not under $RULES_DATA_DIR - the launcher did not pass LOGEXPLORER_DATA_DIR to the backend" ;;
+esac
+case "$STORAGE_FILE" in
+  "$INSTALL_DIR"/*|"/private$INSTALL_DIR"/*|"$INSTALLED_APP"/*)
+    fail "rules storageFile '$STORAGE_FILE' is inside the installed app location $INSTALL_DIR - replacing or deleting the bundle would lose the user's rules" ;;
+esac
+
+RULE_BODY="{\"expectedRevision\":${REVISION},\"rule\":{\"name\":\"Smoke rule\",\"tags\":[\"smoke\"],\"conditions\":[{\"field\":\"message\",\"matcher\":\"CONTAINS\",\"value\":\"smoke-test-marker\"}]}}"
+POST_STATUS="$(curl -s -m 10 -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d "$RULE_BODY" "$RULES_URL" || true)"
+case "$POST_STATUS" in
+  2??) : ;;
+  *) fail "POST $RULES_URL (create smoke rule) returned HTTP $POST_STATUS, expected 2xx" ;;
+esac
+if [ ! -f "$STORAGE_FILE" ]; then fail "rules file $STORAGE_FILE does not exist on disk after a successful save"; fi
+if ! grep -q 'smoke-test-marker' "$STORAGE_FILE"; then fail "rules file $STORAGE_FILE does not contain the smoke rule after a successful save"; fi
+echo "Smoke rule saved to $STORAGE_FILE (outside $INSTALL_DIR)"
+
 step 'Quit the application and verify clean shutdown (no orphan java process)'
 kill "$APP_PID"
 KILLED_PID="$APP_PID"
@@ -123,6 +178,15 @@ step 'Uninstall (a macOS app is uninstalled by deleting the bundle - no separate
 rm -rf "$INSTALLED_APP"
 if [ -d "$INSTALLED_APP" ]; then fail 'app bundle removal did not take effect'; fi
 echo 'App bundle removed'
+
+step 'Classification rules survive uninstall (replacing/deleting the bundle keeps them)'
+if [ ! -f "$STORAGE_FILE" ]; then fail "rules file $STORAGE_FILE was removed with the app bundle - rules would not survive an upgrade or reinstall"; fi
+if ! grep -q 'smoke-test-marker' "$STORAGE_FILE"; then fail "rules file $STORAGE_FILE no longer contains the smoke rule after uninstall"; fi
+echo 'Rules file survived uninstall'
+
+step 'Clean up the smoke rule (restore any pre-existing rules data)'
+restore_rules_data
+echo "Rules data under $RULES_DATA_DIR restored to its pre-test state"
 
 echo
 echo "PACKAGED MACOS SMOKE TEST PASSED"

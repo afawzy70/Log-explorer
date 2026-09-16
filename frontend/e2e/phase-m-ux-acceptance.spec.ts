@@ -290,11 +290,26 @@ test.describe('Task 5 - Monitor live logs', () => {
 });
 
 test.describe('Task 6 - Failure states', () => {
-  test('source unavailable - openshift-loki with no gateway configured shows an honest unavailable state', async ({
+  test('source unavailable - a source whose health is down shows an honest unavailable state', async ({
     page,
   }) => {
+    // Owner decision (PR #59 pre-merge): OpenShift Loki is no longer
+    // selectable in the UI, so the unavailable state is exercised with a
+    // selectable source reporting DOWN health.
+    await page.route('**/api/v1/sources/local-docker/health', (route) =>
+      route.fulfill({
+        json: {
+          status: 'DOWN',
+          message: 'Docker daemon is not reachable',
+          checkedAt: new Date().toISOString(),
+          latencyMs: null,
+          warnings: [],
+          capabilities: { historicalSearch: true, liveTail: true, rawLogQL: false, serviceDiscovery: true, queryStatistics: false, contextView: false },
+        },
+      }),
+    );
     await page.goto('/');
-    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('openshift-loki');
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('local-docker');
     await expect(page.getByText(/unavailable|unhealthy|not reachable|error/i).first()).toBeVisible({ timeout: 10_000 });
     await captureScreenshot(page, 'm', 'task6-source-unavailable');
   });
@@ -303,8 +318,10 @@ test.describe('Task 6 - Failure states', () => {
     page,
   }) => {
     await page.goto('/');
-    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('openshift-loki');
-    // openshift-loki's own real capabilities report serviceDiscovery:false -
+    // Owner decision (PR #59 pre-merge): OpenShift Loki is not selectable in
+    // the UI; the direct OpenShift source also reports serviceDiscovery:false.
+    await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('openshift');
+    // the selected source's own real capabilities report serviceDiscovery:false -
     // the service multi-select must not silently claim "0 services" as if
     // it asked and got none; the honest behavior is to not offer the
     // control's discovery-backed state at all for a source that can't.

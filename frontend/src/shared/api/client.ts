@@ -1,5 +1,16 @@
 import type {
   CanonicalFieldKey,
+  ClassificationRule,
+  ClassificationRulesState,
+  ImportApplyRequest,
+  ImportApplyResult,
+  ImportPreviewResult,
+  PatternDetectionRequest,
+  PatternDetectionResult,
+  RuleTestRequest,
+  RuleTestResult,
+  RuleValidationError,
+  RuleValidationResult,
   ContextRequestBody,
   DockerConnectionCandidate,
   DockerConnectionSummary,
@@ -577,4 +588,168 @@ export async function fetchFieldMappingSchemaScan(
     { method: 'POST', signal },
   );
   return parseJsonOrThrow<SchemaScanResponse>(response);
+}
+
+/* ------------------------------------------------------------------ */
+/* Event Classification & Extraction Rules                             */
+/* ------------------------------------------------------------------ */
+
+const CLASSIFICATION_RULES_BASE = '/api/v1/settings/classification-rules';
+
+/** The backend's machine-readable `reason`, when the error carries one. */
+export function apiErrorReason(error: unknown): string | null {
+  return error instanceof ApiError ? (error.problem.reason ?? null) : null;
+}
+
+/** `RULES_REVISION_CONFLICT` - the rules changed elsewhere since this client last read them. */
+export function isRulesRevisionConflict(error: unknown): boolean {
+  return apiErrorReason(error) === 'RULES_REVISION_CONFLICT';
+}
+
+/** Per-path validation errors carried by `RULE_INVALID` / `IMPORT_HAS_INVALID_RULES`; empty otherwise. */
+export function ruleValidationErrors(error: unknown): RuleValidationError[] {
+  return error instanceof ApiError && Array.isArray(error.problem.errors) ? error.problem.errors : [];
+}
+
+export async function fetchClassificationRules(signal?: AbortSignal): Promise<ClassificationRulesState> {
+  const response = await fetch(CLASSIFICATION_RULES_BASE, { signal });
+  return parseJsonOrThrow<ClassificationRulesState>(response);
+}
+
+export async function createClassificationRule(
+  expectedRevision: number,
+  rule: ClassificationRule,
+  signal?: AbortSignal,
+): Promise<ClassificationRulesState> {
+  const response = await fetch(CLASSIFICATION_RULES_BASE, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expectedRevision, rule }),
+    signal,
+  });
+  return parseJsonOrThrow<ClassificationRulesState>(response);
+}
+
+export async function updateClassificationRule(
+  id: string,
+  expectedRevision: number,
+  rule: ClassificationRule,
+  signal?: AbortSignal,
+): Promise<ClassificationRulesState> {
+  const response = await fetch(`${CLASSIFICATION_RULES_BASE}/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expectedRevision, rule }),
+    signal,
+  });
+  return parseJsonOrThrow<ClassificationRulesState>(response);
+}
+
+export async function deleteClassificationRule(
+  id: string,
+  expectedRevision: number,
+  signal?: AbortSignal,
+): Promise<ClassificationRulesState> {
+  const response = await fetch(
+    `${CLASSIFICATION_RULES_BASE}/${encodeURIComponent(id)}?expectedRevision=${encodeURIComponent(expectedRevision)}`,
+    { method: 'DELETE', signal },
+  );
+  return parseJsonOrThrow<ClassificationRulesState>(response);
+}
+
+export async function validateClassificationRule(rule: ClassificationRule, signal?: AbortSignal): Promise<RuleValidationResult> {
+  const response = await fetch(`${CLASSIFICATION_RULES_BASE}/validate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(rule),
+    signal,
+  });
+  return parseJsonOrThrow<RuleValidationResult>(response);
+}
+
+/** A suggestion only - the backend saves nothing. The anchor value travels in the POST body, never a URL. */
+export async function detectClassificationPattern(
+  body: PatternDetectionRequest,
+  signal?: AbortSignal,
+): Promise<PatternDetectionResult> {
+  const response = await fetch(`${CLASSIFICATION_RULES_BASE}/detect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+  return parseJsonOrThrow<PatternDetectionResult>(response);
+}
+
+/** Evaluates a draft rule against a bounded sample - nothing is persisted. */
+export async function testClassificationRule(body: RuleTestRequest, signal?: AbortSignal): Promise<RuleTestResult> {
+  const response = await fetch(`${CLASSIFICATION_RULES_BASE}/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+  return parseJsonOrThrow<RuleTestResult>(response);
+}
+
+/** `ids` omitted or empty exports every rule. Rule ids are non-sensitive identifiers. */
+export function classificationExportUrl(ids?: string[]): string {
+  const params = new URLSearchParams();
+  for (const id of ids ?? []) {
+    params.append('ids', id);
+  }
+  const qs = params.toString();
+  return `${CLASSIFICATION_RULES_BASE}/export${qs ? `?${qs}` : ''}`;
+}
+
+const DEFAULT_EXPORT_FILENAME = 'log-explorer-classification-pack.json';
+
+function filenameFromDisposition(header: string | null): string {
+  const match = header ? /filename="?([^";]+)"?/i.exec(header) : null;
+  return match ? match[1] : DEFAULT_EXPORT_FILENAME;
+}
+
+/**
+ * Downloads the rule pack: fetch, Blob, object URL, a temporary
+ * `<a download>` that is clicked and removed, then the URL is revoked.
+ */
+export async function downloadClassificationRulesExport(ids?: string[], signal?: AbortSignal): Promise<void> {
+  const response = await fetch(classificationExportUrl(ids), { signal });
+  if (!response.ok) {
+    await parseJsonOrThrow<never>(response);
+  }
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = filenameFromDisposition(response.headers.get('Content-Disposition'));
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+/** Sends the raw pack file text as `text/plain`. Writes nothing. */
+export async function previewClassificationImport(packText: string, signal?: AbortSignal): Promise<ImportPreviewResult> {
+  const response = await fetch(`${CLASSIFICATION_RULES_BASE}/import/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: packText,
+    signal,
+  });
+  return parseJsonOrThrow<ImportPreviewResult>(response);
+}
+
+export async function applyClassificationImport(body: ImportApplyRequest, signal?: AbortSignal): Promise<ImportApplyResult> {
+  const response = await fetch(`${CLASSIFICATION_RULES_BASE}/import/apply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+  return parseJsonOrThrow<ImportApplyResult>(response);
 }

@@ -20,9 +20,44 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\Log Explorer'
+# Where the launcher tells the backend to persist classification rules
+# (AppPaths.DataDirectory, passed as LOGEXPLORER_DATA_DIR).
+$RulesDataDir = [System.IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'LogExplorer\data'))
+$RulesFileNames = @('classification-rules.json', 'classification-rules.json.bak')
+# Set once this script has saved any pre-existing rules data aside; the
+# restore below puts it back (or removes what the smoke rule created) so a
+# developer machine or CI runner is left exactly as it was found.
+$script:RulesBackupDir = $null
 
 function Step($name) { Write-Host "`n=== $name ===" }
-function Fail($message) { Write-Error "FAIL: $message"; exit 1 }
+
+function Restore-ClassificationRulesData {
+    if (-not $script:RulesBackupDir) { return }
+    try {
+        foreach ($name in $RulesFileNames) {
+            $target = Join-Path $RulesDataDir $name
+            $saved = Join-Path $script:RulesBackupDir $name
+            if (Test-Path -LiteralPath $saved) { Copy-Item -LiteralPath $saved -Destination $target -Force }
+            else { Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue }
+        }
+        if ((Test-Path -LiteralPath $RulesDataDir) -and -not (Get-ChildItem -LiteralPath $RulesDataDir -Force)) {
+            Remove-Item -LiteralPath $RulesDataDir -Force -ErrorAction SilentlyContinue
+        }
+        Remove-Item -LiteralPath $script:RulesBackupDir -Recurse -Force -ErrorAction SilentlyContinue
+    } catch {
+        Write-Host "WARNING: could not fully restore classification rules data under $RulesDataDir"
+    }
+    $script:RulesBackupDir = $null
+}
+
+# Restores rules data first, so a failed run never leaves the smoke rule behind.
+function Fail($message) { Restore-ClassificationRulesData; Write-Error "FAIL: $message"; exit 1 }
+
+function Test-PathIsUnder($path, $root) {
+    $full = [System.IO.Path]::GetFullPath($path)
+    $rootFull = [System.IO.Path]::GetFullPath($root).TrimEnd('\') + '\'
+    return $full.StartsWith($rootFull, [System.StringComparison]::OrdinalIgnoreCase)
+}
 
 Step 'Install (silent, per-user - no admin/UAC prompt expected)'
 $installProc = Start-Process -FilePath $InstallerPath -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOICONS' -Wait -PassThru
@@ -94,6 +129,47 @@ if (-not ($sources | Where-Object { $_.id -eq 'fixture' -or $_.id -eq 'local-doc
 }
 Write-Host 'API call returned real source data'
 
+Step 'Classification rules persist under %LOCALAPPDATA%\LogExplorer\data (never inside the install directory)'
+$rulesUrl = "http://127.0.0.1:$port/api/v1/settings/classification-rules"
+# Save any pre-existing rules data aside before the smoke rule touches it.
+$script:RulesBackupDir = Join-Path ([System.IO.Path]::GetTempPath()) ("logexplorer-smoke-rules-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $script:RulesBackupDir | Out-Null
+foreach ($name in $RulesFileNames) {
+    $existing = Join-Path $RulesDataDir $name
+    if (Test-Path -LiteralPath $existing) { Copy-Item -LiteralPath $existing -Destination $script:RulesBackupDir }
+}
+
+try { $rulesState = Invoke-RestMethod -Uri $rulesUrl -TimeoutSec 10 } catch { Fail "GET $rulesUrl failed: $($_.Exception.Message)" }
+if ($null -eq $rulesState.revision) { Fail 'classification rules response has no revision' }
+if ([string]::IsNullOrWhiteSpace($rulesState.storageFile)) { Fail 'classification rules response has no storageFile' }
+$storageFile = [System.IO.Path]::GetFullPath($rulesState.storageFile)
+Write-Host "Rules storageFile (from the API): $storageFile"
+if (-not (Test-PathIsUnder $storageFile $RulesDataDir)) {
+    Fail "rules storageFile '$storageFile' is not under $RulesDataDir - the launcher did not pass LOGEXPLORER_DATA_DIR to the backend"
+}
+if (Test-PathIsUnder $storageFile $InstallDir) {
+    Fail "rules storageFile '$storageFile' is inside the install directory $InstallDir - an upgrade or uninstall would lose the user's rules"
+}
+
+$ruleBody = @{
+    expectedRevision = $rulesState.revision
+    rule             = @{
+        name       = 'Smoke rule'
+        tags       = @('smoke')
+        conditions = @(@{ field = 'message'; matcher = 'CONTAINS'; value = 'smoke-test-marker' })
+    }
+} | ConvertTo-Json -Depth 6
+try {
+    $savedState = Invoke-RestMethod -Uri $rulesUrl -Method Post -ContentType 'application/json' -Body $ruleBody -TimeoutSec 10
+} catch {
+    Fail "POST $rulesUrl (create smoke rule) failed: $($_.Exception.Message)"
+}
+if (-not ($savedState.rules | Where-Object { $_.name -eq 'Smoke rule' })) { Fail 'the saved rules state returned by POST does not contain the smoke rule' }
+if ([System.IO.Path]::GetFullPath($savedState.storageFile) -ne $storageFile) { Fail "storageFile changed between GET ($storageFile) and POST ($($savedState.storageFile))" }
+if (-not (Test-Path -LiteralPath $storageFile -PathType Leaf)) { Fail "rules file $storageFile does not exist on disk after a successful save" }
+if (-not (Select-String -LiteralPath $storageFile -SimpleMatch 'smoke-test-marker' -Quiet)) { Fail "rules file $storageFile does not contain the smoke rule after a successful save" }
+Write-Host "Smoke rule saved to $storageFile (outside $InstallDir)"
+
 Step 'Close the application and verify clean shutdown (no orphan backend process)'
 Stop-Process -Id $launcherProc.Id -Force
 Start-Sleep -Seconds 3
@@ -115,5 +191,14 @@ if ($uninstallExe) {
 } else {
     Fail 'no uninstaller (unins*.exe) found in the install directory'
 }
+
+Step 'Classification rules survive uninstall (an upgrade/reinstall keeps them)'
+if (-not (Test-Path -LiteralPath $storageFile -PathType Leaf)) { Fail "rules file $storageFile was removed by uninstall - rules would not survive an upgrade or reinstall" }
+if (-not (Select-String -LiteralPath $storageFile -SimpleMatch 'smoke-test-marker' -Quiet)) { Fail "rules file $storageFile no longer contains the smoke rule after uninstall" }
+Write-Host 'Rules file survived uninstall'
+
+Step 'Clean up the smoke rule (restore any pre-existing rules data)'
+Restore-ClassificationRulesData
+Write-Host "Rules data under $RulesDataDir restored to its pre-test state"
 
 Write-Host "`nPACKAGED WINDOWS SMOKE TEST PASSED"

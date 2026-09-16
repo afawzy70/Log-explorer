@@ -37,6 +37,8 @@ export interface InspectorHeaderProps {
    * investigator having to remember which section it hides in.
    */
   onShowContext: () => void;
+  /** Event Classification & Extraction Rules - opens the rules workspace in create-from-event mode for this event. */
+  onCreateTagRule?: () => void;
 }
 
 /** "Header: severity, service, title derived from message/error code. No invented diagnosis or root cause." (HANDOVER.md §16.1) */
@@ -50,6 +52,7 @@ export function InspectorHeader({
   closeButtonRef,
   position,
   onShowContext,
+  onCreateTagRule,
 }: InspectorHeaderProps) {
   const color = levelColor(event.severity);
   return (
@@ -81,6 +84,11 @@ export function InspectorHeader({
             Next →
           </Button>
           <ContextAction event={event} onConfirm={onShowContext} />
+          {onCreateTagRule ? (
+            <Button variant="ghost" onClick={onCreateTagRule}>
+              Create tag rule from this event
+            </Button>
+          ) : null}
         </div>
         <Button ref={closeButtonRef} variant="ghost" onClick={onClose}>
           <VisuallyHidden>Close event inspector</VisuallyHidden>

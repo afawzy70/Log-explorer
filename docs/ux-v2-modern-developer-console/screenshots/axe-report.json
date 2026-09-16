@@ -1,0 +1,491 @@
+{
+  "axe": "4.12.1",
+  "runs": 121,
+  "totalViolations": 0,
+  "results": [
+    {
+      "state": "b1/01-search-results",
+      "violations": []
+    },
+    {
+      "state": "b1/02-search-running",
+      "violations": []
+    },
+    {
+      "state": "b1/03-search-error",
+      "violations": []
+    },
+    {
+      "state": "b1/04-inspector-overview",
+      "violations": []
+    },
+    {
+      "state": "b1/05-inspector-actor",
+      "violations": []
+    },
+    {
+      "state": "b1/06-inspector-request-flow",
+      "violations": []
+    },
+    {
+      "state": "b1/07-inspector-business-error",
+      "violations": []
+    },
+    {
+      "state": "b1/08-inspector-technical",
+      "violations": []
+    },
+    {
+      "state": "b1/09-investigation-trace",
+      "violations": []
+    },
+    {
+      "state": "b1/10-investigation-journey",
+      "violations": []
+    },
+    {
+      "state": "b1/11-context-surroundings",
+      "violations": []
+    },
+    {
+      "state": "b1/12-more-filters",
+      "violations": []
+    },
+    {
+      "state": "b1/13-mapping-workspace",
+      "violations": []
+    },
+    {
+      "state": "b1/14-mapping-editing",
+      "violations": []
+    },
+    {
+      "state": "b1/15-mapping-needs-change-unmapped",
+      "violations": []
+    },
+    {
+      "state": "b1/16-settings-sources",
+      "violations": []
+    },
+    {
+      "state": "b1/17-settings-masking-proxy",
+      "violations": []
+    },
+    {
+      "state": "b1/18-live",
+      "violations": []
+    },
+    {
+      "state": "b1/19-live-paused",
+      "violations": []
+    },
+    {
+      "state": "b1/19b-live-reconnecting",
+      "violations": []
+    },
+    {
+      "state": "b1/20-empty",
+      "violations": []
+    },
+    {
+      "state": "b1/21-first-search-running",
+      "violations": []
+    },
+    {
+      "state": "b1/22-source-unavailable",
+      "violations": []
+    },
+    {
+      "state": "b1/23-no-services",
+      "violations": []
+    },
+    {
+      "state": "b1/24-load-more-failure",
+      "violations": []
+    },
+    {
+      "state": "b1/25-malformed-event",
+      "violations": []
+    },
+    {
+      "state": "b1/26-mapping-not-ready",
+      "violations": []
+    },
+    {
+      "state": "b1/27-unsupported-capability",
+      "violations": []
+    },
+    {
+      "state": "b1/28-invalid-query",
+      "violations": []
+    },
+    {
+      "state": "b1/29-services-exclude-open",
+      "violations": []
+    },
+    {
+      "state": "b1/30-columns-settings",
+      "violations": []
+    },
+    {
+      "state": "b1/31-startup",
+      "violations": []
+    },
+    {
+      "state": "b1/32-time-custom-range",
+      "violations": []
+    },
+    {
+      "state": "b1/33-time-custom-applied",
+      "violations": []
+    },
+    {
+      "state": "b1/34-raw-logql-loki",
+      "violations": []
+    },
+    {
+      "state": "b1/35-row-actions-menu",
+      "violations": []
+    },
+    {
+      "state": "b1/36-id-detection",
+      "violations": []
+    },
+    {
+      "state": "b1/37-surroundings-from-trace",
+      "violations": []
+    },
+    {
+      "state": "b1/38-live-failed",
+      "violations": []
+    },
+    {
+      "state": "b1/39-settings-openshift-connect",
+      "violations": []
+    },
+    {
+      "state": "b1/40-source-list-loki-unavailable",
+      "violations": []
+    },
+    {
+      "state": "b1/41-more-filters-tag-filter",
+      "violations": []
+    },
+    {
+      "state": "b1/42-results-tag-filter-tags-column",
+      "violations": []
+    },
+    {
+      "state": "b1/43-results-multiple-tags",
+      "violations": []
+    },
+    {
+      "state": "b1/44-inspector-one-classification",
+      "violations": []
+    },
+    {
+      "state": "b1/45-inspector-multiple-classifications",
+      "violations": []
+    },
+    {
+      "state": "b1/46-inspector-long-json-values",
+      "violations": []
+    },
+    {
+      "state": "b1/47-rules-empty",
+      "violations": []
+    },
+    {
+      "state": "b1/48-rules-populated",
+      "violations": []
+    },
+    {
+      "state": "b1/49-rules-delete-confirmation",
+      "violations": []
+    },
+    {
+      "state": "b1/50-rules-saved",
+      "violations": []
+    },
+    {
+      "state": "b1/51-rules-revision-conflict",
+      "violations": []
+    },
+    {
+      "state": "b1/52-rules-recovered-from-backup",
+      "violations": []
+    },
+    {
+      "state": "b1/53-rules-invalid-config",
+      "violations": []
+    },
+    {
+      "state": "b1/54-rule-source",
+      "violations": []
+    },
+    {
+      "state": "b1/55-rule-detect-initial",
+      "violations": []
+    },
+    {
+      "state": "b1/56-rule-detecting",
+      "violations": []
+    },
+    {
+      "state": "b1/57-rule-detected",
+      "violations": []
+    },
+    {
+      "state": "b1/58-rule-no-safe-pattern",
+      "violations": []
+    },
+    {
+      "state": "b1/59-rule-classification",
+      "violations": []
+    },
+    {
+      "state": "b1/60-rule-conditions-advanced",
+      "violations": []
+    },
+    {
+      "state": "b1/61-rule-extraction",
+      "violations": []
+    },
+    {
+      "state": "b1/62-rule-testing",
+      "violations": []
+    },
+    {
+      "state": "b1/63-rule-test-results",
+      "violations": []
+    },
+    {
+      "state": "b1/64-rule-test-borderline",
+      "violations": []
+    },
+    {
+      "state": "b1/65-rule-save-conflict",
+      "violations": []
+    },
+    {
+      "state": "b1/66-import-choose-file",
+      "violations": []
+    },
+    {
+      "state": "b1/67-import-preview-clean",
+      "violations": []
+    },
+    {
+      "state": "b1/68-import-preview-conflicts",
+      "violations": []
+    },
+    {
+      "state": "b1/69-import-invalid-pack",
+      "violations": []
+    },
+    {
+      "state": "b1/70-import-replace-all-confirmation",
+      "violations": []
+    },
+    {
+      "state": "b1/71-import-applied",
+      "violations": []
+    },
+    {
+      "state": "b1/72-investigation-trace-tags",
+      "violations": []
+    },
+    {
+      "state": "b1/73-live-tags",
+      "violations": []
+    },
+    {
+      "state": "b1/74-rule-save-ready",
+      "violations": []
+    },
+    {
+      "state": "b1/75-rules-more-menu",
+      "violations": []
+    },
+    {
+      "state": "b1/76-rule-edit-mode",
+      "violations": []
+    },
+    {
+      "state": "b1/77-import-file-too-large",
+      "violations": []
+    },
+    {
+      "state": "b1/78-import-revision-conflict",
+      "violations": []
+    },
+    {
+      "state": "b1/79-more-filters-tags-error",
+      "violations": []
+    },
+    {
+      "state": "b1/80-more-filters-tags-empty",
+      "violations": []
+    },
+    {
+      "state": "b1/81-rule-new-detect-no-source",
+      "violations": []
+    },
+    {
+      "state": "b1-dark/45-inspector-multiple-classifications",
+      "violations": []
+    },
+    {
+      "state": "b1-dark/48-rules-populated",
+      "violations": []
+    },
+    {
+      "state": "b1-dark/57-rule-detected",
+      "violations": []
+    },
+    {
+      "state": "b1-dark/68-import-preview-conflicts",
+      "violations": []
+    },
+    {
+      "state": "responsive/42-results-tag-filter-tags-column-1920x1080",
+      "violations": []
+    },
+    {
+      "state": "responsive/42-results-tag-filter-tags-column-1366x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/42-results-tag-filter-tags-column-1024x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/42-results-tag-filter-tags-column-768x1024",
+      "violations": []
+    },
+    {
+      "state": "responsive/42-results-tag-filter-tags-column-390x844",
+      "violations": []
+    },
+    {
+      "state": "responsive/45-inspector-multiple-classifications-1920x1080",
+      "violations": []
+    },
+    {
+      "state": "responsive/45-inspector-multiple-classifications-1366x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/45-inspector-multiple-classifications-1024x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/45-inspector-multiple-classifications-768x1024",
+      "violations": []
+    },
+    {
+      "state": "responsive/45-inspector-multiple-classifications-390x844",
+      "violations": []
+    },
+    {
+      "state": "responsive/48-rules-populated-1920x1080",
+      "violations": []
+    },
+    {
+      "state": "responsive/48-rules-populated-1366x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/48-rules-populated-1024x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/48-rules-populated-768x1024",
+      "violations": []
+    },
+    {
+      "state": "responsive/48-rules-populated-390x844",
+      "violations": []
+    },
+    {
+      "state": "responsive/57-rule-detected-1920x1080",
+      "violations": []
+    },
+    {
+      "state": "responsive/57-rule-detected-1366x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/57-rule-detected-1024x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/57-rule-detected-768x1024",
+      "violations": []
+    },
+    {
+      "state": "responsive/57-rule-detected-390x844",
+      "violations": []
+    },
+    {
+      "state": "responsive/61-rule-extraction-1920x1080",
+      "violations": []
+    },
+    {
+      "state": "responsive/61-rule-extraction-1366x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/61-rule-extraction-1024x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/61-rule-extraction-768x1024",
+      "violations": []
+    },
+    {
+      "state": "responsive/61-rule-extraction-390x844",
+      "violations": []
+    },
+    {
+      "state": "responsive/63-rule-test-results-1920x1080",
+      "violations": []
+    },
+    {
+      "state": "responsive/63-rule-test-results-1366x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/63-rule-test-results-1024x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/63-rule-test-results-768x1024",
+      "violations": []
+    },
+    {
+      "state": "responsive/63-rule-test-results-390x844",
+      "violations": []
+    },
+    {
+      "state": "responsive/68-import-preview-conflicts-1920x1080",
+      "violations": []
+    },
+    {
+      "state": "responsive/68-import-preview-conflicts-1366x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/68-import-preview-conflicts-1024x768",
+      "violations": []
+    },
+    {
+      "state": "responsive/68-import-preview-conflicts-768x1024",
+      "violations": []
+    },
+    {
+      "state": "responsive/68-import-preview-conflicts-390x844",
+      "violations": []
+    }
+  ]
+}

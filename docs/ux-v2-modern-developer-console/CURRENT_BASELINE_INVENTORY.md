@@ -1,6 +1,7 @@
 # Current Baseline Inventory — Latest `main`
 
-**Baseline:** `main` @ `3f6b1b4bc30c282e0cd1e65510697ff128d79d73`
+**Baseline:** `main` @ `51f06e51709455f2c20dcf5c1b32e2dd67443377` (refreshed after PR #59; §1–§12 were written at
+`3f6b1b4` and remain accurate except where §13 says otherwise)
 **Compared against:** PR #54's frozen design baseline `ed6dbf5` (`functional-baseline-pre-ux-redesign`, #53)
 **Method:** read directly from `frontend/src` on latest `main` (not from docs), cross-checked with
 `git diff ed6dbf5 origin/main -- frontend/src` and `git log ed6dbf5..origin/main`.
@@ -12,6 +13,7 @@ Commits on `main` since PR #54's baseline:
 | `399fe2b` | #55 | Log Schema & Field Mapping workspace (scan, samples, discovered schema, verify / needs-change), project-scoped mapping, mapping-not-ready search gate, root-event anchoring in Investigation, Span investigation, Surroundings-from-Investigation with contextual Back label, "Show Surroundings" / "View Trace" / "Find same …" renames, "Canonical Event JSON" |
 | `c74e318` | #56 | Mapping Save now persists drafts (`PUT` per edited field before `/save`); "Unsaved changes" badge; Verify disabled while a draft is pending |
 | `3f6b1b4` | #57 | Service Include/Exclude mode + "All except …" / "Excluding: …" summaries; owner-approved default mapping starts Verified (scan hint suppressed for Verified fields) |
+| `51f06e5` | #59 | Event Classification rules workspace, Create tag rule from event, Detect pattern, Test rule, structured extraction, Classification section in the Inspector, Classification tags filter and chips, JSON rule pack import/export, source-selector policy with OpenShift Loki visible but not selectable (see §13) |
 
 Flag legend: `NEW_SINCE_PR54` (did not exist at `ed6dbf5`) · `CHANGED_SINCE_PR54` (existed, visibly/behaviourally changed) · `UNCHANGED`.
 
@@ -90,8 +92,9 @@ live registry (so it never lists a shortcut that is not registered).
 
 ### 3.1 Toolbar — `app/Toolbar.tsx` — `CHANGED_SINCE_PR54` (#55 gate, #57 service mode)
 Single wrapping row, in this order:
-1. **Source** `<select>` (visually hidden label "Source") — `features/search/SourceSelect.tsx` — `UNCHANGED`.
-   First source auto-selected on startup.
+1. **Source** `<select>` (visually hidden label "Source") — `features/search/SourceSelect.tsx` — `CHANGED` in #59:
+   fixed order Local Docker → OpenShift → OpenShift Loki — Not available (native disabled option); the
+   highest-priority available source is selected on startup (§13.9).
 2. **Compose project** select (only when `composeProjectScoping`) — `ComposeProjectSelect.tsx` — `UNCHANGED`.
    Visible label `Compose project`; option `All projects`; disabled while loading or empty; empty copy
    `No Docker Compose projects detected on this Docker engine`; error `Could not list Compose projects: <msg>`.
@@ -487,3 +490,121 @@ zeroed under reduced motion). No icon library — glyphs are Unicode (`🕐 ⌨ 
     changing the chrome structure/attribute breaks panel placement.
 12. **Narrow widths** — only two breakpoints exist (1024 inspector sheet, 640 More filters); header + toolbar rely on
     wrapping; adding toolbar controls has previously pushed the page sideways at 390 px.
+
+---
+
+## 13. EVENT CLASSIFICATION (PR #59, `51f06e5`) — `NEW_SINCE_3F6B1B4`
+
+Read from `frontend/src` on `main` and rendered for real: 32 BEFORE captures in
+[`baseline/classification/`](baseline/README.md#event-classification-before-pr-59-main-51f06e5) (real backend, dev
+profile, Fixture source; three states route-mocked and labelled).
+
+### 13.1 Entry points
+- Shell button **Classification rules** (beside Log schema & field mapping) → takeover workspace (`App.tsx`, lazy).
+- Inspector header ghost button **Create tag rule from this event** (`InspectorHeader.tsx`) → same workspace in
+  create-from-event mode for that event (event held in React state only).
+- Empty state copy points to both.
+
+### 13.2 Classification rules workspace — `ClassificationRulesWorkspace.tsx`
+- Header `← Back to search results`, `h1` **Classification rules**, hint “Rules tag matching events and extract named
+  values from them. They are applied by the server to the events each search retrieves.”
+- Meta: `Revision N · Stored in <full server path>`; `Runtime: N events evaluated · N rule matches · N evaluation
+  failures`.
+- Status banner when `status` ≠ OK: “Rules were recovered from a backup file.” / “The saved rules file is invalid.” +
+  server message.
+- Actions: **New rule** (primary), **Import…** (hidden file input, size check against `maxImportBytes`), **Export
+  all**, **Export selected (n)**.
+- Notices: “Rule saved. Re-run Search to classify currently loaded results.”; import result “Import applied. Added n,
+  replaced n, unchanged n, kept existing n, removed n.”; list errors; revision conflict “These rules were changed
+  elsewhere. Reload the latest rules, then save again.” + **Reload rules**.
+- Empty: “No classification rules yet.” + how to create one.
+- Filter “Filter rules by name or tag”; table: select checkbox · Name (+ description) · Tags (comma text) · Matches on
+  (`message · STARTS_WITH`, `2 conditions (ANY)`) · Enabled (checkbox `role=switch`, On/Off) · Actions Edit,
+  Duplicate, Test, Delete.
+- Delete: inline `alertdialog` “Delete rule?” with primary **Delete rule** and **Cancel** (focus on Cancel; Esc and
+  outside click dismiss).
+
+### 13.3 Rule editor — `RuleEditor.tsx` (modes new / edit / duplicate / fromEvent)
+- Step buttons `1. Source … 6. Save` (Source only in fromEvent), `Step n of 6: <step>` heading receives focus on
+  change; Back / Next / Cancel. Every step reachable.
+- **Source**: Time, Service, Severity summary; Field select (message preselected); read-only Sample value.
+- **Detect**: explanation (samples up to 200 events from the current search scope; suggestion only); **Detect
+  pattern** / **Skip / write conditions manually**; `Detecting…`; error alert. Result: Sampled / With this field /
+  Similar; Stable structure (quoted mono list); Variable parts (name, kind, example); Suggested pattern; “Matches n of
+  n similar events; also matches n other sampled events.”; Suggested extractions “extracted from n of n similar
+  events”; Warnings; **Use this suggestion** → “Suggestion copied into the draft. Nothing is saved yet…”.
+  NO_SAFE_PATTERN_SUGGESTION: reason + “No safe pattern could be suggested. You can still create the rule manually
+  (Advanced).” + warnings.
+- **Classification**: Rule name, Tags (comma-separated, lowercase note, chip preview), Description, Enabled; conditions
+  overview sentence; **Advanced**: match mode radios ALL/ANY, condition fieldsets (field with datalist, matcher
+  Exact/Contains/Starts with/Regex, value, ignore case, remove), Add condition (limit).
+- **Extraction**: one fieldset per extraction — Name, Label, Source field, Type (Regular expression (RE2) / JSON
+  pointer), Expression, Group, Value type (Text/Integer/Decimal/Boolean), “Never show this value”, Remove; Add
+  extraction; Preview values (jumps to Test and runs it).
+- **Test**: **Test rule** / `Testing…`; Sampled events / Matched / Not matched; sample-limit note; Extraction coverage
+  “Label — n / n (n could not be read)”; Matched examples (≤ 5, each with time · service · severity, field, value
+  block and extracted field list); Borderline (matched some conditions); review note from the server.
+- **Save**: summary (Name, Tags, Enabled, Conditions, Extractions); “not been tested” hint; required-field issues;
+  save error; revision conflict + Reload rules (“Latest rules loaded. Your draft is kept…”); **Save rule**.
+
+### 13.4 Import — `ImportPanel.tsx`
+- “Import classification rules”, file name, “Nothing has been imported yet.”, pack name/version/description.
+- Counts: Rules in pack, New, Identical, Conflicts, Invalid; item list (name, id, status text, existing name for
+  conflicts, tags, validation errors with path).
+- Import mode radios Merge / Replace all; Conflicting rules (required) Keep existing / Use imported (one choice for
+  all conflicts); Replace-all confirmation checkbox; blocker list; **Apply import** disabled while blocked; revision
+  conflict → Reload rules + re-preview.
+
+### 13.5 Inspector — `ClassificationSection.tsx`
+- Rendered in the **Overview tab after the Overview fields**, only when at least one rule matched; never a new tab.
+- Tags as uppercase badges; one sub-section per matching rule (rule name + extracted `FieldList`); ABSENT → `—` “Not
+  found in this event”; INVALID → `—` “Could not be read”; redacted → value as served (`[REDACTED]`) with “Redacted”;
+  truncated → “Truncated”. “This rule extracts no fields.” when empty.
+- Technical / all fields lists a `tags` row.
+
+### 13.6 Search
+- More filters → **Classification tags** fieldset: help “Matches events with any selected tag. Tags are applied by
+  the server to the events each search retrieves.”; checkbox per tag; loading / error / “No classification tags
+  yet.”; draft until Apply; count badge includes tags.
+- Active filters: one chip per tag `Tag: <name>` with remove.
+- **Results rows, Investigation, Surroundings and Live show no tags today** (deferred to this sync).
+
+### 13.7 Persistence and runtime truth the design must not contradict
+- Rules are server-side JSON (revisioned, atomic write, backup); no database; events and extracted values are never
+  stored. Rules apply to future reads only; loaded results and existing Live rows are not reclassified.
+- Detect and Test read a bounded sample (default 200, max 500) of the committed search scope and never write.
+- Tag filtering runs after retrieval; it does not read more history.
+
+### 13.8 BEFORE observations (feed the design; not functional defects)
+
+| # | Observation | Classification |
+|---|---|---|
+| C-1 | Workspace is a centred column under the full search chrome, like the old mapping page; step buttons read as a row of equal pills | VISUAL_WEAKNESS |
+| C-2 | Detect evidence and the suggestion are one undifferentiated list of headings and bullets | FUNCTIONAL_GOOD_VISUALLY_WEAK |
+| C-3 | The extraction step shows expression, group and type fields for every value by default: regex is on the ordinary path; five suggested values make a 2,100 px page | UX weakness (regex exposure, length) |
+| C-4 | Test results render five full cards with every extracted value; the page reaches 2,140 px and the review note sits at the bottom | FUNCTIONAL_GOOD_VISUALLY_WEAK |
+| C-5 | Delete confirmation uses the primary (accent) button style for a destructive action | VISUAL_WEAKNESS |
+| C-6 | Rules table at 390 px: columns collapse to character-wide text, actions cut off | LAYOUT_DEFECT (narrow) |
+| C-7 | Tags are plain comma text in the list and uppercase badges in the Inspector | COPY / consistency |
+| C-8 | Matcher shown as enum text (`message · STARTS_WITH`) | COPY |
+| C-9 | Full server storage path in the meta line | COPY (disclosure of a server path) |
+| C-10 | Extracted-value status lines render in monospace (“Not found in this event”) | VISUAL_WEAKNESS |
+| C-11 | Tags absent from result rows, captures and Live | Deferred by PR #59 |
+
+### 13.9 Source selector policy (register §26.1)
+Options are ordered by stable id, never API order: `local-docker` (Local Docker / Local Docker Compose), `openshift`,
+`openshift-loki` (label “OpenShift Loki — Not available”, native `disabled`), then other sources (dev/test Fixture).
+The guarded setter refuses Loki from any path; no health, service or search request is made for it as the active
+source. Evidence: `baseline/classification/source-select-options.json`, `c00-*.png`.
+
+### 13.10 Design risk notes added by PR #59
+13. **Classification is server-authoritative.** The UI never classifies, never infers tags, and never shows values the
+    API did not return; redacted values must not gain copy or reveal affordances.
+14. **Revision concurrency.** Every write sends the last-read revision; a redesign must keep the conflict path visible
+    and keep drafts on conflict.
+15. **Five tabs.** Classification stays inside Overview.
+16. **Seven columns.** Result-row tags must not enter “What happened” or become a default eighth column without an
+    owner decision (D19).
+17. **Native disabled Loki option.** Replacing the Source select with a custom listbox breaks SSEL-2 and its tests.
+18. **Bounded samples.** Detect/Test copy must say “sample” and must not claim false-positive rates or completeness.
+

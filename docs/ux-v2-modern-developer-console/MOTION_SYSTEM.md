@@ -108,3 +108,22 @@ reduced.
 - Hold `]` for two seconds on a 200-row result: no queued animation, no dropped focus.
 - Confirm Back restores focus to the originating row in Search, Trace, Journey and Surroundings.
 - Confirm no loop runs when its state is false (Live stopped, search idle, reconnect finished).
+
+## 7. Event classification (PR #59 design sync)
+
+The same philosophy applies: motion only explains a change. Nothing below exceeds 160 ms, and nothing animates while
+the investigator scans rows.
+
+| Interaction | Enter | Exit | Properties | Reduced motion | Why |
+|---|---|---|---|---|---|
+| Detection result reveal (Observed and Suggested panels) | 160 ms `--ease-out`, `translateY(3px)` → 0 + opacity, both panels together, **no stagger** | — | transform, opacity | Opacity only | Marks that a measured result replaced the “Detecting…” state without implying a sequence of reasoning |
+| Detect / Test in flight | The 2 px progress hairline at the top of the step content (1100 ms sweep); skeleton stats breathe (1400 ms) | Removed in one frame when the result lands | transform, opacity | Static hairline at 50 % opacity; static skeleton | Truthful “still reading the sample”; no percentage |
+| Step change in the rule builder | Content swaps instantly; focus moves to the step heading; the rail's current marker changes colour in 120 ms | — | color, background-color | Instant | Reading the new step matters more than a slide |
+| Extraction row added | 120 ms `--ease-out` opacity + `translateY(3px)` on the new row only | Row removal: 80 ms opacity | transform, opacity | Opacity only | Shows where the new value landed in the table |
+| Edit row open (extraction) | Instant; the edited row's tint appears in 120 ms | Instant | background-color | Instant | Avoids height animation, which would move the table (§5) |
+| Import conflict detail / advanced conditions disclosure | Chevron rotates 120 ms; content appears instantly | — | transform (chevron) | No rotation | Same grammar as every disclosure |
+| Replace all chosen | Danger zone appears with 120 ms opacity | 80 ms opacity | opacity | Instant | Draws attention to the destructive scope without shaking or flashing |
+| Destructive dialog (delete rule) | Scrim 120 ms opacity; dialog 120 ms `translateY(-4px)` + opacity | 80 ms opacity | transform, opacity | Opacity only | Same as popovers; focus moves to Cancel at open, not after the animation |
+| Saved / import-applied banner | 120 ms opacity | — | opacity | Instant | Confirms the write landed |
+| Tags tooltip in the results table | 120 ms opacity after the standard hover delay; instant on keyboard focus | 80 ms | opacity | Instant | Explains `+N` without moving the row |
+| Tags column enabled from Columns | No animation; the table re-lays out in one frame | — | none | — | Column geometry is never animated (§5) |

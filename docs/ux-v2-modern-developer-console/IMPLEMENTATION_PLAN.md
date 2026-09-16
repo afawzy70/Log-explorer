@@ -7,8 +7,12 @@ Production work starts only after the owner:
 2. decides the flagged items in §3.
 
 Starting points:
-- **Functional baseline**: latest `main` `3f6b1b4bc30c282e0cd1e65510697ff128d79d73`. Re-verify it is still the tip
-  before branching. If `main` has moved, refresh `CURRENT_BASELINE_INVENTORY.md` first.
+- **Functional baseline**: latest `main` `51f06e51709455f2c20dcf5c1b32e2dd67443377` (after PR #59: Event
+  Classification, extraction, rule packs, source-selector policy). The first pass planned against `3f6b1b4`; this
+  refresh adds the classification work to the existing slices (§2.1) and decisions D17–D29 (§3). Re-verify it is still
+  the tip before branching. If `main` has moved, refresh `CURRENT_BASELINE_INVENTORY.md` first.
+- **PR #59 is preserved, not rewritten.** Slices restyle and recompose the merged components; the classification
+  API, `useSearchState` classification state, rule semantics, masking and the source policy stay as they are.
 - **Recommended production branch**: `ux/v2-modern-developer-console`. Create it from latest `main` **after owner
   approval**; it does not exist yet.
 - **PR #54** (`ux/v2-professional-redesign`) is design history only. Nothing is merged or cherry-picked from it except
@@ -34,6 +38,10 @@ Starting points:
   7. axe-core: no new violations versus the slice's pre-change run. Keyboard walk-through of the slice's workflow.
   8. TEST-INFRA-1 containment: tracked evidence PNGs mutated by E2E are restored before commit
      (`UNRELATED_BINARY_CHANGES=0`).
+  9. **Classification regression gate** (every slice from B2 on): `e2e/classification-rules.spec.ts` (create from
+     event → detect → test → save → re-search → classification and extraction visible → export → delete → import
+     preview → apply → restored) and `e2e/source-selector-availability.spec.ts` pass unchanged in behaviour; only
+     selectors may be migrated, and each migration is named in the slice report.
 - **Rollback**: each slice is independently revertable (`git revert` of its squash commit). B1 keeps legacy token names
   as aliases, so untouched components keep rendering; B7 removes the aliases last.
 
@@ -137,6 +145,24 @@ Starting points:
 | **Accessibility checks** | Live state changes announced; pulse static under reduced motion; 200 % zoom reflow; dark contrast table re-verified in the rendered app. |
 | **Rollback boundary** | Live and theme are separate commits. Alias removal is the last commit and reverts cleanly. |
 
+### 2.1 Classification work mapped into the slices (PR #59 design sync)
+
+No new slice is created: each piece lands in the slice that already owns its surface.
+
+| Slice | Classification scope | Prototype states | Extra gates |
+|---|---|---|---|
+| **B1** Foundations | Tag icon set (`tag`, `tags`, `flask-conical`, `upload`, `download`, `file-json`, `circle-plus`, `equal`, `list-checks`, `trash-2`, `pencil-line`, `shield-alert`); tag chip, banner and count-tag primitives in the shared UI kit | — | Contrast of §21.13 pairs in the rendered app |
+| **B2** Search chrome | Source field as a styled native select (D26) keeping SSEL order/disabled Loki; Classification tags group in More filters; `Tag <name>` chips; 24 px chip targets; tag-filter readout copy | 40, 41, 42, 79, 80 | `source-selector-availability.spec.ts`; tag filter part of `classification-rules.spec.ts`; no request for `openshift-loki` |
+| **B3** Results | Optional **Tags** column (D19), tag cell + `+N` + tooltip; tag-filter footnote | 42, 43 | Geometry spec with the Tags column on and off; seven default columns unchanged |
+| **B4** Inspector | Create tag rule action; Classification section value states (§21.5); lowercase tags (D20); Rule link (D29) | 44, 45, 46 | Five tabs unchanged; redacted values have no copy action; `ClassificationSection` tests re-pointed, not weakened |
+| **B5** Investigation | Tags column and `Tagged n of N` in captures (D25) | 72 | No extra requests; bounded DOM |
+| **B6** Settings | Settings › Classification rules (D17), rules table/list, banners, delete dialog (D27), file name only (D28); **rule builder workspace** (D18, D21, D23) with Detect evidence vs suggestion, extraction table, test results, save conflict; **import** preview, conflicts, replace-all danger zone (D24), Re-run search action (D22) | 47–71, 74–78, 81 | Full `classification-rules.spec.ts`; revision-conflict unit tests; import blockers; Test/Detect never write |
+| **B7** Live, global, responsive, a11y | Tags column and note in Live (D25); responsive transformations (rules list, extraction cards, import items, builder rail strip); reduced motion for §7 motion; axe on states 40–81 | 73 + responsive sets | axe 0 violations on classification states; keyboard walk of builder and import |
+
+Dependencies: B6's builder reuses B4's value-state primitives and B3's tag cell, so B6 follows B3 and B4 (already the
+plan order). B5 and B7 only add the tag cell. Shell button removal (Classification rules) happens in B6 together with
+the Settings entry, with `classification-rules.spec.ts` selectors migrated in the same PR.
+
 ## 3. Owner decisions required before or during implementation
 
 | ID | Decision | Type | Proposed | Slice |
@@ -158,6 +184,19 @@ Starting points:
 | D14 | New dependencies: `lucide-react` (ISC), self-hosted Inter and JetBrains Mono (OFL) | Dependency | Approve | B1 |
 | D15 | Investigation, Surroundings and Live show a compact scope bar with **Edit search** instead of the always-visible full query bar (refining takes one extra click) | Interaction change | Approve | B5, B7 |
 | D16 | The five level chips move into the Severity popover. The **All levels** and **Errors only** quick actions stay one click, as a small segmented control at the start of the scope strip (`01`) | Presentation change (no loss of one-click behaviour) | Approve | B2 |
+| D17 | Classification rules move from the shell button into **Settings › Classification rules** (same model as D3) | IA change | Approve | B6 |
+| D18 | The rule builder is a workspace with a step rail and a draft panel; from an event, **Back to event** returns to Search with that event in the Inspector (production returns to the rules list inside the workspace) | Interaction change | Approve | B6 |
+| D19 | Result-row tags as an **optional Tags column, hidden by default** (keeps the seven-column invariant). Alternative: visible by default, which amends CLAUDE.md §4 | Presentation / invariant | Optional column | B3 |
+| D20 | Tags displayed lowercase as stored everywhere (the Inspector uppercases today) | Presentation change | Approve | B4 |
+| D21 | Extraction values carry a client-side **Suggested / Confirmed** draft state with a Keep action (not persisted) | UI-only state | Approve | B6 |
+| D22 | **Re-run search** action in the Rule saved and Import applied banners (production shows text only) | Interaction addition | Approve | B6 |
+| D23 | **Widen the time range** action on No safe pattern, opening Edit search (production suggests it in text) | Interaction addition | Approve | B6 |
+| D24 | Replace all lists the existing rules that will be deleted, computed from loaded rules and pack ids | Copy / derived data | Approve | B6 |
+| D25 | Tags column in Investigation captures and Live, plus a `Tagged n of N` capture stat (not shown on `main` today) | Presentation addition | Approve | B5, B7 |
+| D26 | The Source control stays a native `<select>` styled as a field; the first-pass custom source list with health per option is withdrawn (register SSEL-2) | Supersedes a first-pass design detail | Approve | B2 |
+| D27 | Delete rule confirmation becomes a modal alertdialog with a danger button (production: inline box, primary button) | Presentation change | Approve | B6 |
+| D28 | The rules list shows the storage file name, not the full server path (production shows the full path) | Copy change | Approve | B6 |
+| D29 | Inspector classification blocks link to the rule in Settings | Navigation addition | Approve | B4, B6 |
 
 ## 4. Deferred lanes (explicitly not part of this plan)
 
@@ -167,6 +206,10 @@ Starting points:
 - **Surfacing partial Docker timeout results in the UI**: noted after PR #57; separate functional lane.
 - **G4 Live under EXCLUDE** (D8): functional lane.
 - Everything in CLAUDE.md §8 stays out of scope.
+- **Classification functional changes**: none are planned. Rule semantics, detection, test, import/export, masking
+  and persistence stay exactly as merged in PR #59; ideas beyond D17–D29 need a separate functional mission.
+- **Loki availability**: re-enabling OpenShift Loki in the UI is a separate owner decision (register §26.1); states
+  27 and 34 remain capability references only.
 
 ## 5. Definition of done for the whole implementation
 

@@ -68,6 +68,8 @@ function event(message: string, timestamp: string) {
     namespace: null,
     pod: null,
     contextTargetProof: null,
+    tags: [],
+    classifications: [],
   };
 }
 

@@ -2425,4 +2425,130 @@ independent review record, and a sliced implementation plan. No production
 behaviour changed, and no direction discovery was repeated.
 `HISTORICAL_DECISIONS_PRESERVED=YES`. `UNTRACKED_OWNER_REQUIREMENTS=0`.
 
+### 25.1 Modern Developer Console — post-feature design sync (after PR #59)
+
+`MODERN_DEVELOPER_CONSOLE_POST_FEATURE_DESIGN_SYNC` mission, design branch `design/v2-modern-developer-console`
+(PR #58), synchronised with latest `main` `51f06e51709455f2c20dcf5c1b32e2dd67443377` by merging `main` into the design
+branch. Additive to §25; §26 and §26.1 remain the functional record of the feature and the source policy.
+
+```
+DESIGN_BASELINE_MAIN_SHA=51f06e51709455f2c20dcf5c1b32e2dd67443377
+CLASSIFICATION_DESIGN_SYNC=COMPLETE
+CREATE_RULE_FROM_EVENT_DESIGNED=YES
+PATTERN_DETECTION_DESIGNED=YES
+NO_SAFE_PATTERN_STATE_DESIGNED=YES
+EXTRACTION_EDITOR_DESIGNED=YES
+RULE_TEST_DESIGNED=YES
+IMPORT_EXPORT_DESIGNED=YES
+IMPORT_CONFLICTS_DESIGNED=YES
+INSPECTOR_CLASSIFICATION_DESIGNED=YES
+RESULT_ROW_TAG_PRESENTATION_DECIDED=YES
+TAG_FILTER_DESIGNED=YES
+OPENSHIFT_LOKI_VISIBLE_IN_DESIGN=YES
+OPENSHIFT_LOKI_DISABLED_IN_DESIGN=YES
+PRODUCTION_IMPLEMENTATION_STARTED=NO
+UNTRACKED_OWNER_REQUIREMENTS=0
+```
+
+| ID | NAME | STATUS | EVIDENCE | NOTES |
+|---|---|---|---|---|
+| MDC-19 | Design baseline refreshed to `main` `51f06e5`, including real BEFORE evidence of the PR #59 UI | `VERIFIED` | `CURRENT_BASELINE_INVENTORY.md` §13; `baseline/classification/` (32 captures, manifest, source option JSON) | Three captures route-mocked and labelled (two delays, one detect response, one status field) |
+| MDC-20 | Every PR #59 user-visible capability represented in the B1 design (rules workspace, create from event, detect, stable/variable structure, NO_SAFE_PATTERN, classification metadata, extraction editor with suggested and manual values, test results with coverage and borderline examples, save and saved message, rules list with enabled/disabled, edit, delete confirmation, import preview, merge conflicts, replace-all confirmation, export all/selected, revision conflict, degraded configuration, Inspector classification and generic extracted fields, tag filter, tags in Investigation and Live) | `VERIFIED` | `DESIGN_SYSTEM.md` §21; prototype states 40–81; `COMPONENT_INVENTORY.md` “Event classification” | Design only; no production code |
+| MDC-21 | Result-row tag presentation decided: optional Tags column (first tag + `+N`, full list in accessible name and tooltip), seven default columns unchanged | `VERIFIED` | `DESIGN_SYSTEM.md` §21.3; states 42, 43 | Visible-by-default would amend CLAUDE.md §4 — owner decision D19 |
+| MDC-22 | Source selector policy represented: Local Docker → OpenShift → OpenShift Loki — Not available, native disabled option, no “Coming soon” | `VERIFIED` | `DESIGN_SYSTEM.md` §9 Source field; state 40; D26 | First-pass custom source list withdrawn; states 27 and 34 kept as capability references only |
+| MDC-23 | Implementation plan refreshed: classification mapped into B1–B7 with a classification regression gate; decisions D17–D29 | `VERIFIED` | `IMPLEMENTATION_PLAN.md` §1 gate 9, §2.1, §3 | No new slice; PR #59 semantics preserved |
+| MDC-24 | Independent LERUX-1 review of the synced design, with fixes and a fresh second review | `VERIFIED` | `README.md` §Post-feature design sync review | See README for verdicts |
+| MDC-25 | Owner decisions D17–D29 raised by the sync | `OPEN_UNDECIDED` | `IMPLEMENTATION_PLAN.md` §3 | Owner review of the refreshed design required before production implementation |
+
 ---
+
+## 26. Event Classification, Extraction, and Portable Rules
+
+`EVENT_CLASSIFICATION_EXTRACTION_AND_PORTABLE_RULES` mission — branch
+`feature/event-classification-extraction-rules` from latest `main`
+`3f6b1b4bc30c282e0cd1e65510697ff128d79d73`. Section 25 is intentionally left
+to the paused Modern Developer Console design lane (PR #58, untouched), so
+the two lanes never collide on numbering.
+
+```
+EVENT_CLASSIFICATION_RULES=APPROVED
+HARDCODED_MIDDLEWARE_CLASSIFICATION=NO
+GENERIC_TAG_RULE_ENGINE=YES
+PATTERN_DETECTION_FROM_SELECTED_EVENT=YES
+PATTERN_DETECTION_IS_SUGGESTION_ONLY=YES
+BOUNDED_REAL_SAMPLE_TESTING=YES
+DEFAULT_DETECTION_SAMPLE_TARGET=200
+STRUCTURED_EXTRACTION=YES
+CLASSIFICATION_BACKEND_AUTHORITATIVE=YES
+RULE_STORAGE=SERVER_SIDE_VERSIONED_JSON
+RULE_DATABASE=NO
+LOG_RETENTION_DATABASE=NO
+RULE_IMPORT_EXPORT=JSON
+PORTABLE_RULE_PACKS=YES
+IMPORT_PREVIEW_REQUIRED=YES
+IMPORT_CONFLICTS_NOT_SILENTLY_OVERWRITTEN=YES
+RULES_PERSIST_ACROSS_DOCKER_RECREATE=YES
+RULES_PERSIST_ACROSS_APPLICATION_UPGRADE=YES
+EXTRACTED_RESULTS_PERSISTED=NO
+RULES_APPLY_TO_FUTURE_RUNTIME_EVENTS=YES
+EXTRACTION_RESPECTS_MASKING=YES
+DESIGN_SYNC_REQUIRED_AFTER_FEATURE_MERGE=YES
+RESULT_ROW_TAG_PRESENTATION_DEFERRED_TO_DESIGN_SYNC=YES
+PR58_TOUCHED=NO
+SEARCH_PERFORMANCE_INVESTIGATION_STARTED=NO
+UNTRACKED_OWNER_REQUIREMENTS=0
+```
+
+| ID | NAME | STATUS | EVIDENCE | NOTES |
+|---|---|---|---|---|
+| ECR-1 | Generic, data-driven classification engine at the canonical-event layer (no hard-coded middleware logic, no source-specific engines) | `VERIFIED` | `core.classify.ClassificationEngine`, hook in `core.parse.LogLineParser#parse`; `ClassificationEngineTest`, `LogLineParserClassificationTest`, adapter tests in `DockerLogSourceTest`/`LokiLogSourceTest`/`FixtureLogSourceClassificationTest` | One path for Docker, Loki, OpenShift, Fixture; search, context, journey, live. Rules targeting adapter-enrichment-only fields (pod, namespace, container) are not supported because classification runs before adapter enrichment — documented limitation |
+| ECR-2 | Matchers EXACT / CONTAINS / STARTS_WITH / REGEX, ALL/ANY, multiple rules and tags per event, deterministic order (priority, id), disabled rules skipped | `VERIFIED` | `RuleCompilerTest`, `ClassificationEngineTest` | Evaluation never stops at the first match |
+| ECR-3 | Safe regex: RE2/J (linear time), compiled on save/import/load, unsupported constructs rejected, bounded length | `VERIFIED` | `pom.xml` `com.google.re2j:re2j:1.8` (BSD-3-Clause); `RuleCompilerTest#catastrophicBacktrackingPatternStillRunsInLinearTime`, `#lookaroundAndBackreferencesAreRejectedAsUnsupportedNotRunOnAnUnsafeEngine` | |
+| ECR-4 | Structured extraction: RE2 named/numbered capture groups and RFC 6901 JSON Pointer (Jackson), optional type conversion, per-rule isolation, absent values never fabricated, bounded sizes | `VERIFIED` | `ClassificationEngineTest` | |
+| ECR-5 | Deterministic local pattern detection anchored on the selected event, bounded real sample (default 200, max 500), stable/variable segmentation, simplest matcher first, `NO_SAFE_PATTERN_SUGGESTION`, measured coverage (no invented confidence), extraction suggestions | `VERIFIED` | `core.classify.detect.PatternDetector`; `PatternDetectorTest`; `ClassificationRulesIntegrationTest#detectSuggestsFromARealBoundedSampleAndPersistsNothing` | No external AI or network |
+| ECR-6 | Rule test against a bounded real sample without persisting or activating; counts, extraction coverage, ≤5 matched and ≤5 borderline previews, masked | `VERIFIED` | `RuleTesterTest`; `ClassificationRulesIntegrationTest#ruleTestReportsBoundedResultsAndDoesNotPersistOrActivate` | "Review these matches for false positives" — no false-positive claims |
+| ECR-7 | Server-side versioned JSON persistence: atomic writes, last-known-good backup, corrupt-file preservation, fail-safe load, optimistic revision (HTTP 409), thread-safe | `VERIFIED` | `core.classify.ClassificationRuleRepository`, `ClassificationRuleService`; `ClassificationRuleServiceTest` | No database; logs and extracted values never persisted |
+| ECR-8 | Portable JSON rule packs: export all/selected, two-phase import (preview + explicit apply), MERGE with explicit conflict resolution, REPLACE_ALL with confirmation, strict schema/version validation, size and count limits, no runtime or secret data exported | `VERIFIED` | `ClassificationRuleServiceTest`; `ClassificationRulesIntegrationTest#exportPreviewAndApplyOverHttpUseTheSamePortableFormat` | Format `log-explorer-classification-pack`, schema version 1, migration interface `RulesSchemaMigrator` |
+| ECR-9 | Backend-enforced tag filter (ANY) on events each source retrieved; no source pushdown claimed | `VERIFIED` | `EventFilters`, `SearchRequest#tags`, cursor fingerprint, query plan note; `ClassificationRulesIntegrationTest#tagFilterIsEnforcedByTheBackendWithAnySemantics` | |
+| ECR-10 | Extraction respects the masking boundary (credential headers, sensitive definitions, policy masking, TextRedactor) | `VERIFIED` | `core.mask.ExtractedValueRedactor`; `ExtractedValueRedactorTest`; `ClassificationRulesIntegrationTest#extractedValuesNeverCarryRawSecretsToTheBrowser` | ArchUnit rules unchanged and passing |
+| ECR-11 | Persistence across Docker recreate, OpenShift, and desktop upgrades | `VERIFIED` | `Dockerfile`, `docker-entrypoint.sh`, `docker-compose.yml` (`log-explorer-data` volume), `deploy/openshift/pvc.yaml`, launchers pass `LOGEXPLORER_DATA_DIR`; packaged smoke tests assert the per-user location and survival after uninstall; `scripts/smoke.sh` recreate step | Docker: local `scripts/smoke.sh` PASS ("rule survived container recreation"). Windows and macOS: packaged smoke tests PASS in CI on PR #59 (rules under the per-user data folder, outside the install directory, surviving uninstall). OpenShift manifests validated statically (`validate-openshift-manifests.sh`); live cluster run not performed |
+| ECR-12 | Frontend: Create tag rule from Inspector (wizard: source, detect, classification, extraction, test, save), Inspector classification details, Classification rules workspace (list/enable/edit/duplicate/test/delete/import/export), tag filter | `VERIFIED` | `frontend/src/features/settings/classification/*`, `features/inspector/ClassificationSection.tsx`, search changes; 997 frontend unit tests PASS; `e2e/classification-rules.spec.ts` acceptance flow PASS; full E2E 319 passed / 1 skipped / 0 failed; CI PASS | Current production UI language only; results-row tag presentation deferred to the design sync |
+| ECR-13 | Design sync of this feature into the paused Modern Developer Console lane after merge | `DEFERRED` | — | `DESIGN_SYNC_REQUIRED_AFTER_FEATURE_MERGE=YES` |
+
+**Event Classification, Extraction, and Portable Rules pass (this
+section).** Adds a generic, backend-authoritative rule engine with safe
+regex, structured extraction, deterministic pattern suggestion, bounded
+real-sample testing, atomic JSON persistence, and portable rule packs — no
+database, no log retention, no source-specific logic. The Live Service
+EXCLUDE defect (D8) and `SEARCH_PERFORMANCE_ROOT_CAUSE` remain separate
+lanes. `HISTORICAL_DECISIONS_PRESERVED=YES`. `UNTRACKED_OWNER_REQUIREMENTS=0`.
+
+### 26.1 Source selector availability (PR #59 pre-merge owner adjustment)
+
+`PR59_PRE_MERGE_SOURCE_SELECTOR_FINALIZATION` — a current UI availability
+decision on the same PR #59 branch. It does not rewrite or remove any
+historical OpenShift Loki requirement (§12 remains the record of the Loki
+capability); the Loki adapter, APIs, source registration, LogQL logic, and
+backend tests are unchanged.
+
+```
+SOURCE_SELECTOR_PRIORITY_1=DOCKER
+SOURCE_SELECTOR_PRIORITY_2=OPENSHIFT
+SOURCE_SELECTOR_PRIORITY_3=OPENSHIFT_LOKI
+OPENSHIFT_LOKI_VISIBLE=YES
+OPENSHIFT_LOKI_SELECTABLE=NO
+OPENSHIFT_LOKI_UI_STATUS=NOT_AVAILABLE
+OPENSHIFT_LOKI_BACKEND_REMOVED=NO
+OPENSHIFT_LOKI_CAPABILITY_PRESERVED=YES
+STALE_OPENSHIFT_LOKI_SELECTION_RESTORED=NO
+SAFE_AVAILABLE_SOURCE_FALLBACK=YES
+UNTRACKED_OWNER_REQUIREMENTS=0
+```
+
+| ID | NAME | STATUS | EVIDENCE | NOTES |
+|---|---|---|---|---|
+| SSEL-1 | User-facing source selector order Docker (`local-docker`) → OpenShift (`openshift`) → OpenShift Loki (`openshift-loki`) by explicit policy keyed on stable ids, never API/registration/map order; other sources (dev/test-only Fixture) keep their existing availability and follow in API order | `VERIFIED` | `frontend/src/features/search/sourcePolicy.ts`; `sourcePolicy.test.ts`, `SourceSelect.test.tsx`; `e2e/source-selector-availability.spec.ts` | The backend source registry iterates an unordered map, so API order was never a contract |
+| SSEL-2 | OpenShift Loki visible but not selectable: native `<option disabled>` labelled "OpenShift Loki — Not available"; `onChange` guarded; never the active source through the selector, initial auto-selection, or stale/malformed client state; no health/service/search request made for it as the active source | `VERIFIED` | `SourceSelect.tsx`, guarded `setSelectedSourceId` in `app/useSearchState.ts`; `useSearchState.sourceSelection.test.ts`; E2E asserts no `/api/v1/sources/openshift-loki` request | The selected source is session React state only (never localStorage/URL), so there is no persisted Loki selection to restore; the guard still covers stale/malformed state. Re-enabling = removing `openshift-loki` from `UI_UNAVAILABLE_SOURCE_IDS` |
+| SSEL-3 | Safe fallback: Docker when available, otherwise OpenShift, otherwise the first selectable source; truthful no-source state when nothing is selectable | `VERIFIED` | `sourcePolicy.test.ts`, `useSearchState.sourceSelection.test.ts`, `SourceSelect.test.tsx` ("No available source") | |
+| SSEL-4 | Existing E2E steps that selected OpenShift Loki updated deliberately (named conflict, later decision applied) | `VERIFIED` | `phase-j-live-tail.spec.ts` (asserts Loki disabled instead of selecting it; Loki liveTail:false stays covered by `LokiLogSourceTest`), `phase-legacy-slice6-investigation-depth.spec.ts` test 3 and `phase-m-ux-acceptance.spec.ts` Task 6 (unavailable state exercised with a selectable source whose health is mocked DOWN; no-service-discovery exercised with `openshift`) | CLAUDE.md §5: older requirement conflicts with a later decision — named and applied; tests not weakened in intent |
+

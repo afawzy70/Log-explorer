@@ -144,6 +144,10 @@ export function Shell({ state, openShiftScope, onOpenShiftScopeChanged }: ShellP
       <button type="button" className={styles.mappingWorkspaceTrigger} onClick={state.openMappingWorkspace}>
         Log schema &amp; field mapping
       </button>
+      {/* Event Classification & Extraction Rules - opens a takeover workspace, like field mapping above. */}
+      <button type="button" className={styles.mappingWorkspaceTrigger} onClick={state.openClassificationWorkspace}>
+        Classification rules
+      </button>
       <DockerSettingsPanel />
       {/* OS-1A - the OpenShift connection lives beside Docker settings: both
           are source-connection concerns, and keeping them together is what

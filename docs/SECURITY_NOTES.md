@@ -166,3 +166,31 @@ No unbounded scans, arrays, buffers, or DOM rows anywhere (CLAUDE.md §4
 "Bounds") — search results, live-tail server/client buffers, and query
 time ranges are all config-driven, enforced ceilings
 (`SearchGuardrailsProperties`, `LiveTailProperties`), not documentation.
+
+## Event classification rules
+
+- **Masking boundary preserved.** Rules run on canonical events after
+  parsing/mapping; extracted values leave only through `api.EventMapper`
+  via `core.mask.ExtractedValueRedactor`: credential headers
+  (`Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, API-key /
+  token headers) redacted in header text and JSON, extraction definitions
+  marked `sensitive` or with credential-like names never shown, this event's
+  protected identifiers masked per the masking policy, then `TextRedactor`.
+  Rule tests and pattern detection use the same redaction. The five protected
+  identifier fields are not addressable as rule fields.
+- **Regex safety.** User-authored expressions use RE2/J (linear time, no
+  backtracking), compiled once at save/import/load; lookaround and
+  backreferences are rejected, never run on `java.util.regex`. Patterns are
+  bounded to 1,000 characters; rules, conditions, extractions, import size,
+  samples, previews, and returned value lengths are all bounded
+  (`core.classify.ClassificationLimits`).
+- **Configuration, not data.** The rules file holds rule definitions only —
+  never events, samples, or extracted values. Portable packs never include
+  revisions, paths, credentials, or runtime data. Diagnostics log counts and
+  reason codes only, never rule literals or event content.
+- **Writable data directory.** Rules persist under `LOGEXPLORER_DATA_DIR`
+  (`/app/data` in the image, owned by `logexplorer` and group 0 for OpenShift's
+  arbitrary UID). On OpenShift the root filesystem stays read-only; only the
+  `log-explorer-data` PersistentVolumeClaim at `/app/data` is writable.
+- **Trust model.** Rule management follows the existing unauthenticated
+  local-tool model of the other settings endpoints.

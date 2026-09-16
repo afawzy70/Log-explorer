@@ -2,6 +2,7 @@ package com.logexplorer.api.dto;
 
 import com.logexplorer.core.mask.MaskedSensitiveFields;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -61,6 +62,8 @@ public record EventDto(
      * persisted, never logged — echoed back verbatim only on a later
      * "Show surrounding logs" call. See {@code core.search.ContextTargetProofCodec}.
      */
-    String contextTargetProof
+    String contextTargetProof,
+    List<String> tags,
+    List<ClassificationDto> classifications
 ) {
 }

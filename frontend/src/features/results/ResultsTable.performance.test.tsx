@@ -59,6 +59,8 @@ function syntheticEvent(index: number): LogEvent {
     namespace: null,
     pod: null,
     contextTargetProof: null,
+    tags: [],
+    classifications: [],
   };
 }
 

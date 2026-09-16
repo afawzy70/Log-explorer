@@ -202,6 +202,7 @@ export function EventInspector({ state }: { state: SearchState }) {
               : null
           }
           onShowContext={() => state.showContext(event)}
+          onCreateTagRule={() => state.openClassificationRuleFromEvent(event)}
         />
         <InspectorTabs tabs={tabs} activeTabId={activeTabId} onActiveTabChange={setActiveTabId} />
       </div>

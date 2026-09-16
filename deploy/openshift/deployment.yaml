@@ -26,6 +26,15 @@
 #   administrator creates `log-explorer-loki-token` out of band, e.g.:
 #     oc create secret generic log-explorer-loki-token \
 #       --from-literal=token=<real token>
+# - Classification rules configuration (a small JSON file, never log data)
+#   is the one piece of state the app persists. It lives on the
+#   `log-explorer-data` PVC (pvc.yaml) mounted at /app/data
+#   (LOGEXPLORER_DATA_DIR in configmap.yaml) - the root filesystem stays
+#   read-only. No fsGroup is pinned: the `restricted` SCC assigns one from
+#   the namespace range and the volume is made group-writable for it, the
+#   same "let the cluster assign it" posture as runAsUser above. If the PVC
+#   is missing or unwritable, only saving rules fails (HTTP 503); search
+#   keeps working.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -35,6 +44,12 @@ metadata:
     app.kubernetes.io/part-of: log-explorer
 spec:
   replicas: 1
+  # Recreate, not RollingUpdate: the rules PVC is ReadWriteOnce, so a
+  # surge pod scheduled onto a different node could never attach it while
+  # the old pod still holds it, and the rollout would hang. One replica
+  # already means a brief restart gap either way.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: log-explorer
@@ -74,6 +89,9 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            # Classification rules configuration only (see header comment).
+            - name: data
+              mountPath: /app/data
           resources:
             requests:
               cpu: "250m"
@@ -100,3 +118,6 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: data
+          persistentVolumeClaim:
+            claimName: log-explorer-data

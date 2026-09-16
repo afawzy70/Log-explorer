@@ -173,3 +173,26 @@ These behaviours are correct on `main` today. The redesign changes their present
 | Three settings popovers (T1) | One Settings workspace with scope tags. |
 | Red LIVE (L1) | Acquisition-state vocabulary: LIVE (success), PAUSED, RECONNECTING, STOPPED, FAILED; the table layout is reused. |
 | Unicode glyphs (S8) | One Lucide icon set at 1.75 stroke. |
+
+---
+
+## 5. Addendum — Event classification on `main` `51f06e5` (PR #59)
+
+Evidence: `baseline/classification/` (32 real captures). Findings C-1…C-11 are listed with their classification in
+`CURRENT_BASELINE_INVENTORY.md` §13.8. What is functionally good and must be preserved:
+
+- Detection is honest: measured counts (read, with the field, similar, matched/other), a suggestion-only contract and a
+  clear NO_SAFE_PATTERN state. No confidence scores.
+- The test step never saves, reports bounded counts and extraction coverage, shows borderline events, and ends with
+  “Review these matches for false positives.”
+- Every write is revision-checked and a conflict keeps the draft.
+- Import previews before writing, blocks invalid packs, requires a conflict choice and a Replace-all confirmation.
+- Extracted values arrive masked/redacted, render as text, and missing values are never invented.
+- Loki is visible but not selectable; no request is made for it as the active source.
+
+Design implications taken into §21 of `DESIGN_SYSTEM.md`: split evidence from suggestion (C-2); move expressions behind
+an explicit edit path (C-3); compact test examples beside a result summary (C-4); danger styling for destructive
+actions (C-5); stacked rule rows at narrow widths (C-6); one lowercase tag grammar everywhere (C-7); plain-language
+matchers (C-8); file name instead of a server path (C-9); UI type for status lines (C-10); tags in results, captures
+and Live without breaking the seven-column invariant (C-11).
+

@@ -75,3 +75,49 @@ Colors: text is dominated by `#1a1d23` (primary), `#868d99` (tertiary),
 severity dot/rail colors (`#1a5e9a` info, `#8a5a00` warn, `#b3261e` error,
 `#7a5ba6` trace). Fonts: the system sans stack and the `ui-monospace` stack
 only. Font sizes in use are overwhelmingly 12px and 13px.
+
+## Event classification BEFORE (PR #59, `main` 51f06e5)
+
+Captured 2026-09-15 for the post-feature design sync from latest `main` `51f06e51709455f2c20dcf5c1b32e2dd67443377`,
+real backend (`SPRING_PROFILES_ACTIVE=dev`, isolated `LOGEXPLORER_DATA_DIR`) and real Vite dev server, Fixture source,
+Chromium `deviceScaleFactor: 1`, reduced motion. Rules were created through the real UI and API and reset afterwards.
+Folder: [`classification/`](classification/). Machine-readable index: `classification/capture-manifest.json`; source
+option truth: `classification/source-select-options.json`. The meta line in the rules workspace shows the temporary
+data directory used for this capture.
+
+| File | State | Route-mocked | Notes |
+|---|---|---|---|
+| `c00-default-docker-selected-1440x900.png` | Startup, Local Docker selected by policy | no | Docker not running here; health reflects the fixture of this environment |
+| `c00b-source-options-expanded-1440x900.png` | Source options: Local Docker Compose, OpenShift, OpenShift Loki — Not available (greyed), Fixture | DOM-expanded only (`size` attribute) | Native lists cannot be screenshotted open headless |
+| `c01-rules-empty-1440x900.png` | Classification rules, empty | no | Centred column under full search chrome |
+| `c02-inspector-create-rule-entry-1440x900.png` | Inspector with Create tag rule from this event | no | Ghost button beside Close; tabs wrap to two rows |
+| `c03-create-source-step-1440x900.png` | Step 1 Source | no | |
+| `c04-detect-initial-1440x900.png` | Step 2 Detect before running | no | |
+| `c05-detecting-1440x900.png` | Detecting… | **yes (3.5 s delay only)** | |
+| `c06-detected-1440x900.png` | Detected pattern (real bounded sample: 200 read, 25 similar) | no | Evidence and suggestion in one list |
+| `c07-suggestion-applied-1440x900.png` | Suggestion copied into the draft | no | |
+| `c08-classification-step-1440x900.png` | Step 3 name, tags, conditions overview | no | |
+| `c09-classification-advanced-1440x900.png` | Advanced conditions | no | |
+| `c10-extraction-step-1440x900.png` | Step 4 extraction, five suggested values | no | Expression fields visible by default; 2,113 px page |
+| `c11-testing-1440x900.png` | Testing… | **yes (3.5 s delay only)** | |
+| `c12-test-results-1440x900.png` | Test results (200 read, 25 matched) | no | Five full example cards; 2,143 px page |
+| `c13-save-step-1440x900.png` | Step 6 Save summary | no | |
+| `c14-rule-saved-list-1440x900.png` | Rule saved notice + list | no | |
+| `c15-rules-populated-disabled-1440x900.png` | Three rules, one disabled | no | Full server path in the meta line |
+| `c16-export-selected-enabled-1440x900.png` | Export selected (1) | no | |
+| `c17-delete-confirmation-1440x900.png` | Delete rule confirmation | no | Primary (accent) button for a destructive action |
+| `c18-revision-conflict-1440x900.png` | Rules changed elsewhere + Reload rules | no | Real 409 (rule created through the API meanwhile) |
+| `c19-recovered-from-backup-banner-1440x900.png` | Recovered from backup banner | **yes (GET state status replaced)** | |
+| `c20-inspector-multiple-classifications-1440x900.png` | Inspector: 3 tags, 2 rules, present / not found / redacted / could not be read | no | Uppercase tags; status lines in monospace |
+| `c21-more-filters-tag-filter-1440x900.png` | More filters → Classification tags | no | |
+| `c22-tag-filter-applied-results-1440x900.png` | `Tag: middleware` chip + filtered results | no | No tags in rows |
+| `c23-import-preview-clean-1440x900.png` | Import preview, 1 new | no | |
+| `c24-import-preview-conflicts-1440x900.png` | New, identical, conflict; resolution required | no | |
+| `c25-import-replace-all-confirmation-1440x900.png` | Replace all selected, confirmation | no | |
+| `c26-import-invalid-pack-1440x900.png` | Invalid rule blocks Apply | no | Real RE2 rejection message |
+| `c27-no-safe-pattern-1440x900.png` | NO_SAFE_PATTERN_SUGGESTION | **yes (detect response replaced with the documented shape)** | |
+| `c28-rules-list-390x844.png` | Rules list at 390 px | no | Columns collapse to character width; actions cut |
+| `c29-editor-extraction-390x844.png` | Extraction step at 390 px | no | |
+| `c30-inspector-classification-390x844.png` | Inspector classification at 390 px | no | |
+
+No page-level horizontal overflow in any capture (`overflowX: 0` in the manifest).

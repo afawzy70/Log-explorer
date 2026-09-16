@@ -12,6 +12,11 @@
 **/*.tsbuildinfo
 **/*.class
 
+# Local classification rules written by a dev run (see .gitignore) - local
+# user state, never part of an image.
+backend/data/
+data/
+
 frontend/test-results/
 frontend/playwright-report/
 frontend/playwright/.cache/

@@ -99,7 +99,15 @@ per source and project, search gated until an edited mapping is saved);
 a root-anchored Investigation workspace (Trace, Span, Correlation,
 Journey, Event) with Show Surroundings per entry and a contextual Back;
 service Include/Exclude filtering where excluded Docker services are
-never read; bounded-parallel Docker historical search.
+never read; bounded-parallel Docker historical search. Added in PR #59 (`main` `51f06e5`, the current
+design baseline): generic, server-side **event classification rules** (user-defined tags such as middleware,
+frontend-call or external-api; no hard-coded categories), **Create tag rule from event** with deterministic pattern
+detection over a bounded real sample (suggestion only, `NO_SAFE_PATTERN_SUGGESTION` when evidence is insufficient),
+**rule test** with matched/borderline examples and extraction coverage (never false-positive claims), **structured
+extraction** (RE2 regex or JSON pointer, masked and redacted like every field), a Classification section in the
+Inspector, a tag filter (any selected tag, applied after retrieval), server-side versioned JSON rule storage, and
+portable JSON rule packs with import preview, conflict resolution and Replace-all confirmation. The source selector
+lists Local Docker, OpenShift and **OpenShift Loki — Not available** (visible, not selectable).
 
 **Explicitly out of scope** (do not design toward these): SSO, per-user
 OAuth, log storage, SIEM, alerting, APM, log mutation, a cross-source

@@ -154,6 +154,9 @@ Open <http://localhost:3434>. This starts the app (with the in-process
 dependency) plus a deterministic demo log generator container. The app
 itself only ever listens on `127.0.0.1` (see
 [Production vs. development](#production-vs-development)).
+Classification rules you create are stored in the `log-explorer-data`
+named volume, which survives `docker compose down`/`up`; only
+`docker compose down -v` removes it.
 
 Full guide — every command below was actually run against this repository,
 including real Docker container discovery and an offline OpenShift Loki
@@ -207,6 +210,11 @@ An installable `LogExplorer-<version>-windows-x64.exe` (Start Menu entry,
 optional desktop shortcut, clean uninstall, per-user install - no admin
 rights required) is produced by that same workflow; see the Windows
 desktop report for where to get one from a given commit/tag.
+
+Per-user data lives outside the install directory, so upgrades and
+uninstall/reinstall keep it: backend logs in `%LOCALAPPDATA%\LogExplorer\logs`,
+classification rules in `%LOCALAPPDATA%\LogExplorer\data`
+(`~/Library/Application Support/LogExplorer/...` on macOS).
 
 ## Production vs. development
 

@@ -75,8 +75,12 @@ Setup (`desktop\packaging\installer.iss`).
 
 Installs the real generated installer, launches the real installed app,
 waits for real backend health, verifies the UI loads and a real API call
-succeeds, then closes the app, confirms no orphan `java.exe` process
-survives, uninstalls, and confirms the install directory is removed.
+succeeds, creates a classification rule through the real API and asserts
+the rules file is written under `%LOCALAPPDATA%\LogExplorer\data` (never
+under the install directory), then closes the app, confirms no orphan
+`java.exe` process survives, uninstalls, confirms the install directory
+is removed and the rules file survived, and finally restores the rules
+data to its pre-test state.
 This is exactly what `.github/workflows/windows-desktop.yml` runs on a
 real `windows-latest` CI runner on every PR that touches `desktop/`,
 `backend/`, or `frontend/`.
@@ -171,10 +175,13 @@ desktop/build-macos/dmg/LogExplorer-<version>-macos-<arch>.dmg
 Mounts the real generated DMG, copies the real `.app` bundle out (a DMG
 is drag-to-install; there is no separate silent-installer step to
 invoke), launches the real app, waits for real backend health, verifies
-the UI loads and a real API call succeeds, quits the app, confirms no
-orphan backend `java` process survives, then removes the bundle (a macOS
-app's "uninstall" is simply deleting the bundle - there is no separate
-uninstaller). This is exactly what `.github/workflows/macos-desktop.yml`
+the UI loads and a real API call succeeds, creates a classification rule
+through the real API and asserts the rules file is written under
+`~/Library/Application Support/LogExplorer/data` (never inside the app
+bundle), quits the app, confirms no orphan backend `java` process
+survives, then removes the bundle (a macOS app's "uninstall" is simply
+deleting the bundle - there is no separate uninstaller), confirms the
+rules file survived, and restores the rules data to its pre-test state. This is exactly what `.github/workflows/macos-desktop.yml`
 runs on a real `macos-latest` CI runner.
 
 ### macOS launcher design (why it differs from Windows)
@@ -341,6 +348,7 @@ avoids relying on that assumption at all.
 | macOS: `RELEASE_GRADE_MODE` fails immediately with a clear "MACOS_SIGNING_IDENTITY required" message | No signing credentials in the environment | Expected, deliberate behavior - this script never fabricates a signed build. Set `MACOS_SIGNING_IDENTITY` to a real keychain identity, or use `--mode dev` |
 | macOS: jpackage reports "The first number in an app-version cannot be zero or negative" | `jpackage`'s own internal bundle-metadata constraint - it refuses a leading `0` (e.g. this project's pre-1.0 `VERSION`) | Handled automatically by `scripts/build-desktop-macos.sh` (substitutes a fixed `1.0.0` for jpackage's internal `--app-version` only when the real version's major is 0) - the DMG filename and all other artifact naming still use the real project version. This is jpackage's own constraint, not a product versioning change |
 | Backend never reports healthy during the packaged smoke test | Check the backend log the script/failure message points to (`%LOCALAPPDATA%\LogExplorer\logs\backend.log` on Windows, `~/Library/Application Support/LogExplorer/logs/backend.log` on macOS) | The log almost always shows the real underlying Spring Boot startup error |
+| Classification rules smoke step fails (rules not saved, or saved in the wrong place) | The launcher passes `LOGEXPLORER_DATA_DIR` to the backend: `%LOCALAPPDATA%\LogExplorer\data` on Windows, `~/Library/Application Support/LogExplorer/data` on macOS (next to the `logs` directory above). The rules file is `classification-rules.json` there, plus a `.bak` copy | Check the directory is writable (a 503 on save means it is not) and the backend log above; this directory is deliberately outside the install directory/app bundle so upgrades and uninstall keep the user's rules |
 
 ## Artifact verification
 

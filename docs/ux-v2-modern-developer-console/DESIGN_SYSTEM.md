@@ -3,7 +3,8 @@
 This is the design proposal for owner-approved Direction B. It was written by LERDESIGN-1 and has not been
 implemented in production. **Owner visual approval is required before any production work.**
 
-- Functional baseline: latest `main` `3f6b1b4bc30c282e0cd1e65510697ff128d79d73`.
+- Functional baseline: latest `main` `51f06e51709455f2c20dcf5c1b32e2dd67443377` (after PR #59). The first pass used
+  `3f6b1b4`; §21 adds Event Classification, and §9 records the source-selector policy.
 - Reference implementation: the isolated prototype in [`prototype/`](prototype/). Tokens are in
   `prototype/styles/tokens.css` and components in `prototype/styles/app.css`.
 - Related documents: [`MOTION_SYSTEM.md`](MOTION_SYSTEM.md), [`COMPONENT_INVENTORY.md`](COMPONENT_INVENTORY.md),
@@ -256,7 +257,7 @@ Rules:
 
 | Control | Spec |
 |---|---|
-| **Source field** | Opens the source list, each source with its health word; the health segment opens **Source health details** (status, checked, latency, declared capabilities — state 27). First source auto-selected. For OpenShift/Loki the adjacent scope field reads Namespace › workload and opens the scope selector (Project, Workload, Pod, Container). |
+| **Source field** | A **native `<select>` styled as a field** (register SSEL-2: OpenShift Loki must stay a native disabled option, so the control is not replaced with a custom listbox). Options follow the fixed policy order **Local Docker → OpenShift → OpenShift Loki — Not available**; the unavailable option is `disabled`, in `--ink-3`, with no health dot, icon or “Coming soon” wording, and cannot be chosen by mouse or keyboard. Docker is selected first when available, then OpenShift. The health dot and word sit **in the field beside the value**, not inside the options, and the health segment opens **Source health details** (state 27). For OpenShift the adjacent scope field reads Namespace › workload and opens the scope selector. State 40 draws the open list as an approximation of the browser-rendered list. |
 | **Field button** (Source, Project, Time, Services, Severity) | 30 px; `--surface-work`; `--control-border`; optional small key word in `--ink-3` and value in `--ink-1`; trailing chevron. Source carries a health dot and word. Loki shows a locked Namespace field. |
 | **Search input** | Flexible width; leading search icon; `/` key hint; ID detection prompt below as a popover (unchanged behaviour). |
 | **Primary button** | Accent fill with inverse text. **Search** is the only filled control in the query bar. While running it shows a spinner and the label "Searching…". |
@@ -437,3 +438,319 @@ WCAG 2.2 AA is the target. The system guarantees the following:
 
 The remaining `design-system-*` flags compare against root `DESIGN.md`, which intentionally still documents production
 until owner approval.
+
+---
+
+## 21. Event classification (PR #59 design sync)
+
+Baseline: `main` `51f06e5`. PR #59 added generic classification rules, create-from-event, deterministic pattern
+detection, rule test, structured extraction, tag filtering, JSON rule packs and the source-selector policy. This
+section extends the B1 language to that capability. **No new colour tokens were needed**: every primitive reads the
+existing semantic vocabulary (§2), so B1 dark, B2 and B3 inherit it. Prototype states **40–81**
+(`prototype/scripts/classification.js`, `prototype/styles/classification.css`).
+
+### 21.1 The three modes, applied to classification
+
+| Mode | Classification job | Presentation |
+|---|---|---|
+| **Search** (find events) | A compact signal and a filter | Optional **Tags** column (first tag + `+N`), **Classification tags** group in More filters, one `Tag <name>` chip per selected tag |
+| **Inspector** (explain one event) | Full detail of what the server concluded | **Classification** section inside the Overview tab: all tags, then one block per matching rule with its extracted values |
+| **Investigation** (explore related events) | Scan classification across events | **Tags** column in the capture sequence table and a `Tagged n of N` stat; Live uses the same column |
+| Settings › Classification rules | Manage rules, import and export | Rules table, banners, import preview |
+| Rule builder workspace | Create a rule from one event | Anchor strip, step rail, step content, draft panel |
+
+The Inspector never becomes a multi-event view: cross-event scanning lives in Search and Investigation. The
+**five-tab invariant is unchanged**: classification is a section of Overview, never a sixth tab (production does the
+same).
+
+### 21.2 Tag chip
+
+| Aspect | Spec |
+|---|---|
+| Anatomy | Lucide `tag` icon 11–12 px in `--ink-3` + the tag text, **lowercase exactly as stored** (production stores lowercase; the Inspector currently uppercases for display, D20) |
+| Sizes | 18 px in table cells and rule rows; 22 px (`.lg`) in the Inspector and token input |
+| Surface | `--surface-sunken`, 1 px `--line`, `--r-xs`, 12 px/500 `--ink-1` |
+| Colour | **No per-tag hue.** Tags are user data with unlimited future values; colouring them would collide with severity, lanes and the accent, and would make `middleware` look special. Every tag looks the same. |
+| Overflow | In a cell: the first tag shrinks with an ellipsis only when it must; `+N` (neutral tint, never shrinks) follows. The full list is in `title`, in the visually hidden accessible name (“Tags: middleware, external-api, partner”) and in a hover/focus tooltip (state 43). |
+| Disabled rule | Dashed border and `--ink-3` text, with the word Off beside the switch |
+
+### 21.3 Results table: tag presentation decision
+
+PR #59 deferred result-row tags to this sync. Options evaluated against CLAUDE.md §4:
+
+| Option | Scanning | Invariants | Verdict |
+|---|---|---|---|
+| A. Chips inside “What happened” | Pushes the message, adds badge clutter | Breaks “What happened = message only” | Rejected |
+| B. An always-visible eighth column | Good | Breaks “exactly seven columns” | Rejected without an owner decision (D19) |
+| C. A marker in the signal gutter | Hidden meaning; gutter already holds severity + trigger | Overloads the trigger/severity grammar | Rejected |
+| D. A marker plus hover card only | Unscannable | — | Rejected |
+| **E. Optional Tags column** | First tag + `+N`, one row, no row growth, 0/1/many supported, sortable by nothing new | Keeps seven default columns; optional columns already exist (Logger, Trace ID…) | **Chosen** |
+
+Spec: column id `tags`, header “Tags”, placed right after What happened when enabled from Columns; 156 px; `—` when
+the event has no tag; never wraps. States 42 and 43 show it enabled. **While the Inspector is docked the Tags column
+is hidden** (the Inspector's Classification section shows the selected event's tags) and returns when the Inspector
+closes, so What happened keeps its Inspector-open width (286 px at 1440, as in state 04). States 44–46 are drawn this
+way, with the seven default columns. The preference itself is unchanged by opening the Inspector.
+
+**Width floor.** Enabling Tags adds its width to the table's minimum instead of taking it from What happened: the
+results table minimum becomes 1,124 px (seven fixed columns 728 px + Tags 156 px + What happened ≥ 240 px), capture
+sequence tables 1,276 px and the Live table 916 px. The Tags column is 156 px in Search, Investigation and Live alike. Narrower viewports scroll the table inside its existing wrapper
+(CLAUDE.md §4 contained horizontal scroll); the page never scrolls and What happened is never crushed. **D19** asks
+whether the owner wants it visible by default, which would amend the seven-column invariant.
+
+### 21.4 Tag filter
+
+- A **Classification tags** group in More filters (fifth column ≥ 1024 px), one checkbox per known tag with the tag
+  icon; draft until Apply, like every other group. Loading, error and “No tags yet” copy are kept from production; the error is drawn in state 79 (“Could not load
+  classification tags: … Other filters still work.”).
+- Help copy: “Keeps events with **any** selected tag. Tags are applied by the server to the events a search reads;
+  filtering does not read more history.”
+- Committed: one chip per tag, `Tag <name>` (production copy), which never ellipsizes to a fragment. The active-filter
+  row scrolls horizontally when chips exceed the strip, and **Clear all sits outside the scrolling row**, so every
+  remove control and Clear all stay reachable at every width. Chips keep their words while the row scrolls; they never
+  shrink to fragments.
+- More filters stays inside the viewport at every width: only the fields scroll (wheel, touch and keyboard); the
+  Reset / Cancel / Apply footer sits outside the scroll area, so it is always visible and never covers a field. Each
+  tag option row (26 px, full width) is its checkbox target. On narrow screens the query preview takes its own row.
+- Focus: opening More filters moves focus to the panel heading (production behaviour); Tab continues through the
+  panel; the results behind the open panel are inert, so no focus lands under it. Esc or Cancel returns focus to the
+  More filters trigger. When the row overflows (detected with a
+  ResizeObserver) its right edge fades over 32 px, so it reads as scrollable.
+- Tag list copy exactly as production: “Loading classification tags…” while loading; “No classification tags yet.”
+  when no rule defines a tag (state 80); the error in state 79.
+- Readout under a tag filter: “**5** tagged events · among the events this search read”, plus the table footnote
+  stating that tags apply after the source returns events. No copy implies exhaustive, source-side filtering.
+
+### 21.5 Inspector classification section
+
+Order: section heading “Classification” with “n rules matched” → the union of tags → one block per rule (rule name,
+“adds <tags>”, a **Rule** link to Settings, D29) → the rule's extracted values as a key/value list in definition order.
+The grammar is identical for `middleware`, `frontend-call`, `mobile-call`, `external-api`, `database-call` or any
+future tag; nothing is rule-specific.
+
+| Value state (API) | Rendering | Copy |
+|---|---|---|
+| PRESENT | `--text-data` value, copy button | — |
+| ABSENT | `—` in `--ink-3` + secondary line | “Not found in this event” |
+| INVALID | `—` + circle-alert icon + secondary line | “Could not be read” (production copy; covers a failed type conversion and an extraction that failed) |
+| `redacted`, value exactly `[REDACTED]` | `[REDACTED]` token on `--masked-tint` with a shield icon; **no copy button** | “Redacted by the server; nothing to show or copy” |
+| `redacted`, any other value (partly redacted, e.g. JSON with `"token":"[REDACTED]"`, or masked by the privacy policy, e.g. `84***31`) | The value exactly as served, a shield note; **no copy button** | “Redacted by the server where required” (the server sets `redacted` whenever redaction changed the value; it does not say why) |
+| Long value | Two-line clamp + **Show more** | — |
+| `truncated` | Value + info line | “Shortened by the server to 2,000 characters” |
+| JSON value | Disclosure “JSON · n lines · formatted for reading” (the server sends compact JSON; the UI formats it), highlighted as §14, bounded height, copy unless redacted | — |
+
+A rule that matched but defines no extractions shows “This rule extracts no fields.” (production copy; state 46).
+Sensitivity belongs to each extraction definition, not to the value: the same request body can be `[REDACTED]` in a
+rule that marks it sensitive and shown as JSON in another rule that does not (state 45). Every block lists all of its
+rule's definitions in definition order, with the status the engine returned. Rules and the tag union appear in the
+server's evaluation order: priority, then id. The rule editor sets no priority (every rule is 100), so the order is by
+id, in the Inspector, the tag cells, the rules list and every rule list derived from it (state 70).
+Missing (`—`), redacted (token) and unreadable (icon + sentence) are distinguishable without colour. Footnote: values
+pass the same masking and redaction as every other field. States 44–46.
+
+### 21.6 Rule builder workspace
+
+Opened from the Inspector action **Create tag rule** (and from New rule, Edit, Duplicate, Test in Settings).
+
+| Region | Spec |
+|---|---|
+| Mode bar | “Back to event” (D18), title “Create tag rule”, Cancel |
+| Anchor strip | The **trigger crosshair**, level mark + word, time, service and message of the selected event: the signature trigger carries into the builder, so the investigator always sees which event the rule came from |
+| Step rail (236 px) | Source · Detect · Classification · Extraction · Test · Save. Each step shows a status line (“17 similar of 200 read”, “2 tags · 5 conditions”). Every step stays reachable in any order, as in production. |
+| Step content | Panels with h3 heads; one primary action per view |
+| Draft panel (340 px) | Name, tags, plain-language conditions, extraction count, tested state and sample scope, always visible, labelled “not saved” |
+| Compact scope bar | The committed search scope that Detect and Test sample, with Edit search |
+
+**Without a source event** (New rule, Edit, Duplicate; states 76 and 81): no anchor strip and no crosshair, because the
+crosshair is reserved for a real trigger. An “Editing a saved rule” (or “New rule”) strip states that Detect needs a
+pasted sample value; Detect then shows a Field select and an editable Sample value, and while the value is empty the
+hint “Detect needs a sample value. Paste one above, or write conditions manually.” describes the disabled Detect
+button (state 81); the rail starts at Detect; Back returns to the rules list. The Save step panel is titled “Review and save” (never “Ready” while issues may exist). On the Save step without a
+conflict (state 74) the summary shows the untested hint (“Test first”). **Save rule stays enabled, as in production**: pressing it
+re-checks the draft, writes nothing when a required field is missing, and lists “Not saved: …” issues with a link to
+the step.
+After Reload rules on a conflict the notice “Latest rules loaded. Your draft is kept — save again when ready.” replaces
+the banner.
+
+An invalid expression exists only while it is being typed (state 60) and counts as a draft condition until it is
+fixed or removed; a saved rule never contains one, because the server rejects it on save.
+Advanced condition rows stack below 1024 px (Value full width) and become one column at ≤ 767 px, so no field is
+crushed.
+
+**Why a rail and not a locked wizard or one long form.** A locked wizard hides earlier decisions and blocks
+correction. One long form (the production extraction step reaches 2,100 px) buries the test result. The rail keeps
+production's free navigation, reuses the mapping process grammar, and the draft panel removes the hidden-state
+problem of steps. Below 1440 px the draft panel becomes a one-line summary (so the extraction table keeps its width at 1366); below
+1024 px the rail becomes a horizontal step strip that scrolls the current step into view and fades the edges hiding more steps. A step that
+receives keyboard focus scrolls fully into view, clear of the fades (`scroll-padding-inline: 40px`). Rules,
+extraction and import tables switch to stacked rows below
+1280 px, before any column would be crushed.
+
+**Regex stays behind an explicit path.** The ordinary path is Detect → Use this suggestion → name and tags → keep
+the suggested values → Test → Save, with no expression visible. Expressions appear only in “Edit conditions
+(advanced)” and in an extraction's edit row.
+
+### 21.7 Detect: observed evidence vs suggested rule
+
+| Panel | Treatment | Content |
+|---|---|---|
+| **Observed in this sample** | Solid panel, neutral “Measured” tag | Stat row Read · With a message · Similar to this event; the **decode lane**; a “Changing parts” table (part, kind, example from this event: the API returns one example per changing part, taken from the redacted anchor) |
+| **Suggested rule** | **Dashed** panel border, dashed “Suggestion · not saved” tag | Plain-language conditions; “On this sample it matches **17 of 17** similar events and **0 of 181** other events that were read”; suggested values with evidence bars; warnings; Use this suggestion / Write conditions manually |
+
+**Only API data is drawn.** The Changing parts table shows one example per part from the (redacted) anchor event, and
+suggested values show counts only (“16 / 17”). Values from other sampled events are never shown, and warnings are the
+server's count sentences as served. Narrow widths wrap these small tables instead of truncating them.
+
+**Decode lane** (logic-analyzer bus decode): the anchor value is split into segments. Fixed text = solid
+`--line-strong` segment on the work surface. Changing part = **dashed** `--control-border` segment with its name and
+kind beneath (`url · path`). A legend states both meanings (“Fixed text across similar events”: a stable segment aligns in at least 90 % of
+similar values, so the legend never says “all”); the accessible name lists both groups. No percentages, no
+“confidence”, no AI wording: the copy says the sample is read through the normal search path and compared deterministically.
+
+**Suggestions follow the detector's candidate order.** EXACT; STARTS_WITH the stable prefix; STARTS_WITH plus CONTAINS
+each stable label outside the prefix (up to four); CONTAINS the longest stable segment plus labels; REGEX. The first
+candidate that matches the anchor and at least 90 % of similar values without matching any other sampled value is
+suggested. State 57 draws the prefix-plus-labels candidate (five conditions), because in this sample the prefix alone
+also matched queued webhook events that are not similar; a design must never draw a combination the detector cannot
+produce. Suggested extraction expressions are drawn exactly as the detector writes them (for example
+`duration=(?P<durationMs>\d+(?:\.\d+)?)ms`).
+
+**Segments follow server tokenization.** The server tokenizes values into typed tokens (IDs, numbers, durations,
+paths), so a duration such as `5012ms` is one changing part named `duration`; a unit is never drawn as a separate
+fixed segment. Part names are the detector's variable names, not extraction names.
+
+**Decode lane derivation.** `stableSegments` and `variableSegments` carry no positions. The client rebuilds the lane
+by locating each stable segment, in order, in the anchor value; the text between two located segments is the next
+variable segment, labelled with the variable name and kind in order. If any stable segment cannot be located
+uniquely and in order, or the number of gaps differs from the number of variables, the lane is **not drawn** and the
+section falls back to the two plain lists (fixed text; changing parts), so the design never shows an invented
+alignment.
+
+**No safe pattern** (state 58): warning state panel “No safe pattern could be suggested”, the server reason quoted as
+served, a stat
+row with the measured counts only (the minimum needed exists only inside the server's reason text), “Log Explorer does not guess from too little evidence”, and three actions:
+Write conditions manually, Widen the time range (opens Edit search, D23), Cancel.
+
+### 21.8 Extraction editor
+
+Table (≥ 768 px): Status · Value (label, `name · type`) · Read from (field + method) · Sensitive · Coverage · actions.
+
+- **Suggested** = dashed status tag with a dashed-circle icon; **Confirmed** = solid tag with a check icon. A value
+  stays Suggested until the user keeps or edits it (client-side draft state, D21; not persisted).
+- Coverage uses the mapping evidence bar with `16 / 17`; values added manually read “Test to measure”.
+- **Preview values** (production action) sits beside Add value and runs Test, opening the Test step.
+- Sensitive values show a shield and “Never shown”.
+- The edit row holds output name, label, from field, type, method (Pattern (RE2) / JSON pointer), the sensitive switch
+  and, only there, expression and group. The Detect evidence for that value is repeated in the row.
+- Below 1280 px each value is a stacked card with Keep (named per value, e.g. “Keep Method as suggested”), Edit and
+  Remove; the value being edited opens its edit sheet inside the card (four columns, two below 1280 px, one at ≤ 767 px).
+
+### 21.9 Test results
+
+- Stat row **Read · Matched · Not matched**; the sample-limit note (“only the newest 200 events in the scope were
+  read”: the sample collector reads newest first); “Non-matching events are counted, not listed”
+  (the API returns no non-match previews, so none are drawn).
+- Extraction coverage table among matched events, including “1 found but could not be read”.
+- Sample combinations must be ones the server can produce together: examples come from services inside the sample
+  scope (an excluded service never appears), and every event that would change Detect's similar count, or that matches
+  at least one condition in the Test sample, appears consistently in Detect and in the borderline list.
+- Every timestamp in the builder uses the display zone, like the anchor strip (no mixed UTC and local times).
+- Coverage lists every extraction in the draft, including values that matched nothing (`0 / 17`).
+- Examples as a segmented control: **Matched · 5 of 17** and **Borderline · 3**. A sample is one compact block
+  (time, service, level, field value in data type, extracted values as small key/value chips). Borderline samples
+  carry “Matched 3 of 5 conditions” on a warning tint and explain what to check. A borderline example always matched
+  at least one condition (the server only returns near misses with one or more matched conditions). Borderline
+  examples show **no extracted values**: the server extracts values only for matched events. Matched examples list
+  every extraction in the draft, including values not found (`—`).
+- Coverage and examples agree: a value the pattern does not find (for example `duration=n/a`) counts as not found
+  (`—`), not as “could not be read”; a shortened field value is cut at the server's 300-character preview limit and
+  labelled.
+- Review footer, verbatim from production: “**Review these matches for false positives.** Counts describe this
+  bounded sample only, not the whole source.”
+- **Never:** “False positives = 0”, accuracy or confidence percentages.
+
+### 21.10 Settings › Classification rules
+
+- Lives in the unified Settings workspace (D3, D17) as a nav item beside Field mapping, with a rule count.
+- Meta line: revision, “Saved on the Log Explorer server as `classification-rules.json`” (file name only, D28), and
+  runtime counts “since the server started”. The meta line always states what the API would return for that state:
+  an empty or invalid configuration shows zeroed runtime counts, an invalid configuration shows revision 0 (the
+  server loads `RulesDocument.empty()`) and says the file could not be read, and a state reached by saving or
+  importing shows the next revision and the merged rule set.
+- Toolbar: filter, Import rule pack…, Export all, Export selected (n), **New rule** (the only primary).
+- Table: select · Rule (name + description) · Tags · Matches when (first condition in plain language + “+n more ·
+  all must match”) · Extracts · Enabled (switch with On/Off word) · Test, Edit, More (Duplicate, Export, Delete).
+- Banners (full width, icon + words): Saved (success, with Re-run search, D22), Revision conflict (danger, Reload
+  rules), Recovered from the last good copy (warning), Invalid configuration (danger + “Classification is off”
+  state panel). Banner copy never names backup, temporary or corrupt file paths.
+- More actions menu per rule (state 75): Duplicate, Export this rule, Delete… (danger item that opens the dialog). The
+  trigger carries `aria-haspopup="menu"` and `aria-expanded`. The menu is drawn outside the scrolling table so it is
+  never clipped, and it is anchored 4 px under its own row, right-aligned with the trigger, so it never covers the
+  controls of the row it belongs to; the row and the menu are scrolled into view together.
+- Delete: modal alertdialog, danger button “Delete rule”, focus on Cancel, explains shared server scope and that it
+  cannot be undone (D27).
+- ≤ 767 px: stacked rule rows (checkbox, name, tags, matcher, switch, actions menu) instead of the table.
+
+### 21.11 Import rule pack
+
+- Process strip: Choose file · Validate · Preview · Apply.
+- Count tags with icon + word + number: Rules in pack, New (circle-plus), Identical (equal), Conflicts
+  (triangle, warning tint), Invalid (circle-x, danger tint). A zero count is dashed and tertiary.
+- Items table: status tag · rule (name + id) · tags · **What applying does** (“Will be added”, “Already present;
+  stays unchanged”, “Needs your choice”, “Existing rule is kept”, “Imported version replaces the existing rule”,
+  “Blocks the import”). Conflict rows expand a detail row; invalid rows show the validation path and message.
+- How to apply: two choice cards, Merge and **Replace all rules** (destructive card turns danger when chosen).
+- Conflicts (Merge only): one required choice for all conflicts, **Keep existing** / **Use imported** (the API takes
+  one resolution per import).
+- Replace all: a danger zone listing the existing rules that will be deleted (computed from the loaded rules and the
+  pack ids, D24), the shared-server scope, “cannot be undone; export first”, and a required confirmation checkbox.
+  The apply button becomes the danger button **Replace all rules**.
+- Apply stays disabled while any blocker exists; blockers are listed beside it and referenced by
+  `aria-describedby`. Invalid packs offer Choose another file. At ≤ 767 px the action bar is not sticky, so a focused
+  control is never hidden under it (WCAG 2.4.11).
+- A file larger than the import limit shows an inline error under the picker (state 77).
+- After a successful import (state 71) the rules list is the server's merged response: the added rule is in the list
+  in id order, the Settings count includes it, and the revision is the one the save produced.
+- If the rules change after the preview, a danger banner says nothing was imported and offers **Reload and preview
+  again**; Apply stays blocked until then (state 78).
+
+### 21.12 Motion
+
+See MOTION_SYSTEM §7: evidence reveal 160 ms, extraction row add 120 ms, dialog 120 ms, all reduced to opacity or
+none under reduced motion.
+
+### 21.13 Contrast of the new pairs (computed, WCAG 2.x)
+
+| Pair | Tokens | B1 light | B1 dark | Requirement |
+|---|---|---|---|---|
+| Tag chip text | `ink-1` on `surface-sunken` | 16.02 | 15.03 | 4.5 |
+| Tag icon | `ink-3` on `surface-sunken` | 4.85 | 6.10 | 4.5 |
+| Overflow count +N | `ink-2` on `neutral-tint` | 7.21 | 7.73 | 4.5 |
+| Redacted token | `masked` on `masked-tint` | 5.15 | 6.20 | 4.5 |
+| Borderline tag | `warning` on `warning-tint` | 5.64 | 7.74 | 4.5 |
+| Danger zone heading | `danger` on `danger-tint` | 5.70 | 7.08 | 4.5 |
+| Unavailable source option | `ink-3` on `surface-raised` | 5.40 | 5.27 | 4.5 |
+| Variable segment text | `ink-2` on `surface-sunken` | 7.34 | 8.94 | 4.5 |
+| Variable segment dashed border | `control-border` on `surface-sunken` | 3.19 | 4.25 | 3.0 |
+| Suggested tag text | `ink-2` on `surface-work` | 8.17 | 8.62 | 4.5 |
+| Confirmed icon | `success` on `surface-work` | 6.09 | 8.20 | 3.0 |
+| Import error on invalid row | `danger` on `danger-tint` | 5.70 | 7.08 | 4.5 |
+| Disabled rule text | `ink-3` on `surface-work` | 5.40 | 5.88 | 4.5 |
+| Coverage bar fill | `ink-3` on `line-subtle` | 4.43 | 4.89 | 3.0 |
+
+Chip and fixed-segment borders are decorative; the text or icon carries the meaning.
+
+### 21.14 Accessibility specifics
+
+- Tags are text, never colour-only; `+N` is backed by the full list in the accessible name.
+- The unavailable source is a native disabled option (not focusable, not selectable, announced as dimmed/unavailable).
+- The decode lane is `role="img"` with a text alternative listing fixed and changing parts; the changing-parts table
+  carries the same data.
+- Step rail: `nav` with `aria-current="step"` and hidden “completed” text; step content is a labelled region.
+- Suggested vs Confirmed, Conflict vs Invalid, Missing vs Redacted vs Unreadable all differ by icon and word.
+- Import mode and conflict resolution are radio groups; the conflict group is `aria-required`.
+- Destructive dialogs are `alertdialog` with focus on Cancel; Replace all needs a checkbox before the button enables.
+- Remove controls in filter chips are 24 px targets (fixed during this sync after an axe `target-size` finding).
+- Whatever a layer covers is inert: the results behind the Inspector sheet (< 1366 px) and behind the open More
+  filters panel, and everything behind a modal alertdialog (delete rule), so keyboard focus never lands under a layer
+  (WCAG 2.4.11). At ≥ 1366 px the docked Inspector and the results stay operable side by side.

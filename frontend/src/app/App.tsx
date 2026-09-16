@@ -34,6 +34,13 @@ const FieldMappingWorkspace = lazy(() =>
   import('../features/settings/fieldMapping/FieldMappingWorkspace').then((m) => ({ default: m.FieldMappingWorkspace })),
 );
 
+/** Event Classification & Extraction Rules - lazy-loaded takeover workspace, same basis as `FieldMappingWorkspace`. */
+const ClassificationRulesWorkspace = lazy(() =>
+  import('../features/settings/classification/ClassificationRulesWorkspace').then((m) => ({
+    default: m.ClassificationRulesWorkspace,
+  })),
+);
+
 /** Local, non-blocking loading state (§9) - matches `ResultsPanel`'s own `.loading` convention, never a full-screen spinner. */
 function SectionLoadingFallback({ label }: { label: string }) {
   return (
@@ -177,6 +184,16 @@ function AppContent() {
                 profileError={state.fieldMappingProfileError}
                 onProfileChanged={() => state.refreshFieldMappingProfile(mappingProject)}
                 onClose={state.closeMappingWorkspace}
+              />
+            </Suspense>
+          ) : state.classificationWorkspaceOpen ? (
+            <Suspense fallback={<SectionLoadingFallback label="Loading classification rules…" />}>
+              <ClassificationRulesWorkspace
+                key={state.classificationWorkspaceKey}
+                sourceEvent={state.classificationWorkspaceEvent}
+                buildScope={state.buildClassificationSampleScope}
+                onRulesChanged={state.refreshClassificationTags}
+                onClose={state.closeClassificationWorkspace}
               />
             </Suspense>
           ) : liveModeActive ? (

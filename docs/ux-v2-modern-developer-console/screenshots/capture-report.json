@@ -1,4 +1,6 @@
 {
+  "captured": "2026-09-16T06:11:57.748Z",
+  "mode": "all",
   "problems": [],
   "report": [
     {
@@ -6,616 +8,1872 @@
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/02-search-running-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/03-search-error-1440x900.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b1/04-inspector-overview-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 1,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/05-inspector-actor-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 1,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/06-inspector-request-flow-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 1,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/07-inspector-business-error-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 1,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/08-inspector-technical-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 1,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/09-investigation-trace-1440x900.png",
       "overflowX": 0,
       "fullRows": 9,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b1/10-investigation-journey-1440x900.png",
       "overflowX": 0,
       "fullRows": 14,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b1/11-context-surroundings-1440x900.png",
       "overflowX": 0,
       "fullRows": 19,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/12-more-filters-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/13-mapping-workspace-1440x900.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b1/14-mapping-editing-1440x900.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b1/15-mapping-needs-change-unmapped-1440x900.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b1/16-settings-sources-1440x900.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b1/17-settings-masking-proxy-1440x900.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b1/18-live-1440x900.png",
       "overflowX": 0,
       "fullRows": 22,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b1/19-live-paused-1440x900.png",
       "overflowX": 0,
       "fullRows": 22,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b1/19b-live-reconnecting-1440x900.png",
       "overflowX": 0,
       "fullRows": 22,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b1/20-empty-1440x900.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b1/21-first-search-running-1440x900.png",
       "overflowX": 0,
       "fullRows": 18,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/22-source-unavailable-1440x900.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b1/23-no-services-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/24-load-more-failure-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/25-malformed-event-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 1,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/26-mapping-not-ready-1440x900.png",
       "overflowX": 0,
       "fullRows": 25,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/27-unsupported-capability-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 1,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/28-invalid-query-1440x900.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b1/29-services-exclude-open-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/30-columns-settings-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/31-startup-1440x900.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b1/32-time-custom-range-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/33-time-custom-applied-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/34-raw-logql-loki-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/35-row-actions-menu-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/36-id-detection-1440x900.png",
       "overflowX": 0,
       "fullRows": 25,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/37-surroundings-from-trace-1440x900.png",
       "overflowX": 0,
       "fullRows": 19,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1/38-live-failed-1440x900.png",
       "overflowX": 0,
       "fullRows": 22,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b1/39-settings-openshift-connect-1440x900.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
+    },
+    {
+      "file": "b1/40-source-list-loki-unavailable-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 0,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "b1/41-more-filters-tag-filter-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 0,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "b1/42-results-tag-filter-tags-column-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 5,
+      "tabRows": 0,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "Tags",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "b1/43-results-multiple-tags-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 0,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "Tags",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "b1/44-inspector-one-classification-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 1,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "b1/45-inspector-multiple-classifications-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 1,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "b1/46-inspector-long-json-values-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 1,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "b1/47-rules-empty-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/48-rules-populated-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/49-rules-delete-confirmation-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/50-rules-saved-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/51-rules-revision-conflict-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/52-rules-recovered-from-backup-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/53-rules-invalid-config-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/54-rule-source-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/55-rule-detect-initial-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/56-rule-detecting-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/57-rule-detected-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/58-rule-no-safe-pattern-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/59-rule-classification-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/60-rule-conditions-advanced-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/61-rule-extraction-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/62-rule-testing-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/63-rule-test-results-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/64-rule-test-borderline-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/65-rule-save-conflict-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/66-import-choose-file-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/67-import-preview-clean-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/68-import-preview-conflicts-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/69-import-invalid-pack-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/70-import-replace-all-confirmation-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/71-import-applied-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/72-investigation-trace-tags-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 9,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/73-live-tags-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 21,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/74-rule-save-ready-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/75-rules-more-menu-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/76-rule-edit-mode-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/77-import-file-too-large-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/78-import-revision-conflict-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1/79-more-filters-tags-error-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 0,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "b1/80-more-filters-tags-empty-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 0,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "b1/81-rule-new-detect-no-source-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
     },
     {
       "file": "b1-dark/01-search-results-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b2/01-search-results-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b3/01-search-results-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1-dark/04-inspector-overview-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 1,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b2/04-inspector-overview-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 1,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b3/04-inspector-overview-1440x900.png",
       "overflowX": 0,
       "fullRows": 26,
       "tabRows": 1,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1-dark/09-investigation-trace-1440x900.png",
       "overflowX": 0,
       "fullRows": 9,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b2/09-investigation-trace-1440x900.png",
       "overflowX": 0,
       "fullRows": 9,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b3/09-investigation-trace-1440x900.png",
       "overflowX": 0,
       "fullRows": 9,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b1-dark/11-context-surroundings-1440x900.png",
       "overflowX": 0,
       "fullRows": 19,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b2/11-context-surroundings-1440x900.png",
       "overflowX": 0,
       "fullRows": 19,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b3/11-context-surroundings-1440x900.png",
       "overflowX": 0,
       "fullRows": 19,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "b1-dark/13-mapping-workspace-1440x900.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b2/13-mapping-workspace-1440x900.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b3/13-mapping-workspace-1440x900.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b1-dark/18-live-1440x900.png",
       "overflowX": 0,
       "fullRows": 22,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b2/18-live-1440x900.png",
       "overflowX": 0,
       "fullRows": 22,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "b3/18-live-1440x900.png",
       "overflowX": 0,
       "fullRows": 22,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
+    },
+    {
+      "file": "b1-dark/45-inspector-multiple-classifications-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 26,
+      "tabRows": 1,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "b1-dark/48-rules-populated-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1-dark/57-rule-detected-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "b1-dark/68-import-preview-conflicts-1440x900.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
     },
     {
       "file": "responsive/01-search-results-1920x1080.png",
       "overflowX": 0,
       "fullRows": 31,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "responsive/01-search-results-1366x768.png",
       "overflowX": 0,
       "fullRows": 20,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "responsive/01-search-results-1024x768.png",
       "overflowX": 0,
       "fullRows": 20,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "responsive/01-search-results-768x1024.png",
       "overflowX": 0,
       "fullRows": 28,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "responsive/01-search-results-390x844.png",
       "overflowX": 0,
       "fullRows": 22,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "responsive/04-inspector-overview-1920x1080.png",
       "overflowX": 0,
       "fullRows": 31,
       "tabRows": 1,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "responsive/04-inspector-overview-1366x768.png",
       "overflowX": 0,
       "fullRows": 20,
       "tabRows": 1,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "responsive/04-inspector-overview-1024x768.png",
       "overflowX": 0,
       "fullRows": 20,
       "tabRows": 1,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "responsive/04-inspector-overview-768x1024.png",
       "overflowX": 0,
       "fullRows": 28,
       "tabRows": 1,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "responsive/04-inspector-overview-390x844.png",
       "overflowX": 0,
       "fullRows": 22,
       "tabRows": 1,
-      "clipped": 0
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
     },
     {
       "file": "responsive/09-investigation-trace-1920x1080.png",
       "overflowX": 0,
       "fullRows": 9,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "responsive/09-investigation-trace-1366x768.png",
       "overflowX": 0,
       "fullRows": 9,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "responsive/09-investigation-trace-1024x768.png",
       "overflowX": 0,
       "fullRows": 9,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "responsive/09-investigation-trace-768x1024.png",
       "overflowX": 0,
       "fullRows": 9,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "responsive/09-investigation-trace-390x844.png",
       "overflowX": 0,
       "fullRows": 6,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "responsive/13-mapping-workspace-1920x1080.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "responsive/13-mapping-workspace-1366x768.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "responsive/13-mapping-workspace-1024x768.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "responsive/13-mapping-workspace-768x1024.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "responsive/13-mapping-workspace-390x844.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "responsive/16-settings-sources-1920x1080.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "responsive/16-settings-sources-1366x768.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "responsive/16-settings-sources-1024x768.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "responsive/16-settings-sources-768x1024.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "responsive/16-settings-sources-390x844.png",
       "overflowX": 0,
       "fullRows": 0,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "responsive/18-live-1920x1080.png",
       "overflowX": 0,
       "fullRows": 22,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "responsive/18-live-1366x768.png",
       "overflowX": 0,
       "fullRows": 18,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "responsive/18-live-1024x768.png",
       "overflowX": 0,
       "fullRows": 18,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "responsive/18-live-768x1024.png",
       "overflowX": 0,
       "fullRows": 22,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
     },
     {
       "file": "responsive/18-live-390x844.png",
       "overflowX": 0,
       "fullRows": 9,
       "tabRows": 0,
-      "clipped": 0
+      "geometry": null
+    },
+    {
+      "file": "responsive/42-results-tag-filter-tags-column-1920x1080.png",
+      "overflowX": 0,
+      "fullRows": 5,
+      "tabRows": 0,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "Tags",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "responsive/42-results-tag-filter-tags-column-1366x768.png",
+      "overflowX": 0,
+      "fullRows": 5,
+      "tabRows": 0,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "Tags",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "responsive/42-results-tag-filter-tags-column-1024x768.png",
+      "overflowX": 0,
+      "fullRows": 5,
+      "tabRows": 0,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "Tags",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "responsive/42-results-tag-filter-tags-column-768x1024.png",
+      "overflowX": 0,
+      "fullRows": 5,
+      "tabRows": 0,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "Tags",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "responsive/42-results-tag-filter-tags-column-390x844.png",
+      "overflowX": 0,
+      "fullRows": 5,
+      "tabRows": 0,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "Tags",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "responsive/45-inspector-multiple-classifications-1920x1080.png",
+      "overflowX": 0,
+      "fullRows": 33,
+      "tabRows": 1,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "responsive/45-inspector-multiple-classifications-1366x768.png",
+      "overflowX": 0,
+      "fullRows": 20,
+      "tabRows": 1,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "responsive/45-inspector-multiple-classifications-1024x768.png",
+      "overflowX": 0,
+      "fullRows": 20,
+      "tabRows": 1,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "responsive/45-inspector-multiple-classifications-768x1024.png",
+      "overflowX": 0,
+      "fullRows": 28,
+      "tabRows": 1,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "responsive/45-inspector-multiple-classifications-390x844.png",
+      "overflowX": 0,
+      "fullRows": 22,
+      "tabRows": 1,
+      "geometry": {
+        "columns": [
+          "Time",
+          "Level",
+          "Service",
+          "What happened",
+          "User / Customer",
+          "Correlation / Trace",
+          "Actions"
+        ],
+        "maxDelta": 0
+      }
+    },
+    {
+      "file": "responsive/48-rules-populated-1920x1080.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/48-rules-populated-1366x768.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/48-rules-populated-1024x768.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/48-rules-populated-768x1024.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/48-rules-populated-390x844.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/57-rule-detected-1920x1080.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/57-rule-detected-1366x768.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/57-rule-detected-1024x768.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/57-rule-detected-768x1024.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/57-rule-detected-390x844.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/61-rule-extraction-1920x1080.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/61-rule-extraction-1366x768.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/61-rule-extraction-1024x768.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/61-rule-extraction-768x1024.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/61-rule-extraction-390x844.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/63-rule-test-results-1920x1080.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/63-rule-test-results-1366x768.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/63-rule-test-results-1024x768.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/63-rule-test-results-768x1024.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/63-rule-test-results-390x844.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/68-import-preview-conflicts-1920x1080.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/68-import-preview-conflicts-1366x768.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/68-import-preview-conflicts-1024x768.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/68-import-preview-conflicts-768x1024.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
+    },
+    {
+      "file": "responsive/68-import-preview-conflicts-390x844.png",
+      "overflowX": 0,
+      "fullRows": 0,
+      "tabRows": 0,
+      "geometry": null
     }
   ]
 }

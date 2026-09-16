@@ -51,6 +51,8 @@ function eventWithMessage(message: string) {
     namespace: null,
     pod: null,
     contextTargetProof: null,
+    tags: [],
+    classifications: [],
   };
 }
 

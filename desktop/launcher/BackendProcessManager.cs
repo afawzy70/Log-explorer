@@ -74,6 +74,10 @@ internal sealed class BackendProcessManager : IDisposable
         // application.yml's own default (127.0.0.1) already covers, so
         // this is deliberately NOT overridden.
         startInfo.EnvironmentVariables["SERVER_PORT"] = Port.ToString();
+        // Classification rules configuration lives under
+        // %LOCALAPPDATA%\LogExplorer\data - never relative to WorkingDirectory
+        // (the install directory, which upgrades replace and uninstall removes).
+        startInfo.EnvironmentVariables["LOGEXPLORER_DATA_DIR"] = AppPaths.DataDirectory;
 
         _process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
 

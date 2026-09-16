@@ -87,7 +87,7 @@
     return `<div class="querybar" role="search" aria-label="Search logs">
       <span class="anchor qb-scope">
         <button class="field" aria-haspopup="dialog" aria-expanded="${!!o.healthOpen}" aria-label="Source: ${esc(srcName)}, ${hWord}">${I('database', 'ic-sm')}<span class="v">${esc(srcName)}</span><span class="health"><span class="health-dot h-${health}" aria-hidden="true"></span>${hWord}</span>${I('chevron-down', 'ic-caret')}</button>
-        ${o.healthOpen ? healthPopover() : ''}
+        ${o.healthOpen ? healthPopover() : ''}${o.sourceOpen ? sourceList() : ''}
       </span>
       ${loki
         ? `<button class="field qb-scope" aria-label="OpenShift scope: namespace payments-uat, Deployment payments-api, all pods, all containers"><span class="k">Namespace</span><span class="v">payments-uat</span>${I('chevron-right', 'ic-caret')}<span class="v">payments-api</span>${I('chevron-down', 'ic-caret')}</button>`
@@ -129,6 +129,11 @@
     </div>`;
   }
 
+  // The Source control stays a native <select> (register SSEL-2). Its open list is drawn by the browser; this is an approximation of that list.
+  function sourceList() {
+    const opt = (label, o = {}) => `<li role="option" aria-selected="${!!o.sel}"${o.dis ? ' aria-disabled="true"' : ''} class="${o.sel ? 'is-selected' : ''}${o.dis ? ' is-unavailable' : ''}">${o.sel ? I('check', 'ic-sm') : '<span class="ic-sm-slot"></span>'}<span>${label}</span></li>`;
+    return `<ul class="native-list" role="listbox" aria-label="Source">${opt('Local Docker', { sel: true })}${opt('OpenShift')}${opt('OpenShift Loki — Not available', { dis: true })}</ul>`;
+  }
   function healthPopover() {
     const row = (name, ok, detail) => `<li><span class="box${ok ? ' on' : ''}" aria-hidden="true">${ok ? I('check') : I('minus')}</span><span>${name}</span><span class="meta">${detail}</span></li>`;
     return `<div class="popover" role="dialog" aria-label="Source health details" style="width:380px">
@@ -154,10 +159,10 @@
     chips.push(`<span class="chip is-time">Time <b>${esc(o.timeLabel || 'Last 1 day')}</b>${o.timeRange ? ` <span style="color:var(--ink-3)">${o.timeRange}</span>` : ''}<button class="x" aria-label="Reset time range to default">${I('x')}</button></span>`);
     if (o.exclude !== false) chips.push(`<span class="chip is-exclude"><span class="chip-mode">Excluding</span> <b>audit-writer, notification-worker</b><button class="x" aria-label="Remove service exclusion">${I('x')}</button></span>`);
     (o.chips || []).forEach((c) => chips.push(c));
-    if (!o.noClear) chips.push('<button class="btn btn-ghost btn-sm">Clear all</button>');
+
     const readout = o.readout != null ? o.readout : `<strong>${D.results.length}</strong> loaded<span class="sep">·</span>more available<span class="extra"><span class="sep">·</span>total not reported by this source</span>`;
     return `<div class="scope-strip" style="position:relative">
-      <div class="chips" aria-label="Active filters">${chips.join('')}</div>
+      <div class="chips" aria-label="Active filters">${chips.join('')}</div>${o.noClear ? '' : '<button class="btn btn-ghost btn-sm strip-clear">Clear all</button>'}
       <div class="strip-right">
         <span class="readout num" aria-live="polite">${readout}</span>
         <span class="strip-divider"></span>
@@ -185,14 +190,21 @@
   }
 
   // ------------------------------------------------------------------ results table
-  function colgroup() {
-    return '<colgroup><col class="w-time"><col class="w-level"><col class="w-svc"><col><col class="w-actor"><col class="w-rel"><col class="w-act"></colgroup>';
+  function colgroup(o = {}) {
+    return `<colgroup><col class="w-time"><col class="w-level"><col class="w-svc"><col>${o.tagsCol ? '<col class="w-tags">' : ''}<col class="w-actor"><col class="w-rel"><col class="w-act"></colgroup>`;
+  }
+  // Classification tags as a compact cell: first tag + overflow count; the full list is the accessible name (DESIGN_SYSTEM §21.3).
+  function tagCell(e) {
+    const t = e.tags || [];
+    if (!t.length) return '<td class="c-tags"><span class="empty-cell">—</span></td>';
+    const more = t.length - 1;
+    return `<td class="c-tags" title="${esc(t.join(', '))}"><span class="tag-cell" aria-hidden="true"><span class="tag-chip">${I('tag', 'ic-xs')}<span class="t">${esc(t[0])}</span></span>${more ? `<span class="tag-more">+${more}</span>` : ''}</span><span class="vh">${t.length === 1 ? 'Tag' : 'Tags'}: ${esc(t.join(', '))}</span></td>`;
   }
   function head(o = {}) {
     const time = o.fixedSort
       ? `<th scope="col" aria-sort="ascending">Time ${I('arrow-up-narrow-wide')}</th>`
       : `<th scope="col" aria-sort="descending"><button class="th-btn" aria-label="Time, sorted newest first">Time ${I('arrow-down-wide-narrow')}</button></th>`;
-    return `<thead><tr>${time}<th scope="col">Level</th><th scope="col">Service</th><th scope="col">What happened</th><th scope="col">User / Customer</th><th scope="col">Correlation / Trace</th><th scope="col"><span class="vh">Actions</span></th></tr></thead>`;
+    return `<thead><tr>${time}<th scope="col">Level</th><th scope="col">Service</th><th scope="col">What happened</th>${o.tagsCol ? '<th scope="col">Tags</th>' : ''}<th scope="col">User / Customer</th><th scope="col">Correlation / Trace</th><th scope="col"><span class="vh">Actions</span></th></tr></thead>`;
   }
   function msgHtml(e) {
     if (e.malformed) return `<span class="tag tag-malformed">Malformed</span><span class="raw">${esc(e.raw)}</span>`;
@@ -215,6 +227,7 @@
       <td><span class="lvl lvl-${e.level}">${e.level}</span></td>
       <td class="c-svc">${esc(e.service)}</td>
       <td class="c-msg">${msgHtml(e)}</td>
+      ${o.tagsCol ? tagCell(e) : ''}
       <td>${actor}</td>
       <td>${rel}</td>
       <td class="c-act"><button class="btn btn-ghost btn-sm btn-icon" tabindex="-1" aria-label="Actions for this event">${I('ellipsis')}</button></td>
@@ -224,9 +237,9 @@
     const gaps = o.gaps ? gapsOf(list, 5) : [];
     const body = list.map((e, i) => {
       const g = gaps.find((x) => x.after === e.id);
-      return row(e, Object.assign({ tabStop: !o.selectedId && i === 0 }, o)) + (g ? `<tr class="gap-row"><td colspan="7">${I('timer')}Gap detected — ${fmtS(g.dur)} with no observed events (${g.from.clock} → ${g.to.clock})</td></tr>` : '');
+      return row(e, Object.assign({ tabStop: !o.selectedId && i === 0 }, o)) + (g ? `<tr class="gap-row"><td colspan="${o.tagsCol ? 8 : 7}">${I('timer')}Gap detected — ${fmtS(g.dur)} with no observed events (${g.from.clock} → ${g.to.clock})</td></tr>` : '');
     }).join('');
-    return `<div class="table-wrap"><table class="grid results${o.comfortable ? ' comfortable' : ''}" aria-label="${o.label || 'Search results'}" aria-rowcount="${list.length}">${colgroup()}${head(o)}<tbody>${body}</tbody></table>${o.after || ''}</div>`;
+    return `<div class="table-wrap"><table class="grid results${o.comfortable ? ' comfortable' : ''}${o.tagsCol ? ' has-tags' : ''}" aria-label="${o.label || 'Search results'}" aria-rowcount="${list.length}">${colgroup(o)}${head(o)}<tbody>${body}</tbody></table>${o.after || ''}</div>`;
   }
   function skeletonTable(rows) {
     const w = [62, 38, 70, 88, 55, 64];
@@ -253,7 +266,7 @@
         <dt>Level</dt><dd><span class="lvl lvl-${e.level}">${e.level}</span></dd>
         <dt>Logger</dt><dd class="mono">${dotted(e.logger)}</dd>
         <dt>Thread</dt><dd class="mono">${esc(e.thread || '—')}</dd>
-      </dl></div>`;
+      </dl></div>${o.classification || (window.LX_CLASSIFICATION_SECTION && (e.classifications || []).length ? window.LX_CLASSIFICATION_SECTION(e) : '')}`;
     },
     actor(e) {
       if (!e.actor) return emptyNote('No actor or client data on this event.', 'No username, customer, CIF, device, platform or language fields were present.');
@@ -320,6 +333,7 @@
         <div class="insp-actions">
           ${o.noContext ? '' : `<button class="btn btn-secondary btn-sm">${I('history', 'ic-sm')}Show surroundings<kbd>X</kbd></button>`}
           ${e.trace ? `<button class="btn btn-secondary btn-sm">${I('waypoints', 'ic-sm')}View trace</button>` : ''}
+          ${e.malformed ? '' : `<button class="btn btn-ghost btn-sm">${I('tag', 'ic-sm')}Create tag rule</button>`}
           <div class="insp-nav"><span class="pos num" aria-live="polite">${pos}</span>
             <button class="btn btn-ghost btn-sm btn-icon" aria-label="Previous event ([)">${I('chevron-left')}</button>
             <button class="btn btn-ghost btn-sm btn-icon" aria-label="Next event (])">${I('chevron-right')}</button>
@@ -359,7 +373,7 @@
     }
     return out;
   }
-  function capture(kind) {
+  function capture(kind, o = {}) {
     const list = kind === 'journey' ? D.journeyCapture : D.traceCapture;
     const start = list[0].sec;
     const end = list[list.length - 1].sec;
@@ -395,9 +409,10 @@
         <td><span class="lvl lvl-${e.level}">${e.level}</span></td>
         <td class="c-step">${e.step || '—'}</td>
         <td class="c-msg">${msgHtml(e)}</td>
+        ${o.tags ? tagCell({ tags: o.tags(e) }) : ''}
         ${kind === 'journey' ? `<td><span class="tag tag-trace">T${tIndex(e.trace)}</span> <span class="mono" style="color:var(--ink-3)">${e.trace.slice(0, 8)}</span></td>` : `<td class="mono" style="color:var(--ink-3)">${spanOf(e)}</td>`}
         <td class="c-act"><button class="btn btn-ghost btn-sm" tabindex="-1">${I('history', 'ic-sm')}Surroundings</button></td>
-      </tr>${g ? `<tr class="gap-row"><td colspan="8">${I('timer')}Gap detected — ${fmtS(g.dur)} with no observed events (${g.from.clock} → ${g.to.clock})</td></tr>` : ''}`;
+      </tr>${g ? `<tr class="gap-row"><td colspan="${o.tags ? 9 : 8}">${I('timer')}Gap detected — ${fmtS(g.dur)} with no observed events (${g.from.clock} → ${g.to.clock})</td></tr>` : ''}`;
     }).join('');
 
     const title = kind === 'journey' ? 'Journey' : 'Trace';
@@ -421,6 +436,7 @@
         <span class="stat"><span class="k">First → last</span><span class="v mono">${list[0].utc} → ${list[list.length - 1].utc} UTC</span></span>
         <span class="stat"><span class="k">Observed span</span><span class="v mono">${fmtS(span)}</span></span>
         <span class="stat"><span class="k">Gaps</span><span class="v">${gaps.length}</span></span>
+        ${o.tagStat || ''}
         <span class="stat"><span class="k">Selected event</span><span class="v">${rootIdx} of ${list.length}</span></span>
         <div class="cap-claim"><span>${summaryLine}</span><span class="note">${I('info')}Ordered by timestamp — this does not indicate causality between events. A gap means no event was observed in that interval, not that anything failed.</span></div>
       </div>
@@ -433,9 +449,9 @@
         </div>
       </div>
       <div class="table-wrap">
-        <table class="grid seq" aria-label="${title} events in timestamp order">
-          <colgroup><col style="width:128px"><col style="width:92px"><col style="width:168px"><col style="width:66px"><col style="width:150px"><col><col style="width:${kind === 'journey' ? 120 : 150}px"><col style="width:132px"></colgroup>
-          <thead><tr><th scope="col" aria-sort="ascending">Time</th><th scope="col" style="text-align:right">Offset</th><th scope="col">Service</th><th scope="col">Level</th><th scope="col">Business step</th><th scope="col">What happened</th><th scope="col">${kind === 'journey' ? 'Trace' : 'Span ID'}</th><th scope="col"><span class="vh">Actions</span></th></tr></thead>
+        <table class="grid seq${o.tags ? ' has-tags' : ''}" aria-label="${title} events in timestamp order">
+          <colgroup><col style="width:128px"><col style="width:92px"><col style="width:168px"><col style="width:66px"><col style="width:150px"><col>${o.tags ? '<col style="width:156px">' : ''}<col style="width:${kind === 'journey' ? 120 : 150}px"><col style="width:132px"></colgroup>
+          <thead><tr><th scope="col" aria-sort="ascending">Time</th><th scope="col" style="text-align:right">Offset</th><th scope="col">Service</th><th scope="col">Level</th><th scope="col">Business step</th><th scope="col">What happened</th>${o.tags ? '<th scope="col">Tags</th>' : ''}<th scope="col">${kind === 'journey' ? 'Trace' : 'Span ID'}</th><th scope="col"><span class="vh">Actions</span></th></tr></thead>
           <tbody>${seqRows}</tbody>
         </table>
       </div>
@@ -481,7 +497,7 @@
   // ------------------------------------------------------------------ more filters
   function filtersPanel(o = {}) {
     const f = (label, match, value, o = {}) => { const id = 'fp-' + label.toLowerCase().replace(/[^a-z0-9]+/g, '-'); return `<div class="fp-field"><label for="${id}">${label}</label><span class="match">${match}</span><input id="${id}" class="input${o.mono ? ' mono' : ''}" value="${esc(value || '')}" placeholder="${o.ph || ''}"></div>`; };
-    return `<div class="filters-panel" role="dialog" aria-label="More filters">
+    return `<div class="filters-panel" role="dialog" aria-labelledby="fp-title"><h2 class="vh" id="fp-title" tabindex="-1">More filters</h2><div class="fp-scroll">
       <div class="fp-grid">
         <div class="fp-group"><h3>Who / customer <span class="tag tag-protected">${I('shield', 'ic-sm')}Protected</span></h3>
           ${f('User name', 'Exact match', '')}${f('Customer ID', 'Exact match', '')}${f('CIF', 'Exact match', '')}${f('Device ID', 'Exact match', '')}${f('Device IP', 'Exact match', '')}
@@ -492,6 +508,7 @@
           ${f('Error code', 'Exact match', 'PAY-4102', { mono: true })}${f('Business step', 'Exact match', '', { mono: true })}${f('UI identifier', 'Exact match', '', { mono: true })}${f('Logger / class', 'Contains', '', { ph: 'e.g. AuthorizationService' })}${f('Message', 'Contains', '')}</div>
         <div class="fp-group"><h3>Client context</h3>
           ${f('Device platform', 'Exact match', '')}${f('Language', 'Exact match', '')}</div>
+        ${tagGroup(o)}
       </div>
       <div class="fp-query">
         <span class="f-name">Advanced query</span>
@@ -500,13 +517,22 @@
         <button class="btn btn-secondary btn-sm">${I('pencil', 'ic-sm')}Edit query</button>`}
       </div>
       ${o.raw ? `<div class="fp-raw"><label class="lbl-field">Raw LogQL<textarea class="input mono" rows="2">{namespace="payments-uat", app="payments-api"} |= "PAY-4102"</textarea></label><p class="help" style="margin:0">Still bounded: the selected time range and result limit apply. Shown only because this Loki source enables Raw LogQL in its configuration.</p></div>` : ''}
-      <div class="fp-actions">
+      </div><div class="fp-actions">
         <span class="note">${I('info')}Draft — nothing changes until you apply. 1 field and a query set.</span>
         <button class="btn btn-ghost btn-sm">Reset</button>
         <button class="btn btn-secondary btn-sm">Cancel</button>
         <button class="btn btn-primary btn-sm">Apply</button>
       </div>
     </div>`;
+  }
+
+  function tagGroup(o = {}) {
+    const tags = o.tagsEmpty ? [] : (D.CLS && D.CLS.tags) || [];
+    const on = o.tagsChecked || [];
+    const opts = tags.map((t) => `<span class="tag-option" role="checkbox" aria-checked="${on.includes(t)}" tabindex="0"><span class="box${on.includes(t) ? ' on' : ''}" aria-hidden="true">${on.includes(t) ? I('check') : ''}</span>${I('tag', 'ic-xs')}<span>${esc(t)}</span></span>`).join('');
+    return `<div class="fp-group"><h3 id="fp-tags">Classification tags</h3>
+      <div role="group" aria-labelledby="fp-tags" class="tag-options">${o.tagsError ? `<p class="inline-error" role="alert" style="margin:0">${I('circle-alert', 'ic-sm')}Could not load classification tags: ${esc(o.tagsError)}.</p>` : tags.length ? opts : '<p class="help" style="margin:0">No classification tags yet.</p>'}</div>
+      <p class="help">Keeps events with <strong>any</strong> selected tag. Tags are applied by the server to the events a search reads; filtering does not read more history.</p></div>`;
   }
 
   // ------------------------------------------------------------------ field mapping
@@ -620,11 +646,11 @@
   }
 
   // ------------------------------------------------------------------ settings
-  function settingsNav(current) {
+  function settingsNav(current, o = {}) {
     const item = (k, icon, label, aside) => `<button class="nav-item"${current === k ? ' aria-current="page"' : ''}>${I(icon)}${label}${aside ? `<span class="aside">${aside}</span>` : ''}</button>`;
     return `<nav class="set-nav" aria-label="Settings sections">
       ${item('sources', 'database', 'Sources &amp; connections')}${item('masking', 'shield', 'Privacy &amp; masking')}${item('proxy', 'globe', 'Network proxy')}
-      <div class="nav-sep" role="separator"></div>${item('mapping', 'scan-search', 'Field mapping')}${item('shortcuts', 'keyboard', 'Keyboard shortcuts')}
+      <div class="nav-sep" role="separator"></div>${item('mapping', 'scan-search', 'Field mapping')}${item('classification', 'tags', 'Classification rules', o.rulesCount)}${item('shortcuts', 'keyboard', 'Keyboard shortcuts')}
     </nav>`;
   }
   function settings(section) {
@@ -691,7 +717,7 @@
   }
 
   // ------------------------------------------------------------------ live
-  function live(variant) {
+  function live(variant, o = {}) {
     const badge = {
       live: `<span class="acq acq-live"><span class="pulse" aria-hidden="true"></span>Live</span>`,
       paused: `<span class="acq acq-paused">${I('pause')}Paused</span>`,
@@ -720,6 +746,7 @@
       <td><span class="lvl lvl-${e.level}">${e.level}</span></td>
       <td><span class="svc-cell"><span class="swatch" style="background:${laneColor(e.service)}" aria-hidden="true"></span>${esc(e.service)}</span></td>
       <td class="c-msg">${esc(e.message)}</td>
+      ${o.tags ? tagCell({ tags: o.tags(e) }) : ''}
       <td class="mono" style="color:var(--ink-3)">${e.trace.slice(0, 8)}…</td>
     </tr>`).join('');
     return `<section class="column" aria-label="Live">
@@ -729,12 +756,12 @@
         <div class="right">${controls}</div>
       </div>
       <div class="live-counts num" aria-live="off">${counts.map(([k, v]) => `<span>${k} <b>${v}</b></span>`).join('')}</div>
-      ${note}
+      ${note}${o.extraNote || ''}
       <div class="live-filter"><div class="segmented" role="group" aria-label="Displayed severity"><button aria-pressed="false">Debug</button><button aria-pressed="true">${sev('INFO')}Info</button><button aria-pressed="true">${sev('WARN')}Warn</button><button aria-pressed="true">${sev('ERROR')}Error</button></div><label class="search-input">${I('filter', 'ic-sm')}<span class="vh">Filter displayed events</span><input placeholder="Filter displayed events…"></label><span class="note">Display filter only — does not change what is received.</span></div>
       <div class="table-wrap">
         ${variant === 'paused' ? `<div class="jump"><button class="btn btn-secondary btn-sm">${I('arrow-up', 'ic-sm')}Jump to newest · 36 new</button></div>` : ''}
-        <table class="grid live-grid" aria-label="Live events, newest first"><colgroup><col style="width:172px"><col style="width:70px"><col style="width:180px"><col><col style="width:120px"></colgroup>
-          <thead><tr><th scope="col" aria-sort="descending">Time</th><th scope="col">Level</th><th scope="col">Service</th><th scope="col">What happened</th><th scope="col">Trace</th></tr></thead>
+        <table class="grid live-grid${o.tags ? ' has-tags' : ''}" aria-label="Live events, newest first"><colgroup><col style="width:172px"><col style="width:70px"><col style="width:180px"><col>${o.tags ? '<col style="width:156px">' : ''}<col style="width:120px"></colgroup>
+          <thead><tr><th scope="col" aria-sort="descending">Time</th><th scope="col">Level</th><th scope="col">Service</th><th scope="col">What happened</th>${o.tags ? '<th scope="col">Tags</th>' : ''}<th scope="col">Trace</th></tr></thead>
           <tbody class="${['reconnecting', 'failed'].includes(variant) ? 'is-stale-body' : ''}">${rows}</tbody></table>
       </div>
     </section>`;
@@ -773,7 +800,7 @@
 
   // ------------------------------------------------------------------ page composition
   function page(o) {
-    return `<div class="app">${shell(o.shell)}<div class="chrome"${o.chrome ? ' role="region" aria-label="Scope and filters"' : ''}>${o.chrome || ''}${o.overlay || ''}</div><main class="work">${o.column}${o.inspector || ''}</main></div>`;
+    return `<div class="app">${shell(o.shell)}<div class="chrome"${o.chrome ? ' role="region" aria-label="Scope and filters"' : ''}>${o.chrome || ''}${o.overlay || ''}</div><main class="work"${o.overlay && o.overlay.includes('filters-panel') ? ' inert' : ''}>${o.column}${o.inspector || ''}</main></div>`;
   }
   const LOAD_MORE = `<div class="load-more"><span class="num"><strong style="color:var(--ink-1)">${D.results.length}</strong> events loaded · more available</span><button class="btn btn-secondary btn-sm">${I('chevron-down', 'ic-sm')}Load more</button></div>`;
   const results = (o = {}) => `<section class="column${o.withInspector ? ' with-inspector' : ''}" aria-label="Search results"><h1 class="vh">Search results</h1>${o.before || ''}${o.table || resultsTable(D.results, Object.assign({ after: LOAD_MORE }, o))}${o.menu || ''}</section>`;
@@ -807,20 +834,24 @@
     ['24-load-more-failure', 'Partial results + Load more failure', () => page({ shell: {}, chrome: searchChrome(), column: results({ after: `<div class="load-more"><span class="num"><strong style="color:var(--ink-1)">${D.results.length}</strong> events loaded · more available</span><span class="inline-error" role="alert">${I('circle-alert', 'ic-sm')}Could not load more: the request timed out. Loaded rows are kept.</span><button class="btn btn-secondary btn-sm">${I('rotate-cw', 'ic-sm')}Retry</button></div>` }) })],
     ['25-malformed-event', 'Malformed event selected', () => { const m = D.results.find((e) => e.malformed); return page({ shell: {}, chrome: searchChrome(), column: results({ selectedId: m.id, withInspector: true }), inspector: inspector(m, 'overview', { noContext: false }) }); }],
     ['26-mapping-not-ready', 'Search gated by unsaved mapping', () => page({ shell: {}, chrome: queryBar({ notReady: true }) + `<div class="qb-gate" role="status">${I('triangle-alert', 'ic-sm')}<span>Search is disabled — the field mapping for <strong>payments-stack</strong> has unsaved edits. Validate and save it, or reset to defaults.</span><a href="#">Open field mapping</a></div>` + scopeStrip({ readout: 'Previous results' }), column: results({ stale: true }) })],
-    ['27-unsupported-capability', 'Source without Live or context (Loki)', () => page({ shell: {}, chrome: queryBar({ source: 'loki', healthOpen: true, exclude: false }) + scopeStrip({ exclude: false }), column: results({ selectedId: ROOT.id, withInspector: true }), inspector: inspector(ROOT, 'overview', { noContext: true, loki: true }) })],
+    ['27-unsupported-capability', 'Source without Live or context (Loki) — reference only: Loki is not selectable today (SSEL-2)', () => page({ shell: {}, chrome: queryBar({ source: 'loki', healthOpen: true, exclude: false }) + scopeStrip({ exclude: false }), column: results({ selectedId: ROOT.id, withInspector: true }), inspector: inspector(ROOT, 'overview', { noContext: true, loki: true }) })],
     ['28-invalid-query', 'Invalid query', () => page({ shell: {}, chrome: queryBar({ filterCount: 1 }) + scopeStrip({ readout: 'Search did not run', chips: ['<span class="chip">Query <b class="mono">level = and service = "payments-api"</b></span>'] }), column: `<section class="column"><h1 class="vh">Search results</h1>${stateInvalidQuery()}</section>` })],
     ['29-services-exclude-open', 'Services picker — Exclude mode', () => page({ shell: {}, chrome: queryBar({ servicesOpen: true }) + scopeStrip(), column: results() })],
     ['30-columns-settings', 'Table settings open', () => page({ shell: {}, chrome: queryBar() + scopeStrip({ columnsOpen: true }), column: results() })],
     ['31-startup', 'Startup (sources loading)', () => page({ shell: {}, chrome: queryBar({ sourceName: 'Loading sources…', health: 'checking', searchDisabled: 'Waiting for the source list', exclude: false }) + scopeStrip({ exclude: false, noClear: true, readout: 'No search yet' }), column: `<section class="column"><h1 class="vh">Search results</h1>${stateStartup()}</section>` })],
     ['32-time-custom-range', 'Time range — custom editor open', () => page({ shell: {}, chrome: queryBar({ customOpen: true }) + scopeStrip(), column: results() })],
     ['33-time-custom-applied', 'Time range — custom range applied (actual interval + zone)', () => page({ shell: {}, chrome: queryBar({ timeLabel: '14 Sep 09:00 → 15 Sep 14:00 · UTC+03:00', timeAria: 'Custom, 14 Sep 2026 09:00 to 15 Sep 2026 14:00, Asia/Kuwait (UTC+03:00)' }) + scopeStrip({ timeLabel: '14 Sep 09:00 → 15 Sep 14:00', timeRange: 'UTC+03:00' }), column: results() })],
-    ['34-raw-logql-loki', 'More filters — Raw LogQL (Loki source only)', () => page({ shell: {}, chrome: queryBar({ source: 'loki', moreOpen: true, exclude: false }) + scopeStrip({ exclude: false }), overlay: filtersPanel({ loki: true, raw: true }), column: results() })],
+    ['34-raw-logql-loki', 'More filters — Raw LogQL (Loki source only) — reference only: Loki is not selectable today (SSEL-2)', () => page({ shell: {}, chrome: queryBar({ source: 'loki', moreOpen: true, exclude: false }) + scopeStrip({ exclude: false }), overlay: filtersPanel({ loki: true, raw: true }), column: results() })],
     ['35-row-actions-menu', 'Row actions menu', () => page({ shell: {}, chrome: searchChrome(), column: results({ selectedId: ROOT.id, menu: rowMenu(D.results.indexOf(ROOT)) }) })],
     ['36-id-detection', 'Pasted ID detected — search as Trace ID', () => page({ shell: {}, chrome: queryBar({ text: D.TRACE.t1 }) + idDetect() + scopeStrip(), column: results() })],
     ['37-surroundings-from-trace', 'Surroundings opened from a Trace (Back to Trace)', () => page({ shell: { trail: ['Search', 'Trace', 'Surroundings'] }, chrome: compactScope('Trace and original search are kept — return with Back', { noTime: true }), column: contextView({ from: 'Trace' }) })],
     ['38-live-failed', 'Live — CONNECTION FAILED', () => page({ shell: { trail: ['Live'] }, chrome: compactScope('Live shows new events for this source and project', { noTime: true, services: 'All services' }), column: live('failed') })],
     ['39-settings-openshift-connect', 'Settings — OpenShift not connected (oc login validation)', () => page({ shell: { trail: ['Settings'], active: 'settings' }, chrome: '', column: settings('connect') })],
   ];
+
+  if (typeof window.LX_EXT === 'function') {
+    STATES.push(...window.LX_EXT({ D, I, esc, sev, short, page, shell, queryBar, scopeStrip, searchChrome, resultsTable, results, inspector, compactScope, settingsNav, filtersPanel, capture, live, LOAD_MORE, ROOT, tagCell, msgHtml, highlightJson, row }));
+  }
 
   function stateError() {
     return `<div class="state-panel is-danger" role="alert">${I('circle-alert')}<div>
@@ -857,7 +888,7 @@
   function stateStartup() {
     return `<div class="state-panel" role="status">${I('loader-circle', 'spin')}<div>
       <h2>Loading sources</h2>
-      <p>Reading the source list and checking health. The first source is selected automatically.</p>
+      <p>Reading the source list and checking health. Docker is selected first when it is available, then OpenShift. OpenShift Loki is listed as not available.</p>
     </div></div>
     <p class="hint-row"><span><kbd>/</kbd> focus search</span><span><kbd>Ctrl</kbd> <kbd>Enter</kbd> run search</span><span><kbd>?</kbd> all shortcuts</span></p>`;
   }
@@ -870,8 +901,63 @@
   const root = document.getElementById('root');
   const entry = STATES.find(([id]) => id === STATE);
   root.innerHTML = entry ? entry[2]() : hub();
+  // Z4/Z5: what a layer covers is inert. The Inspector sheet (< 1366 px) covers the results; a modal alertdialog covers everything else.
+  if (document.querySelector('.inspector') && window.innerWidth < 1366) document.querySelectorAll('.work > .column').forEach((c) => c.setAttribute('inert', ''));
+  const modal = document.querySelector('[role="alertdialog"][aria-modal="true"]');
+  if (modal) {
+    document.querySelectorAll('.shell, .chrome').forEach((el) => el.setAttribute('inert', ''));
+    [...modal.parentElement.children].forEach((el) => { if (el !== modal && !el.classList.contains('dialog-scrim')) el.setAttribute('inert', ''); });
+  }
+  // More filters stays inside the viewport: the panel scrolls and its Reset / Cancel / Apply footer stays visible
+  // (production already positions the panel under [data-app-chrome] with a ResizeObserver).
+  document.querySelectorAll('.filters-panel').forEach((fp) => { fp.style.maxHeight = `${Math.max(240, window.innerHeight - fp.getBoundingClientRect().top - 8)}px`; });
+  // Narrow builder step strip: bring the current step into view and fade the edges that hide more steps.
+  document.querySelectorAll('.rb-rail').forEach((r) => {
+    const fades = () => {
+      const scrolls = r.scrollWidth > r.clientWidth + 1;
+      r.classList.toggle('fade-left', scrolls && r.scrollLeft > 0);
+      r.classList.toggle('fade-right', scrolls && r.scrollLeft + r.clientWidth < r.scrollWidth - 1);
+    };
+    const cur = r.querySelector('[aria-current="step"]');
+    if (cur && r.scrollWidth > r.clientWidth + 1) r.scrollLeft = Math.max(0, cur.offsetLeft - 40);
+    r.addEventListener('scroll', fades, { passive: true });
+    r.addEventListener('focusin', (ev) => {
+      const b = ev.target.getBoundingClientRect(); const rr = r.getBoundingClientRect();
+      if (b.left < rr.left + 40) r.scrollLeft -= rr.left + 40 - b.left;
+      else if (b.right > rr.right - 40) r.scrollLeft += b.right - (rr.right - 40);
+      fades();
+    });
+    fades();
+  });
+  // Chip rows that scroll get an edge fade so the overflow reads as scrollable (production: ResizeObserver).
+  document.querySelectorAll('.scope-strip .chips').forEach((c) => c.classList.toggle('is-overflowing', c.scrollWidth > c.clientWidth + 1));
+  // New states can ask for a scroll position (e.g. the Classification section inside the Inspector body).
+  document.querySelectorAll('[data-scroll-to]').forEach((el) => {
+    const box = el.closest('.insp-body, .rb-main, .set-content, .table-wrap, .map-scroll');
+    if (box) box.scrollTop += el.getBoundingClientRect().top - box.getBoundingClientRect().top - 8;
+  });
   const editRow = document.querySelector('.fields tr.is-editing');
   if (editRow) { const sc = editRow.closest('.map-scroll'); sc.scrollTop += editRow.getBoundingClientRect().top - sc.getBoundingClientRect().top - 34; }
+  // A row overflow menu is drawn outside the scrolling table (LERUX-1 pass 6 X-series) so it never covers the row's
+  // own controls; it is then anchored directly under its own row, right-aligned with the trigger (pass 11 AC3).
+  const menuTrigger = [...document.querySelectorAll('[aria-haspopup="menu"][aria-expanded="true"]')].find((el) => el.offsetParent);
+  const anchoredMenu = document.querySelector('.menu-anchor > .menu');
+  if (menuTrigger && anchoredMenu) {
+    const row = menuTrigger.closest('tr, li');
+    const box = menuTrigger.closest('.set-content, .insp-body, .rb-main');
+    if (row && box) {
+      // Keep the row and the menu under it inside the scrolling workspace (narrow widths stack the rules as cards).
+      const need = row.getBoundingClientRect().bottom + 4 + anchoredMenu.offsetHeight + 12 - box.getBoundingClientRect().bottom;
+      if (need > 0) box.scrollTop += need;
+    }
+    const a = anchoredMenu.parentElement.getBoundingClientRect();
+    const t = menuTrigger.getBoundingClientRect();
+    const w = anchoredMenu.offsetWidth;
+    const foot = row ? row.getBoundingClientRect().bottom : t.bottom;
+    anchoredMenu.style.right = 'auto';
+    anchoredMenu.style.top = `${foot + 4 - a.top}px`;
+    anchoredMenu.style.left = `${Math.max(8 - a.left, t.right - a.left - w)}px`;
+  }
   document.title = entry ? `${entry[1]} — Log Explorer prototype` : 'Modern Developer Console — prototype states';
   if (entry && P.get('nav') !== '0') {
     const i = STATES.indexOf(entry);

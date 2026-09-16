@@ -169,10 +169,15 @@ public class FixtureCorpusGenerator {
     // Remaining slots: filler, for realistic volume.
     int idx = base + 11 + BURST_SIZE;
     while (records.size() < CYCLE_LEN) {
+      // Evaluation order matches the original single expression exactly
+      // (service pick, correlation pick, describeStep, then event body), so
+      // the Random sequence - and every other generated value - is unchanged.
       String service = pick(rng, SERVICES);
-      records.add(event(rng, idx, service, null, null,
-          pick(rng, List.of(CorrelationVariant.HEADER, CorrelationVariant.LITERAL)), false,
-          null, null, describeStep(rng, service)));
+      CorrelationVariant variant = pick(rng, List.of(CorrelationVariant.HEADER, CorrelationVariant.LITERAL));
+      String step = describeStep(rng, service);
+      String classificationMessage = classificationFixtureMessage(cycleIndex, records.size());
+      records.add(event(rng, idx, classificationMessage == null ? service : "gateway", null, null, variant, false,
+          null, null, classificationMessage == null ? step : classificationMessage));
       idx++;
     }
 
@@ -258,6 +263,40 @@ public class FixtureCorpusGenerator {
     } catch (Exception e) {
       throw new IllegalStateException("fixture corpus generation must never fail to serialize", e);
     }
+  }
+
+  private static final List<String> WEBHOOK_TARGETS = List.of(
+      "/payments/authorize", "/accounts/summary", "/customers/profile", "/notifications/send", "/payments/refund");
+  private static final List<String> WEBHOOK_METHODS = List.of("POST", "GET", "GET", "POST", "POST");
+  private static final List<Integer> WEBHOOK_RESPONSE_CODES = List.of(200, 200, 404, 500, 201);
+
+  /**
+   * Owner mission "Event Classification, Extraction, and Portable Rules" —
+   * synthetic, deterministic events for classification testing, at fixed
+   * filler slots of every cycle: five middleware-like webhook calls with
+   * varying targets, methods, request IDs, response codes, and durations
+   * (slots 20-24), plus two deliberately similar non-middleware events that
+   * a good rule must not tag (slots 25-26). Entirely made up — never copied
+   * from real logs. {@code null} for every other slot.
+   */
+  static String classificationFixtureMessage(int cycleIndex, int slot) {
+    if (slot >= 20 && slot <= 24) {
+      int k = slot - 20;
+      int durationMs = 20 + ((cycleIndex * 37 + slot * 11) % 400);
+      return "Make webhook call to " + WEBHOOK_TARGETS.get(k)
+          + " method=" + WEBHOOK_METHODS.get(k)
+          + " requestId=req-" + pad(cycleIndex * CYCLE_LEN + slot, 6)
+          + " responseCode=" + WEBHOOK_RESPONSE_CODES.get(k)
+          + " duration=" + durationMs + "ms";
+    }
+    if (slot == 25) {
+      return "Make webhook configuration reload requested version=" + (cycleIndex + 3);
+    }
+    if (slot == 26) {
+      return "Webhook call to " + WEBHOOK_TARGETS.get(cycleIndex % WEBHOOK_TARGETS.size())
+          + " skipped: circuit open responseCode=503";
+    }
+    return null;
   }
 
   private String describeStep(Random rng, String service) {

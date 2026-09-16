@@ -55,6 +55,36 @@ public class MaskingService {
         policy.isMasked(ProtectedField.DEVICE_IP) ? maskIp(raw.deviceIp()) : raw.deviceIp());
   }
 
+  /**
+   * Owner mission "Event Classification, Extraction, and Portable Rules" —
+   * replaces every occurrence of this event's own raw protected values
+   * inside free text (for example a classification rule's extracted request
+   * body) with the same masked form {@link #mask} produces, whenever the
+   * current policy masks that field. Values shorter than 3 characters are
+   * left alone to avoid corrupting unrelated text.
+   */
+  public String maskOccurrences(CanonicalLogEvent event, String text) {
+    if (text == null || text.isEmpty()) {
+      return text;
+    }
+    RawSensitiveFields raw = event.sensitive();
+    MaskedSensitiveFields masked = mask(event);
+    String result = text;
+    result = replaceAll(result, raw.cif(), masked.cif());
+    result = replaceAll(result, raw.userName(), masked.userName());
+    result = replaceAll(result, raw.customerId(), masked.customerId());
+    result = replaceAll(result, raw.deviceId(), masked.deviceId());
+    result = replaceAll(result, raw.deviceIp(), masked.deviceIp());
+    return result;
+  }
+
+  private static String replaceAll(String text, String rawValue, String maskedValue) {
+    if (rawValue == null || rawValue.length() < 3 || rawValue.equals(maskedValue)) {
+      return text;
+    }
+    return text.replace(rawValue, maskedValue == null ? STRONG_MASK : maskedValue);
+  }
+
   private String maskStrong(String value) {
     if (value == null || value.isEmpty()) {
       return value;

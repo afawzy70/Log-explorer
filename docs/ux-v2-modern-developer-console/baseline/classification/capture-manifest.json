@@ -1,0 +1,232 @@
+{
+  "baseline": "main 51f06e51709455f2c20dcf5c1b32e2dd67443377",
+  "captured": "2026-09-15T19:17:33.035Z",
+  "source": "Fixture (dev profile)",
+  "viewport": "1440x900 unless named",
+  "manifest": [
+    {
+      "file": "c00-default-docker-selected-1440x900.png",
+      "state": "Startup: default source is Docker (policy order), Loki listed but disabled",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": "Local Docker auto-selected in dev as well (priority policy); Docker is not running here, so health reflects that."
+    },
+    {
+      "file": "c00b-source-options-expanded-1440x900.png",
+      "state": "Source options (select temporarily expanded with size=N to show the list)",
+      "mocked": "DOM-expanded (size attribute) only",
+      "overflowX": 0,
+      "notes": "Real option order and disabled state; see source-select-options.json"
+    },
+    {
+      "file": "c01-rules-empty-1440x900.png",
+      "state": "Classification rules workspace — empty",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c02-inspector-create-rule-entry-1440x900.png",
+      "state": "Inspector with \"Create tag rule from this event\" (no rule yet)",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c03-create-source-step-1440x900.png",
+      "state": "Create tag rule from event — Step 1 Source",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c04-detect-initial-1440x900.png",
+      "state": "Step 2 Detect — before running",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c05-detecting-1440x900.png",
+      "state": "Detect running",
+      "mocked": "yes (3.5 s delay only)",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c06-detected-1440x900.png",
+      "state": "Detected pattern (real bounded sample)",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c07-suggestion-applied-1440x900.png",
+      "state": "Suggestion copied into the draft",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c08-classification-step-1440x900.png",
+      "state": "Step 3 Classification (name, tags, conditions overview)",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c09-classification-advanced-1440x900.png",
+      "state": "Step 3 Classification — Advanced conditions (matcher/regex path)",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c10-extraction-step-1440x900.png",
+      "state": "Step 4 Extraction (suggested extractions as editable fieldsets)",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c11-testing-1440x900.png",
+      "state": "Step 5 Test running",
+      "mocked": "yes (3.5 s delay only)",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c12-test-results-1440x900.png",
+      "state": "Step 5 Test results (counts, coverage, matched, borderline, review note)",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c13-save-step-1440x900.png",
+      "state": "Step 6 Save summary",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c14-rule-saved-list-1440x900.png",
+      "state": "Rule saved notice + populated rules list",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c15-rules-populated-disabled-1440x900.png",
+      "state": "Rules list: three rules, one disabled (\"Off\")",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c16-export-selected-enabled-1440x900.png",
+      "state": "Export selected (1) enabled after selecting a rule",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c17-delete-confirmation-1440x900.png",
+      "state": "Delete confirmation (alertdialog)",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c18-revision-conflict-1440x900.png",
+      "state": "Revision conflict (rules changed elsewhere) with Reload rules",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": "Real 409: a rule was created through the API while the list was open."
+    },
+    {
+      "file": "c19-recovered-from-backup-banner-1440x900.png",
+      "state": "Degraded state banner: recovered from backup",
+      "mocked": "yes (GET state status replaced)",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c20-inspector-multiple-classifications-1440x900.png",
+      "state": "Inspector Overview → Classification: 3 tags, two rules, present / not found / could not be read / redacted values",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c21-more-filters-tag-filter-1440x900.png",
+      "state": "More filters → Classification tags (ANY)",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c22-tag-filter-applied-results-1440x900.png",
+      "state": "Tag filter chip + filtered results (no tag shown in rows today)",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c23-import-preview-clean-1440x900.png",
+      "state": "Import preview — clean (1 new)",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c24-import-preview-conflicts-1440x900.png",
+      "state": "Import preview — new, identical and conflict; resolution required",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c25-import-replace-all-confirmation-1440x900.png",
+      "state": "Import — Replace all selected: confirmation checkbox, Apply blocked",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c26-import-invalid-pack-1440x900.png",
+      "state": "Import preview — invalid rule blocks Apply",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c27-no-safe-pattern-1440x900.png",
+      "state": "Detect — NO_SAFE_PATTERN_SUGGESTION",
+      "mocked": "yes (detect response replaced with the documented shape)",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c28-rules-list-390x844.png",
+      "state": "Rules list at 390 px (table)",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c29-editor-extraction-390x844.png",
+      "state": "Rule editor extraction step at 390 px",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    },
+    {
+      "file": "c30-inspector-classification-390x844.png",
+      "state": "Inspector classification at 390 px",
+      "mocked": "no",
+      "overflowX": 0,
+      "notes": ""
+    }
+  ]
+}

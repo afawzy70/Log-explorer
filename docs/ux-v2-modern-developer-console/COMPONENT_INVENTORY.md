@@ -1,7 +1,7 @@
 # Component Inventory — Modern Developer Console
 
 Classification of every production frontend component on latest `main`
-(`3f6b1b4bc30c282e0cd1e65510697ff128d79d73`) against the Direction B design. Source of truth for
+(`51f06e51709455f2c20dcf5c1b32e2dd67443377`, after PR #59; first pass `3f6b1b4`) against the Direction B design. Source of truth for
 what exists: `CURRENT_BASELINE_INVENTORY.md`. Nothing here has been implemented.
 
 | Class | Meaning |
@@ -31,14 +31,14 @@ No new component library is proposed. The only new dependency the design needs i
 | Component | Class | What changes | What must not change |
 |---|---|---|---|
 | `app/Toolbar.tsx` | RECOMPOSE | One 44 px query bar: Source · Project │ Time · Services · Severity · text · More filters · **Search** · Live. Disabled-Search reasons become a gate strip under the bar. | Search disabled rules and their visible reason; Live only when `liveTail`; wrapping without page overflow. |
-| `features/search/SourceSelect.tsx` | RESTYLE | Field-style trigger carrying health. | First source auto-selected. |
+| `features/search/SourceSelect.tsx` | RESTYLE | Native `<select>` styled as a field; health shown beside the value, not inside options (D26). | Policy order Docker → OpenShift → OpenShift Loki; Loki a native `<option disabled>` labelled “OpenShift Loki — Not available”; guarded `onChange`; highest-priority available source selected first (register SSEL-1…3). |
 | `features/search/ComposeProjectSelect.tsx` | RESTYLE | Field-style trigger labelled **Project**. | Only when `composeProjectScoping`; empty/error copy. |
 | `features/search/ServiceMultiSelect.tsx` | RESTYLE | Segmented **Include selected / Exclude selected**, explicit helper sentence, running/total meta. | `aria-pressed` mode, "All except N" labels, Clear, "no services" vs "no match" distinction (currently one message — see audit). |
 | `features/search/SeverityFilter.tsx` | RECOMPOSE | Inline chips move into a **Severity** field whose popover holds All, Errors only and the five level chips; the field shows the active set with severity marks + words. | Default Info/Warn/Error; every level selectable; never colour-only. |
 | `features/search/UniversalSearch.tsx` | RESTYLE | `/` key hint; icon. | ID detection prompt and `Search as <field>`. |
-| `features/search/AdvancedFilters.tsx` | RECOMPOSE | Right-anchored dialog becomes a full-width panel under the query bar with four group columns and an Advanced query row. | Every field, exact/contains semantics, draft-only-until-Apply, Reset/Cancel/Apply, sensitive values never echoed. |
+| `features/search/AdvancedFilters.tsx` | RECOMPOSE | Right-anchored dialog becomes a full-width panel under the query bar with four group columns plus a **Classification tags** group, and an Advanced query row. | Every field, exact/contains semantics, draft-only-until-Apply, Reset/Cancel/Apply, sensitive values never echoed; tag group shown only with `onApplyTags`, loading/error/“No classification tags yet” copy, ANY semantics, committed tags that no longer exist stay listed so they can be unchecked. |
 | `features/search/QueryBuilder.tsx` | RESTYLE | Opened from the Advanced query row. | Guided/Text/Raw LogQL (Raw only with `rawLogQL`), divergence dialog. |
-| `features/search/ActiveFilters.tsx` | RECOMPOSE | Chips move into the scope strip beside the result readout, sort, Columns, Query details and Refresh. EXCLUDE chip keeps the word **Excluding**. | One chip per criterion, `Protected` for sensitive values, Clear all never touches source/scope. |
+| `features/search/ActiveFilters.tsx` | RECOMPOSE | Chips move into the scope strip beside the result readout, sort, Columns, Query details and Refresh. EXCLUDE chip keeps the word **Excluding**. Tag chips `Tag <name>` with the tag icon; chip remove targets 24 px. | One chip per criterion (one per tag), `Protected` for sensitive values, Clear all never touches source/scope. |
 | `features/timerange/TimeRangeControl.tsx`, `CustomRangePopover.tsx` | RESTYLE | Field trigger, icon system. | Presets, Custom popover validation, actual interval + zone label, focus return. |
 
 ## Results
@@ -106,3 +106,39 @@ No new component library is proposed. The only new dependency the design needs i
 | `SortControl` `<select>` | Sort toggle in the scope strip | Shared sort state test still green. |
 | Inline "Query details" `<details>` in the results header | Query details popover | Same content and honest empty copy. |
 | Per-service coloured left border in investigation rows | Lane swatch next to the service name | Service name always adjacent to its colour. |
+
+## Event classification (PR #59, added in the design sync)
+
+| Component | Class | What changes | What must not change |
+|---|---|---|---|
+| `features/settings/classification/ClassificationRulesWorkspace.tsx` | RECOMPOSE | Moves from a shell-button takeover into **Settings › Classification rules** (D17): meta line (revision, file name only D28, runtime counts), toolbar, rules table with plain-language matcher, Extracts count, switch with word, Test/Edit/More; banners; delete becomes a modal alertdialog with a danger button (D27); stacked rows ≤ 767 px. | Every write carries the last-read revision; 409 → “changed elsewhere” + Reload rules; enable toggle, edit, duplicate, test, delete with confirmation; filter by name or tag; export all/selected; import file size limit check; status banners for RECOVERED_FROM_BACKUP and INVALID; runtime stats; `onRulesChanged` refreshes app-wide tags. |
+| `features/settings/classification/RuleEditor.tsx` | REPLACE_VISUALLY | Wizard becomes the rule builder workspace: anchor strip with the trigger, step rail with status lines, draft panel, compact scope bar (§21.6). Detect splits into Observed evidence and Suggested rule with the decode lane; conditions in plain language with advanced editing behind a disclosure; extraction as a table with Suggested/Confirmed (D21) and an edit row; Test as stat row, coverage table, Matched/Borderline examples; Save summary. | Modes new / edit / duplicate / fromEvent; steps reachable in any order; Detect is a suggestion only (NO_SAFE_PATTERN_SUGGESTION handled); Test never saves; required name and tag checks; limits from `rulesState.limits`; RE2 help; JSON pointer help; sensitive flag; revision conflict keeps the draft; focus to the step heading on change. |
+| `features/settings/classification/ImportPanel.tsx` | REPLACE_VISUALLY | Process strip, count tags, items table with “What applying does”, conflict and invalid detail rows, choice cards for Merge / Replace all, danger zone listing rules to delete (D24), blockers beside Apply. | Preview writes nothing; Apply is the only write; invalid rules block Apply; MERGE with conflicts requires one resolution; REPLACE_ALL requires confirmation; revision conflict → Reload rules and re-preview; result counts reported after apply. |
+| `features/settings/classification/ruleDraft.ts` | KEEP | — | `SAVED_MESSAGE`, `REVISION_CONFLICT_MESSAGE`, matcher labels, tag normalisation, writable-rule shaping. |
+| `features/inspector/ClassificationSection.tsx` (+ module CSS) | RESTYLE | Tag chips lowercase as stored (D20); per-rule block with “adds <tags>” and a Rule link (D29); value states per §21.5 (redacted token, unreadable icon, clamp + Show more, JSON disclosure, copy on present values only). | Rendered only when a rule matched; inside Overview, never a tab; values rendered as text exactly as served; `—` for ABSENT/INVALID with the reason; redacted and truncated notes. |
+| `features/inspector/InspectorHeader.tsx` | RECOMPOSE (addition) | **Create tag rule** as a ghost action in the action row with the tag icon. | Opens the rules workspace in fromEvent mode for the current event; event held in React state only. |
+| `features/inspector/allFields.ts` | KEEP | — | `tags` row in Technical / all fields. |
+| `features/results/columnRegistry.tsx` | RESTYLE (addition) | New optional **Tags** column (hidden by default, D19) rendering the tag cell primitive. | Seven default columns unchanged; column ids and preferences; `—` for no tags. |
+| `features/journey/JourneyView.tsx`, `features/live/LiveTailPanel.tsx` | REPLACE_VISUALLY / RECOMPOSE (addition) | Tags column in the capture sequence table and Live table; `Tagged n of N` stat in captures; Live note about rules saved after Start (D25). | Data already on each event (`tags`); no extra requests; bounded DOM. |
+| `app/Shell.tsx` “Classification rules” button | DEPRECATE_AFTER_IMPLEMENTATION | Replaced by Settings › Classification rules (D17). | Reachable in ≤ 2 actions; E2E selectors migrated (`classification-rules.spec.ts` uses the button name). |
+| `features/search/sourcePolicy.ts`, `app/useSearchState.ts` (source guard, tag state) | KEEP | — | Source order policy, UI-unavailable ids, guarded setter, `refreshClassificationTags`, `buildClassificationSampleScope`. |
+
+### New design primitives and where they appear
+
+| Primitive (DESIGN_SYSTEM §21) | Search | Inspector | Investigation / Live | Settings › Classification rules | Rule builder |
+|---|---|---|---|---|---|
+| Tag chip (18 / 22 px) + `+N` | Tags column, tooltip | Tag list, rule blocks | Tags column | Tags column, import items | Token input, draft panel |
+| Tag filter chip / tag option | Scope strip, More filters | — | — | — | — |
+| Classification section, value states | — | Overview | — | — | Test samples (value chips) |
+| Rule status (switch + word, disabled row) | — | — | — | Rules table / list | Classification step (Enabled) |
+| Plain-language condition line | — | — | — | Matches when | Suggested rule, Classification, Save, draft panel |
+| Decode lane (fixed / changing segments) | — | — | — | — | Detect |
+| Suggestion vs Measured panels and tags | — | — | — | — | Detect |
+| Suggested / Confirmed status tag | — | — | — | — | Extraction |
+| Coverage evidence bar | — | — | — | — | Detect, Extraction, Test |
+| Borderline tag | — | — | — | — | Test |
+| Import count tag, import status tag, danger zone, choice card | — | — | — | Import | — |
+| Workspace banner (success / warning / danger) | — | — | — | Saved, conflict, degraded, import applied | Save conflict |
+| Destructive alertdialog | — | — | — | Delete rule | — |
+| Unavailable source option | Source field | — | — | — | — |
+
