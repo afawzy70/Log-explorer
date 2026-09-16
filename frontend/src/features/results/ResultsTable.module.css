@@ -57,6 +57,24 @@
   padding: var(--space-1) var(--space-2);
 }
 
+/*
+ * Compact's own row-height math (8px vertical padding + a ~19px text line)
+ * lands near the design's 28px row target (`--v2-h-row`) for every column
+ * except Actions: its trigger button is a deliberate, untouched 28x28px
+ * hit target (WCAG 2.5.8), so 4px top + 4px bottom padding around it alone
+ * forced the WHOLE row to 36-37px, not 28px - measured in the real
+ * rendered app, not assumed. Zeroing only this cell's OWN vertical padding
+ * in compact density lets the row settle at the design's target without
+ * touching the button's size at all: the button supplies its own border
+ * and background, so it still reads as a distinct control with no padding
+ * around it, exactly as `.compact th, .compact td` above already promises
+ * ("hit targets... are untouched - only spacing shrinks").
+ */
+.compact td.actionsCell {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
 .table thead th {
   font-size: var(--font-size-xs);
   text-transform: uppercase;
