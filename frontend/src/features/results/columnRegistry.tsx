@@ -11,7 +11,7 @@ import {
   resolveUserOrCustomer,
 } from './columnMapping';
 import { MessageCell } from './MessageCell';
-import { TagChip, tagColorsOf } from '../../shared/ui/TagChip';
+import { TagChip, TagCountBadge, tagColorsOf } from '../../shared/ui/TagChip';
 import { JOURNEY_ACTION_LABELS } from '../journey/journeyFields';
 import styles from './ResultsTable.module.css';
 
@@ -124,7 +124,7 @@ function TagsCell({ event }: { event: LogEvent }) {
       <span className={styles.visuallyHidden}>{`Tags: ${all}`}</span>
       <span aria-hidden="true" className={styles.tagsGroup}>
         <TagChip tag={first} color={colors[first]} title={all} />
-        {rest.length > 0 ? <TagChip tag={`+${rest.length}`} color={colors[first]} title={all} /> : null}
+        {rest.length > 0 ? <TagCountBadge count={rest.length} title={all} /> : null}
       </span>
     </span>
   );

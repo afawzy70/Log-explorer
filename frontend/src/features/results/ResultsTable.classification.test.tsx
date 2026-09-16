@@ -113,7 +113,7 @@ describe('ResultsTable - classification tags column', () => {
     expect(chipColorsIn(tagsCellOf(screen.getAllByRole('row')[1]))).toEqual(['GRAY']);
   });
 
-  it('renders the first tag plus a "+n" chip, and puts the COMPLETE list in the cell\'s accessible name and title - never hover-only', () => {
+  it('renders the first tag as a real (coloured) chip plus a NEUTRAL "+n" overflow counter - never a second coloured chip (§22.11 A3) - and puts the COMPLETE list in the cell\'s accessible name and title, never hover-only', () => {
     const many = event({
       tags: ['middleware', 'payments', 'slow'],
       classifications: [
@@ -124,11 +124,17 @@ describe('ResultsTable - classification tags column', () => {
     render(<ResultsTable events={[many]} />);
     const cell = tagsCellOf(screen.getAllByRole('row')[1]);
 
-    // Two chips only: the first tag, then the overflow counter.
-    const chips = Array.from(cell.querySelectorAll('[data-tag-color]'));
-    expect(chips).toHaveLength(2);
-    expect(chips[0].textContent).toBe('middleware');
-    expect(chips[1].textContent).toBe('+2');
+    // Exactly one real (coloured) tag chip: the first tag. The overflow counter carries no
+    // `data-tag-color` at all - it counts identities, it is not one, so nothing can mistake
+    // it for a second tag or paint it in the first tag's colour.
+    const coloured = Array.from(cell.querySelectorAll('[data-tag-color]'));
+    expect(coloured).toHaveLength(1);
+    expect(coloured[0].textContent).toBe('middleware');
+    expect(coloured[0]).toHaveAttribute('data-tag-color', 'BLUE');
+
+    const overflow = cell.querySelector('[data-tag-color]')!.nextElementSibling as HTMLElement;
+    expect(overflow.textContent).toBe('+2');
+    expect(overflow).not.toHaveAttribute('data-tag-color');
 
     // The full list is readable as text, both for assistive technology and as a tooltip.
     expect(within(screen.getAllByRole('row')[1]).getByRole('cell', { name: 'Tags: middleware, payments, slow' })).toBe(cell);
