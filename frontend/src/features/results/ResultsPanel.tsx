@@ -1,4 +1,5 @@
 import { Button } from '../../shared/ui/Button';
+import { Icon } from '../../shared/ui/Icon';
 import { formatInterval } from '../../shared/time/interval';
 import { DEFAULT_PRESET_ID, TIME_RANGE_PRESETS } from '../../shared/time/presets';
 import type { SearchState } from '../../app/useSearchState';
@@ -81,24 +82,41 @@ export function ResultsPanel({ state }: { state: SearchState }) {
     return (
       <div className={styles.wrapper}>
         <Breadcrumb state={state} />
-        <div className={styles.error} role="alert">
-          <p className={styles.errorTitle}>Search failed</p>
-          <p className={styles.errorDetail}>{state.searchError}</p>
-          <Button variant="secondary" onClick={() => state.runSearch()} disabled={state.searchLoading}>
-            Retry search
-          </Button>
+        <div className={`${styles.statePanel} ${styles.statePanelDanger}`} role="alert">
+          <Icon name="circle-alert" size="lg" className={styles.statePanelIcon} />
+          <div className={styles.statePanelBody}>
+            <p className={styles.statePanelTitle}>Search failed</p>
+            <p className={styles.statePanelDetail}>{state.searchError}</p>
+            <div className={styles.statePanelActions}>
+              <Button variant="secondary" onClick={() => state.runSearch()} disabled={state.searchLoading}>
+                Retry search
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
-  if (state.searchLoading) {
+  /*
+   * First-ever search (no previous result to keep showing) - a skeleton, not a blank "Searching..." wait.
+   * A RE-search (searchLoading with an existing searchResult) instead falls through to the normal render
+   * path below with `.staleResults` applied - see that branch's own comment.
+   */
+  if (state.searchLoading && !state.searchResult) {
     return (
       <div className={styles.wrapper}>
         <Breadcrumb state={state} />
-        <p className={styles.loading} role="status">
+        <div className={styles.skeleton} role="status">
           Searching…
-        </p>
+          <div className={styles.skeletonRows} aria-hidden="true">
+            {[92, 78, 96, 64, 88, 72].map((width, i) => (
+              <div key={i} className={styles.skeletonRow}>
+                <span className={styles.skeletonBar} style={{ width: `${width}%` }} />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
@@ -107,7 +125,12 @@ export function ResultsPanel({ state }: { state: SearchState }) {
     return (
       <div className={styles.wrapper}>
         <Breadcrumb state={state} />
-        <p className={styles.empty}>Run a search to see results.</p>
+        <div className={styles.statePanel}>
+          <Icon name="search" size="lg" className={styles.statePanelIcon} />
+          <div className={styles.statePanelBody}>
+            <p className={styles.statePanelTitle}>Run a search to see results</p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -120,48 +143,65 @@ export function ResultsPanel({ state }: { state: SearchState }) {
   // detection is out of scope for an ordinary historical search.
   const gaps = state.breadcrumbLabel ? detectGaps(events) : NO_GAPS;
 
+  // Re-search stale treatment - see `.staleResults`'s own comment in ResultsPanel.module.css for why
+  // `state.searchResult` is still populated (and thus renders normally, just visually muted) while
+  // `state.searchLoading` is also true.
+  const isStale = state.searchLoading;
+
   if (events.length === 0) {
     const oneDayAgo = new Date(Date.now() - DAY_MS);
     return (
       <div className={styles.wrapper}>
         <Breadcrumb state={state} />
-        {state.breadcrumbLabel ? (
-          <ContextSummary
-            events={events}
-            range={state.lastSearchedRange}
-            source={state.selectedSource?.displayName ?? null}
-            counts={counts}
-            gaps={gaps}
-            rootIdentity={state.contextRootIdentity}
-          />
+        {isStale ? (
+          <p className={styles.staleNotice} role="status">
+            Searching…
+          </p>
         ) : null}
-        <RefreshRow state={state} />
-        <QueryPlanDisclosure queryPlan={queryPlan} />
-        <p className={styles.empty}>
-          No results for this range.{' '}
-          <Button
-            variant="ghost"
-            onClick={() => {
-              // Bug fix: `setTimeRange` alone (the previous behavior) only
-              // ever adjusted the committed range - it never actually
-              // re-ran the search, so this "one-click" affordance
-              // (CLAUDE.md §4) silently left the stale, still-empty
-              // result set on screen. Passing the same range straight
-              // into `runSearch` avoids relying on `setTimeRange`'s state
-              // update having landed yet (`runSearch`'s own doc comment
-              // explains why that ordering can't be trusted).
-              const nextRange = {
-                presetId: DEFAULT_PRESET_ID,
-                start: oneDayAgo.toISOString(),
-                end: new Date().toISOString(),
-              };
-              state.setTimeRange(nextRange);
-              state.runSearch(nextRange);
-            }}
-          >
-            Search last 1 day
-          </Button>
-        </p>
+        <div className={isStale ? styles.staleResults : undefined}>
+          {state.breadcrumbLabel ? (
+            <ContextSummary
+              events={events}
+              range={state.lastSearchedRange}
+              source={state.selectedSource?.displayName ?? null}
+              counts={counts}
+              gaps={gaps}
+              rootIdentity={state.contextRootIdentity}
+            />
+          ) : null}
+          <RefreshRow state={state} />
+          <QueryPlanDisclosure queryPlan={queryPlan} />
+          <div className={styles.statePanel}>
+            <Icon name="search" size="lg" className={styles.statePanelIcon} />
+            <div className={styles.statePanelBody}>
+              <p className={styles.statePanelTitle}>No results for this range</p>
+              <div className={styles.statePanelActions}>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    // Bug fix: `setTimeRange` alone (the previous behavior) only
+                    // ever adjusted the committed range - it never actually
+                    // re-ran the search, so this "one-click" affordance
+                    // (CLAUDE.md §4) silently left the stale, still-empty
+                    // result set on screen. Passing the same range straight
+                    // into `runSearch` avoids relying on `setTimeRange`'s state
+                    // update having landed yet (`runSearch`'s own doc comment
+                    // explains why that ordering can't be trusted).
+                    const nextRange = {
+                      presetId: DEFAULT_PRESET_ID,
+                      start: oneDayAgo.toISOString(),
+                      end: new Date().toISOString(),
+                    };
+                    state.setTimeRange(nextRange);
+                    state.runSearch(nextRange);
+                  }}
+                >
+                  Search last 1 day
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -169,6 +209,12 @@ export function ResultsPanel({ state }: { state: SearchState }) {
   return (
     <div className={styles.wrapper}>
       <Breadcrumb state={state} />
+      {isStale ? (
+        <p className={styles.staleNotice} role="status">
+          Searching…
+        </p>
+      ) : null}
+      <div className={isStale ? styles.staleResults : undefined}>
       {state.breadcrumbLabel ? (
         <ContextSummary
           events={events}
@@ -233,6 +279,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
           ) : null}
         </div>
       ) : null}
+      </div>
     </div>
   );
 }

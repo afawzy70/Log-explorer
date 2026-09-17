@@ -168,6 +168,54 @@ describe('ResultsPanel', () => {
     expect(screen.getByRole('status')).toHaveTextContent(/searching/i);
   });
 
+  /*
+   * B3 - first-search skeleton (ResultsPanel.module.css's own comment on `.skeleton` has the full
+   * rationale). Only shown when there is no previous result to keep displaying instead.
+   */
+  it('shows a decorative skeleton (not just a bare status line) on the very first search', () => {
+    const { container } = render(<ResultsPanel state={baseState({ searchLoading: true })} />);
+    expect(screen.getByRole('status')).toHaveTextContent(/searching/i);
+    const rows = container.querySelectorAll('[class*="skeletonRow"]');
+    expect(rows.length).toBeGreaterThan(0);
+    expect(container.querySelector('[class*="skeleton"]')).toHaveAttribute('role', 'status');
+    // The skeleton rows themselves are decorative - "Searching..." is the one accessible statement.
+    const skeletonRows = container.querySelector('[class*="skeletonRows"]');
+    expect(skeletonRows).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  /*
+   * B3 - re-search stale treatment. `useSearchState.ts`'s `runSearch` never nulls `searchResult` before
+   * the new response lands, so a re-search genuinely has both `searchLoading: true` AND a populated
+   * `searchResult` at once - this must keep showing the (now-stale) table, not blank to the skeleton.
+   */
+  it('keeps the previous results visible (muted, not the skeleton) during a re-search', () => {
+    const { container } = render(
+      <ResultsPanel
+        state={baseState({
+          searchLoading: true,
+          searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+        })}
+      />,
+    );
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(container.querySelector('[class*="skeletonRow"]')).toBeNull();
+    expect(container.querySelector('[class*="staleResults"]')).not.toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent(/searching/i);
+  });
+
+  it('a completed, non-loading search shows no stale treatment at all', () => {
+    const { container } = render(
+      <ResultsPanel
+        state={baseState({
+          searchLoading: false,
+          searchResult: { events: [baseEvent()], counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false }, nextCursor: null, queryPlan: EMPTY_QUERY_PLAN },
+        })}
+      />,
+    );
+    expect(container.querySelector('[class*="staleResults"]')).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
   it('shows an error state, never both an error and results', () => {
     render(
       <ResultsPanel

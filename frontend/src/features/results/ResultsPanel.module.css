@@ -66,6 +66,147 @@
   text-align: center;
 }
 
+/*
+ * B3 (COMPONENT_INVENTORY.md's ResultsPanel.tsx RECOMPOSE entry - "loading, empty, error ... use the new
+ * state panels"). The design's own `.state-panel` (prototype/styles/app.css): an icon + heading/detail/
+ * actions card, `is-danger` for a failure. Applied here to the EXISTING error/empty content unchanged -
+ * this restyles presentation, it does not add the design's own extra content (a facts-chip summary of
+ * active filters, "Source health"/"Query details" buttons) that depends on data this table doesn't have
+ * plumbed to it yet (that summary lives in the scope strip, itself B2 - not squeezed in here).
+ */
+.statePanel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-surface-work);
+}
+
+.statePanelIcon {
+  color: var(--v2-ink-3);
+  margin-top: 2px;
+}
+
+.statePanelBody {
+  min-width: 0;
+}
+
+.statePanelTitle {
+  margin: 0;
+  font: var(--v2-text-section);
+  color: var(--v2-ink-1);
+}
+
+.statePanelDetail {
+  margin: 2px 0 0;
+  font: var(--v2-text-body);
+  color: var(--v2-ink-2);
+}
+
+.statePanelActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.statePanelDanger {
+  border-color: var(--v2-danger-line);
+  background: var(--v2-danger-tint);
+}
+
+.statePanelDanger .statePanelIcon {
+  color: var(--v2-danger);
+}
+
+/*
+ * Re-search stale treatment (B3 - "re-search stale-row treatment"): `state.searchResult` from the
+ * PREVIOUS search stays populated while a new one is in flight (`useSearchState.ts`'s `runSearch` never
+ * nulls it before the new response lands - confirmed by reading the hook, not assumed), so ResultsPanel
+ * can keep showing it instead of blanking to a bare loading state on every re-search. Deliberately opacity-
+ * based rather than the design's own per-element text recolouring (`tr.is-stale td { color: ... }`):
+ * this table's cell content is too varied (severity marks use `background` not `color`, tag chips and
+ * links carry their own colour, several specific `color` rules at higher specificity than a wrapper-level
+ * override) for a blanket colour override to apply consistently everywhere without `!important` gymnastics
+ * across every one of those rules - opacity dims the whole region uniformly, with the same effect, and
+ * cannot be defeated by any inner rule's own specificity.
+ */
+.staleResults {
+  opacity: 0.55;
+  transition: opacity 150ms var(--v2-ease-standard, ease);
+}
+
+.staleNotice {
+  margin: 0 0 var(--space-2);
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .staleResults {
+    transition: none;
+  }
+}
+
+/*
+ * First-search skeleton (B3 - "first-search skeleton"): only shown when there is no previous result to
+ * keep displaying (`state.searchLoading && !state.searchResult` in ResultsPanel.tsx) - a re-search instead
+ * keeps the real table visible with `.staleResults` above. `role="status"` plus the real "Searching..."
+ * text (unchanged from the previous loading copy - existing tests assert it) is the accessible content;
+ * the bars are `aria-hidden` decoration only.
+ */
+.skeleton {
+  padding: var(--space-2) 0;
+}
+
+.skeletonRows {
+  margin-top: var(--space-2);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  overflow: hidden;
+}
+
+.skeletonRow {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
+  background: var(--v2-surface-work);
+}
+
+.skeletonRow:last-child {
+  border-bottom: none;
+}
+
+.skeletonBar {
+  display: block;
+  height: 8px;
+  border-radius: var(--v2-r-xs);
+  background: var(--v2-surface-sunken);
+  animation: v2Breathe 1400ms var(--v2-ease-standard) infinite alternate;
+}
+
+@keyframes v2Breathe {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonBar {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
 .loadMoreRow {
   display: flex;
   flex-direction: column;
