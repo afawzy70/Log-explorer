@@ -367,14 +367,14 @@ Investigation, B6 Settings/Mapping (beyond classification), B7.
 ## Resuming — exact next task
 
 1. **Re-verify the branch is where this file says it is**: `git log --oneline -10` on `ux/v2-modern-developer-
-   console` — check what's at HEAD against this file's own record. As of this checkpoint, HEAD is `22a3d4d` (B4
-   overlay width fix + breakpoint revert). CI on the previous commit (`2828b8c`) showed Backend **FAIL** -
-   `OpenShiftScopeServiceTest.a401OnAnyKindAbortsTheWholeDiscoveryAndExpiresTheSession`, a reactive-exception-
-   composition timing failure - confirmed unrelated to this session: `git diff ae2c22b..2828b8c -- backend/` is
-   **empty** (zero backend files touched since the last commit CI confirmed Backend PASS on), and `2828b8c` itself
-   is a docs-only checkpoint commit. Treat as a pre-existing flaky backend test, not a regression to chase - but
-   re-check `gh pr checks 61` on the actual current HEAD before assuming this pattern repeats; if it fails
-   Backend again on a commit that DID touch backend code, investigate for real.
+   console` — check what's at HEAD against this file's own record. As of this checkpoint, HEAD is `792528c`
+   (checkpoint commit; last code commit is `22a3d4d`, B4 overlay width fix + breakpoint revert). **CI confirmed
+   all 5 jobs PASS on this exact HEAD** (`gh pr checks 61`: Backend 1m55s, Frontend 1m36s, E2E 7m11s, Windows
+   4m55s, macOS 1m48s) — this includes a re-run of Backend, which had shown a transient **FAIL** one commit
+   earlier (`2828b8c`, `OpenShiftScopeServiceTest.a401OnAnyKindAbortsTheWholeDiscoveryAndExpiresTheSession`, a
+   reactive-exception-composition timing test) on the identical backend code (`git diff` between the two commits'
+   `backend/` trees is empty) - confirms it was a flaky test, not a regression, re-checked directly rather than
+   assumed.
 2. **B3 is substantially complete** — see the Session 3 table above. The two remaining B3 items (sticky Time
    column, full dark-theme parity) are deliberately deferred with documented reasons, not gaps to silently close.
 3. **B4 is partially complete** — see the "B4 Inspector" subsection above. Most of the functional checklist was
