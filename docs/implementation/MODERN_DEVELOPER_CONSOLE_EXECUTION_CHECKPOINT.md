@@ -588,6 +588,25 @@ remaining file. Migrated `.selectOption('FORWARD')` → `.click()` and `.toHaveV
 `.toHaveAccessibleName(/newest first|oldest first/i)`, matching the toggle button's own `aria-label` - no
 assertion weakened. Verified: typecheck, full unit suite 1126/1126, build, this spec 23/23 green (foreground).
 
+### Second CI fix — two more Session-4 Settings-consolidation E2E selectors (`428a10d`)
+
+Pushing B5 (`aed608f`) re-triggered CI, which caught **another** pre-existing miss from Session 4's own Settings
+consolidation - both outside that session's own 13-file migration batch, only surfaced by the full CI E2E suite:
+- `phase-n-schema-scan-field-mapping.spec.ts`'s `openMappingPanel()` still clicked the old "Log schema & field
+  mapping" button text (Session 4's B2 recompose shortened it to "Field mapping" on the same still-direct Shell
+  button - Field mapping, unlike Classification rules, kept its own trigger rather than moving into Settings).
+- `pre-closure-functional-recovery-2.spec.ts`'s `openProxySettings()` still clicked "OpenShift" directly from
+  Shell - the panel itself is unchanged (confirmed by reading `SettingsWorkspace.tsx`: `OpenShiftSettingsPanel`
+  renders unmodified inside the "Sources & connections" section, an anchor-linked region on one single-page
+  layout, not a tab switcher - its own trigger is always present once Settings is open). Fixed the one entry
+  point with `openSettingsSection()`; the file's own later "close and reopen" double-clicks needed no change.
+
+Verified: typecheck, full unit suite 1170/1170, build, both files 20/21 green (1 pre-existing NOT_AVAILABLE
+skip, foreground). **This is the second time this session a Settings-consolidation selector miss from Session
+4 has only surfaced via the full CI E2E suite, not this project's own targeted-spec-during-active-work policy -
+flag for whoever starts Session 6 to run the full local E2E suite once, deliberately, near the start of that
+session (not mid-work), to catch any third remaining miss before it costs another CI round-trip.**
+
 ### B5 Investigation — COMPLETE (`aed608f`)
 
 Implemented the approved Investigation design faithfully for all five relation types (Trace/Span/Correlation/
