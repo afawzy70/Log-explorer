@@ -207,17 +207,31 @@
   }
 }
 
+/*
+ * B3 (COMPONENT_INVENTORY.md's "load-more failure state") - the design's own `.load-more` is a horizontal
+ * footer row (summary text, then an inline error on failure, then the button), not the vertical centred
+ * stack this used before. Deliberately does NOT copy the design's own duplicate "N events loaded" text
+ * into this row - `.summary` above the table already states the full counts (CLAUDE.md §4 "counts stay
+ * distinct... no contradictory copy"), and repeating a second, differently-worded count here risked
+ * exactly that.
+ */
 .loadMoreRow {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  padding: var(--space-2) 0 0;
+  border-top: var(--v2-bw) solid var(--v2-line);
+  font: var(--v2-text-meta);
 }
 
 .loadMoreError {
-  color: var(--color-danger);
-  font-size: var(--font-size-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--v2-danger);
+  font: var(--v2-text-meta);
 }
 
 /*

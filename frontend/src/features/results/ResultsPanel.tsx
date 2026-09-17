@@ -271,6 +271,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
           </Button>
           {state.loadMoreError ? (
             <span className={styles.loadMoreError} role="alert">
+              <Icon name="circle-alert" size="sm" />
               {state.loadMoreError}{' '}
               <Button variant="ghost" onClick={state.loadMore}>
                 Retry
