@@ -134,6 +134,29 @@ function levelColor(severity: string | null): string | undefined {
   return SEVERITY_LEVELS.find((l) => l.id === severity?.toUpperCase())?.colorVar;
 }
 
+const SEVERITY_MARK_CLASS: Record<string, string> = {
+  ERROR: 'sevMarkError',
+  WARN: 'sevMarkWarn',
+  INFO: 'sevMarkInfo',
+  DEBUG: 'sevMarkDebug',
+  TRACE: 'sevMarkTrace',
+};
+
+/**
+ * DESIGN_SYSTEM.md §22 / COMPONENT_INVENTORY.md "severity mark in a 22 px gutter inside the Time cell" -
+ * shape carries the level even without colour (a diamond, triangle, filled dot, ring, or bar), so this is
+ * additive to the Level column's own coloured text, never a replacement for it. Purely decorative
+ * (`aria-hidden`) - the Level cell's text and the row's own `aria-selected`/`aria-current` remain the
+ * accessible source of truth for severity and row state.
+ */
+function severityMark(severity: string | null): ReactNode {
+  const shapeClass = SEVERITY_MARK_CLASS[severity?.toUpperCase() ?? ''];
+  if (!shapeClass) {
+    return null;
+  }
+  return <span className={`${styles.sevMark} ${styles[shapeClass]}`} aria-hidden="true" />;
+}
+
 /** Every optional column below shares this look: monospace, no label prefix (unlike the label:value cells the default columns use) - `cellClassName: styles.idCell` on the owning definition does the actual truncation. */
 function simpleValue(value: string | null): ReactNode {
   return value ?? EMPTY_VALUE;
@@ -153,10 +176,16 @@ export const COLUMN_REGISTRY: ColumnDefinition[] = [
       // repeated calendar date sits behind it. See `splitTimestampCell`.
       const split = splitTimestampCell(event.timestamp);
       if (!split) {
-        return formatTimestampCell(event.timestamp);
+        return (
+          <>
+            {severityMark(event.severity)}
+            {formatTimestampCell(event.timestamp)}
+          </>
+        );
       }
       return (
         <>
+          {severityMark(event.severity)}
           {split.date ? <span className={styles.timeDatePart}>{split.date}</span> : null}
           <span className={styles.timeClockPart}>{split.time}</span>
         </>

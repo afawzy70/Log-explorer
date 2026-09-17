@@ -137,6 +137,38 @@ describe('columnRegistry', () => {
       }
     });
 
+    /*
+     * COMPONENT_INVENTORY.md "severity mark in a 22 px gutter inside the Time cell" (B3 restyle) -
+     * additive to the Level column's own coloured text, decorative (aria-hidden), shape-differentiated
+     * per level so the cue never relies on colour alone.
+     */
+    it('the "time" column renders a shape-differentiated, decorative severity mark for every known level', () => {
+      const shapeByLevel: Record<string, string> = {
+        ERROR: 'sevMarkError',
+        WARN: 'sevMarkWarn',
+        INFO: 'sevMarkInfo',
+        DEBUG: 'sevMarkDebug',
+        TRACE: 'sevMarkTrace',
+      };
+      const column = COLUMN_REGISTRY_BY_ID.get('time')!;
+      for (const [severity, shapeClass] of Object.entries(shapeByLevel)) {
+        const event = fullEvent({ severity });
+        const { container, unmount } = render(<table><tbody><tr>{column.render(event, {})}</tr></tbody></table>);
+        const mark = container.querySelector('[class*="sevMark"]');
+        expect(mark).not.toBeNull();
+        expect(mark!.className).toMatch(new RegExp(shapeClass));
+        expect(mark!.getAttribute('aria-hidden')).toBe('true');
+        unmount();
+      }
+    });
+
+    it('the "time" column renders no severity mark for a null/unknown severity', () => {
+      const column = COLUMN_REGISTRY_BY_ID.get('time')!;
+      const event = fullEvent({ severity: null });
+      const { container } = render(<table><tbody><tr>{column.render(event, {})}</tr></tbody></table>);
+      expect(container.querySelector('[class*="sevMark"]')).toBeNull();
+    });
+
     it('the "composeService" column renders the Slice 3 backend field verbatim (non-sensitive infra id)', () => {
       const event = fullEvent({ composeService: 'payments' });
       const column = COLUMN_REGISTRY_BY_ID.get('composeService')!;

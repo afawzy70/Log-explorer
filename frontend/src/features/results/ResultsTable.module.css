@@ -133,6 +133,88 @@
 }
 
 /*
+ * COMPONENT_INVENTORY.md "severity mark in a 22 px gutter inside the Time cell" (B3 restyle). Fixed
+ * left padding regardless of density - unlike the row's own height, this gutter is a constant reserved
+ * width, not something compact/comfortable should shrink - so both density rules below must outrank
+ * `.compact td`'s own `padding` shorthand; `.table td.timeCell`/`.compact td.timeCell` mirror the
+ * existing `.compact td.actionsCell` precedent above for the same reason.
+ */
+.table td.timeCell {
+  position: relative;
+  padding-left: 22px;
+}
+
+.compact td.timeCell {
+  padding-left: 22px;
+}
+
+/*
+ * Severity marks: shape carries the level even without colour - a diamond (ERROR), triangle (WARN),
+ * filled dot (INFO), ring (DEBUG), or flat bar (TRACE). Additive to the Level column's own coloured
+ * text (`levelDot`/`levelCell` below), not a replacement for it.
+ */
+.sevMark {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-block;
+  flex: none;
+}
+
+.sevMarkError {
+  width: 8px;
+  height: 8px;
+  background: var(--v2-sev-error-mark);
+  border-radius: var(--v2-r-xs);
+}
+
+.sevMark.sevMarkError {
+  transform: translateY(-50%) rotate(45deg) scale(0.9);
+}
+
+.sevMarkWarn {
+  width: 10px;
+  height: 8px;
+  background: var(--v2-sev-warn-mark);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.sevMarkInfo {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--v2-sev-info-mark);
+}
+
+.sevMarkDebug {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--v2-sev-debug-mark);
+}
+
+.sevMarkTrace {
+  width: 8px;
+  height: 2px;
+  background: var(--v2-sev-trace-mark);
+}
+
+@media (forced-colors: active) {
+  .sevMarkError,
+  .sevMarkWarn,
+  .sevMarkInfo {
+    background: CanvasText;
+  }
+  .sevMarkDebug {
+    box-shadow: inset 0 0 0 1.5px CanvasText;
+  }
+  .sevMarkTrace {
+    background: CanvasText;
+  }
+}
+
+/*
  * UX-R4 §13 - the calendar date is repeated on nearly every row of a
  * result set, so it sits at secondary emphasis behind the clock time,
  * which is what actually distinguishes one row from the next. Both are
