@@ -1,0 +1,486 @@
+/*
+ * B6.4/B6.5 (Session 9) - full v2 tokens for the Rule Builder wizard and its Assisted Extraction step.
+ *
+ * Deliberately a SEPARATE CSS module from ClassificationRulesWorkspace.module.css, same reasoning as B6.3's own
+ * ClassificationRulesList.module.css: that shared file is also imported by ImportPanel.tsx (this session's own
+ * B6.6, not yet recomposed at the moment this file is written) - restyling the shared module directly would
+ * have silently redesigned that still-v1 surface too. Every class name below is named to match what
+ * RuleEditor.tsx already imports as `styles.X` - only the import path changes in the component, not the ~150
+ * className references throughout that 1380-line file, which is what makes this recompose tractable at this
+ * file's size without a mechanical, error-prone rename across the whole file.
+ */
+.subheading {
+  font: var(--v2-text-section);
+  color: var(--v2-ink-1);
+  margin: 0 0 var(--space-3);
+}
+
+.minorHeading {
+  font: var(--v2-text-label);
+  color: var(--v2-ink-2);
+  margin: var(--space-3) 0 var(--space-1);
+}
+
+.hint {
+  display: block;
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+  margin: var(--space-1) 0;
+}
+
+.mono {
+  font: var(--v2-text-data);
+  overflow-wrap: anywhere;
+}
+
+.error {
+  color: var(--v2-danger);
+  font: var(--v2-text-body);
+  margin: var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--v2-danger-tint);
+  border-radius: var(--v2-r-md);
+}
+
+.error p {
+  margin: 0 0 var(--space-1);
+}
+
+.error p:last-child {
+  margin-bottom: 0;
+}
+
+.fieldError {
+  color: var(--v2-danger);
+  font: var(--v2-text-meta);
+  margin: var(--space-1) 0 0;
+}
+
+.notice {
+  margin: var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--v2-r-md);
+  font: var(--v2-text-body);
+  background: var(--v2-accent-tint);
+  color: var(--v2-accent-ink);
+}
+
+.section {
+  color: var(--v2-ink-1);
+  border-top: var(--v2-bw) solid var(--v2-line);
+  padding-top: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.buttonRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+  min-width: 0;
+}
+
+.field label {
+  font: var(--v2-text-label);
+  color: var(--v2-ink-2);
+}
+
+.field input,
+.field select,
+.field textarea {
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-sm);
+  padding: var(--space-2);
+  font: var(--v2-text-body);
+  background: var(--v2-surface-work);
+  color: var(--v2-ink-1);
+  min-width: 0;
+}
+
+.field textarea {
+  font: var(--v2-text-data);
+  resize: vertical;
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font: var(--v2-text-body);
+  color: var(--v2-ink-1);
+  margin-bottom: var(--space-1);
+}
+
+.fieldset {
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  padding: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-2);
+  min-width: 0;
+  background: var(--v2-surface-work);
+}
+
+.legend {
+  font: var(--v2-text-body-strong);
+  color: var(--v2-ink-1);
+  padding: 0 var(--space-1);
+}
+
+/* Condition / extraction rows - fields wrap and stack at narrow widths. */
+.rowGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0 var(--space-3);
+}
+
+.emptyState {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: var(--v2-bw) dashed var(--v2-line);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-surface-work);
+}
+
+.emptyState p {
+  margin: 0 0 var(--space-1);
+}
+
+.emptyState p:last-child {
+  margin-bottom: 0;
+}
+
+/* ------------------------------------------------------------------ step rail */
+.steps {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2);
+  background: var(--v2-surface-inspector, var(--v2-surface-work));
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+}
+
+.stepButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: var(--v2-bw) solid transparent;
+  background: transparent;
+  border-radius: var(--v2-r-sm);
+  padding: var(--space-1) var(--space-2);
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+  cursor: pointer;
+}
+
+.stepButton:hover {
+  background: var(--v2-surface-sunken);
+}
+
+.stepButton[aria-current='step'] {
+  background: var(--v2-accent-tint);
+  border-color: var(--v2-accent);
+  color: var(--v2-accent-ink);
+  font-weight: 600;
+}
+
+.stepBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--v2-r-full);
+  background: var(--v2-line-strong);
+  color: var(--v2-ink-inverse, var(--v2-surface-work));
+  font: 600 10px/1 var(--v2-font-ui);
+  flex: none;
+}
+
+.stepButton[aria-current='step'] .stepBadge {
+  background: var(--v2-accent);
+}
+
+.stepHeading {
+  margin: 0 0 var(--space-2);
+  font: var(--v2-text-section);
+  color: var(--v2-ink-1);
+}
+
+.navRow {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-3) 0;
+  background: var(--v2-bg-app);
+  border-top: var(--v2-bw) solid var(--v2-line);
+}
+
+.summaryList {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.summaryRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  font: var(--v2-text-body);
+  color: var(--v2-ink-1);
+}
+
+.summaryRow dt {
+  flex: 0 0 140px;
+  color: var(--v2-ink-2);
+}
+
+.summaryRow dd {
+  flex: 1 1 200px;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inlineStats {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: var(--space-2) 0;
+  padding: 0;
+  font: var(--v2-text-body);
+  color: var(--v2-ink-2);
+}
+
+.plainList {
+  margin: 0;
+  padding-left: var(--space-4);
+  font: var(--v2-text-body);
+  color: var(--v2-ink-1);
+}
+
+.codeBlock {
+  display: block;
+  font: var(--v2-text-code);
+  background: var(--v2-surface-sunken);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-sm);
+  padding: var(--space-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow: auto;
+  margin: 0;
+  color: var(--v2-ink-1);
+}
+
+.chips {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+  padding: 0;
+}
+
+.chip {
+  font: var(--v2-text-meta);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-full);
+  padding: 2px var(--space-2);
+  background: var(--v2-surface-sunken);
+  color: var(--v2-ink-1);
+}
+
+.previewItem {
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  padding: var(--space-2);
+  margin-bottom: var(--space-2);
+  background: var(--v2-surface-work);
+}
+
+.previewMeta {
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+  margin: 0 0 var(--space-1);
+}
+
+.reviewNote {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  font: var(--v2-text-body);
+  color: var(--v2-ink-2);
+  background: var(--v2-surface-work);
+}
+
+.errorList {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  color: var(--v2-danger);
+  font: var(--v2-text-meta);
+}
+
+/*
+ * Assisted extraction and tag colour. Suggestions are a distinct block from the values the rule will actually
+ * save, so "suggested" and "confirmed" never read as the same thing.
+ */
+.subsection {
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-surface-inspector, var(--v2-surface-work));
+}
+
+.suggestionList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suggestionRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-sm);
+  background: var(--v2-surface-work);
+}
+
+.suggestionName {
+  font: var(--v2-text-body-strong);
+  color: var(--v2-ink-1);
+}
+
+.suggestionCoverage {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--v2-ink-2);
+  font: var(--v2-text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+/* §22.11 A6 - a visual coverage bar alongside the existing "Found in n / m" text, decorative (aria-hidden): the
+   text is always the accessible content, the bar only supplements it. */
+.coverageBar {
+  display: inline-block;
+  width: 56px;
+  height: 6px;
+  border-radius: var(--v2-r-full);
+  background: var(--v2-line);
+  overflow: hidden;
+}
+
+.coverageBarFill {
+  display: block;
+  height: 100%;
+  background: var(--v2-accent);
+}
+
+@media (forced-colors: active) {
+  .coverageBar {
+    border: 1px solid CanvasText;
+    background: Canvas;
+  }
+  .coverageBarFill {
+    background: CanvasText;
+  }
+}
+
+.colorChoices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+
+.colorChoice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-1) var(--space-2);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-sm);
+  cursor: pointer;
+  background: var(--v2-surface-work);
+}
+
+.colorChoice:has(input:checked) {
+  border-color: var(--v2-accent);
+  box-shadow: inset 0 0 0 1px var(--v2-accent);
+}
+
+.previewRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
+}
+
+/* "Add extraction from this event" when several rules matched: one row per rule, never an ambiguous default. */
+.chooserList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chooserRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-sm);
+  background: var(--v2-surface-work);
+}
+
+.chooserName {
+  font: var(--v2-text-body-strong);
+  color: var(--v2-ink-1);
+}
+
+.chooserTags {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+@media (max-width: 767px) {
+  .navRow {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .steps {
+    gap: 2px;
+  }
+}

@@ -38,6 +38,7 @@ import {
 } from './ruleDraft';
 import styles from './ClassificationRulesWorkspace.module.css';
 import listStyles from './ClassificationRulesList.module.css';
+import editorStyles from './RuleEditor.module.css';
 
 export interface ClassificationRulesWorkspaceProps {
   /** Set when opened from the inspector's "Create tag rule from this event" - held only in React state. */
@@ -78,17 +79,20 @@ const STATUS_LABELS: Record<ClassificationRulesState['status'], string> = {
  * client last read, so a concurrent change surfaces as a conflict instead
  * of being overwritten.
  *
- * <p>B6.3 (Session 8) recomposed ONLY the rules-management list (`view.kind
- * === 'list'`, plus the loading/error state shown before any view is
- * chosen) to full v2 tokens (`listStyles`, {@link ClassificationRulesList.module.css}),
- * matching `COMPONENT_INVENTORY.md`'s own RECOMPOSE row for this file. The
- * `editor`/`import`/`chooseRule` views keep rendering exactly as before,
- * against the original, untouched `styles` module - `RuleEditor.tsx` and
- * `ImportPanel.tsx` both import that same module (B6.4/B6.6, explicitly
- * frozen this session), so restyling it would have silently redesigned
- * those two frozen surfaces as a side effect. Production mapping/matching/
- * priority/tag-colour semantics are completely unchanged - this is
- * presentation only, same discipline as B6.1/B6.2.
+ * <p>B6.3 (Session 8) recomposed the rules-management list (`view.kind ===
+ * 'list'`, plus the loading/error state shown before any view is chosen) to
+ * full v2 tokens (`listStyles`, {@link ClassificationRulesList.module.css}),
+ * matching `COMPONENT_INVENTORY.md`'s own RECOMPOSE row for this file.
+ * B6.4/B6.5 (Session 9) recomposed `RuleEditor.tsx` itself (its own new
+ * {@link RuleEditor.module.css}) and this file's own `chooseRule` view
+ * (styled with that same module, since it is simple markup owned here, not
+ * inside `RuleEditor.tsx`). The `import` view (`ImportPanel.tsx`) keeps
+ * rendering against the original, untouched `styles` module until B6.6
+ * recomposes it later in the same session - restyling that shared module
+ * before then would have silently redesigned a still-frozen surface as a
+ * side effect. Production mapping/matching/priority/tag-colour semantics
+ * are completely unchanged throughout - this is presentation only, same
+ * discipline as B6.1/B6.2/B6.3.
  */
 export function ClassificationRulesWorkspace({
   sourceEvent,
@@ -300,10 +304,12 @@ export function ClassificationRulesWorkspace({
       )
     : rules;
 
-  // B6.3 - full v2 shell (header/title/hint) whenever the list itself is what's showing, including the
-  // loading/error state shown before any rules have loaded; the editor/import/chooseRule views keep the
-  // original v1 shell so they never visually clash with RuleEditor/ImportPanel's own still-v1 content.
-  const isListShell = view.kind === 'list' || !rulesState;
+  // B6.3/B6.4/B6.5 - full v2 shell (header/title/hint) whenever the currently-shown view is itself full v2:
+  // the list, the loading/error state shown before any rules have loaded, the rule editor (B6.4/B6.5,
+  // RuleEditor.module.css), and the extraction-rule chooser (styled with that same module below, since it is
+  // a simple view owned by this file, not RuleEditor.tsx or ImportPanel.tsx). `import` stays v1 until B6.6
+  // recomposes ImportPanel.tsx later this session - never mix a v2 shell around still-v1 content.
+  const isRecomposedShell = view.kind === 'list' || view.kind === 'editor' || view.kind === 'chooseRule' || !rulesState;
 
   let body: React.ReactNode;
   if (!rulesState) {
@@ -319,17 +325,19 @@ export function ClassificationRulesWorkspace({
     );
   } else if (view.kind === 'chooseRule') {
     body = (
-      <section aria-labelledby={`${headingId}-choose`}>
-        <h2 id={`${headingId}-choose`}>Which rule should this value be added to?</h2>
-        <p className={styles.hint}>
+      <section aria-labelledby={`${headingId}-choose`} className={editorStyles.section}>
+        <h2 id={`${headingId}-choose`} className={editorStyles.subheading}>
+          Which rule should this value be added to?
+        </h2>
+        <p className={editorStyles.hint}>
           {view.candidates.length} saved rules classified this event. Extraction is added to one rule at a time, and
           nothing changes until you save.
         </p>
-        <ul className={styles.chooserList} aria-label="Rules that classified this event">
+        <ul className={editorStyles.chooserList} aria-label="Rules that classified this event">
           {view.candidates.map((candidate) => (
-            <li key={candidate.ruleId} className={styles.chooserRow}>
-              <span className={styles.chooserName}>{candidate.ruleName}</span>
-              <span className={styles.chooserTags}>
+            <li key={candidate.ruleId} className={editorStyles.chooserRow}>
+              <span className={editorStyles.chooserName}>{candidate.ruleName}</span>
+              <span className={editorStyles.chooserTags}>
                 {candidate.tags.map((tag) => (
                   <TagChip key={tag} tag={tag} color={candidate.displayColor} />
                 ))}
@@ -619,20 +627,20 @@ export function ClassificationRulesWorkspace({
   }
 
   return (
-    <div className={isListShell ? listStyles.wrapper : styles.wrapper} data-testid="classification-rules-workspace">
-      <div className={isListShell ? listStyles.header : styles.header}>
+    <div className={isRecomposedShell ? listStyles.wrapper : styles.wrapper} data-testid="classification-rules-workspace">
+      <div className={isRecomposedShell ? listStyles.header : styles.header}>
         <Button variant="ghost" onClick={onClose}>
           ← Back to search results
         </Button>
-        <h1 id={headingId} ref={headingRef} tabIndex={-1} className={isListShell ? listStyles.title : styles.title}>
+        <h1 id={headingId} ref={headingRef} tabIndex={-1} className={isRecomposedShell ? listStyles.title : styles.title}>
           Classification rules
         </h1>
       </div>
-      <p className={isListShell ? listStyles.hint : styles.hint}>
+      <p className={isRecomposedShell ? listStyles.hint : styles.hint}>
         Rules tag matching events and extract named values from them. They are applied by the server to the events each
         search retrieves.
       </p>
-      {isListShell ? <div className={listStyles.body}>{body}</div> : body}
+      {isRecomposedShell ? <div className={listStyles.body}>{body}</div> : body}
     </div>
   );
 }

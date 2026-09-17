@@ -46,7 +46,7 @@ import {
   toWritableRule,
 } from './ruleDraft';
 import type { FieldOption } from './ruleDraft';
-import styles from './ClassificationRulesWorkspace.module.css';
+import styles from './RuleEditor.module.css';
 
 export type EditorMode = 'new' | 'edit' | 'duplicate' | 'fromEvent';
 export type StepId = 'source' | 'detect' | 'classification' | 'extraction' | 'test' | 'save';
@@ -1345,6 +1345,14 @@ export function RuleEditor({
                 aria-current={s === step ? 'step' : undefined}
                 onClick={() => setStep(s)}
               >
+                {/*
+                 * aria-hidden - purely decorative, so the button's accessible name stays exactly "N. Label",
+                 * unchanged from before this recompose (asserted verbatim by several existing tests, e.g.
+                 * getByRole('button', { name: '5. Save' })).
+                 */}
+                <span className={styles.stepBadge} aria-hidden="true">
+                  {i < stepIndex ? '✓' : i + 1}
+                </span>
                 {i + 1}. {STEP_LABELS[s]}
               </button>
             </li>
