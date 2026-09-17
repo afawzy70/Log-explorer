@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../../shared/ui/Button';
+import { Icon } from '../../../shared/ui/Icon';
 import { VisuallyHidden } from '../../../shared/ui/VisuallyHidden';
 import { useDismissableLayer } from '../../../shared/ui/useDismissableLayer';
 import {
@@ -36,6 +37,7 @@ import {
   toWritableRule,
 } from './ruleDraft';
 import styles from './ClassificationRulesWorkspace.module.css';
+import listStyles from './ClassificationRulesList.module.css';
 
 export interface ClassificationRulesWorkspaceProps {
   /** Set when opened from the inspector's "Create tag rule from this event" - held only in React state. */
@@ -75,6 +77,18 @@ const STATUS_LABELS: Record<ClassificationRulesState['status'], string> = {
  * rule wizard and the import flow. Every write carries the revision this
  * client last read, so a concurrent change surfaces as a conflict instead
  * of being overwritten.
+ *
+ * <p>B6.3 (Session 8) recomposed ONLY the rules-management list (`view.kind
+ * === 'list'`, plus the loading/error state shown before any view is
+ * chosen) to full v2 tokens (`listStyles`, {@link ClassificationRulesList.module.css}),
+ * matching `COMPONENT_INVENTORY.md`'s own RECOMPOSE row for this file. The
+ * `editor`/`import`/`chooseRule` views keep rendering exactly as before,
+ * against the original, untouched `styles` module - `RuleEditor.tsx` and
+ * `ImportPanel.tsx` both import that same module (B6.4/B6.6, explicitly
+ * frozen this session), so restyling it would have silently redesigned
+ * those two frozen surfaces as a side effect. Production mapping/matching/
+ * priority/tag-colour semantics are completely unchanged - this is
+ * presentation only, same discipline as B6.1/B6.2.
  */
 export function ClassificationRulesWorkspace({
   sourceEvent,
@@ -286,15 +300,20 @@ export function ClassificationRulesWorkspace({
       )
     : rules;
 
+  // B6.3 - full v2 shell (header/title/hint) whenever the list itself is what's showing, including the
+  // loading/error state shown before any rules have loaded; the editor/import/chooseRule views keep the
+  // original v1 shell so they never visually clash with RuleEditor/ImportPanel's own still-v1 content.
+  const isListShell = view.kind === 'list' || !rulesState;
+
   let body: React.ReactNode;
   if (!rulesState) {
     body = loadError ? (
-      <div role="alert" className={styles.error}>
+      <div role="alert" className={listStyles.error}>
         <p>Could not load classification rules: {loadError}</p>
         <Button onClick={() => loadRules().catch(() => undefined)}>Retry</Button>
       </div>
     ) : (
-      <p role="status" className={styles.hint}>
+      <p role="status" className={listStyles.hint}>
         Loading classification rules…
       </p>
     );
@@ -353,72 +372,31 @@ export function ClassificationRulesWorkspace({
     body = (
       <>
         {rulesState.status !== 'OK' ? (
-          <div role="status" className={styles.banner}>
-            <strong>{STATUS_LABELS[rulesState.status]}</strong>
-            {rulesState.statusMessage ? <span> {rulesState.statusMessage}</span> : null}
+          <div role="status" className={rulesState.status === 'INVALID' ? listStyles.bannerDanger : listStyles.bannerWarning}>
+            <Icon name={rulesState.status === 'INVALID' ? 'triangle-alert' : 'circle-alert'} size="sm" />
+            <span>
+              <strong>{STATUS_LABELS[rulesState.status]}</strong>
+              {rulesState.statusMessage ? <span> {rulesState.statusMessage}</span> : null}
+            </span>
           </div>
         ) : null}
-        <p className={styles.meta}>
-          Revision {rulesState.revision} · Stored in <span className={styles.mono}>{rulesState.storageFile}</span>
-        </p>
-        <p className={styles.meta}>
-          Runtime: {rulesState.runtime.eventsEvaluated} events evaluated · {rulesState.runtime.ruleMatches} rule matches ·{' '}
-          {rulesState.runtime.evaluationFailures} evaluation failures
-        </p>
 
-        <div className={styles.buttonRow}>
-          <Button variant="primary" onClick={() => { clearListMessages(); setView({ kind: 'editor', mode: 'new', initialRule: emptyRule() }); }}>
-            New rule
-          </Button>
-          <Button onClick={() => fileInputRef.current?.click()} disabled={importBusy}>
-            {importBusy ? 'Reading file…' : 'Import…'}
-          </Button>
-          <input
-            id={fileInputId}
-            ref={fileInputRef}
-            type="file"
-            accept=".json,application/json"
-            className={styles.fileInput}
-            aria-label="Import rules file"
-            tabIndex={-1}
-            onChange={handleImportFile}
-          />
-          <Button onClick={() => runExport()} disabled={exporting || rules.length === 0}>
-            Export all
-          </Button>
-          <Button onClick={() => runExport(selection)} disabled={exporting || selection.length === 0}>
-            Export selected{selection.length > 0 ? ` (${selection.length})` : ''}
-          </Button>
+        <div className={listStyles.metaBlock}>
+          <p className={listStyles.metaLine}>
+            Revision {rulesState.revision} · Stored in <span className={listStyles.mono}>{rulesState.storageFile}</span>
+          </p>
+          <p className={listStyles.metaLine}>
+            Runtime: {rulesState.runtime.eventsEvaluated} events evaluated · {rulesState.runtime.ruleMatches} rule matches ·{' '}
+            {rulesState.runtime.evaluationFailures} evaluation failures
+          </p>
+          {rules.length > 0 ? (
+            <p className={listStyles.metaLine}>Evaluated top to bottom: priority ascending, then rule id.</p>
+          ) : null}
         </div>
 
-        {notice ? (
-          <p role="status" className={styles.notice}>
-            {notice}
-          </p>
-        ) : null}
-        {listError ? (
-          <p role="alert" className={styles.error}>
-            {listError}
-          </p>
-        ) : null}
-        {listConflict ? (
-          <div role="alert" className={styles.error}>
-            <p>{REVISION_CONFLICT_MESSAGE}</p>
-            <Button onClick={reloadAfterConflict}>Reload rules</Button>
-          </div>
-        ) : null}
-
-        {rules.length === 0 ? (
-          <div className={styles.emptyState}>
-            <p>No classification rules yet.</p>
-            <p className={styles.hint}>
-              To create one from a real log line, run a search, open an event, and choose "Create tag rule from this event" in
-              the event inspector. You can also choose "New rule" to write one yourself.
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className={styles.field}>
+        <div className={listStyles.toolbar}>
+          {rules.length > 0 ? (
+            <div className={listStyles.filterField}>
               <label htmlFor={`${headingId}-filter`}>Filter rules by name or tag</label>
               <input
                 id={`${headingId}-filter`}
@@ -428,134 +406,211 @@ export function ClassificationRulesWorkspace({
                 autoComplete="off"
               />
             </div>
-            {visibleRules.length === 0 ? (
-              <p className={styles.hint}>No rules match "{filter}".</p>
-            ) : (
-              <div className={styles.tableWrapper}>
-                <table className={styles.table}>
-                  <caption className={styles.srOnly}>Classification rules</caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">
-                        <VisuallyHidden>Select for export</VisuallyHidden>
-                      </th>
-                      <th scope="col">Name</th>
-                      <th scope="col">Tags</th>
-                      <th scope="col">Matches on</th>
-                      <th scope="col">Enabled</th>
-                      <th scope="col">Actions</th>
+          ) : null}
+          <div className={listStyles.toolbarActions}>
+            <Button onClick={() => fileInputRef.current?.click()} disabled={importBusy}>
+              {importBusy ? 'Reading file…' : 'Import…'}
+            </Button>
+            <input
+              id={fileInputId}
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              className={listStyles.fileInput}
+              aria-label="Import rules file"
+              tabIndex={-1}
+              onChange={handleImportFile}
+            />
+            <Button onClick={() => runExport()} disabled={exporting || rules.length === 0}>
+              Export all
+            </Button>
+            <Button onClick={() => runExport(selection)} disabled={exporting || selection.length === 0}>
+              Export selected{selection.length > 0 ? ` (${selection.length})` : ''}
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => { clearListMessages(); setView({ kind: 'editor', mode: 'new', initialRule: emptyRule() }); }}
+            >
+              New rule
+            </Button>
+          </div>
+        </div>
+
+        {notice ? (
+          <p role="status" className={listStyles.notice}>
+            {notice}
+          </p>
+        ) : null}
+        {listError ? (
+          <p role="alert" className={listStyles.error}>
+            {listError}
+          </p>
+        ) : null}
+        {listConflict ? (
+          <div role="alert" className={listStyles.error}>
+            <p>{REVISION_CONFLICT_MESSAGE}</p>
+            <Button onClick={reloadAfterConflict}>Reload rules</Button>
+          </div>
+        ) : null}
+
+        {rules.length === 0 ? (
+          <div className={listStyles.emptyState}>
+            <Icon name="tags" size="lg" />
+            <p className={listStyles.emptyStateTitle}>No classification rules yet.</p>
+            <p>
+              To create one from a real log line, run a search, open an event, and choose "Create tag rule from this event" in
+              the event inspector. You can also choose "New rule" to write one yourself.
+            </p>
+          </div>
+        ) : visibleRules.length === 0 ? (
+          <p className={listStyles.hint}>No rules match "{filter}".</p>
+        ) : (
+          <div className={listStyles.tableScroll}>
+            <table className={listStyles.table}>
+              <caption className={listStyles.srOnly}>Classification rules</caption>
+              <colgroup>
+                <col className={listStyles.colSelect} />
+                <col className={listStyles.colName} />
+                <col className={listStyles.colTags} />
+                <col />
+                <col className={listStyles.colExtracts} />
+                <col className={listStyles.colEnabled} />
+                <col className={listStyles.colActions} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th scope="col">
+                    <VisuallyHidden>Select for export</VisuallyHidden>
+                  </th>
+                  <th scope="col">Name</th>
+                  <th scope="col">Tags</th>
+                  <th scope="col">Matches on</th>
+                  <th scope="col">Extracts</th>
+                  <th scope="col">Enabled</th>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleRules.map((rule) => {
+                  const id = rule.id ?? rule.name;
+                  const enabled = rule.enabled ?? true;
+                  const extractionCount = rule.extractions?.length ?? 0;
+                  return (
+                    <tr key={id} className={enabled ? undefined : listStyles.disabledRow}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${rule.name} for export`}
+                          checked={selection.includes(id)}
+                          onChange={(e) =>
+                            setSelection((prev) =>
+                              e.target.checked ? [...prev.filter((s) => s !== id), id] : prev.filter((s) => s !== id),
+                            )
+                          }
+                        />
+                      </td>
+                      <td>
+                        <span className={listStyles.ruleName}>{rule.name}</span>
+                        {rule.description ? <span className={listStyles.ruleDesc}>{rule.description}</span> : null}
+                        <span className={listStyles.rulePriority}>Priority {rule.priority ?? 100}</span>
+                      </td>
+                      <td aria-label={rule.tags.length > 1 ? `Tags: ${rule.tags.join(', ')}` : undefined}>
+                        {rule.tags.length > 0 ? (
+                          <span className={listStyles.tagCell} title={rule.tags.length > 1 ? rule.tags.join(', ') : undefined}>
+                            <TagChip tag={rule.tags[0]} color={rule.displayColor} />
+                            {rule.tags.length > 1 ? <TagCountBadge count={rule.tags.length - 1} title={rule.tags.join(', ')} /> : null}
+                          </span>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td className={listStyles.matcher}>{conditionSummary(rule)}</td>
+                      <td className={listStyles.numCell}>
+                        {extractionCount > 0 ? (
+                          `${extractionCount} value${extractionCount === 1 ? '' : 's'}`
+                        ) : (
+                          <span className={listStyles.emptyCell}>None</span>
+                        )}
+                      </td>
+                      <td>
+                        <label className={listStyles.enabledCell}>
+                          <input
+                            type="checkbox"
+                            role="switch"
+                            aria-label={`Enabled: ${rule.name}`}
+                            checked={enabled}
+                            disabled={busyRuleId === rule.id}
+                            onChange={() => toggleEnabled(rule)}
+                          />
+                          <span className={listStyles.enabledWord} aria-hidden="true">
+                            {enabled ? 'On' : 'Off'}
+                          </span>
+                        </label>
+                      </td>
+                      <td>
+                        <div className={listStyles.rowActions}>
+                          <Button
+                            variant="ghost"
+                            aria-label={`Edit ${rule.name}`}
+                            onClick={() => { clearListMessages(); setView({ kind: 'editor', mode: 'edit', initialRule: rule }); }}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            aria-label={`Duplicate ${rule.name}`}
+                            onClick={() => { clearListMessages(); setView({ kind: 'editor', mode: 'duplicate', initialRule: duplicateRule(rule) }); }}
+                          >
+                            Duplicate
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            aria-label={`Test ${rule.name}`}
+                            onClick={() => { clearListMessages(); setView({ kind: 'editor', mode: 'edit', initialRule: rule, initialStep: 'test' }); }}
+                          >
+                            Test
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            aria-label={`Delete ${rule.name}`}
+                            disabled={busyRuleId === rule.id}
+                            onClick={() => setPendingDelete(rule)}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {visibleRules.map((rule) => {
-                      const id = rule.id ?? rule.name;
-                      const enabled = rule.enabled ?? true;
-                      return (
-                        <tr key={id}>
-                          <td>
-                            <input
-                              type="checkbox"
-                              aria-label={`Select ${rule.name} for export`}
-                              checked={selection.includes(id)}
-                              onChange={(e) =>
-                                setSelection((prev) =>
-                                  e.target.checked ? [...prev.filter((s) => s !== id), id] : prev.filter((s) => s !== id),
-                                )
-                              }
-                            />
-                          </td>
-                          <td>
-                            <span className={styles.ruleName}>{rule.name}</span>
-                            {rule.description ? <span className={styles.hint}>{rule.description}</span> : null}
-                          </td>
-                          <td aria-label={rule.tags.length > 1 ? `Tags: ${rule.tags.join(', ')}` : undefined}>
-                            {rule.tags.length > 0 ? (
-                              <span className={styles.chooserTags} title={rule.tags.length > 1 ? rule.tags.join(', ') : undefined}>
-                                <TagChip tag={rule.tags[0]} color={rule.displayColor} />
-                                {rule.tags.length > 1 ? <TagCountBadge count={rule.tags.length - 1} title={rule.tags.join(', ')} /> : null}
-                              </span>
-                            ) : (
-                              '—'
-                            )}
-                          </td>
-                          <td className={styles.mono}>{conditionSummary(rule)}</td>
-                          <td>
-                            <label className={styles.checkboxRow}>
-                              <input
-                                type="checkbox"
-                                role="switch"
-                                aria-label={`Enabled: ${rule.name}`}
-                                checked={enabled}
-                                disabled={busyRuleId === rule.id}
-                                onChange={() => toggleEnabled(rule)}
-                              />
-                              <span aria-hidden="true">{enabled ? 'On' : 'Off'}</span>
-                            </label>
-                          </td>
-                          <td>
-                            <div className={styles.rowActions}>
-                              <Button
-                                variant="ghost"
-                                aria-label={`Edit ${rule.name}`}
-                                onClick={() => { clearListMessages(); setView({ kind: 'editor', mode: 'edit', initialRule: rule }); }}
-                              >
-                                Edit
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                aria-label={`Duplicate ${rule.name}`}
-                                onClick={() => { clearListMessages(); setView({ kind: 'editor', mode: 'duplicate', initialRule: duplicateRule(rule) }); }}
-                              >
-                                Duplicate
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                aria-label={`Test ${rule.name}`}
-                                onClick={() => { clearListMessages(); setView({ kind: 'editor', mode: 'edit', initialRule: rule, initialStep: 'test' }); }}
-                              >
-                                Test
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                aria-label={`Delete ${rule.name}`}
-                                disabled={busyRuleId === rule.id}
-                                onClick={() => setPendingDelete(rule)}
-                              >
-                                Delete
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
 
         {pendingDelete ? (
-          <div
-            ref={confirmRef}
-            role="alertdialog"
-            aria-labelledby={`${headingId}-delete-title`}
-            aria-describedby={`${headingId}-delete-body`}
-            className={styles.confirm}
-          >
-            <h2 id={`${headingId}-delete-title`} className={styles.subheading}>
-              Delete rule?
-            </h2>
-            <p id={`${headingId}-delete-body`}>
-              Delete the rule "{pendingDelete.name}"? This cannot be undone.
-            </p>
-            <div className={styles.buttonRow}>
-              <Button variant="primary" onClick={confirmDelete}>
-                Delete rule
-              </Button>
-              <Button ref={confirmCancelRef} onClick={() => setPendingDelete(null)}>
-                Cancel
-              </Button>
+          <div className={listStyles.scrim}>
+            <div
+              ref={confirmRef}
+              role="alertdialog"
+              aria-labelledby={`${headingId}-delete-title`}
+              aria-describedby={`${headingId}-delete-body`}
+              className={listStyles.confirm}
+            >
+              <h2 id={`${headingId}-delete-title`} className={listStyles.confirmHeading}>
+                Delete rule?
+              </h2>
+              <p id={`${headingId}-delete-body`} className={listStyles.confirmBody}>
+                Delete the rule "{pendingDelete.name}"? This cannot be undone.
+              </p>
+              <div className={listStyles.confirmButtons}>
+                <Button ref={confirmCancelRef} onClick={() => setPendingDelete(null)}>
+                  Cancel
+                </Button>
+                <Button variant="danger" onClick={confirmDelete}>
+                  Delete rule
+                </Button>
+              </div>
             </div>
           </div>
         ) : null}
@@ -564,20 +619,20 @@ export function ClassificationRulesWorkspace({
   }
 
   return (
-    <div className={styles.wrapper} data-testid="classification-rules-workspace">
-      <div className={styles.header}>
+    <div className={isListShell ? listStyles.wrapper : styles.wrapper} data-testid="classification-rules-workspace">
+      <div className={isListShell ? listStyles.header : styles.header}>
         <Button variant="ghost" onClick={onClose}>
           ← Back to search results
         </Button>
-        <h1 id={headingId} ref={headingRef} tabIndex={-1} className={styles.title}>
+        <h1 id={headingId} ref={headingRef} tabIndex={-1} className={isListShell ? listStyles.title : styles.title}>
           Classification rules
         </h1>
       </div>
-      <p className={styles.hint}>
+      <p className={isListShell ? listStyles.hint : styles.hint}>
         Rules tag matching events and extract named values from them. They are applied by the server to the events each
         search retrieves.
       </p>
-      {body}
+      {isListShell ? <div className={listStyles.body}>{body}</div> : body}
     </div>
   );
 }

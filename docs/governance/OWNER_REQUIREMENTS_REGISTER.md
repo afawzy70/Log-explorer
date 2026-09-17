@@ -2486,3 +2486,59 @@ extraction, tag presentation and colour only. The Live Service EXCLUDE
 defect (D8), `SEARCH_PERFORMANCE_ROOT_CAUSE`, the Loki backend capability
 (§12, SSEL-2) and the Modern Developer Console design lane are untouched.
 `HISTORICAL_DECISIONS_PRESERVED=YES`. `UNTRACKED_OWNER_REQUIREMENTS=0`.
+
+## 28. Source experience parity — Docker / OpenShift primary Search
+
+`SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT` — recorded during the Modern
+Developer Console implementation (B6.3 mission, Session 8) as an explicit
+owner-approved requirement. **This entry records the requirement only; it
+is not implemented by this session** — implementation belongs to a future
+source/Search integration slice, named explicitly so it is never silently
+forgotten between now and then.
+
+Connection/setup may legitimately differ by source (Docker's local/remote
++ TLS/host/port form vs. OpenShift's `oc login` command + project/proxy
+form — both already true in production, both preserved by B6.2). Once
+either source is connected, the **primary Search experience must remain
+one unified workflow**:
+
+```
+Source → Scope → Filters → Search → Results → Inspector/Investigation
+```
+
+Docker's scope hierarchy is Project → Service. OpenShift's scope hierarchy
+is Project → Workload → optional Pod(s). **OpenShift Workload is the
+UX-equivalent scope level to Docker Service** — the level a user picks to
+narrow "which running thing" before searching; Pod is an optional, deeper
+refinement with no Docker equivalent, not a replacement for the
+Workload↔Service equivalence. After a successful OpenShift connection, the
+user must reach and use the exact same Search workspace and the exact same
+primary Search action already used for Docker — never a second,
+OpenShift-specific primary search screen or workflow living somewhere
+else. Source-specific topology may add controls (e.g. a Pod selector), but
+must never change the shape of the pipeline above.
+
+```
+SOURCE_EXPERIENCE_PARITY_RECORDED=YES
+SOURCE_EXPERIENCE_PARITY_IMPLEMENTED=NOT_YET — future source/Search integration slice
+DOCKER_SCOPE_HIERARCHY=PROJECT_THEN_SERVICE
+OPENSHIFT_SCOPE_HIERARCHY=PROJECT_THEN_WORKLOAD_THEN_OPTIONAL_POD
+OPENSHIFT_WORKLOAD_UX_EQUIVALENT_TO=DOCKER_SERVICE
+SEPARATE_OPENSHIFT_PRIMARY_SEARCH_SCREEN=NO
+UNIFIED_SEARCH_PIPELINE=SOURCE_SCOPE_FILTERS_SEARCH_RESULTS_INSPECTOR
+UNTRACKED_OWNER_REQUIREMENTS=0
+```
+
+**Current state, as of Session 8 (informational, not a completeness
+claim):** both sources already share one `Toolbar`/`ScopeStrip`/results
+pipeline (B2, Session 4) — there is no known second, standalone OpenShift
+search screen today. This entry exists so that any future OpenShift-scope
+work (e.g. deeper Workload/Pod integration, additional filters) is held to
+this parity bar explicitly, rather than the bar being assumed and never
+written down. A dedicated audit confirming `SOURCE_EXPERIENCE_PARITY_IMPLEMENTED=YES`
+against this exact requirement is out of scope for B6.3 and is deferred to
+the source/Search integration slice named above.
+
+**Scope discipline.** B6.3 (Classification Rules workspace recompose)
+does not touch Search, Toolbar, ScopeStrip, or OpenShift/Docker scope
+selection in any way. `UNTRACKED_OWNER_REQUIREMENTS=0`.
