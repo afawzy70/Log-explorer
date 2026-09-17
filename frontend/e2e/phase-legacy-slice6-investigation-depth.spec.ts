@@ -206,7 +206,15 @@ test.describe('Legacy Remediation Slice 6 — Investigation depth, gap visibilit
     await openInspectorAndShowContext(page);
 
     await expect(page.getByTestId('gap-row')).toHaveCount(0);
-    expect(await page.getByRole('note', { name: /surrounding-context summary/i }).locator('text=Gaps').locator('xpath=following-sibling::dd[1]').textContent()).toBe('0');
+    // B5 RECOMPOSE - `ContextSummary`'s own `<dl><dt>/<dd>` stat list is now the shared
+    // `InvestigationStatRow` grammar (`<span class="label">`/`<span class="value">`), not `dt`/`dd`.
+    expect(
+      await page
+        .getByRole('note', { name: /surrounding-context summary/i })
+        .locator('text=Gaps')
+        .locator('xpath=following-sibling::*[1]')
+        .textContent(),
+    ).toBe('0');
   });
 
   test('10. a truncated/incomplete context result shows an honest "results may be incomplete" warning', async ({ page }) => {

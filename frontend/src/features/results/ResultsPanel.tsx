@@ -8,6 +8,9 @@ import { getTimeRangeDisplayLabel } from '../timerange/label';
 import { defaultTimeRange } from '../../app/useSearchState';
 import type { SearchState } from '../../app/useSearchState';
 import type { AdvancedFilterValues } from '../search/advancedFilterFields';
+import type { LogEvent } from '../../shared/api/types';
+import { InvestigationModeBar } from '../journey/InvestigationModeBar';
+import { TimelinePlot } from '../journey/TimelinePlot';
 import { buildCountsSummary } from './counts';
 import { ResultsTable } from './ResultsTable';
 import { ScopeStrip } from './ScopeStrip';
@@ -22,28 +25,59 @@ const NO_GAPS: GapMarker[] = [];
 const DAY_MS = TIME_RANGE_PRESETS.find((p) => p.id === DEFAULT_PRESET_ID)!.durationMs;
 
 /**
- * "Breadcrumb back to the original search" (HANDOVER.md §16.7/§16.4) -
- * shown above the results in every state (loading/error/empty/results),
- * since a "find related logs" or "show context" detour can legitimately
- * land on any of them (e.g. a context search with zero results is still a
- * detour the investigator needs to back out of). The button's label is
- * dynamic (owner mission "Mapping Verification and Investigation
- * Workspace" - "Investigation navigation/continuity"): Surroundings
- * launched from within a Trace/Span/Correlation/Journey view says "Back to
- * Trace"/etc, never the generic "Back to original search" it would
- * otherwise falsely claim.
+ * B5 Investigation - the Surroundings context view's "mode bar" (`COMPONENT_INVENTORY.md`'s own required B5
+ * item), shown above the results in every state (loading/error/empty/results) since a "Show Surroundings"
+ * detour can legitimately land on any of them (e.g. a context search with zero results is still a detour the
+ * investigator needs to back out of). The Back label is dynamic (owner mission "Mapping Verification and
+ * Investigation Workspace" - "Investigation navigation/continuity"): Surroundings launched from within a
+ * Trace/Span/Correlation/Journey view says "Back to Trace"/etc, never the generic "Back to original search" it
+ * would otherwise falsely claim. Was a plain ghost-button breadcrumb before B5 - now the same
+ * `InvestigationModeBar` primitive the capture view (`JourneyView.tsx`) uses.
  */
-function Breadcrumb({ state }: { state: SearchState }) {
+function InvestigationBreadcrumb({ state }: { state: SearchState }) {
   if (!state.breadcrumbLabel) {
     return null;
   }
+  // Keeps the exact, already-tested `breadcrumbLabel` text as the title itself (e.g. "Context — ±30s around
+  // Jan 1, 2026, 12:00:00.000 PM UTC") rather than a new fixed "Surroundings" heading - this is the same
+  // truthful, event-specific statement the pre-B5 plain breadcrumb already showed, only the chrome around it
+  // (Back button + kbd hint) is new.
   return (
-    <div className={styles.breadcrumb}>
-      <span>{state.breadcrumbLabel}</span>
-      <Button variant="ghost" onClick={state.restoreOriginalSearch}>
-        ← {state.restoreOriginalSearchLabel}
-      </Button>
+    <div className={styles.investigationBleed}>
+      <InvestigationModeBar backLabel={state.restoreOriginalSearchLabel} onBack={state.restoreOriginalSearch} title={state.breadcrumbLabel} />
     </div>
+  );
+}
+
+/**
+ * B5 Investigation - the Surroundings ±30s window plot, sharing `TimelinePlot` with the capture view. The
+ * committed time range for a context search IS the real ±30s window (`useSearchState.ts#showContext` sets
+ * `start`/`end` to exactly `centerMs ± 30000` before firing the request) - reused directly as `loMs`/`hiMs`
+ * rather than re-deriving bounds from the returned events' own span (which the design's own `contextView()`
+ * also treats as fixed, not data-dependent - a sparse window still shows the full ±30s span, not just
+ * whatever few points happened to be observed in it).
+ */
+function ContextWindowPlot({ state, events, gaps }: { state: SearchState; events: LogEvent[]; gaps: GapMarker[] }) {
+  const range = state.lastSearchedRange;
+  if (!range) {
+    return null;
+  }
+  const loMs = Date.parse(range.start);
+  const hiMs = Date.parse(range.end);
+  if (Number.isNaN(loMs) || Number.isNaN(hiMs)) {
+    return null;
+  }
+  return (
+    <TimelinePlot
+      events={events}
+      rootIdentity={state.contextRootIdentity}
+      gaps={gaps}
+      loMs={loMs}
+      hiMs={hiMs}
+      originMs={(loMs + hiMs) / 2}
+      ariaLabel={`60-second window with ${events.length} event${events.length === 1 ? '' : 's'} and ${gaps.length} gap${gaps.length === 1 ? '' : 's'}; the selected event is at the centre.`}
+      variant="window"
+    />
   );
 }
 
@@ -130,7 +164,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
      */
     return (
       <div className={styles.wrapper}>
-        <Breadcrumb state={state} />
+        <InvestigationBreadcrumb state={state} />
         <ScopeStrip activeFilters={activeFilters} />
         <div className={`${styles.statePanel} ${styles.statePanelDanger}`} role="alert">
           <Icon name="circle-alert" size="lg" className={styles.statePanelIcon} />
@@ -156,7 +190,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
   if (state.searchLoading && !state.searchResult) {
     return (
       <div className={styles.wrapper}>
-        <Breadcrumb state={state} />
+        <InvestigationBreadcrumb state={state} />
         <ScopeStrip activeFilters={activeFilters} />
         <div className={styles.skeleton} role="status">
           Searching…
@@ -175,7 +209,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
   if (!state.searchResult) {
     return (
       <div className={styles.wrapper}>
-        <Breadcrumb state={state} />
+        <InvestigationBreadcrumb state={state} />
         <ScopeStrip activeFilters={activeFilters} />
         <div className={styles.statePanel}>
           <Icon name="search" size="lg" className={styles.statePanelIcon} />
@@ -204,7 +238,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
     const oneDayAgo = new Date(Date.now() - DAY_MS);
     return (
       <div className={styles.wrapper}>
-        <Breadcrumb state={state} />
+        <InvestigationBreadcrumb state={state} />
         <ScopeStrip
           activeFilters={activeFilters}
           onRefresh={() => state.refresh()}
@@ -218,14 +252,17 @@ export function ResultsPanel({ state }: { state: SearchState }) {
         ) : null}
         <div className={isStale ? styles.staleResults : undefined}>
           {state.breadcrumbLabel ? (
-            <ContextSummary
-              events={events}
-              range={state.lastSearchedRange}
-              source={state.selectedSource?.displayName ?? null}
-              counts={counts}
-              gaps={gaps}
-              rootIdentity={state.contextRootIdentity}
-            />
+            <div className={styles.investigationBleed}>
+              <ContextSummary
+                events={events}
+                range={state.lastSearchedRange}
+                source={state.selectedSource?.displayName ?? null}
+                counts={counts}
+                gaps={gaps}
+                rootIdentity={state.contextRootIdentity}
+              />
+              <ContextWindowPlot state={state} events={events} gaps={gaps} />
+            </div>
           ) : null}
           <div className={styles.statePanel}>
             <Icon name="search" size="lg" className={styles.statePanelIcon} />
@@ -270,7 +307,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
 
   return (
     <div className={styles.wrapper}>
-      <Breadcrumb state={state} />
+      <InvestigationBreadcrumb state={state} />
       <ScopeStrip
         activeFilters={activeFilters}
         readout={summaryText}
@@ -291,14 +328,17 @@ export function ResultsPanel({ state }: { state: SearchState }) {
       ) : null}
       <div className={isStale ? styles.staleResults : undefined}>
       {state.breadcrumbLabel ? (
-        <ContextSummary
-          events={events}
-          range={state.lastSearchedRange}
-          source={state.selectedSource?.displayName ?? null}
-          counts={counts}
-          gaps={gaps}
-          rootIdentity={state.contextRootIdentity}
-        />
+        <div className={styles.investigationBleed}>
+          <ContextSummary
+            events={events}
+            range={state.lastSearchedRange}
+            source={state.selectedSource?.displayName ?? null}
+            counts={counts}
+            gaps={gaps}
+            rootIdentity={state.contextRootIdentity}
+          />
+          <ContextWindowPlot state={state} events={events} gaps={gaps} />
+        </div>
       ) : null}
       <ResultsTable
         events={events}

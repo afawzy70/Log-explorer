@@ -33,6 +33,24 @@
   color: var(--color-text-primary);
 }
 
+/*
+ * B5 (Session 5) fix - a real bug, not merely an overflow nitpick: `.body`'s own `display: flex` was found to
+ * be genuinely ACTIVE (`getComputedStyle(body).display === 'flex'`, real non-zero `getBoundingClientRect()`,
+ * a non-null `offsetParent`) even while the native `<details>` itself reports `open === false`. The browser's
+ * own implicit "hide every non-summary child of a closed <details>" behaviour was expected to make this authored
+ * `display: flex` moot while closed, but does not reliably win here - found via a real 390px page-overflow
+ * measurement in the Surroundings context view (`right: 0` resolves the closed-but-laid-out panel to a real,
+ * far-off-screen position that reached `document.documentElement.scrollWidth`; the plain search view's own
+ * different trigger position happened not to cross the threshold, which is why this went unnoticed there).
+ * Fixed at the source rather than papered over with `contain`/`overflow` tricks (tried both `contain: layout`
+ * and `contain: paint` first - neither changed the measured geometry, confirming the box was never actually
+ * suppressed) - `.details:not([open]) .body` makes the closed state explicit and unconditional, never relying
+ * on the browser's own default behaviour alone again.
+ */
+.details:not([open]) .body {
+  display: none;
+}
+
 .body {
   position: absolute;
   top: 100%;

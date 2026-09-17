@@ -2,16 +2,19 @@
   padding: var(--space-4);
 }
 
-.breadcrumb {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-accent-bg);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
+/*
+ * B5 Investigation - the mode bar / stat row / timeline plot are all designed to bleed to the full column
+ * width (matching the design's own edge-to-edge `.mode-bar`/`.cap-summary`/`.scope-plot`, and how they
+ * naturally sit in `JourneyView.tsx`'s own unpadded `.wrapper`) - `.wrapper` here still has uniform padding
+ * for the rest of ResultsPanel's content (B2/B3, unrelated to B5, left untouched), so these three break out
+ * of it with a matching negative margin rather than sitting oddly inset like a card.
+ */
+.investigationBleed {
+  margin: 0 calc(-1 * var(--space-4)) var(--space-3);
+}
+
+.investigationBleed:last-child {
+  margin-bottom: 0;
 }
 
 /*

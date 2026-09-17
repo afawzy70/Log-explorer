@@ -1,8 +1,10 @@
-import { lazy, Suspense, useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Shell, resolveMappingProject } from './Shell';
 import { Toolbar } from './Toolbar';
+import { Button } from '../shared/ui/Button';
 import { ResultsPanel } from '../features/results/ResultsPanel';
 import { EventInspector } from '../features/inspector/EventInspector';
+import { InvestigationScopeBar } from '../features/journey/InvestigationScopeBar';
 import { useLiveTail } from '../features/live/useLiveTail';
 import { useLiveKeyboardShortcuts } from '../features/live/useLiveKeyboardShortcuts';
 import { useSearchState } from './useSearchState';
@@ -131,6 +133,29 @@ function AppContent() {
   const liveModeActive = live.connectionState !== 'idle';
   useLiveKeyboardShortcuts(live, liveModeActive);
 
+  // B5 Investigation - "compact scope bar" (mission's own required item): the full `Toolbar` is replaced by a
+  // read-only summary + "Edit search" while a Trace/Span/Correlation/Journey/Event capture or a Surroundings
+  // context view is the active view - the exact same precedence the main-column ternary below already uses
+  // (Settings/Field mapping/Classification/Live all take priority over it), so the two can never disagree
+  // about which view is actually on screen. `editingInvestigationScope` is purely local, ephemeral UI state
+  // (never part of `SearchState`) - clicking "Edit search" reveals the real `Toolbar`, unchanged, so every
+  // existing filter control stays reachable; it never duplicates or forks that state.
+  const investigating =
+    !state.settingsWorkspaceOpen &&
+    !state.mappingWorkspaceOpen &&
+    !state.classificationWorkspaceOpen &&
+    !liveModeActive &&
+    (state.journeyQuery != null || state.breadcrumbLabel != null);
+  const [editingInvestigationScope, setEditingInvestigationScope] = useState(false);
+  useEffect(() => {
+    if (!investigating && editingInvestigationScope) {
+      setEditingInvestigationScope(false);
+    }
+  }, [investigating, editingInvestigationScope]);
+  const keptNote = state.journeyQuery
+    ? 'Search filters are kept — return with Back'
+    : `${state.restoreOriginalSearchLabel.replace(/^Back to /, '')} is kept — return with Back`;
+
   // "Source navigation ... closes stream" (HANDOVER.md §18.4) - changing
   // the active source mid-tail means the investigator has moved on from
   // whatever was being followed.
@@ -178,15 +203,28 @@ function AppContent() {
        */}
       <div data-app-chrome>
         <Shell state={state} openShiftScope={openShiftScopeState.scope} liveModeActive={liveModeActive} />
-        <Toolbar
-          state={state}
-          openShiftScope={openShiftScopeState.scope}
-          onStartLive={
-            state.selectedSourceId
-              ? () => live.start(state.selectedSourceId!, state.selectedServices, state.selectedComposeProject ?? undefined)
-              : undefined
-          }
-        />
+        {investigating && !editingInvestigationScope ? (
+          <InvestigationScopeBar state={state} keptNote={keptNote} onEditSearch={() => setEditingInvestigationScope(true)} />
+        ) : (
+          <>
+            <Toolbar
+              state={state}
+              openShiftScope={openShiftScopeState.scope}
+              onStartLive={
+                state.selectedSourceId
+                  ? () => live.start(state.selectedSourceId!, state.selectedServices, state.selectedComposeProject ?? undefined)
+                  : undefined
+              }
+            />
+            {investigating ? (
+              <div className={styles.editSearchDoneRow}>
+                <Button variant="ghost" onClick={() => setEditingInvestigationScope(false)}>
+                  Done editing search
+                </Button>
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
       <div className={styles.mainRow}>
         <div className={styles.resultsColumn}>

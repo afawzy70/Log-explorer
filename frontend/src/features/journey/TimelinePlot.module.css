@@ -1,0 +1,225 @@
+/*
+ * B5 Investigation - full v2 semantic tokens from the start (mission's own explicit requirement): this is an
+ * entirely new surface with no unstyled v1 sibling to mismatch against (unlike B2's Toolbar/ScopeStrip, which
+ * deliberately stayed v1 to match their still-unrestyled chrome context).
+ */
+.wrapper {
+  padding: 8px var(--space-4) 10px;
+  background: var(--v2-surface-work);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
+}
+
+.plot {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+}
+
+.axisLabel {
+  font: var(--v2-text-caps);
+  letter-spacing: var(--v2-tracking-caps);
+  text-transform: uppercase;
+  color: var(--v2-ink-3);
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 4px;
+}
+
+.ruler {
+  position: relative;
+  height: 24px;
+  border-bottom: var(--v2-bw) solid var(--v2-ruler);
+}
+
+.tick {
+  position: absolute;
+  bottom: 0;
+  width: 1px;
+  height: 5px;
+  background: var(--v2-ruler);
+}
+
+.tickMajor {
+  height: 9px;
+  background: var(--v2-line-strong);
+}
+
+.tickLabel {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font: 500 11px/14px var(--v2-font-mono);
+  color: var(--v2-ink-3);
+  white-space: nowrap;
+}
+
+.tickLabelStart {
+  transform: none;
+}
+
+.tickLabelEnd {
+  transform: translateX(-100%);
+}
+
+.traceRow {
+  position: relative;
+  height: 24px;
+}
+
+.bracket {
+  position: absolute;
+  top: 6px;
+  height: 8px;
+  border: var(--v2-bw) solid var(--v2-line-strong);
+  border-bottom: 0;
+}
+
+.bracket span {
+  position: absolute;
+  top: -8px;
+  left: 4px;
+  font: 600 11px/14px var(--v2-font-mono);
+  color: var(--v2-ink-2);
+  background: var(--v2-surface-work);
+  padding: 0 3px;
+}
+
+.laneLabels {
+  display: flex;
+  flex-direction: column;
+}
+
+.laneLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 8px;
+}
+
+.swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.lanesArea {
+  position: relative;
+}
+
+.lanesAreaWindow {
+  padding-bottom: 24px;
+}
+
+.lane {
+  position: relative;
+  height: 22px;
+  border-bottom: var(--v2-bw) dashed var(--v2-line-subtle);
+}
+
+.point {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+}
+
+.pointRoot {
+  position: absolute;
+}
+
+.pointRoot::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--v2-accent);
+}
+
+.gapBand {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 0;
+  background: repeating-linear-gradient(135deg, transparent 0 5px, var(--v2-line-subtle) 5px 6px);
+  border-left: var(--v2-bw) dashed var(--v2-line-strong);
+  border-right: var(--v2-bw) dashed var(--v2-line-strong);
+}
+
+.gapBand span {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  font: 500 11px/14px var(--v2-font-ui);
+  color: var(--v2-ink-2);
+  background: var(--v2-surface-work);
+  padding: 0 4px;
+  white-space: nowrap;
+  border-radius: var(--v2-r-xs);
+}
+
+.triggerLine {
+  position: absolute;
+  top: -24px;
+  bottom: 0;
+  width: 0;
+  border-left: var(--v2-bw) solid var(--v2-trigger-line);
+  z-index: 1;
+}
+
+.triggerLineWindow {
+  top: 0;
+  bottom: 22px;
+}
+
+.triggerFlag {
+  position: absolute;
+  top: -24px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--v2-r-xs);
+  background: var(--v2-accent);
+  color: var(--v2-ink-inverse);
+  font: 600 11px/16px var(--v2-font-ui);
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.triggerFlagWindow {
+  top: auto;
+  bottom: 2px;
+}
+
+.flagEnd {
+  transform: translateX(calc(-100% + 1px));
+}
+
+.flagStart {
+  transform: none;
+}
+
+.plotWindow .ruler {
+  height: 22px;
+}
+
+@media (max-width: 1366px) {
+  .plot {
+    grid-template-columns: 112px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .plot {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+}

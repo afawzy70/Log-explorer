@@ -68,8 +68,12 @@ test('clicking a real Trace ID in the results table opens the journey timeline w
   await expect(page.getByRole('heading', { name: /trace:/i })).toBeVisible();
   await expect(page.getByText(idValue, { exact: false }).first()).toBeVisible();
   await expect(page.getByText(/does not indicate causality/i)).toBeVisible();
-  // Table is gone - the journey view replaced it.
-  await expect(page.getByRole('table')).not.toBeVisible();
+  // B5 RECOMPOSE - the search RESULTS table is gone (`ResultsPanel` unmounts entirely - `App.tsx`'s own
+  // ternary), replaced by the journey view's own real sequence table (COMPONENT_INVENTORY.md's own
+  // JourneyEntryRow.tsx REPLACE_VISUALLY entry - a card list before B5, a real <table> now). Assert the more
+  // precise, stronger claim directly: the visible table IS the journey's own sequence table, by its own
+  // distinct accessible name - a bare "no table anywhere" check would now be false by construction.
+  await expect(page.getByRole('table', { name: /trace events in timestamp order/i })).toBeVisible();
 
   await captureScreenshot(page, 'i', 'journey-trace-view-1280px');
 });
@@ -140,7 +144,10 @@ test('"Find this Journey ID" from the inspector opens a real, multi-trace, cross
   await expect(page.getByRole('dialog', { name: /event details/i })).not.toBeVisible();
 
   // Ascending order: every consecutive pair of timestamps is non-decreasing.
-  const timestamps = await page.getByTestId('journey-view').locator('[class*="timestamp"]').allTextContents();
+  // B5 RECOMPOSE - the card list's own `.timestamp` class is gone (`JourneyEntryRow` -> `SequenceTable`, a real
+  // <table>); the Time column is always the sequence table's own first cell (`SequenceTable.tsx`'s own
+  // `<colgroup>` order), a structural guarantee rather than a CSS class-name substring match.
+  const timestamps = await page.getByTestId('journey-view').locator('table tbody tr td:first-child').allTextContents();
   const parsed = timestamps.map((t) => new Date(t).getTime()).filter((t) => !Number.isNaN(t));
   expect(parsed.length).toBeGreaterThanOrEqual(2);
   for (let i = 1; i < parsed.length; i++) {
