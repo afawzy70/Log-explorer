@@ -70,6 +70,15 @@ management:
       show-details: never
 
 logexplorer:
+  startup:
+    # FIRST_SEARCH_WARMUP_ROOT_CAUSE_AND_OPTIMIZATION - pays JIT/class-
+    # loading/first-Docker-call cost once at startup, on synthetic data
+    # only, instead of on the user's own first real search. See
+    # com.logexplorer.config.StartupWarmup and
+    # docs/performance/FIRST_SEARCH_WARMUP_INVESTIGATION.md.
+    enabled: true
+    iterations: 3000
+    docker-warmup-timeout: 3s
   sources:
     disabled: []
   search:
