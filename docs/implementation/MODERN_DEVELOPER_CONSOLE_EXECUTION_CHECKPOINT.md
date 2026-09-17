@@ -399,3 +399,172 @@ Investigation, B6 Settings/Mapping (beyond classification), B7.
 5. Keep running the full typecheck/test/build/targeted-E2E discipline after every bounded change, and the full
    E2E suite (frontend) / full `mvn test` (if backend is touched again) at the next wave boundary — not after
    every small CSS edit (this mission's own testing policy).
+
+---
+
+## Session 4 — InspectorHeader complete, B2 Search Shell recompose (Settings consolidation, Severity control, Scope strip)
+
+Mission (`MODERN_DEVELOPER_CONSOLE_IMPLEMENTATION_SESSION_4`): finish the bounded InspectorHeader restyle, then
+treat B2 Search Shell recompose as the session's main task — its own explicit priority framing was "the five-day
+delivery budget is at risk... prioritize the highest-risk / highest-dependency work now."
+
+Verified HEAD (`0c3d65f`) matched local/remote/PR #61 exactly before starting; CI confirmed green on `792528c`
+(all 5 jobs) per Session 3's own final checkpoint entry.
+
+### Step 1 — InspectorHeader restyle (COMPLETE)
+
+`52e282a`: restructured `InspectorHeader.tsx`/`.module.css` from `badgeRow`/`title`/`nav` to the design's own
+`.insp-meta`/`.insp-title`/`.insp-actions` grouping, v2 tokens throughout (`--v2-surface-inspector`,
+`--v2-text-meta`/`--v2-text-workspace`, `--v2-ink-1`/`--v2-ink-2`, `--v2-accent`). Every prop/behaviour/copy
+unchanged — Inspector domain behaviour untouched, per the mission's explicit "do not expand this task." Verified:
+typecheck, `phase-h-event-inspector.spec.ts` (16/16), real-browser light/dark screenshot check.
+
+### Step 2 — B2 Search Shell recompose (COMPLETE for its required structure list)
+
+Checked every item on the mission's required B2 structure list against the actual implementation at session end:
+
+| Required item | Status | Where |
+|---|---|---|
+| Workspace trail | DONE (prior part of this session) | `Shell.tsx`'s `WorkspaceTrail` |
+| Consolidated search/query bar | DONE | `Toolbar.tsx` (unchanged structure, chrome tightened to the design's 44px target in `84a3f34`) |
+| Source / project / time / service controls | Pre-existing, untouched | `Toolbar.tsx` |
+| Severity control/popover | DONE | `SeverityFilter.tsx` recompose, `a1c1b66` |
+| Search input | Pre-existing, untouched | `UniversalSearch.tsx` |
+| Scope strip | DONE | new `ScopeStrip.tsx`, `ac77dab` |
+| Active filters | DONE (relocated into the scope strip) | `ScopeStrip.tsx` wrapping `ActiveFilters.tsx` |
+| More filters | Pre-existing, untouched | `AdvancedFilters.tsx` |
+| Query details | DONE (recomposed into an anchored dropdown under the scope strip's own trigger) | `QueryPlanDisclosure.tsx`, `ac77dab` |
+| Columns | DONE (relocated into the scope strip) | `TableSettingsControl.tsx` (unchanged itself), `ac77dab` |
+| Refresh placement | DONE (relocated into the scope strip) | `ScopeStrip.tsx`, `ac77dab` |
+| Settings entry point | DONE (prior part of this session) | `SettingsWorkspace.tsx`, `9ba023c` |
+| Tag filter | Pre-existing, untouched | `AdvancedFilters.tsx` / `ActiveFilters.tsx` |
+| Source health | Pre-existing, untouched | `SourceHealthBadge.tsx` |
+| OpenShift Loki visible + disabled | Pre-existing, untouched | `SourceSelect.tsx` |
+
+**Settings consolidation** (`9ba023c`, `2be77cf`, `84a3f34`): the three separate settings popovers (Docker,
+OpenShift, Privacy & masking) plus the standalone Classification rules button all now route through ONE
+`SettingsWorkspace` takeover (matches `App.tsx`'s existing `mappingWorkspaceOpen`/`classificationWorkspaceOpen`
+takeover pattern exactly). No backend settings semantics changed, no functionality deleted. Fixed two real
+dark-mode/clipping regressions found via real-browser screenshots (documented in their own commits): Docker/
+OpenShift/Privacy panel popovers clipping off the relocated (now narrower) left column, and washed-out text from
+mixing v2 ink tokens with a still-v1 page background.
+
+**Severity control recompose** (`a1c1b66`): the always-inline level-chip row became a "Severity" field trigger
+(truthful accessible name: "All"/"Errors only"/"None"/a literal list) with the same content behind a popover,
+matching `TableSettingsControl`'s own `usePopoverTrigger`/`useDismissableLayer` convention. New shared
+`SeverityMark` component (inline-flow variant of `columnRegistry.tsx`'s own Time-gutter marks, deliberately not
+literally shared to avoid touching already-verified B3 code).
+
+**Scope strip** (`ac77dab`): consolidates `ActiveFilters`, the results readout, Sort (recomposed from a
+`<select>` to a toggle button), Columns, Query details (recomposed from an inline `<details>` to an anchored
+dropdown under a strip trigger) and Refresh into one persistent row, replacing two previously-separate rows
+(`Toolbar`'s own `.activeFiltersRow` and `ResultsPanel`'s own `.summaryRow`). `ScopeStrip.tsx` is purely
+presentational — `ResultsPanel` still owns exactly which controls apply to which of its state branches (error,
+loading, pre-search, zero-result, populated, context), so every pre-recompose per-state visibility rule carries
+over unchanged. The one genuine visibility change: the scope strip (chips included) no longer renders while
+Live/Settings/Field mapping/Classification rules/Journey are the active view, since `ResultsPanel` itself doesn't
+mount then either — matches the design's own prototype states (`compactScope`, not `scopeStrip`, for those
+views), not a regression.
+
+**Both v2 tokens `WorkspaceTrail`/`Toolbar`/`SeverityFilter`/`ScopeStrip` treatments were deliberately kept on v1
+tokens** (chrome background/border, trigger/popover chrome) — the same "full v2 or full v1, never mixed" rule
+applied repeatedly this session after finding real patchy-dark-mode regressions each time it was tried
+(documented in each file's own CSS comment). A full dark-theme sweep of the whole chrome remains out of scope for
+this session, per the mission's own exclusion list.
+
+### Regressions found and fixed (real, via full clean runs — not assumed)
+
+1. **`SeverityFilter` recompose blast radius was under-scoped in `a1c1b66` itself** — a full, clean Playwright
+   run (31 failures) found 8 E2E spec files (`phase-legacy-slice1/2/4/5/6/7`, `phase-ui-gap-closure`,
+   `phase-ui-parity-acceleration`) clicking the "All"/"Errors only" severity quick actions directly, now behind
+   the trigger's popover. Fixed in `ac77dab` by opening the trigger first everywhere it was missed (one instance
+   in `phase-ui-parity-acceleration.spec.ts` and one in `phase-legacy-slice4-table-configurability.spec.ts` were
+   missed by the first fix pass too, due to a `grep` alternation-escaping bug — caught by re-running the full
+   batch a second time and finding 10 failures, not by assuming the first fix pass was complete). Also missed
+   originally in `Toolbar.test.tsx`/`persistence.test.tsx`/`LiveTailPanel.test.tsx` (unit tests, fixed in
+   `a1c1b66` itself after a `npx vitest run` full-suite check caught them).
+2. **Real 390px page-level overflow (418px)** in the new `ScopeStrip`: `.readout`'s `white-space: nowrap` forced
+   the whole strip (and the page) past the viewport instead of wrapping — this is the exact invariant
+   `ResultsPanel`'s own pre-recompose `.summaryRow > .summary` already protected ("the counts sentence is the
+   only elastic member of the row"), lost in the initial port. Fixed by restoring `flex: 1 1 12rem; min-width: 0`
+   on `.readout` and dropping the `nowrap`. Found via a real DOM measurement (`scrollWidth` per element), not
+   guessed — `ScopeStrip.module.css`'s own comment documents the exact bug.
+3. **Sandbox background-process memory ceiling** (environment-specific, not a code defect): every
+   `run_in_background: true` Playwright invocation this session was killed with "system is running low on
+   memory" regardless of worker count or spec count, even a single spec file — `free -h` showed 11GB available
+   at the OS level throughout, so this is a harness-level constraint on background subprocess trees, not real
+   memory exhaustion. Worked around by running Playwright in the **foreground** instead (blocks the turn, but
+   completes reliably) — all 78 tests across the 8 regressed files, plus the full unit suite, were ultimately
+   verified this way. **Flag for future sessions in this same sandboxed environment**: prefer foreground
+   Playwright runs over `run_in_background` when repeated "low memory" kills occur.
+
+### Tests run this session (cumulative, at the final code commit `ac77dab`)
+
+- `npm run typecheck` (`tsc --noEmit`) — PASS, every commit.
+- `npx vitest run` (full suite) — **1117/1117 PASS**, final clean run (foreground). Two earlier runs each showed
+  2-3 failures in files unrelated to this session's changes (`FieldMappingWorkspace.test.tsx`,
+  `classificationTagFilter.test.tsx`) that vanished on a clean re-run — the same resource-contention flakiness
+  pattern already documented in Sessions 1-3, reconfirmed rather than assumed.
+- `npm run build` — PASS, both milestone commits.
+- Targeted Playwright, run individually in the foreground after the fixes: `phase-f-search-ux.spec.ts`,
+  `ux-r1-evidence.spec.ts`, `phase-m-ux-acceptance.spec.ts`, `phase-j-live-tail.spec.ts` (SeverityFilter
+  recompose, `a1c1b66`); `phase-legacy-slice1-pagination.spec.ts` (4/4), `phase-legacy-slice2-query-
+  transparency.spec.ts` (10/10), `phase-legacy-slice4-table-configurability.spec.ts` (8/8),
+  `phase-legacy-slice5-live-resilience.spec.ts` (8/8, including the "14. Stop during reconnect" and "17-19.
+  sustained real streaming" tests that had failed in the contended full-batch run — both green in isolation,
+  confirming that failure was resource contention, not a regression), `phase-legacy-slice6-investigation-
+  depth.spec.ts` (14/14), `phase-legacy-slice7-redaction.spec.ts` (9/9 of its own file, run alongside
+  `phase-ui-gap-closure.spec.ts` 6/6 = 15/15 combined), `phase-ui-parity-acceleration.spec.ts` (13/13, combined
+  with slice2 above = 20/20) — **78/78 across all 8 regressed files, zero failures**, each confirmed via a real
+  Playwright run, not inferred from the fix alone.
+- Real-browser responsive sweep: `ScopeStrip`/Toolbar measured overflow-free at every required width (1920,
+  1440, 1366, 1024, 768, 390px) via `document.documentElement.scrollWidth - window.innerWidth === 0` at each,
+  plus a light and a dark screenshot at 1440px confirming no patchy token mismatch.
+- **Full E2E suite** — NOT run this session (per the mission's own explicit "do NOT run the entire full E2E suite
+  after every small change"; targeted specs covering every file this session touched were run instead, per the
+  same policy's "after B2 reaches coherent completion" guidance). **Recommend running the full suite + CI at the
+  next session's start** before further B2/B3 work, as the wave-boundary check this session's own budget did not
+  reach.
+- Backend — not touched this session (zero commits under `backend/`), not run.
+
+### Known regressions
+
+**None remain.** Two real regressions were found (both from the `SeverityFilter` recompose's own blast-radius
+gap, and the `ScopeStrip` 390px overflow) — both fixed and re-verified for real, per the mission's own explicit
+"if B2 exposes genuine regressions: fix them properly; do not fake completion." Neither was silently patched or
+assumed fixed from source-reading alone.
+
+### Files currently being worked on
+
+None — the working tree is clean at the last code commit (`ac77dab`, plus this checkpoint commit), nothing
+mid-edit, nothing uncommitted (verification-evidence PNGs regenerated by running the E2E suite are left
+unstaged, matching this session's own established convention of not bundling incidental screenshot re-captures
+into a feature commit).
+
+### Not started this session
+
+B5 Investigation, B6 Settings content redesign (beyond the shell-routing consolidation B2 itself required), B7
+Live, a full dark-theme sweep of the chrome, A1b backend recolour, the Live EXCLUDE fix, search performance work,
+Loki enablement — all explicitly out of scope per the mission's own exclusion list.
+
+## Resuming — exact next task (Session 5)
+
+1. **Re-verify the branch**: `git log --oneline -5` on `ux/v2-modern-developer-console` — HEAD should be
+   `ac77dab` (or this checkpoint's own commit on top of it). Run `gh pr checks 61` to confirm CI is still green
+   on the latest push before starting new work — this session's own budget did not reach a CI re-check.
+2. **B2 Search Shell's required structure list is now fully addressed** (see the table above) — B2 can be
+   considered functionally COMPLETE for this mission's own definition of B2 scope. Remaining B2-adjacent polish,
+   if the owner wants it: a literal pixel-fidelity pass against the prototype's exact `scopeStrip`/`queryBar` CSS
+   (this session's implementation is functionally equivalent and responsive/theme-safe, but not a pixel-exact
+   port); the design's own scope-strip also draws a duplicate quick "All levels / Errors only" segmented control
+   INSIDE the strip itself (redundant with the Severity trigger's own popover content) — investigated and
+   deliberately NOT built, since it would be genuinely redundant functionality, not missing IA; flag for the
+   owner to confirm intent before ever building it.
+3. **Next real scope**: B5 Investigation, B6 Settings content redesign, B7 Live, or a dedicated dark-theme sweep
+   of the whole chrome (Toolbar/ScopeStrip/WorkspaceTrail currently intentionally v1-only) — each is its own
+   deliberate slice, not to be squeezed into a continuation of B2.
+4. Keep the same discipline: typecheck/full-unit/build/targeted-E2E after each bounded change; full E2E suite +
+   CI at the next wave boundary, not after every small edit. **In this specific sandboxed environment, prefer
+   running Playwright in the foreground over `run_in_background: true`** if "low memory" kills recur — this
+   session found the background-process ceiling triggers even for a single, short spec file, while `free -h`
+   showed ample OS-level memory throughout; the foreground path worked reliably every time it was tried.
