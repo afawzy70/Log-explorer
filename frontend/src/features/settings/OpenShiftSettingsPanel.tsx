@@ -1,7 +1,6 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Button } from '../../shared/ui/Button';
-import { useDismissableLayer } from '../../shared/ui/useDismissableLayer';
-import { usePopoverTrigger } from '../../shared/ui/usePopoverTrigger';
+import { Icon } from '../../shared/ui/Icon';
 import {
   connectOpenShift,
   disconnectOpenShift,
@@ -47,25 +46,35 @@ function workloadOptionValue(kind: OpenShiftWorkloadKind, name: string): string 
 }
 
 /**
- * OpenShift connection workspace (OS-1A §18).
+ * OpenShift connection settings (OS-1A §18).
  *
- * <p><b>Deliberately not a clone of `DockerSettingsPanel`.</b> That panel
- * is read-only by design - it shows the effective configuration and offers
- * an ephemeral Test Connection, because Docker's connection is owned by
- * deployment configuration and there is no authenticated admin boundary to
- * justify a Save. OpenShift is the opposite case: the connection *is* the
- * user's own credential, supplied at runtime, and the panel's whole job is
- * to commit it. Same visual language, different interaction model, because
- * the domain genuinely differs (OS-A §24 explicitly allows this).
+ * <p>B6.2 (Session 7) recomposed this from a trigger-button popover into a
+ * persistent inline section of the Settings workspace - COMPONENT_
+ * INVENTORY.md's own RECOMPOSE row: "Same move; connection summary,
+ * investigation scope selectors, Disconnect as a danger button." This is
+ * the LAST of the three B6.2 panels migrated (Docker, then Privacy &amp;
+ * masking, then this one) precisely because it is the highest-risk: it
+ * owns the credential-intake form and the `--insecure-skip-tls-verify`
+ * refusal (see {@link describeFailure}'s `INSECURE_TLS_REFUSED` case,
+ * enforced server-side and surfaced here verbatim - untouched by this
+ * recompose). All connect/disconnect/scope-selection/proxy logic below is
+ * byte-for-byte the same as before; only the popover chrome (trigger
+ * button, `usePopoverTrigger`, `useDismissableLayer`, `role="dialog"`) is
+ * gone, replaced by a persistent `<section>` that fetches its three pieces
+ * of state (connection summary, intake-allowed, proxy settings) on mount
+ * instead of on trigger-click. This component only mounts once per
+ * Settings-workspace open (`App.tsx`'s own takeover ternary), which gives
+ * the same "always a fresh fetch" guarantee the old open/close cycle used
+ * to provide explicitly.
  *
- * <h2>The token never lives in this component</h2>
+ * <h2>The token never lives in this component longer than the request</h2>
  *
  * <p>The pasted command sits in one piece of local state while the user is
  * typing, is submitted once, and is cleared immediately afterwards -
- * whether the attempt succeeded or failed. It is never written to
- * `localStorage`, `sessionStorage` or the URL (CLAUDE.md §2 rule 4), and
- * there is no code path that reads it back from the server, because the
- * server has no endpoint that returns it.
+ * whether the attempt succeeded or failed, and also on unmount (Settings
+ * closing). It is never written to `localStorage`, `sessionStorage` or the
+ * URL (CLAUDE.md §2 rule 4), and there is no code path that reads it back
+ * from the server, because the server has no endpoint that returns it.
  *
  * <h2>Failures are specific, never "connection failed"</h2>
  *
@@ -86,8 +95,6 @@ function workloadOptionValue(kind: OpenShiftWorkloadKind, name: string): string 
  * go re-read the source of truth."
  */
 export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: () => void } = {}) {
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const popover = usePopoverTrigger();
   const headingId = useId();
   const commandId = useId();
   const nameId = useId();
@@ -135,12 +142,12 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
   // cluster (§B12: Connect is this application's "Test connection"
   // action, and must use whatever proxy mode is currently selected).
   //
-  // The radio group's own selection IS the source of truth once the panel
-  // is open (seeded from the server's last-committed value on open, then
-  // updated optimistically-but-server-confirmed on every change below) -
-  // there is no separate "committed" value tracked afterward, since
-  // nothing else in this panel needs to distinguish "what the form shows"
-  // from "what the server has" once they have been reconciled.
+  // The radio group's own selection IS the source of truth once loaded
+  // (seeded from the server's last-committed value on mount, then updated
+  // optimistically-but-server-confirmed on every change below) - there is
+  // no separate "committed" value tracked afterward, since nothing else in
+  // this panel needs to distinguish "what the form shows" from "what the
+  // server has" once they have been reconciled.
   const [formMode, setFormMode] = useState<ProxyMode>('SYSTEM');
   const [proxyBusy, setProxyBusy] = useState(false);
   const [proxyError, setProxyError] = useState<string | null>(null);
@@ -149,19 +156,6 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
   // proxy" (§B3/§B4: validated before ever being submitted).
   const [customHostInput, setCustomHostInput] = useState('');
   const [customPortInput, setCustomPortInput] = useState('');
-
-  useDismissableLayer(wrapperRef, popover.isOpen, close);
-
-  // Belt and braces: if this component ever unmounts while a command is
-  // still in state, drop it rather than leaving it for the GC to decide.
-  useEffect(() => () => setLoginCommand(''), []);
-
-  function close() {
-    popover.close();
-    // The pasted command must not survive the panel closing.
-    setLoginCommand('');
-    setFailure(null);
-  }
 
   function resetScope() {
     setWorkloadDiscovery(undefined);
@@ -173,8 +167,7 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
     setScopeError(null);
   }
 
-  function open() {
-    popover.open();
+  useEffect(() => {
     setFailure(null);
     resetScope();
     void fetchOpenShiftConnection().then((s) => {
@@ -196,7 +189,15 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
       setCustomHostInput(p.host ?? '');
       setCustomPortInput(p.port != null ? String(p.port) : '');
     }).catch(() => undefined);
-  }
+    // Mount-once fetch of the three pieces of state this panel owns - see
+    // the doc comment above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Belt and braces: if this component ever unmounts (Settings closing)
+  // while a command is still in state, drop it rather than leaving it for
+  // the GC to decide.
+  useEffect(() => () => setLoginCommand(''), []);
 
   /** SYSTEM/DIRECT apply immediately - neither needs a host/port, so there is nothing to validate or hold pending. */
   async function selectProxyMode(mode: 'SYSTEM' | 'DIRECT') {
@@ -394,240 +395,231 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
   const scopeLabelSingular = isNamespaceMode ? 'Namespace' : 'Project';
 
   return (
-    <div ref={wrapperRef} className={styles.wrapper}>
-      <Button
-        ref={popover.triggerRef}
-        variant="secondary"
-        aria-haspopup="dialog"
-        aria-expanded={popover.isOpen}
-        onClick={() => (popover.isOpen ? close() : open())}
-      >
-        OpenShift
-      </Button>
+    <section className={styles.panel} aria-labelledby={headingId} data-testid="openshift-settings-panel">
+      <div className={styles.panelHead}>
+        <h2 id={headingId} className={styles.heading}>
+          OpenShift
+        </h2>
+        <span className={styles.scopeTag}>
+          <Icon name="server" size="sm" />
+          OpenShift sources only
+        </span>
+        {/*
+          State is never colour-only: the word itself is the signal, and
+          the dot is decoration (CLAUDE.md §7).
+        */}
+        <span
+          data-testid="openshift-connection-state"
+          className={`${styles.state} ${connecting ? styles.stateConnecting : stateClass(summary?.state, styles)}`}
+        >
+          <span className={styles.stateDot} aria-hidden="true" />
+          {connecting ? 'Connecting…' : stateLabel(summary?.state)}
+        </span>
+        {connected ? (
+          <span className={styles.right}>
+            <Button variant="danger" disabled={busy} onClick={() => void run(disconnectOpenShift)}>
+              Disconnect
+            </Button>
+          </span>
+        ) : null}
+      </div>
 
-      {popover.isOpen ? (
-        <div className={styles.panel} role="dialog" aria-labelledby={headingId}>
-          <div className={styles.header}>
-            <h2 id={headingId} className={styles.heading}>
-              OpenShift connection
-            </h2>
-            {/*
-              State is never colour-only: the word itself is the signal, and
-              the dot is decoration (CLAUDE.md §7).
-            */}
-            <span
-              data-testid="openshift-connection-state"
-              className={`${styles.state} ${connecting ? styles.stateConnecting : stateClass(summary?.state, styles)}`}
-            >
-              <span className={styles.stateDot} aria-hidden="true" />
-              {connecting ? 'Connecting…' : stateLabel(summary?.state)}
-            </span>
-          </div>
+      <div className={styles.panelBody}>
+        {!intakeAllowed ? (
+          <p className={styles.blocked} role="alert">
+            Sign-in is disabled because Log Explorer is reachable from the network. OpenShift credentials can only be
+            entered when it is bound to a local address.
+          </p>
+        ) : null}
 
-          {!intakeAllowed ? (
-            <p className={styles.blocked} role="alert">
-              Sign-in is disabled because Log Explorer is reachable from the network. OpenShift credentials can only
-              be entered when it is bound to a local address.
-            </p>
-          ) : null}
-
-          {connected ? (
-            <>
-              <dl className={styles.summaryList}>
+        {connected ? (
+          <>
+            <dl className={styles.summaryList}>
+              <div className={styles.summaryRow}>
+                <dt>Server</dt>
+                <dd className={styles.mono}>{summary?.server ?? '—'}</dd>
+              </div>
+              <div className={styles.summaryRow}>
+                <dt>User</dt>
+                <dd>{summary?.username ?? 'Not reported by this cluster'}</dd>
+              </div>
+              <div className={styles.summaryRow}>
+                <dt>TLS</dt>
+                <dd>Verified{summary?.usingPrivateCa ? ' (private certificate authority)' : ''}</dd>
+              </div>
+              {summary?.proxy ? (
                 <div className={styles.summaryRow}>
-                  <dt>Server</dt>
-                  <dd className={styles.mono}>{summary?.server ?? '—'}</dd>
+                  <dt>Proxy</dt>
+                  <dd className={styles.mono}>{summary.proxy}</dd>
                 </div>
-                <div className={styles.summaryRow}>
-                  <dt>User</dt>
-                  <dd>{summary?.username ?? 'Not reported by this cluster'}</dd>
-                </div>
-                <div className={styles.summaryRow}>
-                  <dt>TLS</dt>
-                  <dd>
-                    Verified{summary?.usingPrivateCa ? ' (private certificate authority)' : ''}
-                  </dd>
-                </div>
-                {summary?.proxy ? (
-                  <div className={styles.summaryRow}>
-                    <dt>Proxy</dt>
-                    <dd className={styles.mono}>{summary.proxy}</dd>
-                  </div>
-                ) : null}
-                <div className={styles.summaryRow}>
-                  <dt>{scopeLabelPlural}</dt>
-                  <dd>{summary?.projectCount ?? 0}</dd>
-                </div>
-              </dl>
-
-              {summary && summary.projectCount === 0 ? (
-                <p className={styles.empty}>
-                  This account can sign in, but has no {scopeLabelPlural.toLowerCase()}. Ask a cluster administrator
-                  for access to one.
-                </p>
-              ) : (
-                <div className={styles.field}>
-                  <label className={styles.label} htmlFor={projectId}>
-                    {scopeLabelSingular}
-                  </label>
-                  <select
-                    id={projectId}
-                    className={styles.select}
-                    value={summary?.selectedProject ?? ''}
-                    disabled={busy}
-                    onChange={async (e) => {
-                      const project = e.target.value || null;
-                      resetScope();
-                      await run(() => selectOpenShiftProject(project));
-                      if (project) {
-                        void loadWorkloads();
-                      }
-                    }}
-                  >
-                    <option value="">All {scopeLabelPlural.toLowerCase()} (none selected)</option>
-                    {summary?.projects.map((project) => (
-                      <option key={project} value={project}>
-                        {project}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {summary?.selectedProject ? (
-                <OpenShiftScopeControls
-                  workloadId={workloadId}
-                  podId={podId}
-                  containerId={containerId}
-                  busy={busy}
-                  workloadDiscovery={workloadDiscovery}
-                  selectedWorkload={selectedWorkload}
-                  pods={pods}
-                  selectedPod={selectedPod}
-                  containers={containers}
-                  selectedContainer={selectedContainer}
-                  scopeError={scopeError}
-                  onSelectWorkload={onSelectWorkload}
-                  onSelectPod={onSelectPod}
-                  onSelectContainer={onSelectContainer}
-                />
               ) : null}
-
-              <OpenShiftProxyFieldset
-                groupId={proxyGroupId}
-                hostId={proxyHostId}
-                portId={proxyPortId}
-                formMode={formMode}
-                proxyBusy={proxyBusy}
-                proxyError={proxyError}
-                customHostInput={customHostInput}
-                customPortInput={customPortInput}
-                onSelectMode={(mode) => {
-                  if (mode === 'CUSTOM') {
-                    setFormMode('CUSTOM');
-                    setProxyError(null);
-                  } else {
-                    void selectProxyMode(mode);
-                  }
-                }}
-                onHostChange={setCustomHostInput}
-                onPortChange={setCustomPortInput}
-                onApplyCustom={() => void applyCustomProxy()}
-              />
-
-              <div className={styles.actions}>
-                <Button variant="ghost" disabled={busy} onClick={() => void run(disconnectOpenShift)}>
-                  Disconnect
-                </Button>
+              <div className={styles.summaryRow}>
+                <dt>{scopeLabelPlural}</dt>
+                <dd>{summary?.projectCount ?? 0}</dd>
               </div>
-            </>
-          ) : (
-            <form onSubmit={submit}>
+            </dl>
+
+            {summary && summary.projectCount === 0 ? (
+              <p className={styles.empty}>
+                This account can sign in, but has no {scopeLabelPlural.toLowerCase()}. Ask a cluster administrator
+                for access to one.
+              </p>
+            ) : (
               <div className={styles.field}>
-                <label className={styles.label} htmlFor={nameId}>
-                  Connection name <span className={styles.optional}>(optional)</span>
+                <label className={styles.label} htmlFor={projectId}>
+                  {scopeLabelSingular}
                 </label>
-                <input
-                  id={nameId}
-                  className={styles.input}
-                  type="text"
-                  value={connectionName}
-                  disabled={busy || !intakeAllowed}
-                  placeholder="Production OpenShift"
-                  onChange={(e) => setConnectionName(e.target.value)}
-                />
+                <select
+                  id={projectId}
+                  className={styles.select}
+                  value={summary?.selectedProject ?? ''}
+                  disabled={busy}
+                  onChange={async (e) => {
+                    const project = e.target.value || null;
+                    resetScope();
+                    await run(() => selectOpenShiftProject(project));
+                    if (project) {
+                      void loadWorkloads();
+                    }
+                  }}
+                >
+                  <option value="">All {scopeLabelPlural.toLowerCase()} (none selected)</option>
+                  {summary?.projects.map((project) => (
+                    <option key={project} value={project}>
+                      {project}
+                    </option>
+                  ))}
+                </select>
               </div>
+            )}
 
-              <OpenShiftProxyFieldset
-                groupId={proxyGroupId}
-                hostId={proxyHostId}
-                portId={proxyPortId}
-                formMode={formMode}
-                proxyBusy={proxyBusy}
-                proxyError={proxyError}
-                customHostInput={customHostInput}
-                customPortInput={customPortInput}
-                onSelectMode={(mode) => {
-                  if (mode === 'CUSTOM') {
-                    setFormMode('CUSTOM');
-                    setProxyError(null);
-                  } else {
-                    void selectProxyMode(mode);
-                  }
-                }}
-                onHostChange={setCustomHostInput}
-                onPortChange={setCustomPortInput}
-                onApplyCustom={() => void applyCustomProxy()}
+            {summary?.selectedProject ? (
+              <OpenShiftScopeControls
+                workloadId={workloadId}
+                podId={podId}
+                containerId={containerId}
+                busy={busy}
+                workloadDiscovery={workloadDiscovery}
+                selectedWorkload={selectedWorkload}
+                pods={pods}
+                selectedPod={selectedPod}
+                containers={containers}
+                selectedContainer={selectedContainer}
+                scopeError={scopeError}
+                onSelectWorkload={onSelectWorkload}
+                onSelectPod={onSelectPod}
+                onSelectContainer={onSelectContainer}
               />
+            ) : null}
 
-              <div className={styles.field}>
-                <label className={styles.label} htmlFor={commandId}>
-                  Paste your <code>oc login</code> command
-                </label>
-                <textarea
-                  id={commandId}
-                  className={styles.command}
-                  value={loginCommand}
-                  disabled={busy || !intakeAllowed}
-                  rows={3}
-                  spellCheck={false}
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  /* Treated as a secret: never offered to autofill, never
-                     spell-checked, and cleared as soon as it is submitted. */
-                  aria-describedby={`${commandId}-hint`}
-                  placeholder="oc login --token=… --server=https://api.example.com:6443"
-                  onChange={(e) => setLoginCommand(e.target.value)}
-                />
-                <p id={`${commandId}-hint`} className={styles.hint}>
-                  The command is read, never run. Your token is held in memory for this session only — it is never
-                  saved to disk and never shown again.
-                </p>
-              </div>
+            <OpenShiftProxyFieldset
+              groupId={proxyGroupId}
+              hostId={proxyHostId}
+              portId={proxyPortId}
+              formMode={formMode}
+              proxyBusy={proxyBusy}
+              proxyError={proxyError}
+              customHostInput={customHostInput}
+              customPortInput={customPortInput}
+              onSelectMode={(mode) => {
+                if (mode === 'CUSTOM') {
+                  setFormMode('CUSTOM');
+                  setProxyError(null);
+                } else {
+                  void selectProxyMode(mode);
+                }
+              }}
+              onHostChange={setCustomHostInput}
+              onPortChange={setCustomPortInput}
+              onApplyCustom={() => void applyCustomProxy()}
+            />
+          </>
+        ) : (
+          <form onSubmit={submit}>
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor={nameId}>
+                Connection name <span className={styles.optional}>(optional)</span>
+              </label>
+              <input
+                id={nameId}
+                className={styles.input}
+                type="text"
+                value={connectionName}
+                disabled={busy || !intakeAllowed}
+                placeholder="Production OpenShift"
+                onChange={(e) => setConnectionName(e.target.value)}
+              />
+            </div>
 
-              {failure ? (
-                <p className={styles.error} role="alert">
-                  {failure.message}
-                </p>
-              ) : null}
+            <OpenShiftProxyFieldset
+              groupId={proxyGroupId}
+              hostId={proxyHostId}
+              portId={proxyPortId}
+              formMode={formMode}
+              proxyBusy={proxyBusy}
+              proxyError={proxyError}
+              customHostInput={customHostInput}
+              customPortInput={customPortInput}
+              onSelectMode={(mode) => {
+                if (mode === 'CUSTOM') {
+                  setFormMode('CUSTOM');
+                  setProxyError(null);
+                } else {
+                  void selectProxyMode(mode);
+                }
+              }}
+              onHostChange={setCustomHostInput}
+              onPortChange={setCustomPortInput}
+              onApplyCustom={() => void applyCustomProxy()}
+            />
 
-              <div className={styles.actions}>
-                <Button type="submit" variant="primary" disabled={busy || !intakeAllowed || !loginCommand.trim()}>
-                  {busy ? 'Connecting…' : 'Connect'}
-                </Button>
-              </div>
-            </form>
-          )}
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor={commandId}>
+                Paste your <code>oc login</code> command
+              </label>
+              <textarea
+                id={commandId}
+                className={styles.command}
+                value={loginCommand}
+                disabled={busy || !intakeAllowed}
+                rows={3}
+                spellCheck={false}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                /* Treated as a secret: never offered to autofill, never
+                   spell-checked, and cleared as soon as it is submitted. */
+                aria-describedby={`${commandId}-hint`}
+                placeholder="oc login --token=… --server=https://api.example.com:6443"
+                onChange={(e) => setLoginCommand(e.target.value)}
+              />
+              <p id={`${commandId}-hint`} className={styles.hint}>
+                The command is read, never run. Your token is held in memory for this session only — it is never
+                saved to disk and never shown again.
+              </p>
+            </div>
 
-          {connected && failure ? (
-            <p className={styles.error} role="alert">
-              {failure.message}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
+            {failure ? (
+              <p className={styles.error} role="alert">
+                {failure.message}
+              </p>
+            ) : null}
+
+            <div className={styles.actions}>
+              <Button type="submit" variant="primary" disabled={busy || !intakeAllowed || !loginCommand.trim()}>
+                {busy ? 'Connecting…' : 'Connect'}
+              </Button>
+            </div>
+          </form>
+        )}
+
+        {connected && failure ? (
+          <p className={styles.error} role="alert">
+            {failure.message}
+          </p>
+        ) : null}
+      </div>
+    </section>
   );
 }
 

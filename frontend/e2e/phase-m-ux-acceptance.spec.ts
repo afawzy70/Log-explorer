@@ -92,7 +92,7 @@ test.describe('Task 2 - What happened for a user/customer?', () => {
     // to the fresh default at the end so this shared-singleton backend
     // policy never leaks into a later test in the same run.
     await openSettingsSection(page, /privacy & masking/i);
-    const maskingDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+    const maskingDialog = page.getByTestId('privacy-masking-settings-panel');
     await expect(maskingDialog).toBeVisible();
     const userNameCheckbox = maskingDialog.getByLabel('Username');
     const customerIdCheckbox = maskingDialog.getByLabel('Customer ID');
@@ -102,9 +102,8 @@ test.describe('Task 2 - What happened for a user/customer?', () => {
     if (!(await customerIdCheckbox.isChecked())) {
       await customerIdCheckbox.click();
     }
-    await page.getByRole('button', { name: /^close$/i }).click();
-    // B2 (Session 4) - closing the masking popover only closes that nested dialog; the consolidated
-    // Settings workspace underneath (a full-page takeover) stays the active view until explicitly closed.
+    // B6.2 (Session 7) - Privacy & masking is no longer a popover with its own "Close" - only the
+    // consolidated Settings workspace itself (a full-page takeover) needs closing.
     await page.getByRole('button', { name: /back to search results/i }).click();
 
     await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
@@ -145,7 +144,7 @@ test.describe('Task 2 - What happened for a user/customer?', () => {
     // backend policy never leaks into a later test in the same run.
     await page.keyboard.press('Escape'); // close the Inspector dialog first
     await openSettingsSection(page, /privacy & masking/i);
-    const cleanupDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+    const cleanupDialog = page.getByTestId('privacy-masking-settings-panel');
     await expect(cleanupDialog).toBeVisible();
     if (await cleanupDialog.getByLabel('Username').isChecked()) {
       await cleanupDialog.getByLabel('Username').click();
@@ -153,7 +152,6 @@ test.describe('Task 2 - What happened for a user/customer?', () => {
     if (await cleanupDialog.getByLabel('Customer ID').isChecked()) {
       await cleanupDialog.getByLabel('Customer ID').click();
     }
-    await page.getByRole('button', { name: /^close$/i }).click();
   });
 });
 

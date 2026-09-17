@@ -12,6 +12,13 @@ import { ApiError } from '../../shared/api/client';
  * the pasted token never survives in client state or storage, and that the
  * three failure truths OS-1A §15 separates stay separated in the copy the
  * user actually reads.
+ *
+ * B6.2 (Session 7) - this panel is no longer a trigger-button popover: it
+ * renders persistently and fetches its connection/intake/proxy state on
+ * mount (COMPONENT_INVENTORY.md's own RECOMPOSE row). Every test below
+ * renders it directly instead of clicking an "OpenShift" trigger and
+ * waiting for a `role="dialog"` - the panel is a plain `<section>` now,
+ * found by its own heading.
  */
 
 const CONNECTED = {
@@ -66,8 +73,7 @@ describe('OpenShiftSettingsPanel', () => {
   async function openPanel() {
     const user = userEvent.setup();
     render(<OpenShiftSettingsPanel />);
-    await user.click(screen.getByRole('button', { name: 'OpenShift' }));
-    await screen.findByRole('dialog', { name: /openshift connection/i });
+    await screen.findByRole('heading', { name: /^openshift$/i });
     return user;
   }
 
@@ -172,6 +178,21 @@ describe('OpenShiftSettingsPanel', () => {
     expect(screen.queryByRole('button', { name: /reveal|show token/i })).not.toBeInTheDocument();
   });
 
+  it('offers a Disconnect action once connected, styled as the approved danger button', async () => {
+    stubFetch((url) => (url.includes('intake-allowed') ? jsonResponse(true) : jsonResponse(CONNECTED)));
+    await openPanel();
+
+    expect(await screen.findByRole('button', { name: /^disconnect$/i })).toBeInTheDocument();
+  });
+
+  it('never offers Disconnect while disconnected', async () => {
+    stubFetch((url) => (url.includes('intake-allowed') ? jsonResponse(true) : jsonResponse(DISCONNECTED)));
+    await openPanel();
+
+    await screen.findByText(/not connected/i);
+    expect(screen.queryByRole('button', { name: /^disconnect$/i })).not.toBeInTheDocument();
+  });
+
   it('offers project selection once connected', async () => {
     stubFetch((url) => (url.includes('intake-allowed') ? jsonResponse(true) : jsonResponse(CONNECTED)));
     await openPanel();
@@ -210,7 +231,7 @@ describe('OpenShiftSettingsPanel', () => {
     stubFetch((url) => (url.includes('intake-allowed') ? jsonResponse(true) : jsonResponse(CONNECTED)));
     await openPanel();
 
-    expect(screen.getByLabelText(/^project$/i)).toBeInTheDocument();
+    expect(await screen.findByLabelText(/^project$/i)).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /all projects \(none selected\)/i })).toBeInTheDocument();
   });
 
@@ -227,10 +248,8 @@ describe('OpenShiftSettingsPanel', () => {
 
   it('has no detectable accessibility violations', async () => {
     stubFetch((url) => (url.includes('intake-allowed') ? jsonResponse(true) : jsonResponse(CONNECTED)));
-    const user = userEvent.setup();
     const { container } = render(<OpenShiftSettingsPanel />);
-    await user.click(screen.getByRole('button', { name: 'OpenShift' }));
-    await screen.findByRole('dialog', { name: /openshift connection/i });
+    await screen.findByRole('heading', { name: /^openshift$/i });
     await waitFor(() => expect(screen.getByText('api.example.com:6443')).toBeInTheDocument());
 
     expect(await axe(container)).toHaveNoViolations();
@@ -282,8 +301,7 @@ describe('OpenShiftSettingsPanel - OS-1B scope controls', () => {
   async function openPanelConnectedToAProject() {
     const user = userEvent.setup();
     render(<OpenShiftSettingsPanel />);
-    await user.click(screen.getByRole('button', { name: 'OpenShift' }));
-    await screen.findByRole('dialog', { name: /openshift connection/i });
+    await screen.findByRole('heading', { name: /^openshift$/i });
     return user;
   }
 
@@ -445,8 +463,7 @@ describe('OpenShiftSettingsPanel - OS-1F connecting state & scope-change notific
   async function openPanel() {
     const user = userEvent.setup();
     render(<OpenShiftSettingsPanel />);
-    await user.click(screen.getByRole('button', { name: 'OpenShift' }));
-    await screen.findByRole('dialog', { name: /openshift connection/i });
+    await screen.findByRole('heading', { name: /^openshift$/i });
     return user;
   }
 
@@ -485,8 +502,7 @@ describe('OpenShiftSettingsPanel - OS-1F connecting state & scope-change notific
     const onScopeChanged = vi.fn();
     const user = userEvent.setup();
     render(<OpenShiftSettingsPanel onScopeChanged={onScopeChanged} />);
-    await user.click(screen.getByRole('button', { name: 'OpenShift' }));
-    await screen.findByRole('dialog', { name: /openshift connection/i });
+    await screen.findByRole('heading', { name: /^openshift$/i });
     const field = screen.getByLabelText(/paste your oc login command/i);
     await user.type(field, 'oc login --token=sha256~scopechangedafter123 --server=https://api.example.com:6443');
     await user.click(screen.getByRole('button', { name: /^connect$/i }));
@@ -504,8 +520,7 @@ describe('OpenShiftSettingsPanel - OS-1F connecting state & scope-change notific
     const onScopeChanged = vi.fn();
     const user = userEvent.setup();
     render(<OpenShiftSettingsPanel onScopeChanged={onScopeChanged} />);
-    await user.click(screen.getByRole('button', { name: 'OpenShift' }));
-    await screen.findByRole('dialog', { name: /openshift connection/i });
+    await screen.findByRole('heading', { name: /^openshift$/i });
     await screen.findByText(/^connected$/i);
 
     await user.click(screen.getByRole('button', { name: /^disconnect$/i }));
@@ -528,8 +543,7 @@ describe('OpenShiftSettingsPanel - OS-1F connecting state & scope-change notific
     const onScopeChanged = vi.fn();
     const user = userEvent.setup();
     render(<OpenShiftSettingsPanel onScopeChanged={onScopeChanged} />);
-    await user.click(screen.getByRole('button', { name: 'OpenShift' }));
-    await screen.findByRole('dialog', { name: /openshift connection/i });
+    await screen.findByRole('heading', { name: /^openshift$/i });
 
     const select = await screen.findByLabelText(/^project$/i);
     await user.selectOptions(select, 'payments');
@@ -613,8 +627,7 @@ describe('OpenShiftSettingsPanel - pre-closure functional recovery 2, proxy sett
     });
     const user = userEvent.setup();
     render(<OpenShiftSettingsPanel />);
-    await user.click(screen.getByRole('button', { name: 'OpenShift' }));
-    await screen.findByRole('dialog', { name: /openshift connection/i });
+    await screen.findByRole('heading', { name: /^openshift$/i });
     return user;
   }
 

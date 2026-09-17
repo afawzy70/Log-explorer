@@ -53,3 +53,22 @@
   border-color: var(--color-accent);
   color: var(--color-accent);
 }
+
+/*
+ * B6.2 (Session 7) - first "danger" variant on this shared component, added
+ * for OpenShift Settings' Disconnect action (COMPONENT_INVENTORY.md:
+ * "Disconnect as a danger button"). Uses v2 danger tokens (both light and
+ * dark values already defined in tokensV2.css) rather than a v1 token, since
+ * v1 has no dedicated danger-button color - safe in any v1 (light-only)
+ * context too, same precedent as Icon.tsx already using v2 sizing tokens
+ * from a shared, theme-agnostic component.
+ */
+.danger {
+  background: transparent;
+  border-color: var(--v2-danger-line, var(--color-danger));
+  color: var(--v2-danger, var(--color-danger));
+}
+
+.danger:hover:not(:disabled) {
+  background: var(--v2-danger-tint, var(--color-bg-hover));
+}

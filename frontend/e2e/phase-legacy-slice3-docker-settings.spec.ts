@@ -28,7 +28,7 @@ import { openSettingsSection } from './settings-helpers';
 async function openDockerSettings(page: Page) {
   await page.goto('/');
   await openSettingsSection(page, /docker settings/i);
-  await expect(page.getByRole('dialog', { name: /docker connection/i })).toBeVisible();
+  await expect(page.getByTestId('docker-settings-panel')).toBeVisible();
 }
 
 test.describe('Legacy Remediation Slice 3 — Docker connection/settings workspace', () => {
@@ -51,12 +51,13 @@ test.describe('Legacy Remediation Slice 3 — Docker connection/settings workspa
     const urlBefore = page.url();
 
     await openSettingsSection(page, /docker settings/i);
-    await expect(page.getByRole('dialog', { name: /docker connection/i })).toBeVisible();
+    await expect(page.getByTestId('docker-settings-panel')).toBeVisible();
     // The Settings workspace is a full-page takeover (same mechanism as Field Mapping/Classification
     // rules) - the table is legitimately not rendered while it's the active view.
     await expect(page.getByRole('table')).not.toBeVisible();
 
-    await page.getByRole('button', { name: /^close$/i }).click();
+    // B6.2 (Session 7) - Docker Settings no longer has its own "Close" -
+    // it is a persistent section, not a popover; only Settings itself closes.
     await page.getByRole('button', { name: /back to search results/i }).click();
 
     await expect(page.getByRole('table')).toBeVisible();

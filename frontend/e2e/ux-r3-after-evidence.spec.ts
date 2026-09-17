@@ -74,19 +74,18 @@ test.describe('UX-R3 AFTER evidence - real rendered UI, post-redesign', () => {
   test('A/B/C: Docker Settings - Local, Remote, Connection name field, masking panel', async ({ page }) => {
     await gotoFixture(page);
     await openSettingsSection(page, /docker settings/i);
-    await expect(page.getByRole('dialog', { name: /docker connection/i })).toBeVisible();
+    await expect(page.getByTestId('docker-settings-panel')).toBeVisible();
     await captureScreenshot(page, PHASE, 'AFTER-A-docker-settings-local');
 
     await page.getByLabel('Mode').selectOption('REMOTE');
     await captureScreenshot(page, PHASE, 'AFTER-B-docker-settings-remote-with-connection-name-field');
-    await page.getByRole('button', { name: 'Close' }).click();
 
     // Pre-closure functional recovery (PCFR-2): the masking-policy panel
     // moved OUT of Docker Settings into its own global, source-independent
     // "Privacy & masking" panel - it is a global concern, not specific to
     // Docker (§C/D). Assert it's genuinely there, not just in a screenshot.
     await openSettingsSection(page, /privacy & masking/i);
-    await expect(page.getByRole('dialog', { name: /privacy & masking/i })).toBeVisible();
+    await expect(page.getByTestId('privacy-masking-settings-panel')).toBeVisible();
     await expect(page.getByText(/^CIF$/)).toBeVisible();
     await expect(page.getByRole('button', { name: /reveal|unmask|copy/i })).toHaveCount(0);
   });

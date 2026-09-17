@@ -344,7 +344,7 @@ test.describe('Legacy Remediation Slice 6 — Investigation depth, gap visibilit
     await page.getByRole('button', { name: /^cancel$/i }).click();
 
     await openSettingsSection(page, /docker settings/i);
-    await expect(page.getByRole('dialog', { name: /docker/i })).toBeVisible();
+    await expect(page.getByTestId('docker-settings-panel')).toBeVisible();
   });
 
   test('16. desktop (1440px): source health badge, context summary, and gap markers all hold together with correct table geometry', async ({ page }) => {

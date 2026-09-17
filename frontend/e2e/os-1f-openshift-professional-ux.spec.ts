@@ -147,7 +147,7 @@ async function mockConnectedOpenShift(page: Page) {
 async function openPanel(page: Page) {
   await page.goto('/');
   await openSettingsSection(page, 'OpenShift');
-  await expect(page.getByRole('dialog', { name: /openshift connection/i })).toBeVisible();
+  await expect(page.getByTestId('openshift-settings-panel')).toBeVisible();
 }
 
 test.describe('OS-1F - OpenShift connected Settings, scope hierarchy and ScopeTrail (MOCKED, not a real cluster)', () => {
@@ -205,9 +205,9 @@ test.describe('OS-1F - OpenShift connected Settings, scope hierarchy and ScopeTr
     await page.getByLabel(/^pod$/i).selectOption('payment-api-abc123');
     await page.getByLabel(/^container$/i).selectOption('app');
 
-    // Close Settings - the trail must survive, not depend on the popover being open.
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog')).not.toBeVisible();
+    // Close Settings - the trail must survive, not depend on Settings being open.
+    await page.getByRole('button', { name: /back to search results/i }).click();
+    await expect(page.getByTestId('settings-workspace')).toHaveCount(0);
 
     const trail = page.getByTestId('scope-trail');
     await expect(trail).toContainText('OpenShift');
@@ -232,7 +232,7 @@ test.describe('OS-1F - OpenShift connected Settings, scope hierarchy and ScopeTr
 
     await openSettingsSection(page, 'OpenShift');
     await page.getByLabel(/^project$/i).selectOption('payments-dev');
-    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: /back to search results/i }).click();
 
     await expect(page.getByRole('button', { name: /^search$/i })).toBeEnabled();
     await expect(page.getByText(/select a project to search openshift/i)).not.toBeVisible();
@@ -245,7 +245,7 @@ test.describe('OS-1F - OpenShift connected Settings, scope hierarchy and ScopeTr
       await mockConnectedOpenShift(page);
       await openPanel(page);
       await page.getByLabel(/^project$/i).selectOption('payments-dev');
-      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: /back to search results/i }).click();
 
       await assertNoHorizontalOverflow(page);
       await captureScreenshot(page, PHASE, `S-responsive-${width}px`);

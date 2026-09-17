@@ -18,7 +18,7 @@ test.describe('UX-R3 BEFORE evidence - current rendered UI, pre-redesign', () =>
   test('A/B: Docker Settings - Local and Remote modes', async ({ page }) => {
     await gotoFixture(page);
     await openSettingsSection(page, /docker settings/i);
-    await expect(page.getByRole('dialog', { name: /docker connection/i })).toBeVisible();
+    await expect(page.getByTestId('docker-settings-panel')).toBeVisible();
     await captureScreenshot(page, PHASE, 'BEFORE-A-docker-settings-local');
 
     await page.getByLabel('Mode').selectOption('REMOTE');

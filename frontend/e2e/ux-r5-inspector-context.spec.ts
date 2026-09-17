@@ -364,14 +364,16 @@ test.describe('UX-R5 §28 - security', () => {
     await page.goto('/');
     const protectedLabels = ['CIF', 'Username', 'Customer ID', 'Device ID', 'Device IP'];
     await openSettingsSection(page, /privacy & masking/i);
-    const maskingDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+    const maskingDialog = page.getByTestId('privacy-masking-settings-panel');
     await expect(maskingDialog).toBeVisible();
     for (const label of protectedLabels) {
       if (!(await maskingDialog.getByLabel(label).isChecked())) {
         await maskingDialog.getByLabel(label).click();
       }
     }
-    await page.getByRole('button', { name: /^close$/i }).click();
+    // B6.2 (Session 7) - Privacy & masking is no longer a popover with its own "Close" - only the
+    // consolidated Settings workspace itself needs closing.
+    await page.getByRole('button', { name: /back to search results/i }).click();
 
     await runRealSearch(page);
     await openInspectorAt(page, 3);
@@ -407,14 +409,13 @@ test.describe('UX-R5 §28 - security', () => {
     // backend policy never leaks into a later test in the same run.
     await page.keyboard.press('Escape');
     await openSettingsSection(page, /privacy & masking/i);
-    const cleanupDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+    const cleanupDialog = page.getByTestId('privacy-masking-settings-panel');
     await expect(cleanupDialog).toBeVisible();
     for (const label of protectedLabels) {
       if (await cleanupDialog.getByLabel(label).isChecked()) {
         await cleanupDialog.getByLabel(label).click();
       }
     }
-    await page.getByRole('button', { name: /^close$/i }).click();
   });
 });
 

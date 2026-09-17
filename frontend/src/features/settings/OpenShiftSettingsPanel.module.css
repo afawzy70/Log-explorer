@@ -1,45 +1,50 @@
 /*
- * OS-1A §18/§29 - the OpenShift connection panel. Deliberately shares
- * `DockerSettingsPanel`'s popover geometry and token usage so the two read
- * as one Settings family, even though their interaction models differ
- * (Docker is read-only; this one commits a credential).
+ * OS-1A §18/§29 - the OpenShift connection panel.
+ *
+ * B6.2 (Session 7) - RECOMPOSED from a trigger-button popover (v1 tokens) into a persistent inline section
+ * (full v2 tokens), matching DockerSettingsPanel.module.css/PrivacyMaskingSettingsPanel.module.css's own
+ * identical rationale - "full v2 or full v1, never mixed" against `SettingsWorkspace`'s already-v2 background.
  */
-.wrapper {
-  position: relative;
-  display: inline-block;
-}
-
-/* B2 (Session 4) - anchored `left: 0` (opens rightward) - see DockerSettingsPanel.module.css's identical fix for the full measured rationale (this trigger moved into SettingsWorkspace's narrow left-hand section list, same clipping). */
 .panel {
-  position: absolute;
-  top: calc(100% + var(--space-2));
-  left: 0;
-  z-index: 20;
-  background: var(--color-bg-raised);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
-  padding: var(--space-4);
-  width: 420px;
-  /* Never wider than the viewport minus a gutter - this is what keeps the
-     panel usable at 390px without a horizontal page scroll (CLAUDE.md §4). */
-  max-width: calc(100vw - var(--space-6));
-  max-height: min(600px, 80vh);
-  overflow-y: auto;
+  background: var(--v2-surface-work);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  margin-bottom: var(--space-4);
+  max-width: 900px;
 }
 
-.header {
+.panelHead {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
   gap: var(--space-2);
-  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: var(--v2-bw) solid var(--v2-line-subtle);
+  flex-wrap: wrap;
 }
 
 .heading {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
   margin: 0;
+  font: var(--v2-text-body-strong);
+  color: var(--v2-ink-1);
+}
+
+.scopeTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 var(--space-2);
+  border-radius: var(--v2-r-xs);
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+  background: var(--v2-neutral-tint);
+}
+
+.right {
+  margin-left: auto;
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
 }
 
 /*
@@ -50,64 +55,68 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  font-size: var(--font-size-xs);
+  font: var(--v2-text-label);
   white-space: nowrap;
 }
 
 .stateDot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   background: currentColor;
   flex-shrink: 0;
 }
 
 .stateConnected {
-  color: var(--color-severity-info);
+  color: var(--v2-success);
 }
 
 .stateProblem {
-  color: var(--color-danger);
+  color: var(--v2-danger);
 }
 
 .stateIdle {
-  color: var(--color-text-tertiary);
+  color: var(--v2-ink-3);
 }
 
 /* OS-1F §4F - a real, distinct third truth ("attempting to connect right
    now") rather than reusing stateIdle's "Not connected" colour, which
    would visually claim nothing is happening. */
 .stateConnecting {
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
+}
+
+.panelBody {
+  padding: var(--space-3) var(--space-4);
 }
 
 .field {
   margin-bottom: var(--space-3);
+  max-width: 480px;
 }
 
 .label {
   display: block;
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  color: var(--color-text-secondary);
+  font: var(--v2-text-label);
+  color: var(--v2-ink-2);
   margin-bottom: var(--space-1);
 }
 
 .optional {
   font-weight: 400;
-  color: var(--color-text-tertiary);
+  color: var(--v2-ink-3);
 }
 
 .input,
 .select {
   width: 100%;
   box-sizing: border-box;
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg);
-  color: var(--color-text);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-sm);
+  background: var(--v2-surface-work);
+  color: var(--v2-ink-1);
   padding: var(--space-2);
-  font-size: var(--font-size-sm);
+  font: var(--v2-text-data);
   font-family: inherit;
 }
 
@@ -119,27 +128,19 @@
 .command {
   width: 100%;
   box-sizing: border-box;
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg);
-  color: var(--color-text);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-sm);
+  background: var(--v2-surface-work);
+  color: var(--v2-ink-1);
   padding: var(--space-2);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font: var(--v2-text-data);
   resize: vertical;
-}
-
-.input:focus-visible,
-.select:focus-visible,
-.command:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: 1px;
 }
 
 .hint {
   margin: var(--space-1) 0 0;
-  font-size: var(--font-size-xs);
-  color: var(--color-text-tertiary);
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-3);
 }
 
 .summaryList {
@@ -154,23 +155,23 @@
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-3);
-  font-size: var(--font-size-sm);
+  font: var(--v2-text-body);
 }
 
 .summaryRow dt {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
+  color: var(--v2-ink-3);
+  font: var(--v2-text-meta);
 }
 
 .summaryRow dd {
   margin: 0;
   text-align: right;
   overflow-wrap: anywhere;
+  color: var(--v2-ink-1);
 }
 
 .mono {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font: var(--v2-text-data);
 }
 
 /* OS-1B - the workload/pod/container hierarchy, visually separated from
@@ -178,7 +179,7 @@
 .scope {
   margin-top: var(--space-3);
   padding-top: var(--space-3);
-  border-top: var(--border-width) solid var(--color-border);
+  border-top: var(--v2-bw) solid var(--v2-line-subtle);
 }
 
 /*
@@ -190,15 +191,14 @@
   margin: var(--space-3) 0 0;
   padding: var(--space-3) 0 0;
   border: none;
-  border-top: var(--border-width) solid var(--color-border);
+  border-top: var(--v2-bw) solid var(--v2-line-subtle);
 }
 
 .sectionLabel {
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  color: var(--color-text-secondary);
+  font: var(--v2-text-caps, var(--v2-text-meta));
+  letter-spacing: var(--v2-tracking-caps, 0.02em);
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  color: var(--v2-ink-3);
   padding: 0;
   margin: 0 0 var(--space-2);
 }
@@ -213,7 +213,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: var(--font-size-sm);
+  font: var(--v2-text-body);
+  color: var(--v2-ink-1);
   cursor: pointer;
 }
 
@@ -244,23 +245,29 @@
 .error {
   margin: var(--space-3) 0 0;
   padding: var(--space-2);
-  border-radius: var(--radius-sm);
-  background: var(--color-danger-bg);
-  color: var(--color-danger);
-  font-size: var(--font-size-sm);
+  border-radius: var(--v2-r-sm);
+  background: var(--v2-danger-tint);
+  color: var(--v2-danger);
+  font: var(--v2-text-body);
 }
 
 .blocked {
   margin: 0 0 var(--space-3);
   padding: var(--space-2);
-  border-radius: var(--radius-sm);
-  background: var(--color-severity-warn-bg);
-  color: var(--color-severity-warn);
-  font-size: var(--font-size-sm);
+  border-radius: var(--v2-r-sm);
+  background: var(--v2-warning-tint);
+  color: var(--v2-warning);
+  font: var(--v2-text-body);
 }
 
 .empty {
   margin: 0 0 var(--space-3);
-  color: var(--color-text-tertiary);
-  font-size: var(--font-size-sm);
+  color: var(--v2-ink-3);
+  font: var(--v2-text-body);
+}
+
+@media (max-width: 767px) {
+  .field {
+    max-width: none;
+  }
 }

@@ -28,10 +28,14 @@ function localSummary(overrides: Partial<DockerConnectionSummary> = {}): DockerC
   };
 }
 
-async function open(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('button', { name: /docker settings/i }));
-}
-
+/*
+ * B6.2 (Session 7) - this panel is no longer a trigger-button popover: it
+ * renders persistently and fetches its summary on mount (COMPONENT_
+ * INVENTORY.md's own RECOMPOSE row for this file - "Popover dialog content
+ * moves into the Settings workspace"). Every test below either asserts the
+ * always-visible content directly or waits on the mount-time fetch instead
+ * of clicking an "open" trigger that no longer exists.
+ */
 describe('DockerSettingsPanel', () => {
   beforeEach(() => {
     mockFetchSummary.mockReset();
@@ -39,20 +43,23 @@ describe('DockerSettingsPanel', () => {
     mockFetchSummary.mockResolvedValue(localSummary());
   });
 
-  it('shows the trigger without fetching anything until opened', () => {
+  it('fetches the connection summary on mount, without requiring any click first', async () => {
     render(<DockerSettingsPanel />);
-    expect(screen.getByRole('button', { name: /docker settings/i })).toBeInTheDocument();
-    expect(mockFetchSummary).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockFetchSummary).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('heading', { name: /local docker/i })).toBeInTheDocument();
+  });
+
+  it('displays a "Docker source only" scope tag and a read-only marker, matching the approved always-visible section', () => {
+    render(<DockerSettingsPanel />);
+    expect(screen.getByText(/docker source only/i)).toBeInTheDocument();
+    expect(screen.getByText(/read-only/i)).toBeInTheDocument();
   });
 
   it('fetches and displays the current connection summary for LOCAL mode', async () => {
-    const user = userEvent.setup();
     const { container } = render(<DockerSettingsPanel />);
-    await open(user);
-
     await waitFor(() => expect(mockFetchSummary).toHaveBeenCalledTimes(1));
     const summary = within(container.querySelector('dl')!);
-    expect(summary.getByText('Local')).toBeInTheDocument();
+    await waitFor(() => expect(summary.getByText('Local')).toBeInTheDocument());
     expect(summary.getByText('Disabled')).toBeInTheDocument();
     expect(summary.getByText(/none configured/i)).toBeInTheDocument();
     expect(screen.getByText(/permanent connection changes require deployment/i)).toBeInTheDocument();
@@ -62,13 +69,11 @@ describe('DockerSettingsPanel', () => {
     mockFetchSummary.mockResolvedValue(
       localSummary({ mode: 'REMOTE', host: '203.0.113.5', port: 2375, tlsEnabled: true }),
     );
-    const user = userEvent.setup();
     const { container } = render(<DockerSettingsPanel />);
-    await open(user);
 
     await waitFor(() => expect(mockFetchSummary).toHaveBeenCalled());
     const summary = within(container.querySelector('dl')!);
-    expect(summary.getByText('Remote')).toBeInTheDocument();
+    await waitFor(() => expect(summary.getByText('Remote')).toBeInTheDocument());
     expect(summary.getByText('203.0.113.5')).toBeInTheDocument();
     expect(summary.getByText('2375')).toBeInTheDocument();
     expect(summary.getByText('Enabled')).toBeInTheDocument();
@@ -76,9 +81,7 @@ describe('DockerSettingsPanel', () => {
 
   it('displays a configured Compose project filter value', async () => {
     mockFetchSummary.mockResolvedValue(localSummary({ composeProjectFilter: 'project-a' }));
-    const user = userEvent.setup();
     render(<DockerSettingsPanel />);
-    await open(user);
 
     await waitFor(() => expect(screen.getByText('project-a')).toBeInTheDocument());
   });
@@ -87,36 +90,32 @@ describe('DockerSettingsPanel', () => {
     mockFetchSummary.mockResolvedValue(
       localSummary({ mode: 'REMOTE', host: '203.0.113.5', port: 2375, connectionName: 'QA Docker' }),
     );
-    const user = userEvent.setup();
     const { container } = render(<DockerSettingsPanel />);
-    await open(user);
 
     await waitFor(() => expect(mockFetchSummary).toHaveBeenCalled());
     const summary = within(container.querySelector('dl')!);
+    await waitFor(() => expect(summary.getByText('QA Docker')).toBeInTheDocument());
     expect(summary.getByText('Connection name')).toBeInTheDocument();
-    expect(summary.getByText('QA Docker')).toBeInTheDocument();
   });
 
   it('UX-R3 §6: shows "Not set" for REMOTE mode with no configured Connection name - never fabricated', async () => {
     mockFetchSummary.mockResolvedValue(
       localSummary({ mode: 'REMOTE', host: '203.0.113.5', port: 2375, connectionName: null }),
     );
-    const user = userEvent.setup();
     const { container } = render(<DockerSettingsPanel />);
-    await open(user);
 
     await waitFor(() => expect(mockFetchSummary).toHaveBeenCalled());
     const summary = within(container.querySelector('dl')!);
-    expect(summary.getByText('Not set')).toBeInTheDocument();
+    await waitFor(() => expect(summary.getByText('Not set')).toBeInTheDocument());
   });
 
   it('UX-R3 §6: never shows Connection name for LOCAL mode - it is a REMOTE-only, purely cosmetic field', async () => {
     mockFetchSummary.mockResolvedValue(localSummary({ mode: 'LOCAL' }));
-    const user = userEvent.setup();
-    render(<DockerSettingsPanel />);
-    await open(user);
+    const { container } = render(<DockerSettingsPanel />);
 
     await waitFor(() => expect(mockFetchSummary).toHaveBeenCalled());
+    const summary = within(container.querySelector('dl')!);
+    await waitFor(() => expect(summary.getByText('Local')).toBeInTheDocument());
     expect(screen.queryByText('Connection name')).not.toBeInTheDocument();
   });
 
@@ -129,9 +128,7 @@ describe('DockerSettingsPanel', () => {
 
   it('shows a sanitized error if the summary fetch fails', async () => {
     mockFetchSummary.mockRejectedValue(new Error('Failed to load Docker connection settings'));
-    const user = userEvent.setup();
     render(<DockerSettingsPanel />);
-    await open(user);
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/failed to load/i);
   });
@@ -139,7 +136,6 @@ describe('DockerSettingsPanel', () => {
   it('the Test Connection form defaults to LOCAL mode and reveals REMOTE fields only when selected', async () => {
     const user = userEvent.setup();
     render(<DockerSettingsPanel />);
-    await open(user);
     await waitFor(() => expect(mockFetchSummary).toHaveBeenCalled());
 
     expect(screen.queryByLabelText('Host')).not.toBeInTheDocument();
@@ -158,7 +154,6 @@ describe('DockerSettingsPanel', () => {
     mockTestConnection.mockResolvedValue(health);
     const user = userEvent.setup();
     render(<DockerSettingsPanel />);
-    await open(user);
     await waitFor(() => expect(mockFetchSummary).toHaveBeenCalled());
 
     await user.click(screen.getByRole('button', { name: /^test connection$/i }));
@@ -176,7 +171,6 @@ describe('DockerSettingsPanel', () => {
     mockTestConnection.mockResolvedValue(health);
     const user = userEvent.setup();
     render(<DockerSettingsPanel />);
-    await open(user);
     await waitFor(() => expect(mockFetchSummary).toHaveBeenCalled());
 
     await user.click(screen.getByRole('button', { name: /^test connection$/i }));
@@ -191,7 +185,6 @@ describe('DockerSettingsPanel', () => {
     mockTestConnection.mockResolvedValue({ status: 'UP', message: 'ok', checkedAt: '2026-01-01T00:00:00Z', warnings: [] });
     const user = userEvent.setup();
     render(<DockerSettingsPanel />);
-    await open(user);
     await waitFor(() => expect(mockFetchSummary).toHaveBeenCalled());
 
     await user.selectOptions(screen.getByLabelText('Mode'), 'REMOTE');
@@ -205,20 +198,18 @@ describe('DockerSettingsPanel', () => {
     );
   });
 
-  it('never writes anything to localStorage or sessionStorage across open/fill/test/close', async () => {
+  it('never writes anything to localStorage or sessionStorage while filling and testing the form', async () => {
     const localSet = vi.spyOn(Storage.prototype, 'setItem');
     const sessionSet = vi.spyOn(window.sessionStorage, 'setItem');
     mockTestConnection.mockResolvedValue({ status: 'UP', message: 'ok', checkedAt: '2026-01-01T00:00:00Z', warnings: [] });
 
     const user = userEvent.setup();
     render(<DockerSettingsPanel />);
-    await open(user);
     await waitFor(() => expect(mockFetchSummary).toHaveBeenCalled());
     await user.selectOptions(screen.getByLabelText('Mode'), 'REMOTE');
     await user.type(screen.getByLabelText('Host'), 'sensitive-host.example');
     await user.click(screen.getByRole('button', { name: /^test connection$/i }));
     await waitFor(() => expect(mockTestConnection).toHaveBeenCalled());
-    await user.click(screen.getByRole('button', { name: /^close$/i }));
 
     expect(localSet).not.toHaveBeenCalled();
     expect(sessionSet).not.toHaveBeenCalled();
@@ -226,42 +217,21 @@ describe('DockerSettingsPanel', () => {
     sessionSet.mockRestore();
   });
 
-  it('reopening after close re-fetches a fresh summary rather than reusing a stale candidate draft', async () => {
-    const user = userEvent.setup();
-    render(<DockerSettingsPanel />);
-    await open(user);
+  it('a fresh mount re-fetches rather than reusing a stale candidate draft - the Settings workspace remounts this panel every time it opens', async () => {
+    const { unmount } = render(<DockerSettingsPanel />);
     await waitFor(() => expect(mockFetchSummary).toHaveBeenCalledTimes(1));
+    const user = userEvent.setup();
     await user.selectOptions(screen.getByLabelText('Mode'), 'REMOTE');
     await user.type(screen.getByLabelText('Host'), 'discarded-value');
-    await user.click(screen.getByRole('button', { name: /^close$/i }));
+    unmount();
 
-    await open(user);
+    render(<DockerSettingsPanel />);
     await waitFor(() => expect(mockFetchSummary).toHaveBeenCalledTimes(2));
     expect(screen.getByLabelText('Mode')).toHaveValue('LOCAL');
   });
 
-  it('Escape closes the panel without disrupting anything else on the page', async () => {
-    const user = userEvent.setup();
-    render(
-      <div>
-        <button type="button">outside-marker</button>
-        <DockerSettingsPanel />
-      </div>,
-    );
-    await open(user);
-    await waitFor(() => expect(mockFetchSummary).toHaveBeenCalled());
-    await user.keyboard('{Escape}');
-
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'outside-marker' })).toBeInTheDocument();
-  });
-
-  it('has no detectable accessibility violations, closed or open', async () => {
-    const user = userEvent.setup();
+  it('has no detectable accessibility violations once loaded', async () => {
     const { container } = render(<DockerSettingsPanel />);
-    expect(await axe(container)).toHaveNoViolations();
-
-    await open(user);
     await waitFor(() => expect(mockFetchSummary).toHaveBeenCalled());
     expect(await axe(container)).toHaveNoViolations();
   });

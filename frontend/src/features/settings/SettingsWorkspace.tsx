@@ -26,16 +26,20 @@ interface NavSection {
  * design's own `settingsNav()` (prototype/scripts/app.js) - Sources & connections, Privacy & masking, Field
  * mapping, Classification rules, Keyboard shortcuts. "Network proxy" (also in that nav function) is
  * deliberately NOT included: there is no such feature in this production app to route to, and inventing one
- * would be B6 settings-CONTENT work, explicitly out of scope for this bounded shell-routing recompose.
+ * would be new capability work, out of scope.
  *
- * IA recompose only - every section below renders the EXISTING, unmodified panel component. None of
- * DockerSettingsPanel/OpenShiftSettingsPanel/PrivacyMaskingSettingsPanel's ~1450 lines of internal logic,
- * markup, or backend-settings semantics changed even slightly; each is still exactly the same self-contained
- * "trigger button that opens its own popover" component it always was (confirmed safe to relocate: each
- * panel's own popover is `position: absolute` relative to ITS OWN `position: relative` wrapper, never
- * dependent on being a direct child of the old header). Field mapping and Classification rules open their
- * own existing takeover workspaces exactly as their old standalone Shell buttons did (`state.openMappingWorkspace`/
- * `state.openClassificationWorkspace`, already mutually exclusive with this one - see `useSearchState.ts`).
+ * B6.2 (Session 7) - this IA (one Settings entry, persistent anchor-linked sections, never a tab switcher)
+ * was already correct from Session 4 and is unchanged here. What changed is the CONTENT of the Sources &
+ * connections and Privacy & masking sections: `DockerSettingsPanel`/`OpenShiftSettingsPanel`/
+ * `PrivacyMaskingSettingsPanel` were each recomposed from a trigger-button popover into a persistent inline
+ * `<section>` (COMPONENT_INVENTORY.md's own RECOMPOSE rows for all three) - no more "click to reveal", no
+ * more `usePopoverTrigger`/`useDismissableLayer`/`role="dialog"`. Each panel now fetches its own data on
+ * mount instead of on trigger-click; since a panel only ever mounts while this workspace itself is open
+ * (`App.tsx`'s takeover ternary unmounts it on close), this still gives exactly one fetch per Settings visit,
+ * never a background/idle fetch and never a duplicate-on-render loop. Field mapping and Classification rules
+ * still open their own existing takeover workspaces exactly as before
+ * (`state.openMappingWorkspace`/`state.openClassificationWorkspace`, already mutually exclusive with this
+ * one - see `useSearchState.ts`) - B6.2 does not touch either of those workspaces' own content.
  */
 const NAV_SECTIONS: NavSection[] = [
   { id: 'sources', icon: 'database', label: 'Sources & connections' },
@@ -97,6 +101,13 @@ export function SettingsWorkspace({ state, onOpenShiftScopeChanged, onClose }: S
               Map each canonical field to the real JSON path(s) your source uses, then verify it against real
               evidence.
             </p>
+            {state.fieldMappingProfile ? (
+              <p className={state.fieldMappingSearchReady ? styles.sectionStatusOk : styles.sectionStatusBlocked}>
+                {state.fieldMappingSearchReady
+                  ? 'Search ready.'
+                  : 'Search is disabled — configure and validate log field mapping before searching this source.'}
+              </p>
+            ) : null}
             <div className={styles.sectionRow}>
               <Button variant="secondary" onClick={state.openMappingWorkspace}>
                 Log schema &amp; field mapping

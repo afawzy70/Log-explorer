@@ -343,16 +343,15 @@ test.describe('UX-R4 §33 - no security regression from the new entry points', (
     // later test.
     const protectedLabels = ['CIF', 'Username', 'Customer ID', 'Device ID', 'Device IP'];
     await openSettingsSection(page, /privacy & masking/i);
-    const maskingDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+    const maskingDialog = page.getByTestId('privacy-masking-settings-panel');
     await expect(maskingDialog).toBeVisible();
     for (const label of protectedLabels) {
       if (!(await maskingDialog.getByLabel(label).isChecked())) {
         await maskingDialog.getByLabel(label).click();
       }
     }
-    await page.getByRole('button', { name: /^close$/i }).click();
-    // B2 (Session 4) - closing the masking popover only closes that nested dialog; the consolidated
-    // Settings workspace underneath (a full-page takeover) stays the active view until explicitly closed.
+    // B6.2 (Session 7) - Privacy & masking is no longer a popover with its own "Close" - it is a persistent
+    // section; only the consolidated Settings workspace itself (a full-page takeover) needs closing.
     await page.getByRole('button', { name: /back to search results/i }).click();
 
     await rows(page).nth(3).click();
@@ -381,13 +380,12 @@ test.describe('UX-R4 §33 - no security regression from the new entry points', (
     // backend policy never leaks into a later test in the same run.
     await page.keyboard.press('Escape'); // close whatever panel/dialog is open
     await openSettingsSection(page, /privacy & masking/i);
-    const cleanupDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+    const cleanupDialog = page.getByTestId('privacy-masking-settings-panel');
     await expect(cleanupDialog).toBeVisible();
     for (const label of protectedLabels) {
       if (await cleanupDialog.getByLabel(label).isChecked()) {
         await cleanupDialog.getByLabel(label).click();
       }
     }
-    await page.getByRole('button', { name: /^close$/i }).click();
   });
 });

@@ -136,10 +136,26 @@ test.describe('PCFR2 Part B - user-configurable OpenShift/Loki proxy', () => {
     // consolidation; the panel itself is unchanged (same trigger text, same popover, same behaviour), only
     // reached one step further in now, via the consolidated Settings entry point - missed in that session's
     // own blast-radius scoping (only surfaced by the full CI E2E suite, not this project's own targeted specs).
+    // B6.2 (Session 7) - the panel itself is no longer a trigger-button popover (COMPONENT_INVENTORY.md's own
+    // RECOMPOSE row): `openSettingsSection` now opens Settings and is a no-op for this already-persistent
+    // section.
     await openSettingsSection(page, /^openshift$/i);
-    const panel = page.getByRole('dialog', { name: /openshift connection/i });
+    const panel = page.getByTestId('openshift-settings-panel');
     await expect(panel).toBeVisible();
     return panel;
+  }
+
+  /**
+   * B6.2 (Session 7) - proves a value was genuinely committed server-side
+   * (`GET /proxy`), not just held in this render's own state. Before this
+   * session the equivalent was closing and reopening the OpenShift
+   * popover itself; now that the panel is a persistent section, the
+   * surviving mechanism is leaving Settings entirely (a full unmount) and
+   * reopening it.
+   */
+  async function reopenPanel(page: Page) {
+    await page.getByRole('button', { name: /back to search results/i }).click();
+    return openProxySettings(page);
   }
 
   test('1-2. OpenShift settings opens with System selected by default', async ({ page }) => {
@@ -186,9 +202,7 @@ test.describe('PCFR2 Part B - user-configurable OpenShift/Loki proxy', () => {
 
     // Close and reopen - proves the value was actually committed
     // server-side (GET /proxy), not just held in this render's own state.
-    await page.getByRole('button', { name: /^openshift$/i }).click();
-    await page.getByRole('button', { name: /^openshift$/i }).click();
-    const reopened = page.getByRole('dialog', { name: /openshift connection/i });
+    const reopened = await reopenPanel(page);
     await expect(reopened.getByRole('radio', { name: /^custom proxy$/i })).toBeChecked();
     await expect(reopened.getByLabel(/proxy server/i)).toHaveValue('proxy.company.local');
     await expect(reopened.getByLabel(/proxy port/i)).toHaveValue('8080');
@@ -208,9 +222,7 @@ test.describe('PCFR2 Part B - user-configurable OpenShift/Loki proxy', () => {
     await expect(panel.getByRole('radio', { name: /^direct connection$/i })).toBeChecked();
     await expect(panel.getByLabel(/proxy server/i)).not.toBeVisible();
 
-    await page.getByRole('button', { name: /^openshift$/i }).click();
-    await page.getByRole('button', { name: /^openshift$/i }).click();
-    const reopened = page.getByRole('dialog', { name: /openshift connection/i });
+    const reopened = await reopenPanel(page);
     await expect(reopened.getByRole('radio', { name: /^direct connection$/i })).toBeChecked();
   });
 
@@ -222,9 +234,7 @@ test.describe('PCFR2 Part B - user-configurable OpenShift/Loki proxy', () => {
     await panel.getByRole('radio', { name: /use system proxy/i }).click();
     await expect(panel.getByRole('radio', { name: /use system proxy/i })).toBeChecked();
 
-    await page.getByRole('button', { name: /^openshift$/i }).click();
-    await page.getByRole('button', { name: /^openshift$/i }).click();
-    const reopened = page.getByRole('dialog', { name: /openshift connection/i });
+    const reopened = await reopenPanel(page);
     await expect(reopened.getByRole('radio', { name: /use system proxy/i })).toBeChecked();
   });
 

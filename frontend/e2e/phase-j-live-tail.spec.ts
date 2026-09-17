@@ -55,16 +55,14 @@ test('clicking Live immediately streams real, masked events from the fixture sou
   // Reset at the end so this shared-singleton backend policy never leaks
   // into a later test in the same run.
   await openSettingsSection(page, /privacy & masking/i);
-  const maskingDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+  const maskingDialog = page.getByTestId('privacy-masking-settings-panel');
   await expect(maskingDialog).toBeVisible();
   if (!(await maskingDialog.getByLabel('CIF').isChecked())) {
     await maskingDialog.getByLabel('CIF').click();
   }
-  await page.getByRole('button', { name: /^close$/i }).click();
-  // B2 (Session 4) - closing the masking popover only closes that nested dialog; the consolidated
-  // Settings workspace underneath (a full-page takeover, same mechanism as Field Mapping/Classification
-  // rules) stays the active view until explicitly closed - otherwise it would keep outranking Live in
-  // App.tsx's render precedence, the same way Field Mapping/Classification already did before this session.
+  // B6.2 (Session 7) - Privacy & masking is no longer a popover with its own "Close" - only the
+  // consolidated Settings workspace itself (a full-page takeover) needs closing, otherwise it would keep
+  // outranking Live in App.tsx's render precedence, the same way Field Mapping/Classification already did.
   await page.getByRole('button', { name: /back to search results/i }).click();
 
   await page.getByRole('button', { name: /^live$/i }).click();
@@ -87,12 +85,11 @@ test('clicking Live immediately streams real, masked events from the fixture sou
   // Restore the fresh default (unmasked) so this shared-singleton
   // backend policy never leaks into a later test in the same run.
   await openSettingsSection(page, /privacy & masking/i);
-  const cleanupDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+  const cleanupDialog = page.getByTestId('privacy-masking-settings-panel');
   await expect(cleanupDialog).toBeVisible();
   if (await cleanupDialog.getByLabel('CIF').isChecked()) {
     await cleanupDialog.getByLabel('CIF').click();
   }
-  await page.getByRole('button', { name: /^close$/i }).click();
 });
 
 test('Pause diverts new events into a buffered count without changing the visible list; Resume flushes them', async ({

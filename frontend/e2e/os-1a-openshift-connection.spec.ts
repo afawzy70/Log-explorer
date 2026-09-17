@@ -20,7 +20,7 @@ const PHASE = 'OS_1A_EVIDENCE';
 async function openPanel(page: Page) {
   await page.goto('/');
   await openSettingsSection(page, 'OpenShift');
-  await expect(page.getByRole('dialog', { name: /openshift connection/i })).toBeVisible();
+  await expect(page.getByTestId('openshift-settings-panel')).toBeVisible();
 }
 
 test.describe('OS-1A - the connection form', () => {
@@ -220,14 +220,20 @@ test.describe('OS-1A §28/§29 - accessibility and responsive', () => {
     await expect(page.getByRole('alert')).toBeVisible({ timeout: 10_000 });
   });
 
-  test('Escape closes the panel and clears the pasted command', async ({ page }) => {
+  // B6.2 (Session 7) - this panel is no longer a trigger-button popover
+  // that Escape can dismiss on its own (COMPONENT_INVENTORY.md's own
+  // RECOMPOSE row: a persistent inline section, not a popover). The real
+  // security invariant this test protects - a pasted secret command must
+  // never survive being carried into a fresh view of this panel - still
+  // holds, now proven via the surviving mechanism: leaving Settings
+  // entirely (a full unmount of this component) and reopening it.
+  test('leaving Settings and reopening it never restores a previously-pasted command', async ({ page }) => {
     await openPanel(page);
     await page.getByLabel(/paste your oc login command/i).fill('oc login --token=abcdefgh12345678 --server=https://a.example.com');
 
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog', { name: /openshift connection/i })).toHaveCount(0);
+    await page.getByRole('button', { name: /back to search results/i }).click();
+    await expect(page.getByTestId('openshift-settings-panel')).toHaveCount(0);
 
-    // Reopening must not restore the previous command.
     await openSettingsSection(page, 'OpenShift');
     await expect(page.getByLabel(/paste your oc login command/i)).toHaveValue('');
   });

@@ -14,6 +14,16 @@
   padding: var(--space-4);
   background: var(--v2-bg-app);
   min-height: 100%;
+  /*
+   * B6.2 (Session 7) - explicit, not inherited: the ambient inherited `color`
+   * above this full-v2 workspace is the v1 `--color-text` token (shared/
+   * tokens.css), which has no dark-theme override at all. B6.1's own
+   * FieldMappingWorkspace hit exactly this bug (illegible dark-theme text on
+   * every plain-text node that doesn't set its own color) - fixed here
+   * before it could repeat, since this file was already full-v2 (Session 4)
+   * but had never been dark-theme-verified until this session touched it.
+   */
+  color: var(--v2-ink-1);
 }
 
 .header {
@@ -86,6 +96,27 @@
   font: var(--v2-text-body);
   color: var(--v2-ink-2);
   max-width: 60ch;
+}
+
+.sectionStatusOk,
+.sectionStatusBlocked {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 0 var(--space-3);
+  padding: 2px var(--space-2);
+  border-radius: var(--v2-r-xs);
+  font: var(--v2-text-meta);
+  font-weight: 600;
+}
+
+.sectionStatusOk {
+  background: var(--v2-accent-tint);
+  color: var(--v2-accent-ink);
+}
+
+.sectionStatusBlocked {
+  background: var(--v2-danger-tint);
+  color: var(--v2-danger);
 }
 
 .sectionRow {
