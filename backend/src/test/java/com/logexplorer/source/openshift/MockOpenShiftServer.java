@@ -44,7 +44,13 @@ final class MockOpenShiftServer implements AutoCloseable {
     BAD_GATEWAY_502,
     SERVICE_UNAVAILABLE_503,
     MALFORMED_BODY,
-    SLOW
+    SLOW,
+    /** HTTPS-only diagnostic (see {@code MockOpenShiftHttpsServer}) - a body large enough to force multiple TLS-record/DataBuffer chunks, unlike every other scenario's small single-chunk body. */
+    LARGE_PROJECTS_LIST,
+    /** HTTPS-only diagnostic (see {@code MockOpenShiftHttpsServer}) - the body arrives in several delayed chunks, so an external timeout can race a still-streaming response. */
+    CHUNKED_SLOW,
+    /** HTTP 200 with a genuinely zero-length body (distinct from {@link #EMPTY_PROJECTS}'s valid {@code {"items":[]}}). */
+    EMPTY_BODY
   }
 
   private final HttpServer server;

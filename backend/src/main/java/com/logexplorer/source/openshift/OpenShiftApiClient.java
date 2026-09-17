@@ -1089,8 +1089,28 @@ public class OpenShiftApiClient {
         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value())
         .retrieve()
         .bodyToMono(JsonNode.class)
-        .timeout(TIMEOUT)
+        // OPENSHIFT_HTTP_BUFFER_LIFECYCLE Phase E - a genuinely empty 2xx
+        // body (Jackson's reactive decoder completes an empty Mono for a
+        // zero-byte body, never an error) must not silently become a bare
+        // `null` a caller then NPEs on - it is exactly the same "we got a
+        // success status but cannot make sense of what came back" truth as
+        // a decode failure, so it gets the identical honest message.
+        .switchIfEmpty(Mono.error(OpenShiftApiClient::processingFailure))
         .onErrorMap(e -> classify(e, proxyConfigured));
+  }
+
+  /**
+   * OPENSHIFT_HTTP_BUFFER_LIFECYCLE Phase E - the exact real-world symptom
+   * this mission fixes: {@code .retrieve()} only ever throws {@link
+   * WebClientResponseException} for a 4xx/5xx status (never 2xx), so any
+   * decode failure ({@link org.springframework.core.codec.CodecException})
+   * {@link #classify} sees is, by construction, a response the cluster
+   * itself answered successfully - reporting it as "the cluster returned
+   * an unexpected response" would blame the wrong layer.
+   */
+  private static OpenShiftApiException processingFailure() {
+    return new OpenShiftApiException(
+        Kind.MALFORMED_RESPONSE, "OpenShift returned HTTP 200, but Log Explorer could not process the response.");
   }
 
   /**
@@ -1110,6 +1130,22 @@ public class OpenShiftApiClient {
   private static Throwable classify(Throwable error, boolean proxyConfigured) {
     if (error instanceof OpenShiftApiException) {
       return error;
+    }
+    // OPENSHIFT_HTTP_BUFFER_LIFECYCLE Phase E - checked before the
+    // WebClientResponseException branch below deliberately: a decode
+    // failure can only ever happen on a response .retrieve() already
+    // accepted as successful (see #processingFailure's own javadoc), so
+    // this is never a "the cluster returned something wrong" truth - it is
+    // "Log Explorer could not make sense of an otherwise-fine response."
+    // Defense in depth for the exact reported symptom class
+    // (io.netty.util.IllegalReferenceCountException extends this) -
+    // regardless of which specific buffer/body-lifecycle violation is at
+    // play, it can only ever surface here after a successful HTTP
+    // exchange (the same reasoning as the CodecException check above), so
+    // it gets the same honest treatment rather than the generic fallback.
+    if (error instanceof org.springframework.core.codec.CodecException
+        || error instanceof IllegalStateException) {
+      return processingFailure();
     }
     if (error instanceof WebClientResponseException response) {
       HttpStatus status = HttpStatus.resolve(response.getStatusCode().value());
