@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
 import { captureScreenshot, setViewport } from './helpers';
+import { openSettingsSection } from './settings-helpers';
 
 const PHASE = 'UX_R3_EVIDENCE';
 
@@ -72,7 +73,7 @@ async function alwaysFailLiveConnections(page: Page) {
 test.describe('UX-R3 AFTER evidence - real rendered UI, post-redesign', () => {
   test('A/B/C: Docker Settings - Local, Remote, Connection name field, masking panel', async ({ page }) => {
     await gotoFixture(page);
-    await page.getByRole('button', { name: /docker settings/i }).click();
+    await openSettingsSection(page, /docker settings/i);
     await expect(page.getByRole('dialog', { name: /docker connection/i })).toBeVisible();
     await captureScreenshot(page, PHASE, 'AFTER-A-docker-settings-local');
 
@@ -84,7 +85,7 @@ test.describe('UX-R3 AFTER evidence - real rendered UI, post-redesign', () => {
     // moved OUT of Docker Settings into its own global, source-independent
     // "Privacy & masking" panel - it is a global concern, not specific to
     // Docker (§C/D). Assert it's genuinely there, not just in a screenshot.
-    await page.getByRole('button', { name: /privacy & masking/i }).click();
+    await openSettingsSection(page, /privacy & masking/i);
     await expect(page.getByRole('dialog', { name: /privacy & masking/i })).toBeVisible();
     await expect(page.getByText(/^CIF$/)).toBeVisible();
     await expect(page.getByRole('button', { name: /reveal|unmask|copy/i })).toHaveCount(0);
@@ -162,7 +163,7 @@ test.describe('UX-R3 AFTER evidence - real rendered UI, post-redesign', () => {
     await gotoFixture(page);
     await setViewport(page, 390, 844);
     await captureScreenshot(page, PHASE, 'AFTER-L-narrow-search');
-    await page.getByRole('button', { name: /docker settings/i }).click();
+    await openSettingsSection(page, /docker settings/i);
     await captureScreenshot(page, PHASE, 'AFTER-M-narrow-settings');
   });
 });

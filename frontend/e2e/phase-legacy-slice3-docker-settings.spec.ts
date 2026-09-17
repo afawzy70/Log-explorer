@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { openSettingsSection } from './settings-helpers';
 
 /*
  * Legacy Remediation Slice 3 — DOCKER CONNECTION, SETTINGS, SECURITY &
@@ -26,23 +27,41 @@ import type { Page } from '@playwright/test';
 
 async function openDockerSettings(page: Page) {
   await page.goto('/');
-  await page.getByRole('button', { name: /docker settings/i }).click();
+  await openSettingsSection(page, /docker settings/i);
   await expect(page.getByRole('dialog', { name: /docker connection/i })).toBeVisible();
 }
 
 test.describe('Legacy Remediation Slice 3 — Docker connection/settings workspace', () => {
+  /*
+   * B2 (Session 4) - Docker settings now opens inside the consolidated Settings workspace, the same
+   * full-page takeover mechanism `FieldMappingWorkspace`/`ClassificationRulesWorkspace` already use (not the
+   * standalone popover-on-top-of-results this test's original name describes). The results table is
+   * therefore legitimately not in the DOM while Settings is open - exactly as it already isn't while Field
+   * Mapping or Classification rules are open - so "never loses the current results" is now verified as
+   * "the same results reappear on return," not "the table stays visible underneath." `closeSettingsWorkspace`
+   * (Shell.tsx/useSearchState.ts) never touches search state at all, so this is a real, not just assumed,
+   * invariant: nothing about the search result set is reset by opening/closing Settings.
+   */
   test('1. opening Docker settings after a search never loses the current results', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
     await page.getByRole('button', { name: /^search$/i }).click();
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10_000 });
+    const firstRowTextBefore = await page.locator('tbody tr').first().innerText();
     const urlBefore = page.url();
 
-    await page.getByRole('button', { name: /docker settings/i }).click();
+    await openSettingsSection(page, /docker settings/i);
     await expect(page.getByRole('dialog', { name: /docker connection/i })).toBeVisible();
+    // The Settings workspace is a full-page takeover (same mechanism as Field Mapping/Classification
+    // rules) - the table is legitimately not rendered while it's the active view.
+    await expect(page.getByRole('table')).not.toBeVisible();
+
+    await page.getByRole('button', { name: /^close$/i }).click();
+    await page.getByRole('button', { name: /back to search results/i }).click();
 
     await expect(page.getByRole('table')).toBeVisible();
     await expect(page.locator('tbody tr').first()).toBeVisible();
+    expect(await page.locator('tbody tr').first().innerText()).toBe(firstRowTextBefore);
     expect(page.url()).toBe(urlBefore);
   });
 

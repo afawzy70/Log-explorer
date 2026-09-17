@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
 import { assertNoHorizontalOverflow, captureScreenshot, setViewport } from './helpers';
+import { openSettingsSection } from './settings-helpers';
 
 /*
  * OS-1F - the OpenShift professional UX integration slice (LERUX-1
@@ -145,7 +146,7 @@ async function mockConnectedOpenShift(page: Page) {
 
 async function openPanel(page: Page) {
   await page.goto('/');
-  await page.getByRole('button', { name: 'OpenShift' }).click();
+  await openSettingsSection(page, 'OpenShift');
   await expect(page.getByRole('dialog', { name: /openshift connection/i })).toBeVisible();
 }
 
@@ -229,7 +230,7 @@ test.describe('OS-1F - OpenShift connected Settings, scope hierarchy and ScopeTr
     await expect(page.getByText(/select a project to search openshift/i)).toBeVisible();
     await captureScreenshot(page, PHASE, 'H-search-blocked-no-scope');
 
-    await page.getByRole('button', { name: 'OpenShift' }).click();
+    await openSettingsSection(page, 'OpenShift');
     await page.getByLabel(/^project$/i).selectOption('payments-dev');
     await page.keyboard.press('Escape');
 

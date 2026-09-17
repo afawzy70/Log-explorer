@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { openSettingsSection } from './settings-helpers';
 
 /*
  * Owner mission "Event Classification, Extraction, and Portable Rules" -
@@ -162,7 +163,7 @@ test('create a tag rule from an event, detect, test, save, classify, export, del
   }
 
   // 18: export the rule pack.
-  await page.getByRole('button', { name: 'Classification rules' }).click();
+  await openSettingsSection(page, 'Classification rules');
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export all' }).click();
   const download = await downloadPromise;
@@ -193,7 +194,7 @@ test('create a tag rule from an event, detect, test, save, classify, export, del
   await page.keyboard.press('Escape');
 
   // 21-23: import the exported pack - preview, then explicit apply.
-  await page.getByRole('button', { name: 'Classification rules' }).click();
+  await openSettingsSection(page, 'Classification rules');
   await page.getByLabel('Import rules file').setInputFiles(packPath);
   const preview = page.getByLabel('Rules in this pack');
   await expect(preview).toBeVisible();
@@ -358,7 +359,7 @@ test('the owner reproduction: scoped detect and test, assisted extraction, visib
   await page.keyboard.press('Escape');
 
   // 25. Export: the pack carries the colour, and still no server-side or runtime data.
-  await page.getByRole('button', { name: 'Classification rules' }).click();
+  await openSettingsSection(page, 'Classification rules');
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export all' }).click();
   const download = await downloadPromise;
@@ -378,7 +379,7 @@ test('the owner reproduction: scoped detect and test, assisted extraction, visib
   await expect(apiLogsRow(page).locator('[data-tag-color]')).toHaveCount(0);
 
   // 27-30. Import the same pack back: classification, colour and extraction all return.
-  await page.getByRole('button', { name: 'Classification rules' }).click();
+  await openSettingsSection(page, 'Classification rules');
   await page.getByLabel('Import rules file').setInputFiles(packPath);
   await expect(page.getByLabel('Rules in this pack')).toBeVisible();
   await page.getByRole('button', { name: /apply/i }).click();

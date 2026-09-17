@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, setViewport, setZoom } from './helpers';
+import { openSettingsSection } from './settings-helpers';
 
 /*
  * UX-R4 - the Results investigation workstation, verified against the real
@@ -339,7 +340,7 @@ test.describe('UX-R4 §33 - no security regression from the new entry points', (
     // the end so this shared-singleton backend policy never leaks into a
     // later test.
     const protectedLabels = ['CIF', 'Username', 'Customer ID', 'Device ID', 'Device IP'];
-    await page.getByRole('button', { name: /privacy & masking/i }).click();
+    await openSettingsSection(page, /privacy & masking/i);
     const maskingDialog = page.getByRole('dialog', { name: /privacy & masking/i });
     await expect(maskingDialog).toBeVisible();
     for (const label of protectedLabels) {
@@ -348,6 +349,9 @@ test.describe('UX-R4 §33 - no security regression from the new entry points', (
       }
     }
     await page.getByRole('button', { name: /^close$/i }).click();
+    // B2 (Session 4) - closing the masking popover only closes that nested dialog; the consolidated
+    // Settings workspace underneath (a full-page takeover) stays the active view until explicitly closed.
+    await page.getByRole('button', { name: /back to search results/i }).click();
 
     await rows(page).nth(3).click();
     await expect(page.getByRole('dialog', { name: 'Event details' })).toBeVisible();
@@ -374,7 +378,7 @@ test.describe('UX-R4 §33 - no security regression from the new entry points', (
     // Restore the fresh default (unmasked) so this shared-singleton
     // backend policy never leaks into a later test in the same run.
     await page.keyboard.press('Escape'); // close whatever panel/dialog is open
-    await page.getByRole('button', { name: /privacy & masking/i }).click();
+    await openSettingsSection(page, /privacy & masking/i);
     const cleanupDialog = page.getByRole('dialog', { name: /privacy & masking/i });
     await expect(cleanupDialog).toBeVisible();
     for (const label of protectedLabels) {

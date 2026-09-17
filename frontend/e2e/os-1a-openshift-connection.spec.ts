@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { assertNoHorizontalOverflow, captureScreenshot, setViewport } from './helpers';
+import { openSettingsSection } from './settings-helpers';
 
 /*
  * OS-1A - the OpenShift connection surface, verified against the REAL
@@ -18,7 +19,7 @@ const PHASE = 'OS_1A_EVIDENCE';
 
 async function openPanel(page: Page) {
   await page.goto('/');
-  await page.getByRole('button', { name: 'OpenShift' }).click();
+  await openSettingsSection(page, 'OpenShift');
   await expect(page.getByRole('dialog', { name: /openshift connection/i })).toBeVisible();
 }
 
@@ -227,7 +228,7 @@ test.describe('OS-1A §28/§29 - accessibility and responsive', () => {
     await expect(page.getByRole('dialog', { name: /openshift connection/i })).toHaveCount(0);
 
     // Reopening must not restore the previous command.
-    await page.getByRole('button', { name: 'OpenShift' }).click();
+    await openSettingsSection(page, 'OpenShift');
     await expect(page.getByLabel(/paste your oc login command/i)).toHaveValue('');
   });
 

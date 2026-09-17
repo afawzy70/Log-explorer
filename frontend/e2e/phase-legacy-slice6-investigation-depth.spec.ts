@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
 import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, setViewport } from './helpers';
 import { openInspectorTab } from './inspector-helpers';
+import { openSettingsSection } from './settings-helpers';
 
 /*
  * LEGACY REMEDIATION SLICE 6 — INVESTIGATION DEPTH, GAP VISIBILITY & RICHER
@@ -328,7 +329,7 @@ test.describe('Legacy Remediation Slice 6 — Investigation depth, gap visibilit
     await expect(page.getByRole('dialog')).toBeVisible();
     await page.getByRole('button', { name: /^cancel$/i }).click();
 
-    await page.getByRole('button', { name: /docker settings/i }).click();
+    await openSettingsSection(page, /docker settings/i);
     await expect(page.getByRole('dialog', { name: /docker/i })).toBeVisible();
   });
 

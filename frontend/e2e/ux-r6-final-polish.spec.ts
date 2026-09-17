@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, setViewport, setZoom } from './helpers';
 import { inspectorAllTabsText, openInspectorTab } from './inspector-helpers';
+import { openSettingsSection } from './settings-helpers';
 
 /*
  * UX-R6 - final polish, structural consistency and acceptance readiness.
@@ -318,7 +319,7 @@ test.describe('UX-R6 §17 - security regression pass', () => {
     // this shared-singleton backend policy never leaks into a later test.
     await page.goto('/');
     const protectedLabels = ['CIF', 'Username', 'Customer ID', 'Device ID', 'Device IP'];
-    await page.getByRole('button', { name: /privacy & masking/i }).click();
+    await openSettingsSection(page, /privacy & masking/i);
     const maskingDialog = page.getByRole('dialog', { name: /privacy & masking/i });
     await expect(maskingDialog).toBeVisible();
     for (const label of protectedLabels) {
@@ -359,7 +360,7 @@ test.describe('UX-R6 §17 - security regression pass', () => {
     // Restore the fresh default (unmasked) so this shared-singleton
     // backend policy never leaks into a later test in the same run.
     await page.keyboard.press('Escape');
-    await page.getByRole('button', { name: /privacy & masking/i }).click();
+    await openSettingsSection(page, /privacy & masking/i);
     const cleanupDialog = page.getByRole('dialog', { name: /privacy & masking/i });
     await expect(cleanupDialog).toBeVisible();
     for (const label of protectedLabels) {
@@ -394,7 +395,7 @@ test.describe('UX-R6 §19 - workspace evidence', () => {
   test('F: settings / compose', async ({ page }) => {
     await setViewport(page, 1440, 900);
     await page.goto('/');
-    await page.getByRole('button', { name: /docker settings/i }).click();
+    await openSettingsSection(page, /docker settings/i);
     await expect(page.getByRole('dialog', { name: /docker connection/i })).toBeVisible();
     await captureScreenshot(page, PHASE, 'AFTER-F-settings');
   });
