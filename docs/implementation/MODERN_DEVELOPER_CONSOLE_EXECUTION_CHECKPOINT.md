@@ -59,6 +59,7 @@ deferred — see "Next exact task" below):
 | `0ef2827` | **B4**: the Inspector's default panel width becomes 500px (`--v2-w-inspector`), up from 420px — measured in the real app that the five fixed tabs (Overview, Actor & client, Request flow, Business / error, Technical / all fields) genuinely wrapped to two rows at 420px, confirming the design's number is solving a real problem, not an arbitrary preference. 500px alone was not enough with the *existing* tab CSS (needs ~572px) — also tightened `InspectorTabs.module.css`'s tab padding/gap/font-size (13px → 12px, close to the design's own 11-12px scale) so all five genuinely fit on one row at 500px, verified by measuring distinct `top` values in the real rendered app, not assumed from the width number alone. `MIN_PANEL_WIDTH`/`MAX_PANEL_WIDTH` (320/720) untouched, so 500 is comfortably in range. | typecheck, full suite 1091/1091, build, full `phase-h-event-inspector.spec.ts` (16/16, one new permanent regression test asserting all 5 tabs share one row), real-browser screenshot confirming a clean, legible, non-cramped one-row tab bar |
 | `5f7503d` | **A5 (D33)**: corrected the Detect hint text in `RuleEditor.tsx`, which understated what Detect actually samples from — it now names the free-text/ID sample source explicitly and states the classification-tag-filter omission (a rule being written can never be evidence for itself), matching what the backend genuinely does. | typecheck, targeted classification suite 62/62, build |
 | `b128d59` | **A6**: a decorative (`aria-hidden`) coverage bar next to the existing "Found in n / m" text on each assisted-extraction suggestion row — purely additive, text stays the sole accessible content. | typecheck, full suite 1091/1091, build, `classification-rules.spec.ts` 2/2. Unit test asserts the real computed inline fill width for two concrete cases (38/40 → 95%, 40/40 → 100%). A live suggestion set could not be reached through the running app's own fixture data within a bounded time budget (see "Session 2" note below) — substituted a real-Chromium (not jsdom) check of the exact compiled CSS rules: confirmed the bar renders as a 56×6px accent-filled track at the correct 95%/100%/0% pixel ratios, with a legible forced-colors-mode fallback (solid `CanvasText` fill on a bordered `Canvas` track). |
+| `286e7da` | **B3**: severity mark in a 22px gutter inside the Time cell (`COMPONENT_INVENTORY.md`'s `ResultsTable.tsx` RESTYLE entry). Implemented from the design's own prototype CSS/markup (`prototype/styles/app.css`'s `.sev-mark`/`.sev-ERROR`/`.sev-WARN`/etc., not guessed from the inventory's one-line summary): a diamond (ERROR), triangle (WARN), filled dot (INFO), ring (DEBUG), or flat bar (TRACE), using the `--v2-sev-*-mark` tokens already present in `tokensV2.css` for both themes. Shape carries the level even without colour, additive to the Level column's own dot+text (deliberately NOT removed — it's a shared convention with `JourneyEntryRow`/`InspectorHeader`, so touching it only here would make Results inconsistent with those two, not more consistent). The row-state hairline half of the same inventory line ("selection = tint + hairlines, root = tag + trigger hairlines") was investigated and deliberately **not** implemented — see "Assessed and deliberately deferred" below for why. | typecheck, full suite 1093/1093 (2 new tests), build, `geometry.spec.ts` + `phase-g-results-table.spec.ts` (15/15 including 390px), real-browser screenshots in both light and dark theme (dark-theme token resolution confirmed correct even though the surrounding v1-styled table doesn't yet follow dark mode — known, already-documented foundation-only state), 0 console errors either theme |
 
 **Discovered, not caused, while verifying the tab fix — a second pre-existing accessibility defect** (in addition
 to the 390px overflow one below): running axe on the Inspector-open state found **593 elements** failing WCAG AA
@@ -73,9 +74,10 @@ scope — not touched here, per this mission's "functional defects outside this 
 lanes" policy. **Flag this for a dedicated accessibility pass, not folded into this redesign.**
 
 **Not started this session:** the remainder of B3 (sticky header already works structurally — `position: sticky`
-already present in `ResultsTable.module.css:84` — but its visual treatment is still v1 tokens; selection/error/
-root/trigger row states exist structurally (`UX-R4 §15` severity row marking) but are still v1-styled; loading/
-re-search/empty/error panel restyle not started), B2 Search Shell (query bar, scope strip, severity popover,
+already present in `ResultsTable.module.css:84` — but its visual treatment is still v1 tokens; the row-state
+hairline redesign for selection/root is investigated but deferred, see below; loading/re-search/empty/error panel
+restyle not started — **severity mark in the Time cell gutter is now done**, see `286e7da`), B2 Search Shell
+(query bar, scope strip, severity popover,
 source/project/time controls — assessed as genuinely large IA work, see below), B4 Inspector: **the 500px width
 and 5-tab-on-one-row fit are now done** (see the table row above) — remaining B4 scope is the rest of the panel's
 visual composition (colour parity is already inherited via the shared `TagChip` restyle from `5af4436`), and **the
@@ -95,6 +97,20 @@ should say "frontend + a small additive backend field", not "frontend only".
 
 ### Assessed and deliberately deferred (not a gap — a judgement call)
 
+- **Row-state hairline redesign** (`COMPONENT_INVENTORY.md`: "selection = tint + hairlines, root = tag + trigger
+  hairlines"), investigated alongside the severity-mark commit (`286e7da`) but not implemented in it. The
+  prototype's actual CSS/markup (`prototype/scripts/app.js`'s `row()` function) shows `selected` and `root` sharing
+  one `trigger-ring` treatment around the severity mark, differentiated only by which ONE is true for a given
+  view (Search shows the selected row; Captures/Context shows the root event) — the prototype's own token values
+  confirm this isn't an oversight: `--accent` and `--trigger-line` are literally the same hex in both light and
+  dark (`#0b6975`/`#4fb3bd`), and `--accent-tint` and `--selected` are too (`#e3f0f1`). Our production app can
+  genuinely have a row that is BOTH selected AND context-root at once (re-opening the inspector on the root event
+  itself) — a real case the current code explicitly handles (`ResultsTable.module.css`'s own comment: "the dashed
+  outline is what distinguishes... even if both classes are ever applied to the same row at once"). Copying the
+  prototype's simplified single-ring treatment verbatim would silently drop that non-colour-alone distinction for
+  the combined case — a real requirement-loss risk (CLAUDE.md §9), not a cosmetic simplification. This needs a
+  deliberate decision (e.g., keep the current dashed-vs-solid distinction as the extra cue layered under the new
+  hairline treatment) before implementing, not a blind copy — flagged for a dedicated follow-up slice.
 - **A8** (Tags column narrows to 132px when the Inspector is docked): requires threading "is the Inspector
   currently docked" state down into the Results table's column-width calculation (currently a static per-column
   `width` string in `columnRegistry.tsx`, no such state plumbed today) — more cross-component wiring than a
@@ -173,7 +189,7 @@ should say "frontend + a small additive backend field", not "frontend only".
 
 ### Files currently being worked on
 
-None — the working tree is clean at the last code commit (`b128d59`), nothing mid-edit, nothing uncommitted.
+None — the working tree is clean at the last code commit (`286e7da`), nothing mid-edit, nothing uncommitted.
 
 ### Design states used as reference
 
@@ -259,17 +275,18 @@ structured-field requirement), a real screenshot there would still be worth taki
 ## Resuming — exact next task
 
 1. **Re-verify the branch is where this file says it is**: `git log --oneline -10` on `ux/v2-modern-developer-
-   console` — check what's at HEAD against this file's own record. As of this checkpoint, HEAD is `b128d59` (A6
-   coverage bar). CI has not yet been re-checked on this exact commit — run `gh pr checks 61` (or check whatever
+   console` — check what's at HEAD against this file's own record. As of this checkpoint, HEAD is `286e7da` (B3
+   severity mark). CI has not yet been re-checked since `0ef2827` — run `gh pr checks 61` (or check whatever
    commit is actually at HEAD) before assuming green.
-2. **Done through Session 2**: everything in the commit table above through `b128d59` (A5, A6). What's left in
-   B3: sticky header, selection/error/root/trigger row states, and the loading/re-search/empty/error panels are
-   all still v1-token-styled — restyling them to v2 tokens is the next contained B3 piece, verified structurally
-   already in place (position: sticky exists, severity row marking exists) so this is a genuine RESTYLE, not new
-   behaviour. **Also flagged for a separate lane, not part of this redesign**: a pre-existing WCAG AA
-   `color-contrast` defect affecting 593 elements (`--color-text-tertiary` on tinted row backgrounds) - see its
-   own entry above for the measured evidence; fixing it properly needs an audit of every state background that
-   token appears against, real scope of its own.
+2. **Done through Session 2**: everything in the commit table above through `286e7da` (A5, A6, B3 severity mark).
+   What's left in B3: the row-state hairline redesign (see "Assessed and deliberately deferred" above — needs a
+   deliberate decision on the selected+root simultaneous case, not a blind copy of the prototype), sticky header
+   and the loading/re-search/empty/error panels are still v1-token-styled (verified structurally already in
+   place: `position: sticky` exists, severity row marking exists) — restyling those to v2 tokens is the next
+   contained, lower-risk B3 piece. **Also flagged for a separate lane, not part of this redesign**: a pre-existing
+   WCAG AA `color-contrast` defect affecting 593 elements (`--color-text-tertiary` on tinted row backgrounds) -
+   see its own entry above for the measured evidence; fixing it properly needs an audit of every state background
+   that token appears against, real scope of its own.
 3. **Then B2 Search Shell.** Checked `COMPONENT_INVENTORY.md` (design branch) precisely for what this actually
    requires, rather than assuming: `app/Shell.tsx` is marked **RECOMPOSE**, not restyle —
    (a) the three separate settings popover triggers (**Privacy & masking**, **Docker settings**, **OpenShift**)
