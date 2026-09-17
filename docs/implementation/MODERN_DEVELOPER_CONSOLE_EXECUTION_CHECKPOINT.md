@@ -976,30 +976,152 @@ A1a/A2/A3/A4/A5/A6/A8/A9/A11/A12 remain COMPLETE and untouched; D40 and A1b's NO
 untouched. `RuleEditor.tsx` (~1350+ lines, per earlier sessions' own reading) still needs a fresh read next
 session — do not guess its structure from memory.
 
-## Resuming — exact next task (Session 8)
+## Session 8 — B6.3 Classification Rules list recompose COMPLETE
+
+Mission (`MODERN_DEVELOPER_CONSOLE_IMPLEMENTATION_SESSION_8_B6_3_CLASSIFICATION_RULES`), scoped to B6.3 only.
+Verified branch/HEAD/PR#61 all matched the expected resume point (`9b01d5f`) before starting, working tree clean
+of code changes.
+
+### Research fork boundary — respected this time, independently confirmed
+
+Given Session 7's own incident (a research fork exceeded its "research only" mandate), this session's research
+fork prompt stated the boundary explicitly and emphatically, and its output was checked against `git status`
+immediately on completion, before reading a word of its report: **zero files were touched** — the fork stayed
+strictly read-only this time. Its report was thorough (COMPONENT_INVENTORY.md's Classification Rules rows, the
+design's own separate `classification.js`/`classification.css` prototype files — not part of the main
+`app.js`/`app.css` B6.1/B6.2 relied on — current production code, the exact test contract, E2E coverage, and
+confirmation that this session's own `OWNER_REQUIREMENTS_REGISTER.md` §28 addition, made before the fork was
+launched, was correctly recognized as pre-existing rather than re-done). Every load-bearing claim in the report
+was still independently re-verified against the actual source and actual test runs before being relied on — the
+same discipline as always, not a reduction in scrutiny just because the boundary held this time.
+
+### Source experience parity — recorded (documentation only, per this session's explicit instruction)
+
+Added `## 28. Source experience parity — Docker / OpenShift primary Search` to
+`docs/governance/OWNER_REQUIREMENTS_REGISTER.md`: connection/setup may differ by source, but the primary Search
+pipeline (`Source → Scope → Filters → Search → Results → Inspector/Investigation`) must stay unified, with
+OpenShift Workload as the UX-equivalent scope level to Docker Service, Pod an optional deeper refinement, and no
+second OpenShift-specific Search screen anywhere. `SOURCE_EXPERIENCE_PARITY_IMPLEMENTED=NOT_YET` — explicitly
+deferred to a future source/Search integration slice, per the mission's own "record/preserve only, do not
+implement" instruction. `UNTRACKED_OWNER_REQUIREMENTS=0`.
+
+### B6.3 Classification Rules — COMPLETE (`85bce8c`)
+
+Recomposed ONLY the rules-management **list** view of `ClassificationRulesWorkspace.tsx` (`view.kind === 'list'`,
+plus the loading/error state shown before any view is chosen) to full v2 tokens. A key finding that shaped the
+whole approach: `ClassificationRulesWorkspace.module.css` (the pre-existing CSS module) is **shared** by
+`RuleEditor.tsx` and `ImportPanel.tsx` too — both explicitly frozen this session as B6.4/B6.6 territory.
+Restyling that shared module would have silently redesigned those two frozen surfaces as a side effect, so a
+**new, separate** `ClassificationRulesList.module.css` was created for the list view's own classes only; the
+editor/import/chooseRule views keep rendering against the original, completely untouched module and are
+visually unchanged.
+
+This turned out to be much closer to a **RESTYLE** than B6.1's card→table RECOMPOSE: production already had a
+real semantic `<table>`, already had the exact A11/D40-correct `TagChip`/`TagCountBadge` rendering, and already
+fetched on mount with zero popover pattern. The concrete gap against both the design and this session's own
+mission requirements was narrow and entirely additive — confirmed zero test file needed any edit at all, unit
+or E2E, verified by running the pre-existing suite unmodified before writing a single line of new markup:
+
+- **New "Extracts" column** (`rule.extractions?.length`, "None" for zero) — the data already existed on
+  `ClassificationRule`, was simply never surfaced in the table before.
+- **New "Priority {n}" meta line** under the rule name, plus a one-sentence "Evaluated top to bottom: priority
+  ascending, then rule id." note — confirmed against the real backend
+  (`ClassificationRuleService#persist`: `priority` ascending, then `id`) that the GET response's own row order
+  was *already* exactly this; the table simply never told the user so. This closes the mission's own explicit
+  "priority remains clear" / "deterministic ordering remains visible and understandable" requirements without
+  touching evaluation semantics at all.
+- **Disabled-row treatment** (dimmed name/matcher text, dashed tag-chip border) matching the design's own
+  disabled-row grammar — additional reinforcement layered on top of the pre-existing Enabled switch's own
+  On/Off word, never the only signal.
+- **Delete confirmation becomes a real modal** (scrim + centered dialog) instead of an inline card, with the
+  confirm button using B6.2's new `danger` Button variant — `COMPONENT_INVENTORY.md`'s own "delete becomes a
+  modal alertdialog with a danger button (D27)" requirement. Same `role="alertdialog"`, same heading/body text,
+  same `useDismissableLayer`/focus-management hooks — presentation only.
+
+**Three deliberate, documented scope-narrowing decisions** (cost/risk-driven, not laziness — each one avoids a
+wide-reaching, purely-cosmetic test migration for close-to-zero functional gain):
+1. Kept the four inline ghost action buttons (Edit/Duplicate/Test/Delete) rather than building the design's
+   "Test/Edit/More" overflow menu — this codebase has no accessible menu widget anywhere yet, and every one of
+   these four exact button names is asserted directly by both the unit suite and `classification-rules.spec.ts`'s
+   real end-to-end journey.
+2. Kept the existing real `<table>` wrapped in a bounded `overflow-x: auto` container at narrow widths, rather
+   than building the design's separate duplicate `<ul class="rule-list">` card markup toggled by media query —
+   this mission's own brief explicitly permits "contained horizontal scrolling... where required for a
+   genuinely dense management table."
+3. Kept the existing checkbox-styled `role="switch"` Enabled control rather than upgrading to B6.2's newer
+   button-based switch pattern — already fully accessible and non-color-alone (`aria-checked` + visible On/Off
+   word); the upgrade would have been cosmetic consistency only, not a correctness requirement.
+
+**One real, non-B6.3-specific CSS bug found and fixed during real-browser 390px verification** (found the same
+way B6.1's overflow bug was found — systematic computed-style inspection, not guessing): `.filterField`'s
+`flex: 1 1 260px` sets a preferred *width* in the toolbar's row layout, but once `.toolbar` flips to
+`flex-direction: column` at narrow widths (via its own `@media (max-width: 767px)` rule), that same flex-basis
+becomes a preferred *height* instead — stretching the filter field to ~260-338px tall and pushing the
+Import/Export/New-rule buttons toward the bottom of that inflated height. Fixed with `flex: none` on
+`.filterField` inside the same media query; confirmed via computed-style inspection before (338px toolbar
+height, filter field alone 260px tall) and after (126px toolbar height, filter field 48px), then re-verified
+with real screenshots at all six required widths in both themes.
+
+**D40/A1a/A2/A9/A11/A12 preserved**: D40 confirmed still enforced (`TagColorPolicy`'s same-tag-different-colour
+refusal reproduced live via a direct API call during visual testing); A1a/A2/A9/A12 untouched (none of
+`ImportPanel.tsx`/`RuleEditor.tsx`/the tag-colour logic were touched — confirmed by an empty diff on those
+files); A11 preserved exactly (same `TagChip`/`TagCountBadge` components, same first-tag-plus-neutral-counter
+logic, unit test passing unmodified). A1b stays explicitly NOT implemented — no mass-recolour UI anywhere.
+
+**Verified**: typecheck clean; full unit suite 1172/1172 PASS (zero test files touched — every pre-existing
+assertion, including the exact table role/name, row/cell content, tag-chip colour, and alertdialog contracts,
+passed unmodified); full E2E suite run in 5 isolated shards (this sandbox's background-process memory ceiling,
+same workaround as Session 7) — 323 passed, 1 pre-existing skip, 1 unrelated `ux-r6-final-polish.spec.ts` test
+(a file never touched this session) reconfirmed passing on an isolated single-worker re-run, matching the
+established clean baseline exactly; production build clean; real-browser responsive check at
+1920/1440/1366/1024/768/390 (zero horizontal overflow after the toolbar fix) and light/dark theme check (full
+legibility from the start — the B6.1 dark-theme inheritance bug was pre-empted, not repeated) both independently
+screenshotted, including the disabled-row dimming/dashed-border treatment confirmed via computed styles and the
+new delete modal confirmed rendering correctly in dark theme.
+
+Committed as `85bce8c`, pushed to `origin/ux/v2-modern-developer-console`. CI triggered on push — **re-check
+`gh pr checks 61` before starting further work, do not assume green.**
+
+### B6.4 through B6.6 — still NOT STARTED (out of this session's explicit scope)
+
+Per this session's own explicit mission scope ("This session is B6.3 ONLY... Do NOT opportunistically start
+B6.4"), `RuleEditor.tsx` (~1380 lines) and `ImportPanel.tsx` (~285 lines) remain completely untouched — confirmed
+by an empty `git diff` on both files. `RuleEditor.tsx` still needs a fresh, full read next session before B6.4
+work starts — do not guess its structure from this or any prior session's memory alone; it is large and the
+design's own corresponding prototype function(s) for the rule wizard have not yet been read by any session.
+
+## Resuming — exact next task (Session 9)
 
 1. **Re-verify the branch**: `git log --oneline -5` on `ux/v2-modern-developer-console` — HEAD should be
-   `2fc4c36` (or this checkpoint's own commit on top of it). Run `gh pr checks 61` to confirm CI is green on the
+   `85bce8c` (or this checkpoint's own commit on top of it). Run `gh pr checks 61` to confirm CI is green on the
    latest push before starting new work.
-2. **B6.1 Field Mapping and B6.2 Settings workspace are both COMPLETE** — see their own writeups above.
-3. **Next real scope is B6.3 Classification Rules list recompose**, then B6.4 Rule Builder, B6.5 Assisted
-   Extraction, B6.6 Import/Export in that order — each needs its own fresh fork-based research pass (reading
-   `ClassificationRulesWorkspace.tsx`, `RuleEditor.tsx`, `ImportPanel.tsx`, and the design's own corresponding
-   prototype functions) before implementing, the same discipline B6.1/B6.2/B5 all applied. Re-confirm every
+2. **B6.1 Field Mapping, B6.2 Settings workspace, and B6.3 Classification Rules list are all COMPLETE** — see
+   their own writeups above.
+3. **Next real scope is B6.4 Rule Builder** (`RuleEditor.tsx`), then B6.5 Assisted Extraction (largely the same
+   file's own extraction step — confirm the exact boundary between B6.4 and B6.5 against `COMPONENT_INVENTORY.md`
+   before assuming they're two separate files), then B6.6 Import/Export (`ImportPanel.tsx`) — each needs its own
+   fresh fork-based research pass (reading the actual current file in full, plus the design's own corresponding
+   prototype function — check `classification.js`/`classification.css` on the design branch first, since B6.3
+   found the rule-management markup lives there, separately from the main `app.js`/`app.css` B6.1/B6.2 used; the
+   rule-builder/wizard markup may live in the same separate file pair, not the main one). Re-confirm every
    already-completed A-item (A1a/A2/A3/A4/A5/A6/A8/A9/A11/A12) and D40 are preserved exactly as each of these
-   surfaces is touched — do not assume they survive a recompose untested. A1b stays explicitly NOT implemented.
-4. **If a research fork is used again**: state the "research only, no edits" boundary in the prompt, and
-   independently re-verify any output before trusting it regardless — this session's own experience is that a
-   fork can and did exceed a clearly-stated mandate; the mitigation is adversarial re-review of the actual diff
-   and independent (not fork-reported) test runs, not a stronger prompt alone.
-5. **E2E full-suite runs in this sandbox**: prefer `npx playwright test --shard=N/5` (or similar) run
-   sequentially, one at a time, with **nothing else invoked concurrently** — this session found that even a
-   properly-isolated single full-suite invocation gets killed by this sandbox's background-process memory
-   ceiling, and that running any second Playwright process concurrently with a backgrounded one corrupts the
-   shared `test-results/.playwright-artifacts-*` directory and produces spurious failures.
-6. Keep the same discipline: typecheck/full-unit/build/targeted-E2E after each bounded change; commit and push
+   surfaces is touched. A1b stays explicitly NOT implemented.
+4. **`ClassificationRulesList.module.css` vs `ClassificationRulesWorkspace.module.css`**: when B6.4 touches
+   `RuleEditor.tsx`, it will still import the OLD, v1-styled `ClassificationRulesWorkspace.module.css` — do not
+   assume it should switch to the new list module (different content entirely) or that the old module is now
+   dead code (it is not — `ImportPanel.tsx` and the `chooseRule` view still use it too). If B6.4 fully recomposes
+   `RuleEditor.tsx`, it will likely need its OWN new CSS module, by the same reasoning B6.3 applied.
+5. **If a research fork is used again**: state the "research only, no edits" boundary explicitly, and
+   independently re-verify any output before trusting it regardless of whether the boundary held — Session 7's
+   incident and this session's clean research both confirm behavior varies, so verification stays mandatory
+   either way.
+6. **E2E full-suite runs in this sandbox**: use `npx playwright test --shard=N/5` (or similar) run sequentially,
+   one at a time, with **nothing else invoked concurrently** — confirmed again this session as the reliable
+   pattern (5/5 shards completed cleanly; no `run_in_background` attempts were needed or tried).
+7. Keep the same discipline: typecheck/full-unit/build/targeted-E2E after each bounded change; commit and push
    after each sub-surface reaches a coherent, fully-verified state — do not batch multiple sub-features into one
    commit.
-7. **B6 exit gate is not yet reached** — FIELD_MAPPING=COMPLETE, SETTINGS_WORKSPACE=COMPLETE, but
-   CLASSIFICATION_RULES/RULE_BUILDER/ASSISTED_EXTRACTION/IMPORT_EXPORT all remain NOT_STARTED. Do not report B6
-   as COMPLETE until all six sub-features and every exit-gate field in the mission brief are genuinely true.
+8. **B6 exit gate is not yet reached** — FIELD_MAPPING=COMPLETE, SETTINGS_WORKSPACE=COMPLETE,
+   CLASSIFICATION_RULES=COMPLETE, but RULE_BUILDER/ASSISTED_EXTRACTION/IMPORT_EXPORT all remain NOT_STARTED. Do
+   not report B6 as COMPLETE until all six sub-features and every exit-gate field in the mission brief are
+   genuinely true.
