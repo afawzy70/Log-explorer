@@ -1,9 +1,15 @@
 # Search latency investigation and safe optimization
 
-Mission: `SEARCH_LATENCY_INVESTIGATION_AND_SAFE_OPTIMIZATION`. Branch:
-`perf/search-latency-investigation`. This file is the durable checkpoint —
-read this before re-investigating; do not re-derive what is already proven
-here.
+Missions: `SEARCH_LATENCY_INVESTIGATION_AND_SAFE_OPTIMIZATION` (original),
+`SEARCH_LATENCY_REALISTIC_MULTI_CONTAINER_VALIDATION` (follow-up, see
+"Validation" section below). Branch: `perf/search-latency-investigation`.
+This file is the durable checkpoint — read this before re-investigating; do
+not re-derive what is already proven here.
+
+**Read this first if you only have time for one number**: the classification
+optimization below is correct and safe, but it does **not** address the
+user's main reported problem (first unfiltered multi-container search
+feeling slow). See "Validation — realistic multi-container benchmark".
 
 ## Method
 
@@ -287,3 +293,228 @@ If further latency reduction is wanted and evidence-justified:
    the next time frontend rendering is suspected — this investigation found
    no code-level evidence of a frontend bottleneck but did not rule it out
    empirically.
+
+---
+
+## Validation — realistic multi-container benchmark (`SEARCH_LATENCY_REALISTIC_MULTI_CONTAINER_VALIDATION`)
+
+The original investigation above used an in-process JUnit benchmark with a
+fixture corpus and (for the classification tests) synthetic classification
+rules. This follow-up mission's premise: the user's real complaint is the
+**first, unfiltered, multi-container** search — not a filtered one — and
+the classification benchmark above may not represent it (a fresh backend
+has zero classification rules configured by default, so there is nothing
+for the previous optimization to skip). This section reproduces that exact
+real scenario against a real Docker daemon and a real, unmodified Spring
+Boot backend on both `main` and this branch, and reports the honest answer.
+
+### Environment
+
+A disposable Docker Compose stack (`logexplorer-bench` project,
+`busybox:latest` containers, each `cat`-ing a pre-generated log file to
+stdout then sleeping — synthetic data only, no customer/production data),
+generated and torn down entirely within this session:
+
+```
+CONTAINER_COUNT=12
+LINES_PER_CONTAINER=3000
+TOTAL_LOG_LINES=36000
+TOTAL_LOG_BYTES_APPROX=13,251,713 (~12.6 MiB)
+```
+
+Logs match `DefaultFieldMappingProfile`'s exact top-level field names
+(`@timestamp`, `application`, `level`, `message`, `logger_name`,
+`thread_name`, `traceId`, `X-Correlation-id`, `mdc`), INFO/WARN/ERROR mixed
+70/20/10, timestamps spaced back from "now" so the search window covers
+them without any query needing to be widened.
+
+Two full backend builds (`mvn -o -DskipTests package`), each run as a bare
+`java -jar` (no other warm-up, no test harness) in its own isolated git
+worktree/process: `main` at `6e71af8` (the true tip of `origin/main`, same
+base this branch diverged from) and this branch (`PR62`,
+`perf/search-latency-investigation`, `HEAD eeaf9a5`). Each run: start
+process → poll `/actuator/health` until ready (this is NOT search-path
+warm-up, only "the HTTP server is up") → three back-to-back
+`POST /api/v1/logs/search` calls with **`{"sourceId":"local-docker",
+"start":<3h ago>,"end":<now+1h>,"composeProject":"logexplorer-bench"}`** —
+no text/service/severity/tag/advanced filters, matching the mission's exact
+scenario — wall time via `curl -w`. Two full repeats per branch (fresh JVM
+each time), with run order swapped between reps (main-then-pr62, then
+pr62-then-main) to control for OS/Docker page-cache warming bias between
+consecutive runs.
+
+`composeProject` scopes which containers are searched (12 synthetic ones,
+not the host's other, unrelated, already-running containers) — this is
+connection/project scope, not one of the mission's named filters
+(text/service/severity/tag/advanced), so `FILTERS=NONE` still holds.
+
+### Results
+
+```
+                    main rep1  main rep2  |  pr62 rep1  pr62 rep2  |  avg main  avg pr62
+FIRST_SEARCH_MS       7053       7357     |    7793       7992     |   7205       7893
+SECOND_SEARCH_MS      3382       2507     |    4300       3859     |   2945       4080
+THIRD_SEARCH_MS       1880       2005     |    3438       2334     |   1943       2886
+```
+
+`FIRST_SEARCH_IMPROVEMENT_PERCENT = (7205 − 7893) / 7205 ≈ −9.5%` — PR62 is
+**not** faster on the first unfiltered search; if anything, marginally
+slower in both reps. This is the honest number, not a favorable one.
+
+**Why**: PR62's own new diagnostic log line proves the reason directly —
+`Docker historical search pipeline: 24000 raw line(s) merged/sorted in
+N ms, 24000 classified (of 24000), 24000 returned in N ms` — every single
+raw event reached classification, because with zero filters active,
+`EventFilters#matchesExceptTags` is `true` for 100% of events (there is
+nothing to reject them). The optimization's mechanism — skip
+classification for events a non-tag filter would reject anyway — has
+*zero* raw material to work with when there are no filters. The small,
+consistent slowdown (both reps) is most plausibly ordinary JVM/GC/process
+noise between two separately-started JVMs plus one extra method-call layer
+(`matchesExceptTags`+`classify`+`tagsMatch` vs. the old single `parse`+
+`matches` call) — not a real algorithmic regression; `EventFilters#matches`
+is unchanged as a composition and every existing test still passes.
+
+**Result equivalence, empirically** (not just unit-tested): the actual
+`/api/v1/logs/search` JSON response bodies from `main` and `PR62` for the
+identical request (steady-state, rep 2) were compared by `(traceId,
+timestamp, message)` sequence — **identical**, 200/200 events, same order,
+same `ResultCounts` (`returned=200, truncated=true, estimatedTotal=null`).
+
+### Server-side breakdown (PR62's diagnostics, averaged across both reps — `main` lacks this instrumentation pre-PR62 except container-read timing)
+
+```
+                          first search   third search (steady-state)
+SOURCE_ACQUISITION_MS        1949            1132
+PARSE+FILTER+CLASSIFY_MS     3322             940    ("pipeline" — parse dominates; classify ≈0 (zero rules); filter is cheap field compares)
+SORT_LIMIT_MS                  51              56    (flat regardless of warm-up — sort was never the bottleneck)
+SearchService_TOTAL_MS       6537            2564
+"other" inside SearchService 1266             492    (listContainers, FieldMappingProfileService, guardrails, cursor/toResult — not separately broken out)
+curl_wall_MS                 7893            2886
+"external" (controller/DTO/serialization/framework) 1356  322
+```
+
+`main`'s per-container Docker read timing (its only pre-existing
+instrumentation) shows the same source-acquisition pattern: first search
+1780-1888ms, steady-state 596-722ms — confirming the first-vs-steady-state
+gap is a property of the JVM/Docker-client/parse path itself, not
+introduced by PR62.
+
+### Phase 4 — multi-container analysis
+
+```
+CONTAINER_READS_BOUNDED_PARALLEL=YES  (DockerLogSource#readAllContainersInParallel: Flux.flatMap(..., concurrency), unchanged by either mission)
+MAX_CONCURRENT_CONTAINER_READS=6      (logexplorer.docker.historical-search-concurrency default)
+DOES_SEARCH_WAIT_FOR_ALL_CONTAINERS_BEFORE_RETURNING=YES  (SearchService javadoc "Totals": deliberate, required for a truthful estimatedTotal/truncated signal)
+SLOWEST_CONTAINER_MS=1878 (observed max, first search); steady-state slowest typically 333-940ms
+FASTEST_CONTAINER_MS=not individually logged — only the slowest-per-request is captured by design (DockerLogSource#HistoricalSearchTiming javadoc: proves one slow container never serializes the rest; an individual fastest/all-12 breakdown was not instrumented)
+AVERAGE_CONTAINER_MS=not individually logged; back-of-envelope from total source-acquisition wall time ÷ (12 containers / 6 concurrency ≈ 2 sequential slots) ≈ 400-970ms per container, consistent with the logged slowest-per-request range
+TIME_WAITING_AFTER_LAST_CONTAINER_READ_MS = the "pipeline" phase itself (940-3647ms) — readAllContainersInParallel fully blocks/completes before the merge-sort-parse-filter-classify loop starts, so ALL of that phase's time is "after the last container read returns"
+```
+
+Root cause, ranked for THIS scenario (unfiltered, first search,
+12 containers, 24,000 raw candidate events):
+
+- **(H) First-request JIT/class-loading warm-up is the dominant explanation
+  for why search #1 is ~2.7x slower than search #3.** Every single
+  measured phase (source acquisition, pipeline, "other", "external")
+  shrinks 2-4x between the first and third call on the SAME already-running
+  JVM with the SAME data — this is the classic signature of JIT
+  interpretation-to-compilation and class-loading, not a data-dependent
+  cost. Combined first-vs-third delta ≈ 5000ms; roughly 2380ms of that is
+  in the parse/filter/classify loop alone, ~1030ms in controller/
+  serialization, ~820ms in Docker I/O, ~770ms elsewhere in SearchService.
+- **(C) Overfetch relative to the returned page is real and large**:
+  `RAW_EVENTS_READ=24000` (`defaultTailLines=2000 × 12 containers`) vs.
+  `RETURNED_EVENTS=200` → **`OVERFETCH_RATIO=120`**. Every one of those
+  24,000 raw lines is parsed (and, if rules were configured, classified)
+  even though only 200 are ever shown. This is the largest evidence-backed,
+  NOT-yet-mitigated factor in this benchmark.
+- **(E) Parsing** (JSON decode + field-mapping resolution) is the
+  overwhelming majority of the "pipeline" phase's steady-state cost
+  (940ms for 24,000 events ≈ 39µs/event, consistent with the original
+  investigation's isolated-benchmark range) — classification contributes
+  ≈0 here (zero rules configured).
+- **(A/B) Docker source acquisition** is real (1132-1949ms) but not
+  dominant relative to parsing+overfetch, and is already bounded-parallel
+  (unchanged from a prior PR, confirmed again here).
+- **(D) Sort is confirmed NOT a bottleneck**, measured directly this time
+  (not just reasoned about): 21-82ms for 24,000 elements, flat across
+  first/steady-state — the earlier investigation's "not independently
+  isolated" caveat for `SORT_BARRIER` is now resolved with real numbers.
+- **(F) Classification is confirmed NOT a factor** in this scenario (zero
+  rules configured; `24000 classified (of 24000)` — the deferred-skip
+  optimization had zero events to skip).
+- **(G) Serialization/controller-layer overhead is real but secondary**
+  (~322-1356ms, itself mostly first-request framework warm-up, not raw
+  encoding cost — an isolated 200-event mask+DTO-map pass was measured at
+  single-digit milliseconds in the original investigation's benchmark).
+- **Answer: (I) combination**, but with (H) JIT warm-up as the single
+  largest lever for the *first-search* symptom specifically, and (C)
+  overfetch + (E) parsing as the largest levers for the *steady-state*
+  floor that remains even after warm-up.
+
+### Phase 6 — overfetch / limit behavior
+
+```
+REQUESTED_RESULT_LIMIT=200 (default; not specified in the request)
+RAW_EVENTS_READ=24000      (defaultTailLines=2000 × 12 containers — Docker's own per-container tail cap, already bounded, not unbounded)
+MATCHED_EVENTS=24000       (no filters active → EventFilters accepts every event; confirmed directly by the "24000 classified (of 24000)" log line)
+RETURNED_EVENTS=200        (effectiveLimit; ResultCounts.truncated=true)
+OVERFETCH_RATIO=120        (24000 / 200)
+```
+
+Not changed this session (mission: "Do NOT change this behavior yet unless
+exact ordering/completeness can be preserved") — see Phase 7/Phase 8 below
+for why.
+
+### Phase 7 — sort barrier (measured directly this time)
+
+```
+SORT_INPUT_EVENT_COUNT=24000 (raw ContainerLine list, pre-parse — DockerLogSource sorts native Docker timestamps before parsing)
+SORT_LIMIT_MS=21-82ms (measured directly across 4 real requests; flat, not warm-up-sensitive)
+FULL_MATERIALIZATION_REQUIRED=PARTIAL — required today for the documented "exact estimatedTotal on an untruncated page 1" behavior (SearchService javadoc "Totals"), NOT required merely to sort/return a correctly-ordered top-200 page
+CAN_TOP_N_BE_SEMANTICALLY_EQUIVALENT=UNKNOWN — plausible and promising specifically for the unfiltered case (Docker's native per-frame receive timestamp, used for the merge sort, is already available BEFORE JSON parsing, so a size-bounded top-N heap over raw ContainerLines could select candidates to parse without materializing/sorting all 24,000 first); NOT proven for the general (filtered) case, where a raw line selected by native-timestamp proximity can still be rejected by a content-based filter (severity/text/trace/...) after parsing, requiring a "keep expanding the candidate window until N passing results are found" algorithm that was not designed, implemented, or tested this session. Per this mission's explicit instruction ("Do NOT implement bounded top-N unless exact ordering semantics are proven"), this was NOT implemented.
+```
+
+Note: the sort itself was already known-cheap (reasoned about, not
+measured, in the original investigation); this benchmark now measures it
+directly and confirms that reasoning. The real cost living in the same
+part of the pipeline is **parsing all 24,000 raw lines**, not sorting them
+— any future bounded-top-N work should target reducing how many raw lines
+get *parsed*, using the pre-parse native timestamp already available on
+`ContainerLine`, not the sort step itself.
+
+### PR #62 decision
+
+```
+CLASSIFICATION_FIX_VALID=YES — the correctness proof (FieldRef never exposes adapter-enrichment fields; CanonicalLogEvent#tags() derives solely from #classifications) still holds; every existing test still passes; the new "24000 classified (of 24000)" diagnostic line itself confirms the code path executes correctly under real Docker I/O, not just fixture-corpus unit tests. Result equivalence was now also confirmed empirically (byte-identical returned event sequence vs. main) for this real scenario, not only by unit test.
+CLASSIFICATION_FIX_MATERIAL_FOR_UNFILTERED_FIRST_SEARCH=NO — proven, not assumed: a fresh backend has zero classification rules by default, and with zero search filters active, 100% of raw events reach classification either way (before or after this optimization) — there is nothing for the fix to skip. It remains material for a SELECTIVE, RULE-CONFIGURED search (the scenario the original investigation targeted and measured a genuine 20-30% improvement for) — that claim is unchanged and was never claimed to cover the unfiltered case.
+```
+
+Per CLAUDE.md/this mission's own instruction ("do not reject a correct
+optimization merely because another bottleneck is larger" / "do not claim
+it fixes the user's main Search latency problem unless the real
+multi-container benchmark proves that") — both halves are reported
+honestly: the fix is correct and keep-worthy, and it does not solve the
+user's main complaint.
+
+### Next recommended optimization (not implemented this session — needs its own proof/implementation phase)
+
+Ranked by the evidence above:
+
+1. **First-request warm-up** (H) — the single biggest lever for the exact
+   symptom the user reported ("first search feels slow"). Safe options to
+   investigate: Spring AOT/CDS (`-XX:SharedArchiveFile`, no code change,
+   pure JVM startup flag), a genuinely safe non-search pre-warm path (e.g.
+   touching the Docker client / JSON codecs during application startup
+   rather than on the first real user request — must not itself delay
+   startup-to-ready in a way that just moves the wait elsewhere), or
+   accepting it as an inherent JVM cold-start cost and documenting it.
+2. **Overfetch / bounded top-N** (C) — the largest *steady-state* lever,
+   but explicitly NOT safe to implement without first designing and
+   proving the filtered-case algorithm (Phase 7). This is real, standalone
+   follow-up work, not a quick fix.
+3. Sort (D) and classification (F) are now confirmed non-issues for this
+   scenario — do not spend further effort there.
+
