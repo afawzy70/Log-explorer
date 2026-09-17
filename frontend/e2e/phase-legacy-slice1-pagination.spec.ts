@@ -32,7 +32,10 @@ import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, set
 async function runFixtureSearchAllLevels(page: import('@playwright/test').Page) {
   await page.goto('/');
   await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
+  // B2 (Session 4) - the level chips now live behind the Severity field trigger's popover.
+  await page.getByRole('button', { name: /^severity:/i }).click();
   await page.getByRole('button', { name: /^all$/i }).click(); // severity: All - include every fixture event, not just INFO/WARN/ERROR
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: /^search$/i }).click();
   await expect(page.getByRole('table')).toBeVisible({ timeout: 10_000 });
   await expect(page.locator('tbody tr').first()).toBeVisible();

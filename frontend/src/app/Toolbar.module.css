@@ -22,10 +22,6 @@
   border-bottom: var(--border-width) solid var(--color-border);
 }
 
-.activeFiltersRow {
-  padding: 0 var(--space-4) var(--space-3);
-}
-
 /* OS-1F §8 - truthful, visible reason Search/Live are disabled (never
    color alone; the disabled buttons themselves also carry a `title`). */
 .scopeRequiredHint {

@@ -49,7 +49,10 @@ const STORAGE_KEY = 'logexplorer.tablePreferences.v1';
 async function gotoFixtureAllLevels(page: Page) {
   await page.goto('/');
   await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
+  // B2 (Session 4) - the level chips now live behind the Severity field trigger's popover.
+  await page.getByRole('button', { name: /^severity:/i }).click();
   await page.getByRole('button', { name: /^all$/i }).click(); // severity: All - the 250-event corpus, exceeds the 200 default page limit
+  await page.keyboard.press('Escape');
 }
 
 async function search(page: Page) {
@@ -168,7 +171,10 @@ test.describe('Legacy Remediation Slice 4 — results table configurability & po
     // preferences are read from localStorage independently of that.
     await expect(page.getByText(/run a search to see results/i)).toBeVisible();
     await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
+    // B2 (Session 4) - the level chips now live behind the Severity field trigger's popover.
+    await page.getByRole('button', { name: /^severity:/i }).click();
     await page.getByRole('button', { name: /^all$/i }).click();
+    await page.keyboard.press('Escape');
     await search(page);
 
     expect(await headers(page)).toEqual(CUSTOMIZED_HEADERS);

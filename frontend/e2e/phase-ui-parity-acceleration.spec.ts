@@ -31,7 +31,10 @@ import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, set
 async function gotoFixture(page: Page) {
   await page.goto('/');
   await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
+  // B2 (Session 4) - the level chips now live behind the Severity field trigger's popover.
+  await page.getByRole('button', { name: /^severity:/i }).click();
   await page.getByRole('button', { name: /^all$/i }).click(); // severity: All
+  await page.keyboard.press('Escape');
 }
 
 async function search(page: Page) {
@@ -147,7 +150,10 @@ test.describe('UI Parity Acceleration Pass', () => {
   test('10. keyboard navigation and help: Ctrl+Enter runs search, "/" focuses search, ArrowDown moves row focus, "?" opens help, Escape dismisses it', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
+    // B2 (Session 4) - the level chips now live behind the Severity field trigger's popover.
+    await page.getByRole('button', { name: /^severity:/i }).click();
     await page.getByRole('button', { name: /^all$/i }).click();
+    await page.keyboard.press('Escape');
 
     await page.keyboard.press('Control+Enter');
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10_000 });

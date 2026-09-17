@@ -3,14 +3,9 @@ import { SourceSelect } from '../features/search/SourceSelect';
 import { ComposeProjectSelect } from '../features/search/ComposeProjectSelect';
 import { ServiceMultiSelect } from '../features/search/ServiceMultiSelect';
 import { TimeRangeControl } from '../features/timerange/TimeRangeControl';
-import { getTimeRangeDisplayLabel } from '../features/timerange/label';
 import { SeverityFilter } from '../features/search/SeverityFilter';
 import { UniversalSearch } from '../features/search/UniversalSearch';
 import { AdvancedFilters } from '../features/search/AdvancedFilters';
-import { ActiveFilters } from '../features/search/ActiveFilters';
-import { DEFAULT_SEVERITY_LEVELS } from '../features/search/severityLevels';
-import type { AdvancedFilterValues } from '../features/search/advancedFilterFields';
-import { defaultTimeRange } from './useSearchState';
 import type { SearchState } from './useSearchState';
 import type { OpenShiftScopeSummary } from '../shared/api/types';
 import styles from './Toolbar.module.css';
@@ -67,112 +62,81 @@ export function Toolbar({ state, onStartLive, openShiftScope }: ToolbarProps) {
   const mappingNotReady = state.fieldMappingSearchReady !== true;
   const MAPPING_NOT_READY_MESSAGE = 'Configure and validate log field mapping before searching this source.';
 
-  function removeAdvancedField(key: keyof AdvancedFilterValues) {
-    state.applyAdvancedFilters({ ...state.advancedFilters, text: state.searchText, [key]: '' });
-  }
-
-  function removeTag(tag: string) {
-    state.setSelectedTags(state.selectedTags.filter((t) => t !== tag));
-  }
-
-  function removeService(service: string) {
-    state.setSelectedServices(state.selectedServices.filter((s) => s !== service));
-  }
-
   return (
-    <div>
-      <div className={styles.toolbar}>
-        <SourceSelect sources={state.sources} selectedId={state.selectedSourceId} onChange={state.setSelectedSourceId} />
-        {composeProjectScopingSupported ? (
-          <ComposeProjectSelect
-            projects={state.composeProjects}
-            selected={state.selectedComposeProject}
-            loading={state.composeProjectsLoading}
-            error={state.composeProjectsError}
-            onChange={state.setSelectedComposeProject}
-          />
-        ) : null}
-        <ServiceMultiSelect
-          services={state.services}
-          selected={state.selectedServices}
-          onChange={state.setSelectedServices}
-          mode={state.serviceFilterMode}
-          onModeChange={state.setServiceFilterMode}
+    <div className={styles.toolbar}>
+      <SourceSelect sources={state.sources} selectedId={state.selectedSourceId} onChange={state.setSelectedSourceId} />
+      {composeProjectScopingSupported ? (
+        <ComposeProjectSelect
+          projects={state.composeProjects}
+          selected={state.selectedComposeProject}
+          loading={state.composeProjectsLoading}
+          error={state.composeProjectsError}
+          onChange={state.setSelectedComposeProject}
         />
-        <TimeRangeControl value={state.timeRange} onChange={state.setTimeRange} />
-        <SeverityFilter selected={state.selectedLevels} onChange={state.setSelectedLevels} />
-        <UniversalSearch
-          value={state.searchText}
-          onChange={state.setSearchText}
-          onSubmit={state.runSearch}
-          onApplyDetectedField={state.applyDetectedField}
-        />
+      ) : null}
+      <ServiceMultiSelect
+        services={state.services}
+        selected={state.selectedServices}
+        onChange={state.setSelectedServices}
+        mode={state.serviceFilterMode}
+        onModeChange={state.setServiceFilterMode}
+      />
+      <TimeRangeControl value={state.timeRange} onChange={state.setTimeRange} />
+      <SeverityFilter selected={state.selectedLevels} onChange={state.setSelectedLevels} />
+      <UniversalSearch
+        value={state.searchText}
+        onChange={state.setSearchText}
+        onSubmit={state.runSearch}
+        onApplyDetectedField={state.applyDetectedField}
+      />
+      <Button
+        variant="primary"
+        onClick={() => state.runSearch()}
+        disabled={state.searchLoading || openShiftMissingRequiredScope || mappingNotReady}
+        title={
+          mappingNotReady
+            ? MAPPING_NOT_READY_MESSAGE
+            : openShiftMissingRequiredScope
+              ? `Select ${openShiftScopeHint} to search OpenShift`
+              : undefined
+        }
+      >
+        {state.searchLoading ? 'Searching…' : 'Search'}
+      </Button>
+      {liveTailSupported ? (
+        // Only ever rendered when the active source's own capabilities
+        // say it supports live tail (never assumed, never shown for a
+        // source that can't - CLAUDE.md §4 "Sources and capabilities").
         <Button
-          variant="primary"
-          onClick={() => state.runSearch()}
-          disabled={state.searchLoading || openShiftMissingRequiredScope || mappingNotReady}
-          title={
-            mappingNotReady
-              ? MAPPING_NOT_READY_MESSAGE
-              : openShiftMissingRequiredScope
-                ? `Select ${openShiftScopeHint} to search OpenShift`
-                : undefined
-          }
+          variant="secondary"
+          onClick={onStartLive}
+          disabled={!onStartLive || !state.selectedSourceId || openShiftMissingRequiredScope}
+          title={openShiftMissingRequiredScope ? `Select ${openShiftScopeHint} to start Live` : undefined}
         >
-          {state.searchLoading ? 'Searching…' : 'Search'}
+          Live
         </Button>
-        {liveTailSupported ? (
-          // Only ever rendered when the active source's own capabilities
-          // say it supports live tail (never assumed, never shown for a
-          // source that can't - CLAUDE.md §4 "Sources and capabilities").
-          <Button
-            variant="secondary"
-            onClick={onStartLive}
-            disabled={!onStartLive || !state.selectedSourceId || openShiftMissingRequiredScope}
-            title={openShiftMissingRequiredScope ? `Select ${openShiftScopeHint} to start Live` : undefined}
-          >
-            Live
-          </Button>
-        ) : null}
-        {mappingNotReady ? (
-          <span className={styles.scopeRequiredHint} role="status">
-            {MAPPING_NOT_READY_MESSAGE}
-          </span>
-        ) : openShiftMissingRequiredScope ? (
-          <span className={styles.scopeRequiredHint} role="status">
-            Select {openShiftScopeHint} to search OpenShift
-          </span>
-        ) : null}
-        <AdvancedFilters
-          values={{ ...state.advancedFilters, text: state.searchText }}
-          onApply={state.applyAdvancedFilters}
-          queryState={state.queryState}
-          onApplyQuery={state.applyQuery}
-          rawLogQlSupported={rawLogQlSupported}
-          availableTags={state.classificationTags}
-          availableTagsError={state.classificationTagsError}
-          selectedTags={state.selectedTags}
-          onApplyTags={state.setSelectedTags}
-          onOpen={state.refreshClassificationTags}
-        />
-      </div>
-      <div className={styles.activeFiltersRow}>
-        <ActiveFilters
-          timeRangeLabel={getTimeRangeDisplayLabel(state.timeRange)}
-          onRemoveTimeRange={() => state.setTimeRange(defaultTimeRange())}
-          selectedLevels={state.selectedLevels}
-          onRemoveSeverity={() => state.setSelectedLevels(DEFAULT_SEVERITY_LEVELS)}
-          selectedServices={state.selectedServices}
-          onRemoveService={removeService}
-          serviceFilterMode={state.serviceFilterMode}
-          onClearServices={() => state.setSelectedServices([])}
-          advancedValues={{ ...state.advancedFilters, text: state.searchText }}
-          onRemoveAdvancedField={removeAdvancedField}
-          selectedTags={state.selectedTags}
-          onRemoveTag={removeTag}
-          onClearAll={state.clearAllFilters}
-        />
-      </div>
+      ) : null}
+      {mappingNotReady ? (
+        <span className={styles.scopeRequiredHint} role="status">
+          {MAPPING_NOT_READY_MESSAGE}
+        </span>
+      ) : openShiftMissingRequiredScope ? (
+        <span className={styles.scopeRequiredHint} role="status">
+          Select {openShiftScopeHint} to search OpenShift
+        </span>
+      ) : null}
+      <AdvancedFilters
+        values={{ ...state.advancedFilters, text: state.searchText }}
+        onApply={state.applyAdvancedFilters}
+        queryState={state.queryState}
+        onApplyQuery={state.applyQuery}
+        rawLogQlSupported={rawLogQlSupported}
+        availableTags={state.classificationTags}
+        availableTagsError={state.classificationTagsError}
+        selectedTags={state.selectedTags}
+        onApplyTags={state.setSelectedTags}
+        onOpen={state.refreshClassificationTags}
+      />
     </div>
   );
 }

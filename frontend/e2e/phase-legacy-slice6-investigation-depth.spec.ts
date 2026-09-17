@@ -24,7 +24,10 @@ import { openSettingsSection } from './settings-helpers';
 async function gotoFixture(page: Page) {
   await page.goto('/');
   await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
+  // B2 (Session 4) - the level chips now live behind the Severity field trigger's popover.
+  await page.getByRole('button', { name: /^severity:/i }).click();
   await page.getByRole('button', { name: /^all$/i }).click(); // severity: All
+  await page.keyboard.press('Escape');
 }
 
 async function search(page: Page) {
@@ -223,7 +226,10 @@ test.describe('Legacy Remediation Slice 6 — Investigation depth, gap visibilit
     await gotoFixture(page);
     await search(page);
     // Narrow the toolbar to Errors only BEFORE opening context.
+    // B2 (Session 4) - the level chips now live behind the Severity field trigger's popover.
+    await page.getByRole('button', { name: /^severity:/i }).click();
     await page.getByRole('button', { name: /^errors only$/i }).click();
+    await page.keyboard.press('Escape');
     await mockNextContextResponse(page, [
       baseEvent({ message: 'info-event', severity: 'INFO', timestamp: '2026-01-01T12:00:00.000Z' }),
       baseEvent({ message: 'error-event', severity: 'ERROR', timestamp: '2026-01-01T12:00:01.000Z' }),

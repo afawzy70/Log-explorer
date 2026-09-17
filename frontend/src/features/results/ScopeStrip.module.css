@@ -1,0 +1,47 @@
+/*
+ * B2 (Session 4) - kept on v1 tokens deliberately (the same "full v2 or
+ * full v1, never mixed" rule already applied to WorkspaceTrail/Toolbar/
+ * SeverityFilter this session): `ActiveFilters`' own chips are still v1,
+ * and a partial v2 restyle here would produce the same patchy dark-mode
+ * mismatch already found and reverted earlier in this session.
+ */
+.strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/*
+ * UX-R4 §36's own invariant, carried over unchanged from `ResultsPanel`'s
+ * pre-recompose `.summaryRow > .summary` (see that rule's own historical
+ * comment): the readout sentence is the only elastic member of this row -
+ * it shrinks and wraps so the buttons beside it never have to. Found by
+ * measuring the real rendered page at 390px (not by eye) - `white-space:
+ * nowrap` here forced the whole strip, and the page itself, 418px past
+ * the viewport instead of wrapping the text onto a second line.
+ */
+.readout {
+  flex: 1 1 12rem;
+  min-width: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
