@@ -11,6 +11,14 @@ optimization below is correct and safe, but it does **not** address the
 user's main reported problem (first unfiltered multi-container search
 feeling slow). See "Validation — realistic multi-container benchmark".
 
+**Follow-up that DOES address it**: `FIRST_SEARCH_WARMUP_ROOT_CAUSE_AND_OPTIMIZATION`,
+branch `perf/first-search-warmup`, PR
+[#63](https://github.com/afawzy70/Log-explorer/pull/63), doc
+`docs/performance/FIRST_SEARCH_WARMUP_INVESTIGATION.md` — a startup warm-up
+that measurably cuts first-search latency (~25-29% at median, interleaved/
+drift-controlled measurement), independent of and mergeable separately from
+this branch's PR #62.
+
 ## Method
 
 Backend-only investigation (frontend request/response code was read but
