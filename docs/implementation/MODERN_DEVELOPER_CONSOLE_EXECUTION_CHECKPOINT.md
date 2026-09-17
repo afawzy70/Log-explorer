@@ -741,28 +741,169 @@ B7 Live redesign, a global dark-theme sweep, a global accessibility sweep, legac
 performance work (a separate `perf/*` branch lane already exists on `origin` - untouched), the OpenShift HTTP
 bug, Loki enablement, the Live EXCLUDE fix.
 
-## Resuming — exact next task (Session 6)
+## Session 6 — B6.1 Field Mapping recompose COMPLETE, B6.2-B6.6 not started (time budget)
 
-1. **Re-verify the branch**: `git log --oneline -5` on `ux/v2-modern-developer-console` - HEAD should be
-   `aed608f` (or this checkpoint's own commit on top of it). Run `gh pr checks 61` to confirm CI is green on
-   the latest push - this session's own CI check was still running (pending on all 5 jobs) when this checkpoint
-   was written; **do not assume it passed without re-checking**.
-2. **B5 Investigation is COMPLETE** for the mission's own required scope (mode bar, Back behavior, relation
-   type, identifier + Copy, stat row, timeline visualization with service lanes/selected-event marker/gap bands/
-   trace grouping, sequence table, root/selected semantics, per-event Surroundings action, return-to-
-   investigation behavior, compact scope bar, Edit search) - see the table and writeup above for exactly which
-   file implements which piece.
-3. **One flagged, unresolved item**: the pre-existing context-view page-overflow characteristic with genuinely
-   wide real data (see its own writeup above) - not blocking, not caused by B5, but worth a dedicated
-   investigation session with real time budget to isolate the actual Chromium mechanism, rather than another
-   rushed attempt squeezed into a different session's own priority.
-4. **Next real scope is B6** - start with whichever piece the owner considers highest-risk/highest-value first
-   (Field Mapping workspace's own process-strip redesign is likely the largest single net-new visual/interaction
-   surface, similar in scope to this session's own Investigation timeline work; Settings content redesign for
-   the three existing panels is comparatively closer to a RESTYLE than a REPLACE_VISUALLY). Read
-   `COMPONENT_INVENTORY.md`'s own B6 rows in full before starting, the same discipline this session applied to
-   B5's own `capture()`/`contextView()` prototype functions - do not guess the target from the inventory's one-
-   line summaries alone.
-5. Keep the same discipline: typecheck/full-unit/build/targeted-E2E after each bounded change; full E2E suite +
-   CI at the next wave boundary. Continue preferring foreground Playwright runs over `run_in_background: true`
-   in this sandboxed environment.
+Mission (`MODERN_DEVELOPER_CONSOLE_IMPLEMENTATION_SESSION_6_B6`). Verified LOCAL_HEAD/REMOTE_HEAD/PR61_HEAD all
+matched the expected resume point (`5d64c03`) before starting.
+
+### Step 1 — pre-B6 full E2E baseline (COMPLETE, clean)
+
+Ran the full local Playwright suite once, in the foreground (an explicit `run_in_background: true` attempt was
+killed by this sandbox's own documented "low memory" condition — see Session 4/5's identical finding, reapplied
+here: cancelled via `TaskStop`, relaunched as a plain foreground call, which auto-promoted to background after
+exceeding the 600s tool timeout and completed reliably). **Result: 323 passed, 1 skipped, 0 failed, out of 324.**
+No pre-existing failures to carry forward or attribute against — B6 work below starts from a clean baseline.
+
+### B6.1 Field Mapping — COMPLETE (`19fe6bb`)
+
+Recomposed `FieldMappingWorkspace.tsx`/`.module.css` into the approved SCAN → MAP & VERIFY → VALIDATE → SAVE
+workspace with a process strip, read from the design branch's own `prototype/scripts/app.js`'s `mapping(variant)`
+function (not guessed from `COMPONENT_INVENTORY.md`'s one-line summary) via a token-conserving fork (this
+session's `TOKEN_COST_PRIORITY=HIGH` framing): readiness pill header, a 4-step process strip (Scan/Map &
+verify/Validate/Save, each state computed only from real scan/profile/validation data, never fabricated), an
+All/Needs attention/Unsaved segmented filter with live counts, a real canonical-field `<table>` (Canonical
+field/Mapped path/Status/Actions) replacing the old always-fully-expanded `<li>` card list, an evidence aside
+(Original Event Samples + Discovered Source Schema table, unchanged content, just relocated), and a sticky
+action bar.
+
+**One deliberate, documented deviation from the design's own literal per-status action-button set** (kept to
+minimize test-migration blast radius without losing the real visual/structural goal): Verify, Mark needs
+change, and read-only candidate-path display stay on the *collapsed* row for every field regardless of status;
+only the interactive candidate-list-mutation controls (move/remove/add via picker or manual entry) are gated
+behind a new per-field Edit/Map toggle. Production mapping model, scan/validate/save semantics, the existing
+`PUT /fields/{field}`-before-confirm recovery-save sequence, and every verification-gating rule are all preserved
+verbatim — this is a presentation-layer recompose only, per the mission's own "do not invent mappings, do not
+change backend mapping semantics" instruction.
+
+**Two real bugs found and fixed during responsive/theme verification, neither pre-existing** — proven via a
+`git stash` bisection of just the four changed files against `HEAD`, reproducing the clean (no-bug) baseline on
+the old component under the identical test scenario, then reproducing the bug again on restoring the new one:
+
+1. **390px page-level horizontal overflow** (up to 79px). Root cause chain, found by systematic bisection
+   (hiding sections, then sub-sections, via runtime `display:none` toggles and re-measuring
+   `document.documentElement.scrollWidth` each time — not guessed): the new canonical-field `<table>`'s
+   `min-width: 720px`, wrapped in a correctly-clipping `.tableScroll { overflow-x: auto }`, still leaked past its
+   own scroll container into the page's `scrollWidth` in this specific nested-CSS-Grid layout (confirmed this is
+   a genuine engine quirk, not a spec violation on our part: `.main`'s own rendered box, and `.tableScroll`'s own
+   rendered box, both measured correctly bounded at 390px throughout — only `document.documentElement.scrollWidth`
+   disagreed). Fixed with `contain: paint` on `.tableScroll` as the definitive circuit-breaker (an explicit
+   `min-width: 0`/`overflow: hidden` chain on `.main`, and fixing the `@media (max-width: 1023px)` grid track
+   from a bare `1fr` to `minmax(0, 1fr)`, were both real, worthwhile fixes in their own right but did not alone
+   resolve the leak). A second, independent 23px of overflow came from the process strip's `white-space: nowrap`
+   detail text and the sticky action bar's 3-button row not wrapping at narrow widths — fixed with `min-width: 0`
+   on the process-step text nodes, a `@media (max-width: 480px)` `white-space: normal` fallback for the detail
+   text, and `flex-wrap: wrap` plus a `min-width: 0` reset on the action bar's status/button row at
+   `max-width: 767px`.
+2. **Illegible dark-theme text everywhere a node didn't set its own `color`** (table cells, `<code>` paths, the
+   JSON sample viewer, the toolbar filter counts) — screenshots showed near-invisible dark-gray-on-black text.
+   Root cause: this component's ambient inherited `color` is the v1 `--color-text` token (`shared/tokens.css`),
+   which has **no dark-theme override at all** (v1 was never meant to be dark-theme-complete); every element that
+   set its own `color: var(--v2-*)` explicitly (labels, badges, buttons) rendered correctly, but every plain-text
+   node that relied on inheritance got the fixed light-theme v1 value regardless of `data-theme`. Fixed with one
+   explicit `color: var(--v2-ink-1)` on the workspace root, matching this session's own "full v2 or full v1,
+   never mixed" rule — the bug was specifically that inheritance silently crossed that boundary, not that any
+   single component broke it on purpose. Re-verified with computed-style checks (`rgb(26,29,35)` — the v1 light
+   value — before the fix, `rgb(229,233,237)` — the correct v2 dark `--v2-ink-1` — after) and real screenshots.
+
+**Test-selector migrations only, no assertion weakened** (same behavior verified against the new DOM shape):
+- Unit tests (`FieldMappingWorkspace.test.tsx`): `.closest('li')` → `.closest('tr')` across all 18 pre-existing
+  occurrences (mechanical, verified 0 remaining), plus a new `openFieldEditor()` helper inserted before the two
+  interaction paths that now require opening a field's editor row first (the `addViaPicker` helper used by ~7
+  tests, and the standalone "removing a candidate path" test).
+- Targeted E2E (`phase-n-schema-scan-field-mapping.spec.ts`): the same `li`→`tr` migration plus an equivalent
+  Playwright `openFieldEditor()` helper; the Discovered Source Schema table needed a new `aria-label="Discovered
+  source schema"` (added to the component) and a scoped `getByRole('table', { name: ... })` lookup, since the
+  panel now has two real `<table>` elements instead of one (the old `panel.locator('table')` singular-match
+  assumption no longer held).
+
+**Verified**: typecheck clean; full unit suite 1170/1170 PASS; targeted E2E 8/8 PASS
+(`phase-n-schema-scan-field-mapping.spec.ts`) plus the pre-existing `App.mappingWorkspace.test.tsx` (1/1,
+unaffected); production build clean; real-browser responsive check at 1920/1440/1366/1024/768/390 (zero
+page-level horizontal overflow at every width, confirmed via `document.documentElement.scrollWidth -
+clientWidth`, not eyeballed); real-browser light+dark theme check (readable, correct v2 token resolution, shared
+Shell/Toolbar chrome above the takeover correctly stays v1/light-only per the established chrome-vs-takeover
+boundary — not a bug, matches B5's own documented pattern).
+
+Committed as `19fe6bb` (amended once, locally, before any push, solely to add the required commit-attribution
+trailer that was omitted from the first `git commit` call — not a content change), pushed to
+`origin/ux/v2-modern-developer-console`. CI triggered on push, pending at the time this checkpoint was written —
+**re-check `gh pr checks 61` before starting further work, do not assume green.**
+
+### B6.2 through B6.6 — NOT STARTED this session
+
+Time budget did not reach the remaining five B6 sub-features after B6.1's own thorough implementation +
+bug-hunting (the 390px overflow bisection and the dark-theme color-inheritance root-cause chase both took
+substantially longer than a surface-level fix would have, by design — this mission's own explicit "quality over
+the five-day schedule" instruction). This is an honest, reported shortfall, not a silently reduced scope.
+
+**Prior session research already done and preserved for the next session** (from this session's own
+token-conserving fork research on `SettingsWorkspace.tsx`/`DockerSettingsPanel.tsx`/
+`OpenShiftSettingsPanel.tsx`/`PrivacyMaskingSettingsPanel.tsx` and the design branch's own `settingsNav()`/
+`settings(section)` prototype functions — not yet acted on):
+
+- **B6.2 Settings workspace content** is a **structural change**, not a restyle: the design's own prototype
+  shows every Settings panel's content **always visible inline** — no trigger-button/popover pattern at all. The
+  current production panels (`DockerSettingsPanel`, `OpenShiftSettingsPanel`, `PrivacyMaskingSettingsPanel`) all
+  use `usePopoverTrigger()` + `useDismissableLayer` + a trigger `<button>` revealing a `role="dialog"` popover —
+  this entire pattern must be **removed** (not migrated to a different trigger), with each panel's data fetched
+  on mount instead of on-click. Recommended order (per the fork's own priority): Docker → Privacy & masking →
+  OpenShift (the largest, since it also owns the `--insecure-skip-tls-verify` detection/refusal at
+  `OpenShiftSettingsPanel.tsx:996` — **must be preserved exactly, do not remove or weaken it under any
+  circumstance**, it directly enforces this mission's own "no insecure TLS bypass" instruction). Session 4's ONE
+  consolidated Settings shell entry point (`SettingsWorkspace.tsx`) stays — this is IA the mission explicitly
+  says to keep, only the panels' own internal content/interaction pattern changes.
+- 13 E2E spec files reference these panels' current trigger-click pattern and will need a mechanical
+  trigger-click-removal migration once the popover pattern is gone (same "verify the same behavior in the new
+  DOM shape" discipline as B6.1's own `li`→`tr` migration): `os-1a-openshift-connection.spec.ts`,
+  `os-1f-openshift-professional-ux.spec.ts`, `phase-j-live-tail.spec.ts`,
+  `phase-legacy-slice3-docker-settings.spec.ts`, `phase-legacy-slice6-investigation-depth.spec.ts`,
+  `phase-h-event-inspector.spec.ts`, `pre-closure-functional-recovery-2.spec.ts` (a **second**, separate
+  migration here, on top of Session 5's own Settings-entry-point migration to the same file),
+  `ux-r4-results-workstation.spec.ts`, `ux-r3-after-evidence.spec.ts`, `ux-r5-inspector-context.spec.ts`,
+  `phase-m-ux-acceptance.spec.ts`, `ux-r6-final-polish.spec.ts`, `ux-r3-before-evidence.spec.ts`.
+- **B6.3 Classification Rules / B6.4 Rule Builder / B6.5 Assisted Extraction / B6.6 Import/Export**: no fresh
+  research done this session (the B6.1 Field Mapping deep-dive and its two real bugs consumed the session's
+  planned research+implement+verify budget for a second sub-feature). All of A1a/A2/A3/A4/A5/A6/A8/A9/A11/A12
+  remain COMPLETE and must be preserved exactly when this work starts (Sessions 1-2). **D40's "one displayColor
+  per rule, every tag in that rule inherits it" stays production truth — A1b (backend mass-recolour) stays
+  explicitly NOT implemented.** `RuleEditor.tsx` is recalled from earlier sessions' own reading as ~1350+ lines —
+  budget real reading time for it, do not guess its structure from memory alone next session.
+
+### Not started this session (deferred, per the mission's own exclusion list)
+
+B7 Live redesign, a global dark-theme sweep, a global accessibility sweep, legacy-token cleanup, search
+performance work, the OpenShift PR64 HTTP-buffer backend fix (a separate lane, explicitly not to be mixed into
+this PR), Loki enablement, the Live EXCLUDE fix, A1b.
+
+## Resuming — exact next task (Session 7)
+
+1. **Re-verify the branch**: `git log --oneline -5` on `ux/v2-modern-developer-console` — HEAD should be
+   `19fe6bb` (or this checkpoint's own commit on top of it). Run `gh pr checks 61` to confirm CI is green on the
+   latest push — this session's own CI check was still pending on all 5 jobs when this checkpoint was written;
+   **do not assume it passed without re-checking.**
+2. **B6.1 Field Mapping is COMPLETE** — see the writeup above for the exact recompose, the two real bugs found
+   and fixed (390px overflow via `contain: paint` + flex/grid min-width fixes; dark-theme text color via an
+   explicit root-level `color: var(--v2-ink-1)`), and the test-selector migrations (unit + targeted E2E).
+3. **Next real scope is B6.2 Settings workspace content** — the largest remaining structural change (removing
+   the popover-per-panel pattern entirely across three panels, fetching data on mount). Read
+   `COMPONENT_INVENTORY.md`'s B6 rows and the design branch's own `settingsNav()`/`settings(section)` prototype
+   functions in full before starting (do not guess from a one-line summary or from this checkpoint's own
+   compressed research notes above — they're a starting pointer, not a substitute for reading the actual
+   prototype code and current production panels fresh). Recommended order: Docker → Privacy & masking →
+   OpenShift (largest, owns the TLS-refusal check that must not regress). Budget the 13-file E2E migration as
+   part of this slice, not an afterthought.
+4. **Then, in order**: B6.3 Classification Rules list recompose, B6.4 Rule Builder, B6.5 Assisted Extraction,
+   B6.6 Import/Export — each needs its own fresh fork-based research pass (reading `ClassificationRulesWorkspace.tsx`,
+   `RuleEditor.tsx`, `ImportPanel.tsx`, and the design's own corresponding prototype functions) before
+   implementing, the same discipline B6.1 and B5 both applied. Re-confirm every already-completed A-item
+   (A1a/A2/A3/A4/A5/A6/A8/A9/A11/A12) and D40 are preserved exactly as each of these surfaces is touched — do
+   not assume they survive a recompose untested.
+5. Keep the same discipline: typecheck/full-unit/build/targeted-E2E after each bounded change; commit and push
+   after each sub-surface reaches a coherent, fully-verified state (this session's own B6.1 commit is the
+   template — do not batch multiple sub-features into one commit). Continue preferring foreground Playwright
+   runs over `run_in_background: true` in this sandboxed environment; the same pattern recurred identically this
+   session (an explicit background flag was killed, a plain foreground call auto-promoted and completed
+   reliably).
+6. **B6 exit gate is not yet reached** — FIELD_MAPPING=COMPLETE, but SETTINGS_WORKSPACE/CLASSIFICATION_RULES/
+   RULE_BUILDER/ASSISTED_EXTRACTION/IMPORT_EXPORT all remain NOT_STARTED. Do not report B6 as COMPLETE until all
+   six sub-features and every exit-gate field in the mission brief are genuinely true.
