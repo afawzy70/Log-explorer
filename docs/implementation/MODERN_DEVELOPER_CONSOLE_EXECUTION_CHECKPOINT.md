@@ -327,33 +327,64 @@ table (row backgrounds for plain/hover, most cell text, borders) is still v1-tok
 `data-theme='dark'` at all - this is the same foundation-only condition Session 1 already documented, not a new
 gap, and not something this session's additions make any worse.
 
-### Not started this session (deferred to B2/B4, unchanged from Session 2's assessment)
+### B4 Inspector — investigated and partially completed this session
 
-B2 Search Shell (genuine RECOMPOSE, its own planning session - see the unchanged assessment below), B4 remaining
-composition beyond the width/tabs fix already done in Session 1, B5 Investigation, B6 Settings/Mapping (beyond
-classification), B7.
+Read `EventInspector.tsx` and its sibling files fresh (not assumed from any prior summary). Finding: most of B4's
+functional checklist was **already true in production**, not missing - verified by reading the actual source, not
+inferred:
+
+- Position indicator ("Event N of M loaded"), Previous/Next controls, classification blocks
+  (`ClassificationSection.tsx`, already uses the shared `TagChip` - colour parity with Search is already
+  inherited, not something to build), extraction value states (`extractedFieldItem` in `ClassificationSection.tsx`
+  already distinguishes ABSENT/INVALID/redacted/truncated via a `secondary` note line - real, not a stub), the
+  five fixed tabs, and the "Add extraction from this event"/"Create another tag rule" action hierarchy (shipped by
+  PR #60, confirmed again) are all genuine, working production behaviour already.
+- **Overlay width, real defect found and fixed** (`22a3d4d`): the overlay panel's width cap was still 420px - the
+  exact value Session 1 already proved causes the five tabs to wrap to two rows, just never fixed for the overlay
+  case (only the docked 500px default). Widened to the design's own 520px, re-verified as one row.
+- **Overlay/docked breakpoint - tried 1365px (the design's own value), found a real regression, reverted to
+  1024px.** At 1365px, this project's own Playwright default viewport (1280×900, `playwright.config.ts`) - and by
+  the same logic, a common real desktop width - falls into overlay mode, where the panel is `position: fixed` over
+  part of the viewport. Two existing E2E tests that interact with a row underneath an already-open inspector
+  failed with a genuine `subtree intercepts pointer events` error, not a flaky timeout - confirmed by re-running
+  both in isolation with a single worker. Reverted; both pass again. See `EventInspector.module.css`'s own comment
+  for the full before/after reasoning - this is recorded as a deliberate, verified rejection of the design's
+  stated breakpoint, not an oversight, and should not be re-attempted without also auditing every other test/real
+  usage pattern that opens the inspector at 1280px and then touches the table underneath it.
+
+**Not yet done in B4:** `InspectorHeader.module.css` is still v1-token-styled (level badge, title, position
+indicator, nav) - a genuine RESTYLE candidate for next session, same pattern as the Results header restyle this
+session already did successfully. Full dark-theme parity for the whole panel - same foundation-only condition as
+the rest of the table.
+
+### Not started this session (deferred to B2, unchanged from Session 2's assessment)
+
+B2 Search Shell (genuine RECOMPOSE, its own planning session - see the unchanged assessment below), B5
+Investigation, B6 Settings/Mapping (beyond classification), B7.
 
 ---
 
 ## Resuming — exact next task
 
 1. **Re-verify the branch is where this file says it is**: `git log --oneline -10` on `ux/v2-modern-developer-
-   console` — check what's at HEAD against this file's own record. As of this checkpoint, HEAD is `85fdc8f` (A8
-   Tags column narrows). CI has not yet been re-checked on this exact commit — run `gh pr checks 61` before
-   assuming green.
+   console` — check what's at HEAD against this file's own record. As of this checkpoint, HEAD is `22a3d4d` (B4
+   overlay width fix + breakpoint revert). CI on the previous commit (`2828b8c`) showed Backend **FAIL** -
+   `OpenShiftScopeServiceTest.a401OnAnyKindAbortsTheWholeDiscoveryAndExpiresTheSession`, a reactive-exception-
+   composition timing failure - confirmed unrelated to this session: `git diff ae2c22b..2828b8c -- backend/` is
+   **empty** (zero backend files touched since the last commit CI confirmed Backend PASS on), and `2828b8c` itself
+   is a docs-only checkpoint commit. Treat as a pre-existing flaky backend test, not a regression to chase - but
+   re-check `gh pr checks 61` on the actual current HEAD before assuming this pattern repeats; if it fails
+   Backend again on a commit that DID touch backend code, investigate for real.
 2. **B3 is substantially complete** — see the Session 3 table above. The two remaining B3 items (sticky Time
    column, full dark-theme parity) are deliberately deferred with documented reasons, not gaps to silently close.
-3. **Next: B4 Inspector composition completion.** Session 1 already did the width (500px) and five-tabs-on-one-
-   row fit (`0ef2827`), and confirmed the action-hierarchy requirement ("Add extraction from this event" vs
-   "Create another tag rule") already shipped in PR #60. Per this mission's own B4 list, still to verify/complete:
-   overlay behaviour below the approved breakpoint (check whether the Inspector already overlays vs docks
-   responsively, or whether this needs building), header hierarchy, selected-event position indicator ("Event N
-   of M loaded" - already visible in this session's own screenshots, confirm it's real not incidental), previous/
-   next controls (already visible, confirm truthful), classification blocks, extraction value states (redacted/
-   missing/invalid/truncated distinctions), colour parity with Search (should already be inherited via the shared
-   `TagChip` restyle from Session 1), responsive overlay, dark-theme parity. Read `EventInspector.tsx` and its
-   sibling files fresh at the start of that work rather than assuming from this summary - this checkpoint has not
-   yet done that detailed a pass over B4's remaining scope the way it has for B3.
+3. **B4 is partially complete** — see the "B4 Inspector" subsection above. Most of the functional checklist was
+   already true in production; this session found and fixed a real overlay-tab-wrap defect (520px), and
+   correctly rejected the design's 1365px breakpoint after finding it breaks table interaction at the project's
+   own common 1280px test/real-world viewport (documented in `EventInspector.module.css`, do not re-attempt
+   without a wider audit). **Next concrete B4 piece**: `InspectorHeader.module.css` restyle to v2 tokens (level
+   badge, title, position indicator, nav) - same low-risk pattern as the Results header restyle this session
+   already did (`7a33f51`): read the design's actual header CSS/screenshot first, don't guess from the inventory
+   line alone, verify real-browser before/after.
 4. **Then B2 Search Shell.** Checked `COMPONENT_INVENTORY.md` (design branch) precisely for what this actually
    requires, rather than assuming: `app/Shell.tsx` is marked **RECOMPOSE**, not restyle —
    (a) the three separate settings popover triggers (**Privacy & masking**, **Docker settings**, **OpenShift**)
