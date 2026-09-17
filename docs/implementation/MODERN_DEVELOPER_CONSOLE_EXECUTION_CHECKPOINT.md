@@ -56,7 +56,9 @@ deferred — see "Next exact task" below):
 | `8e35289` | **A2**: a save-time tag-colour conflict now shows scoped under the Tag colour field, not only in the generic error list. Root cause verified against the real backend: `TagColorPolicy` validates across the *whole* rule list, so even a single-rule save returns `rules[N].displayColor` (never bare `displayColor`), which `errorsAt`'s field-level lookup didn't match. Fixed in `errorsAt` itself (accepts an optional `rules[N].` prefix), not a new special case — verified this doesn't affect any other field (a missing-tags error returns plain `"tags"` from the real backend). | typecheck, 1089/1089, build, `classification-rules.spec.ts` 2/2, end-to-end against the real running app via network interception with the real server's captured error shape |
 | `739d6f3` | **B3**: compact rows now measure ~29px, matching the design's `--v2-h-row: 28px` target (was 36-37px). Root cause traced precisely: the Actions column's trigger button is a deliberate, untouched 28×28px WCAG 2.5.8 hit target; the cell's own 4px top/bottom compact padding around it alone forced the whole row taller than every other (shorter-content) column needed. Fix scoped to exactly `.compact td.actionsCell` (padding-top/bottom: 0) — the button's own size is completely untouched, comfortable density untouched (different rule). | typecheck, 1089/1089, build, a new permanent E2E regression test (row height in a 26-31px band, button ≥28×28px and still clickable) plus every E2E spec touching table geometry/density (`geometry.spec.ts`, `phase-g-results-table.spec.ts` 10/10, `phase-legacy-slice4` 8/8, `phase-legacy-slice8` 28/28, `classification-rules.spec.ts` 2/2) — 58 E2E tests total this check, all PASS |
 | `d94b0ac` | **A12 — the one backend change this session** (design's own "frontend only" claim was checked and found wrong before starting, not assumed correct). `ImportItem` (backend record) gains `displayColor` — the pack rule's OWN `effectiveDisplayColor()`, never the existing/matched rule's colour (explicitly proven for a CONFLICT item with a colour genuinely differing from the existing rule's), `null` only for a genuinely-unparseable pack entry (distinct from one that parsed but failed validation, which still gets its real default). `ImportPreviewItem` (frontend type) + `ImportPanel.tsx` updated to draw each pack rule's tags with the shared `TagChip` in that colour, replacing plain `Tags: a, b, c` text. | **Backend**: full suite **1424/1424 PASS** (was 1423, +1 new test). **Frontend**: typecheck, full suite **1091/1091 PASS** (3 new tests), build. **End-to-end**: dev backend killed and restarted on the freshly-`mvn test`-verified compiled code, then a real pack file uploaded through the actual browser file-picker rendered a real AMBER-tinted chip with the correct background colour, 0 console errors. `classification-rules.spec.ts` 2/2. |
-| *(uncommitted, see below)* | **B4**: the Inspector's default panel width becomes 500px (`--v2-w-inspector`), up from 420px — measured in the real app that the five fixed tabs (Overview, Actor & client, Request flow, Business / error, Technical / all fields) genuinely wrapped to two rows at 420px, confirming the design's number is solving a real problem, not an arbitrary preference. 500px alone was not enough with the *existing* tab CSS (needs ~572px) — also tightened `InspectorTabs.module.css`'s tab padding/gap/font-size (13px → 12px, close to the design's own 11-12px scale) so all five genuinely fit on one row at 500px, verified by measuring distinct `top` values in the real rendered app, not assumed from the width number alone. `MIN_PANEL_WIDTH`/`MAX_PANEL_WIDTH` (320/720) untouched, so 500 is comfortably in range. | typecheck, full suite 1091/1091, build, full `phase-h-event-inspector.spec.ts` (16/16, one new permanent regression test asserting all 5 tabs share one row), real-browser screenshot confirming a clean, legible, non-cramped one-row tab bar |
+| `0ef2827` | **B4**: the Inspector's default panel width becomes 500px (`--v2-w-inspector`), up from 420px — measured in the real app that the five fixed tabs (Overview, Actor & client, Request flow, Business / error, Technical / all fields) genuinely wrapped to two rows at 420px, confirming the design's number is solving a real problem, not an arbitrary preference. 500px alone was not enough with the *existing* tab CSS (needs ~572px) — also tightened `InspectorTabs.module.css`'s tab padding/gap/font-size (13px → 12px, close to the design's own 11-12px scale) so all five genuinely fit on one row at 500px, verified by measuring distinct `top` values in the real rendered app, not assumed from the width number alone. `MIN_PANEL_WIDTH`/`MAX_PANEL_WIDTH` (320/720) untouched, so 500 is comfortably in range. | typecheck, full suite 1091/1091, build, full `phase-h-event-inspector.spec.ts` (16/16, one new permanent regression test asserting all 5 tabs share one row), real-browser screenshot confirming a clean, legible, non-cramped one-row tab bar |
+| `5f7503d` | **A5 (D33)**: corrected the Detect hint text in `RuleEditor.tsx`, which understated what Detect actually samples from — it now names the free-text/ID sample source explicitly and states the classification-tag-filter omission (a rule being written can never be evidence for itself), matching what the backend genuinely does. | typecheck, targeted classification suite 62/62, build |
+| `b128d59` | **A6**: a decorative (`aria-hidden`) coverage bar next to the existing "Found in n / m" text on each assisted-extraction suggestion row — purely additive, text stays the sole accessible content. | typecheck, full suite 1091/1091, build, `classification-rules.spec.ts` 2/2. Unit test asserts the real computed inline fill width for two concrete cases (38/40 → 95%, 40/40 → 100%). A live suggestion set could not be reached through the running app's own fixture data within a bounded time budget (see "Session 2" note below) — substituted a real-Chromium (not jsdom) check of the exact compiled CSS rules: confirmed the bar renders as a 56×6px accent-filled track at the correct 95%/100%/0% pixel ratios, with a legible forced-colors-mode fallback (solid `CanvasText` fill on a bordered `Canvas` track). |
 
 **Discovered, not caused, while verifying the tab fix — a second pre-existing accessibility defect** (in addition
 to the 390px overflow one below): running axe on the Inspector-open state found **593 elements** failing WCAG AA
@@ -171,7 +173,7 @@ should say "frontend + a small additive backend field", not "frontend only".
 
 ### Files currently being worked on
 
-None — the working tree is clean at the last code commit (`d94b0ac`), nothing mid-edit, nothing uncommitted.
+None — the working tree is clean at the last code commit (`b128d59`), nothing mid-edit, nothing uncommitted.
 
 ### Design states used as reference
 
@@ -206,22 +208,61 @@ A1B_UI_TRUTHFUL_DISABLED_STATE=YES  # inherited from the design package's own dr
                                      # resolution control, which is the same "no false affordance" property.
 ```
 
-### Time stopped
+### Time stopped (Session 1)
 
-See the final line of this file (written at the hard stop, after this checkpoint is committed) for the exact
-timestamp and final verification numbers.
+Session 1 ended at HEAD `5f7503d` (A5), with A6 left uncommitted mid-edit when the session was interrupted by a
+connection loss (not a deliberate checkpoint stop). See "Session 2" below for the recovery.
 
 ---
 
-## Resuming tomorrow — exact next task
+## Session 2 — recovery + A6 completion
+
+Started by a recovery mission (`MISSION=RECOVER_INTERRUPTED_MODERN_DEVELOPER_CONSOLE_IMPLEMENTATION`) after Session
+1 was cut off by a connection loss rather than a normal checkpoint. Recovery audit (git fetch/status/log, branch
+inventory, this file, the design-branch plan) found the repository in exactly the state Session 1's own summary
+described: `ux/v2-modern-developer-console` at `5f7503d`, in sync with `origin` (no unpushed commits, no local
+divergence), with the A6 coverage-bar edit present uncommitted in the working tree and matching Session 1's own
+description of it byte-for-byte. No ambiguity, nothing to repair — the interruption lost no work. Branch cleanup
+and the implementation-plan drift fix were both re-verified still correct (only the 4 expected branches exist;
+`design/v2-modern-developer-console`'s `IMPLEMENTATION_PLAN.md` still correctly reads the `6e71af8` baseline and
+8-column invariant).
+
+Finished A6 from there: typecheck, targeted suite, and build all passed on the inherited working tree exactly as
+Session 1 left them. Real-browser visual verification took longer than expected — see the "A6 real-browser
+verification" note directly below — but completed with a legitimate substitute method. Committed as `b128d59`,
+full suite (1091/1091) + build + `classification-rules.spec.ts` (2/2) all green, pushed to `origin/ux/v2-modern-
+developer-console`.
+
+**A6 real-browser verification — what actually happened and why the method changed:** the plan was to reach a
+real assisted-extraction suggestion list through the running app (Fixture source → an unclassified event →
+"Create tag rule from this event" → Detect/skip → a condition matching `FixtureCorpusGenerator`'s synthetic
+webhook-call messages, which are purpose-built with extractable `requestId`/`responseCode`/`duration` fields) and
+screenshot the real rendered bar. The flow reached "25 matching events" but the suggestion endpoint still
+returned `NO_SUGGESTION` ("too little fixed text to generalize safely") — evidently the suggestion heuristic
+doesn't derive extraction candidates from unstructured `message` text the way `classificationFixtureMessage`'s own
+doc comment implies a rule *condition* can use it; this is a property of that detector, not something this
+session's change touched. Nothing was saved to the backend in the process (`rules: 0` reconfirmed after). Rather
+than burn further time reverse-engineering the exact live data shape the suggestion detector wants, verification
+switched to a real (non-jsdom) Chromium page loaded from the actual running app — so every real CSS custom
+property (`--color-border`, `--color-accent`, `--color-text-secondary`) resolved from the app's own compiled
+CSS — with the exact `ClassificationRulesWorkspace.module.css` A6 rules and the exact JSX markup injected directly.
+Measured: 56×6px track, `overflow: hidden`, fill widths of 95%/100%/0% for three inline-width cases, and the
+forced-colors fallback (solid `CanvasText` fill on a `Canvas` track with a `CanvasText` border) — real Chromium
+layout, not an assumption. This is a legitimate substitute for the live-suggestion-list screenshot (it verifies
+the actual thing that could be wrong — CSS geometry/color/visibility — real-browser, real tokens), but it is a
+substitute, not the originally-planned live end-to-end screenshot; flagging honestly rather than calling it
+identical. If a future session does reach a real live suggestion list (e.g. by finding the detector's actual
+structured-field requirement), a real screenshot there would still be worth taking opportunistically.
+
+---
+
+## Resuming — exact next task
 
 1. **Re-verify the branch is where this file says it is**: `git log --oneline -10` on `ux/v2-modern-developer-
-   console` — check what's at HEAD against this file's own record. As of this checkpoint, HEAD is `0ef2827` (B4
-   Inspector width/tabs); **CI confirmed all 5 jobs PASS** (Backend, Frontend, E2E, Windows, macOS) on that exact
-   commit at 23:26 Kuwait time — re-run `gh pr checks 61` for whatever commit is actually at HEAD now, don't
-   assume it's still green without looking (a later session may have pushed since).
-2. **Done this session**: B3's literal row-height (`739d6f3` — 29px), A12 (`d94b0ac` — full backend+frontend
-   suites green, real end-to-end verified), B4's Inspector width + five-tabs-on-one-row (`0ef2827`). What's left in
+   console` — check what's at HEAD against this file's own record. As of this checkpoint, HEAD is `b128d59` (A6
+   coverage bar). CI has not yet been re-checked on this exact commit — run `gh pr checks 61` (or check whatever
+   commit is actually at HEAD) before assuming green.
+2. **Done through Session 2**: everything in the commit table above through `b128d59` (A5, A6). What's left in
    B3: sticky header, selection/error/root/trigger row states, and the loading/re-search/empty/error panels are
    all still v1-token-styled — restyling them to v2 tokens is the next contained B3 piece, verified structurally
    already in place (position: sticky exists, severity row marking exists) so this is a genuine RESTYLE, not new
