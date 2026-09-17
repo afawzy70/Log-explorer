@@ -225,7 +225,7 @@ public class LokiLogSource implements LogSource {
         // per-request user selection today), so one stable key per source
         // is correct and already isolation-safe (there is only ever one).
         MappingScopeKey scope = MappingScopeKey.of(id(), properties.getNamespace());
-        CanonicalLogEvent parsed = parser.parse(line, serviceHint, scope);
+        CanonicalLogEvent parsed = parser.parseUnclassified(line, serviceHint, scope);
         CanonicalLogEvent enriched = parsed.toBuilder()
             .sourceId(id())
             .namespace(labels == null ? null : labels.get(properties.getNamespaceLabelKey()))
@@ -238,8 +238,14 @@ public class LokiLogSource implements LogSource {
             // parsed application timestamp inside the JSON payload.
             .sourceTimestamp(parseNanos(value.get(0)))
             .build();
-        if (EventFilters.matches(enriched, request)) {
-          events.add(enriched);
+        // SEARCH_LATENCY_INVESTIGATION_AND_SAFE_OPTIMIZATION — classify only
+        // survivors of every non-tag filter; see DockerLogSource's matching
+        // comment for why this is provably equivalent.
+        if (EventFilters.matchesExceptTags(enriched, request)) {
+          CanonicalLogEvent classified = parser.classify(enriched);
+          if (EventFilters.tagsMatch(classified, request)) {
+            events.add(classified);
+          }
         }
       }
     }

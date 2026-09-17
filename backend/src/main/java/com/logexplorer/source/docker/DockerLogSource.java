@@ -392,7 +392,7 @@ public class DockerLogSource implements LogSource {
       Map<String, String> labels = cl.container().getLabels();
       // Project-Scoped Schema Scan mission §2/§8 - see emitFollowedLine's matching comment.
       MappingScopeKey scope = MappingScopeKey.of(id(), ComposeLabels.project(labels));
-      CanonicalLogEvent parsed = parser.parse(cl.line().content(), ComposeLabels.service(labels), scope);
+      CanonicalLogEvent parsed = parser.parseUnclassified(cl.line().content(), ComposeLabels.service(labels), scope);
       CanonicalLogEvent enriched = parsed.toBuilder()
           .sourceId(id())
           .composeProject(ComposeLabels.project(labels))
@@ -411,8 +411,22 @@ public class DockerLogSource implements LogSource {
       // filters, ...) that the Docker API itself has no way to push down -
       // real gap found while extracting EventFilters: this adapter
       // previously applied none of these at all.
-      if (EventFilters.matches(enriched, request)) {
-        events.add(enriched);
+      //
+      // SEARCH_LATENCY_INVESTIGATION_AND_SAFE_OPTIMIZATION — classification
+      // (parser.classify) is deliberately deferred until AFTER every
+      // non-tag condition passes: it is the single most expensive part of
+      // this per-line loop (measured ~40% added over parse-only in
+      // SearchPipelinePerformanceTest with a realistic 10-rule set), and an
+      // event rejected by time range/severity/text/traceId/... was never
+      // going to be returned regardless of its tags, so classifying it
+      // first was pure waste. See EventFilters#matchesExceptTags/#tagsMatch
+      // and LogLineParser#parseUnclassified for why this changes nothing
+      // about which events are returned or what tags they carry.
+      if (EventFilters.matchesExceptTags(enriched, request)) {
+        CanonicalLogEvent classified = parser.classify(enriched);
+        if (EventFilters.tagsMatch(classified, request)) {
+          events.add(classified);
+        }
       }
     }
     return events;

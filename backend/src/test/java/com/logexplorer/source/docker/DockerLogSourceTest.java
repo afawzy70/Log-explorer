@@ -1553,4 +1553,61 @@ class DockerLogSourceTest {
         .collectList().block();
     assertThat(filtered).singleElement().satisfies(e -> assertThat(e.message()).startsWith("Make webhook call to"));
   }
+
+  /**
+   * SEARCH_LATENCY_INVESTIGATION_AND_SAFE_OPTIMIZATION — the algorithmic
+   * property the optimization actually depends on: classification (the
+   * single most expensive step in the per-line loop, per {@code
+   * SearchPipelinePerformanceTest}) must run only for events that survive
+   * every non-tag {@code EventFilters} condition, never for one a severity
+   * filter alone already rejects. This is deliberately NOT a millisecond
+   * assertion (CLAUDE.md "do not add brittle CI tests asserting exact
+   * milliseconds") - it counts real classifier invocations instead, so a
+   * future change that accidentally reintroduces eager classification
+   * fails this test even though the *results* would still be correct.
+   */
+  @Test
+  void classificationIsSkippedForEventsRejectedByANonTagFilterButResultsStayIdentical() {
+    AtomicInteger classifyCalls = new AtomicInteger();
+    com.logexplorer.core.classify.EventClassifier countingClassifier = new com.logexplorer.core.classify.EventClassifier() {
+      @Override
+      public CanonicalLogEvent classify(CanonicalLogEvent event) {
+        classifyCalls.incrementAndGet();
+        return event;
+      }
+
+      @Override
+      public long generation() {
+        return 0;
+      }
+    };
+    DockerClientFactory factory = mock(DockerClientFactory.class);
+    when(factory.create(properties)).thenReturn(mockClient);
+    DockerLogSource counting = new DockerLogSource(factory, properties,
+        new LogLineParser(new ObjectMapper(), mappingProfileService, countingClassifier), remoteHostGuard);
+    Container gateway = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(gateway));
+    // 5 raw lines, only 1 of which is INFO - a severity filter for INFO
+    // alone must reject the other 4 using only their already-parsed
+    // severity field, never touching the (mocked) classifier for them.
+    stubLogs("c1",
+        severityLine("2026-01-01T00:00:00.000000000Z", "gateway", "kept", "INFO"),
+        severityLine("2026-01-01T00:00:01.000000000Z", "gateway", "dropped-1", "ERROR"),
+        severityLine("2026-01-01T00:00:02.000000000Z", "gateway", "dropped-2", "ERROR"),
+        severityLine("2026-01-01T00:00:03.000000000Z", "gateway", "dropped-3", "WARN"),
+        severityLine("2026-01-01T00:00:04.000000000Z", "gateway", "dropped-4", "ERROR"));
+
+    List<CanonicalLogEvent> events = counting.search(wideOpenRequest().levels(List.of("INFO")).build())
+        .collectList().block();
+
+    assertThat(events).extracting(CanonicalLogEvent::message).containsExactly("kept");
+    assertThat(classifyCalls.get())
+        .as("only the 1 event surviving the severity filter should ever reach classification, not all 5 raw lines")
+        .isEqualTo(1);
+  }
+
+  private String severityLine(String timestamp, String service, String message, String level) {
+    return timestamp + " {\"@timestamp\":\"" + timestamp + "\",\"message\":\"" + message
+        + "\",\"application\":\"" + service + "\",\"level\":\"" + level + "\",\"mdc\":{}}\n";
+  }
 }
