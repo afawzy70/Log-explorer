@@ -988,6 +988,12 @@ export function RuleEditor({
                         <span className={styles.suggestionName}>{s.definition.label ?? key}</span>
                       </label>
                       <span className={styles.suggestionCoverage}>
+                        <span className={styles.coverageBar} aria-hidden="true">
+                          <span
+                            className={styles.coverageBarFill}
+                            style={{ width: `${s.of > 0 ? Math.round((s.extracted / s.of) * 100) : 0}%` }}
+                          />
+                        </span>
                         Found in {s.extracted} / {s.of}
                       </span>
                       <div className={styles.field}>
