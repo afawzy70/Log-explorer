@@ -36,7 +36,6 @@ import {
   readFileText,
   toWritableRule,
 } from './ruleDraft';
-import styles from './ClassificationRulesWorkspace.module.css';
 import listStyles from './ClassificationRulesList.module.css';
 import editorStyles from './RuleEditor.module.css';
 
@@ -86,13 +85,13 @@ const STATUS_LABELS: Record<ClassificationRulesState['status'], string> = {
  * B6.4/B6.5 (Session 9) recomposed `RuleEditor.tsx` itself (its own new
  * {@link RuleEditor.module.css}) and this file's own `chooseRule` view
  * (styled with that same module, since it is simple markup owned here, not
- * inside `RuleEditor.tsx`). The `import` view (`ImportPanel.tsx`) keeps
- * rendering against the original, untouched `styles` module until B6.6
- * recomposes it later in the same session - restyling that shared module
- * before then would have silently redesigned a still-frozen surface as a
- * side effect. Production mapping/matching/priority/tag-colour semantics
- * are completely unchanged throughout - this is presentation only, same
- * discipline as B6.1/B6.2/B6.3.
+ * inside `RuleEditor.tsx`). B6.6 (Session 9) recomposed `ImportPanel.tsx`
+ * (its own new {@link ImportPanel.module.css}). All four views now render
+ * full v2 tokens, so the old shared `ClassificationRulesWorkspace.module.css`
+ * has no remaining importer anywhere and was deleted rather than left as
+ * dead code. Production mapping/matching/priority/tag-colour semantics are
+ * completely unchanged throughout every one of these recomposes - this is
+ * presentation only.
  */
 export function ClassificationRulesWorkspace({
   sourceEvent,
@@ -303,13 +302,6 @@ export function ClassificationRulesWorkspace({
         (r) => r.name.toLowerCase().includes(trimmedFilter) || r.tags.some((t) => t.toLowerCase().includes(trimmedFilter)),
       )
     : rules;
-
-  // B6.3/B6.4/B6.5 - full v2 shell (header/title/hint) whenever the currently-shown view is itself full v2:
-  // the list, the loading/error state shown before any rules have loaded, the rule editor (B6.4/B6.5,
-  // RuleEditor.module.css), and the extraction-rule chooser (styled with that same module below, since it is
-  // a simple view owned by this file, not RuleEditor.tsx or ImportPanel.tsx). `import` stays v1 until B6.6
-  // recomposes ImportPanel.tsx later this session - never mix a v2 shell around still-v1 content.
-  const isRecomposedShell = view.kind === 'list' || view.kind === 'editor' || view.kind === 'chooseRule' || !rulesState;
 
   let body: React.ReactNode;
   if (!rulesState) {
@@ -627,20 +619,20 @@ export function ClassificationRulesWorkspace({
   }
 
   return (
-    <div className={isRecomposedShell ? listStyles.wrapper : styles.wrapper} data-testid="classification-rules-workspace">
-      <div className={isRecomposedShell ? listStyles.header : styles.header}>
+    <div className={listStyles.wrapper} data-testid="classification-rules-workspace">
+      <div className={listStyles.header}>
         <Button variant="ghost" onClick={onClose}>
           ← Back to search results
         </Button>
-        <h1 id={headingId} ref={headingRef} tabIndex={-1} className={isRecomposedShell ? listStyles.title : styles.title}>
+        <h1 id={headingId} ref={headingRef} tabIndex={-1} className={listStyles.title}>
           Classification rules
         </h1>
       </div>
-      <p className={isRecomposedShell ? listStyles.hint : styles.hint}>
+      <p className={listStyles.hint}>
         Rules tag matching events and extract named values from them. They are applied by the server to the events each
         search retrieves.
       </p>
-      {isRecomposedShell ? <div className={listStyles.body}>{body}</div> : body}
+      <div className={listStyles.body}>{body}</div>
     </div>
   );
 }

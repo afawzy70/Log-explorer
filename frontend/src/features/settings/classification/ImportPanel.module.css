@@ -1,0 +1,164 @@
+/*
+ * B6.6 (Session 9) - full v2 tokens for the Import/Export preview and apply flow.
+ *
+ * Deliberately a SEPARATE CSS module from ClassificationRulesWorkspace.module.css, same reasoning as B6.3's
+ * ClassificationRulesList.module.css and B6.4/B6.5's RuleEditor.module.css: every class name below matches what
+ * ImportPanel.tsx already imports as `styles.X` - only the import path changes in the component, not its ~17
+ * className references.
+ */
+.section {
+  color: var(--v2-ink-1);
+  border-top: var(--v2-bw) solid var(--v2-line);
+  padding-top: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.subheading {
+  font: var(--v2-text-section);
+  color: var(--v2-ink-1);
+  margin: 0 0 var(--space-3);
+}
+
+.hint {
+  display: block;
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+  margin: var(--space-1) 0;
+}
+
+.mono {
+  font: var(--v2-text-data);
+  overflow-wrap: anywhere;
+}
+
+.error {
+  color: var(--v2-danger);
+  font: var(--v2-text-body);
+  margin: var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--v2-danger-tint);
+  border-radius: var(--v2-r-md);
+}
+
+.error p {
+  margin: 0 0 var(--space-1);
+}
+
+.error p:last-child {
+  margin-bottom: 0;
+}
+
+.errorList {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  color: var(--v2-danger);
+  font: var(--v2-text-meta);
+}
+
+.blockerList {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  color: var(--v2-ink-2);
+  font: var(--v2-text-meta);
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font: var(--v2-text-body);
+  color: var(--v2-ink-1);
+  margin-bottom: var(--space-1);
+}
+
+.fieldset {
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  padding: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-2);
+  min-width: 0;
+  background: var(--v2-surface-work);
+}
+
+.legend {
+  font: var(--v2-text-body-strong);
+  color: var(--v2-ink-1);
+  padding: 0 var(--space-1);
+}
+
+.actions {
+  margin-top: var(--space-3);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  border-top: var(--v2-bw) solid var(--v2-line);
+  padding-top: var(--space-3);
+}
+
+/* ------------------------------------------------------------------ stat pills */
+.inlineStats {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+  padding: 0;
+}
+
+.inlineStats li {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-2);
+  border-radius: var(--v2-r-full);
+  background: var(--v2-surface-sunken);
+  color: var(--v2-ink-2);
+  font: var(--v2-text-meta);
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ pack items */
+.itemList {
+  list-style: none;
+  margin: var(--space-2) 0;
+  padding: 0;
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--v2-surface-work);
+}
+
+.item {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
+  font: var(--v2-text-body);
+  color: var(--v2-ink-1);
+}
+
+.item:last-child {
+  border-bottom: none;
+}
+
+.ruleName {
+  font: var(--v2-text-body-strong);
+  color: var(--v2-ink-1);
+}
+
+.statusText {
+  font-weight: 600;
+  color: var(--v2-ink-2);
+}
+
+.chooserTags {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+@media (max-width: 767px) {
+  .actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+}

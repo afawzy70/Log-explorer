@@ -16,7 +16,7 @@ import type {
   RuleValidationError,
 } from '../../../shared/api/types';
 import { REVISION_CONFLICT_MESSAGE, errorMessage } from './ruleDraft';
-import styles from './ClassificationRulesWorkspace.module.css';
+import styles from './ImportPanel.module.css';
 
 export interface ImportPanelProps {
   fileName: string;
@@ -36,7 +36,15 @@ const STATUS_TEXT: Record<ImportItemStatus, string> = {
   INVALID: 'Invalid',
 };
 
-/** Import preview + apply. Preview has already run (it writes nothing); Apply is the only write. */
+/**
+ * Import preview + apply. Preview has already run (it writes nothing); Apply is the only write.
+ *
+ * <p>B6.6 (Session 9) recomposed this to full v2 tokens via a new, separate {@link ImportPanel.module.css} -
+ * every class name matches what this file already imported from the old shared
+ * `ClassificationRulesWorkspace.module.css`, so only the import path changed, not the JSX itself. A1a's tag-
+ * colour-conflict block (below) keeps blocking Apply truthfully with zero resolution UI - A1b (a backend mass-
+ * recolour action) stays explicitly not implemented, and none of that logic was touched here.
+ */
 export function ImportPanel({ fileName, packText, initialPreview, onReloadRules, onApplied, onCancel }: ImportPanelProps) {
   const id = useId();
   const [preview, setPreview] = useState(initialPreview);
@@ -272,7 +280,9 @@ export function ImportPanel({ fileName, packText, initialPreview, onReloadRules,
       <div className={styles.actions}>
         <Button onClick={onCancel}>Cancel</Button>
         <Button
-          variant="primary"
+          // Danger styling only for the destructive mode - the label itself stays exactly "Apply import" /
+          // "Applying…" in every mode, asserted verbatim by the existing test suite.
+          variant={mode === 'REPLACE_ALL' ? 'danger' : 'primary'}
           onClick={apply}
           disabled={!canApply}
           aria-describedby={blockers.length > 0 ? `${id}-blockers` : undefined}
