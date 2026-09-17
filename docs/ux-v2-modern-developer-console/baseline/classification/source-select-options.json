@@ -1,0 +1,29 @@
+{
+  "capturedFrom": "main 51f06e5, dev profile",
+  "options": [
+    {
+      "value": "local-docker",
+      "label": "Local Docker Compose",
+      "disabled": false,
+      "selected": true
+    },
+    {
+      "value": "openshift",
+      "label": "OpenShift",
+      "disabled": false,
+      "selected": false
+    },
+    {
+      "value": "openshift-loki",
+      "label": "OpenShift Loki — Not available",
+      "disabled": true,
+      "selected": false
+    },
+    {
+      "value": "fixture",
+      "label": "Fixture (dev/test only)",
+      "disabled": false,
+      "selected": false
+    }
+  ]
+}
