@@ -31,7 +31,10 @@ async function selectFixtureSource(page: import('@playwright/test').Page) {
  * popover anymore.
  */
 async function openMappingPanel(page: import('@playwright/test').Page) {
-  await page.getByRole('button', { name: /log schema & field mapping/i }).click();
+  // B2 (Session 4) - the Shell button's own text shortened from "Log schema & field mapping" to "Field
+  // mapping" as part of the Settings-entry-point consolidation - missed in that session's own blast-radius
+  // scoping (this file wasn't in scope for that recompose, only surfaced by the full CI E2E suite).
+  await page.getByRole('button', { name: /^field mapping$/i }).click();
   const panel = page.getByTestId('field-mapping-workspace');
   await expect(panel).toBeVisible();
   return panel;

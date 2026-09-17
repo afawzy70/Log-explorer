@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { openInspectorTab } from './inspector-helpers';
+import { openSettingsSection } from './settings-helpers';
 
 /*
  * PRE_CLOSURE_FUNCTIONAL_RECOVERY_2 - real, rendered-app verification for
@@ -131,7 +132,11 @@ test.describe('PCFR2 Part B - user-configurable OpenShift/Loki proxy', () => {
 
   async function openProxySettings(page: Page) {
     await page.goto('/');
-    await page.getByRole('button', { name: /^openshift$/i }).click();
+    // B2 (Session 4) - "OpenShift" was its own top-level Shell button before that session's Settings-
+    // consolidation; the panel itself is unchanged (same trigger text, same popover, same behaviour), only
+    // reached one step further in now, via the consolidated Settings entry point - missed in that session's
+    // own blast-radius scoping (only surfaced by the full CI E2E suite, not this project's own targeted specs).
+    await openSettingsSection(page, /^openshift$/i);
     const panel = page.getByRole('dialog', { name: /openshift connection/i });
     await expect(panel).toBeVisible();
     return panel;
