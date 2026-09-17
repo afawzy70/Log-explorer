@@ -125,6 +125,13 @@ export interface ResultsTableProps {
    */
   timeSortDirection?: SearchDirection;
   onTimeSortChange?: (next: SearchDirection) => void;
+  /**
+   * COMPONENT_INVENTORY.md's ResultsTable.tsx RESTYLE entry ("identity columns narrow when the Inspector
+   * opens", A8) - `true` whenever the Inspector is docked beside this table (`state.selectedEvent != null`
+   * in `ResultsPanel.tsx`, the same condition `EventInspector` itself renders on). Only affects columns
+   * that declare a `narrowWidth` (only Tags does) - every other column's width is unchanged.
+   */
+  inspectorOpen?: boolean;
 }
 
 /**
@@ -237,6 +244,7 @@ export function ResultsTable({
   sortable = true,
   timeSortDirection,
   onTimeSortChange,
+  inspectorOpen = false,
 }: ResultsTableProps) {
   const hiddenSet = new Set(hiddenColumnIds);
   const visibleColumns = columnOrder
@@ -343,9 +351,10 @@ export function ResultsTable({
     <div className={styles.scrollWrapper} data-testid="results-scroll-wrapper">
       <table className={tableClassName}>
         <colgroup>
-          {visibleColumns.map((col) => (
-            <col key={col.id} style={col.width ? { width: col.width } : undefined} />
-          ))}
+          {visibleColumns.map((col) => {
+            const effectiveWidth = inspectorOpen && col.narrowWidth ? col.narrowWidth : col.width;
+            return <col key={col.id} style={effectiveWidth ? { width: effectiveWidth } : undefined} />;
+          })}
           <col style={{ width: ACTIONS_COLUMN_WIDTH }} />
         </colgroup>
         <thead>

@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { ResultsTable } from './ResultsTable';
+import { DEFAULT_COLUMN_ORDER } from './columnRegistry';
 import { eventIdentity } from '../../app/useSearchState';
 import type { LogEvent } from '../../shared/api/types';
 
@@ -84,6 +85,43 @@ describe('ResultsTable', () => {
     expect(container.querySelectorAll('table')).toHaveLength(1);
     expect(container.querySelectorAll('colgroup')).toHaveLength(1);
     expect(container.querySelectorAll('col')).toHaveLength(8);
+  });
+
+  /*
+   * A8 / COMPONENT_INVENTORY.md's ResultsTable.tsx RESTYLE entry ("identity columns narrow when the
+   * Inspector opens"). Only Tags declares a `narrowWidth` - every other column's `<col>` width is
+   * unaffected by `inspectorOpen`.
+   */
+  describe('inspectorOpen - Tags column narrows when the Inspector is docked (A8)', () => {
+    function tagsColWidth(container: HTMLElement): string {
+      const cols = Array.from(container.querySelectorAll('colgroup col'));
+      const tagsIndex = DEFAULT_COLUMN_ORDER.indexOf('tags');
+      return (cols[tagsIndex] as HTMLElement).style.width;
+    }
+
+    it('Tags keeps its normal width when the Inspector is closed (the default)', () => {
+      const { container } = render(<ResultsTable events={[event()]} />);
+      expect(tagsColWidth(container)).toBe('150px');
+    });
+
+    it('Tags narrows to 132px when inspectorOpen is true', () => {
+      const { container } = render(<ResultsTable events={[event()]} inspectorOpen />);
+      expect(tagsColWidth(container)).toBe('132px');
+    });
+
+    it('every other column keeps its own width regardless of inspectorOpen', () => {
+      const { container: closed } = render(<ResultsTable events={[event()]} />);
+      const { container: open } = render(<ResultsTable events={[event()]} inspectorOpen />);
+      const widths = (c: HTMLElement) => Array.from(c.querySelectorAll('colgroup col')).map((c) => (c as HTMLElement).style.width);
+      const closedWidths = widths(closed);
+      const openWidths = widths(open);
+      const tagsIndex = DEFAULT_COLUMN_ORDER.indexOf('tags');
+      closedWidths.forEach((w, i) => {
+        if (i !== tagsIndex) {
+          expect(openWidths[i]).toBe(w);
+        }
+      });
+    });
   });
 
   it('renders one <tr> per event, each with exactly eight <td> cells (no second action row)', () => {

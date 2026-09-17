@@ -83,6 +83,13 @@ export interface ColumnDefinition {
   defaultVisible: boolean;
   /** Fixed `<col>` width; `undefined` leaves the column flexible (only "What happened" does). */
   width?: string;
+  /**
+   * COMPONENT_INVENTORY.md's ResultsTable.tsx RESTYLE entry ("identity columns narrow when the Inspector
+   * opens") - only Tags declares this. Used instead of `width` for exactly this one column while the
+   * Inspector is docked beside the table (`ResultsTable`'s own `inspectorOpen` prop), freeing a little
+   * width back to "What happened" (the one flexible column) when every pixel matters most.
+   */
+  narrowWidth?: string;
   /** Applied to the `<td>` itself - see this module's own doc comment for why. */
   cellClassName?: string;
   render: (event: LogEvent, ctx: ColumnRenderContext) => ReactNode;
@@ -266,6 +273,7 @@ export const COLUMN_REGISTRY: ColumnDefinition[] = [
     label: 'Tags',
     defaultVisible: true,
     width: '150px',
+    narrowWidth: '132px',
     cellClassName: styles.tagsCell,
     sortAccessor: (event) => event.tags?.[0] ?? null,
     render: (event) => <TagsCell event={event} />,

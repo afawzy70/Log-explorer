@@ -263,6 +263,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
         sortable={!state.breadcrumbLabel}
         timeSortDirection={state.breadcrumbLabel ? undefined : state.sortDirection}
         onTimeSortChange={state.breadcrumbLabel ? undefined : state.setSortDirection}
+        inspectorOpen={state.selectedEvent != null}
       />
       {nextCursor ? (
         <div className={styles.loadMoreRow}>
