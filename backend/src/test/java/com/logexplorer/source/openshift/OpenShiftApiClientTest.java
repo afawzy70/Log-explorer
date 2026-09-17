@@ -355,4 +355,57 @@ class OpenShiftApiClientTest {
       assertThat(e.getMessage()).as("scenario %s message", scenario).doesNotContain(TOKEN.value());
     }
   }
+
+  // ---------------------------- OPENSHIFT_REAL_ENVIRONMENT_BUFFER_BUG_RECOVERY_2
+
+  /**
+   * Step 5/7 - the specific gap this recovery closes: a connection-level
+   * failure that interrupts an IN-PROGRESS response read (Reactor Netty's
+   * own "Error occurred while reading the incoming data" class of
+   * failure, including the buffer-lifecycle-violation family this
+   * investigation is about) arrives as a {@link WebClientRequestException}
+   * wrapping the real cause one level deeper than the top-level {@code
+   * CodecException}/{@code IllegalStateException} check handles. Tested
+   * directly against {@link OpenShiftApiClient#classify}, not only through
+   * a real (hard to deterministically engineer) network failure - see
+   * that method's own javadoc for why it is package-private.
+   */
+  @Test
+  void aConnectionInterruptedWhileReadingAResponseIsClassifiedAsAProcessingFailure_notUnexpectedStatus() {
+    java.lang.IllegalStateException bufferLifecycleViolation =
+        new java.lang.IllegalStateException("The client response body has been released already due to cancellation.");
+    org.springframework.web.reactive.function.client.WebClientRequestException wrapped =
+        new org.springframework.web.reactive.function.client.WebClientRequestException(
+            bufferLifecycleViolation, org.springframework.http.HttpMethod.GET,
+            java.net.URI.create("https://api.example.com:6443/apis/project.openshift.io/v1/projects"),
+            new org.springframework.http.HttpHeaders());
+
+    Throwable classified = OpenShiftApiClient.classify(wrapped, false);
+
+    assertThat(classified).isInstanceOf(OpenShiftApiException.class);
+    OpenShiftApiException e = (OpenShiftApiException) classified;
+    assertThat(e.kind()).isEqualTo(Kind.MALFORMED_RESPONSE);
+    assertThat(e.getMessage())
+        .contains("interrupted")
+        .doesNotContain("unexpected response")
+        // Never falsely claims a status this path does not actually know.
+        .doesNotContain("HTTP 200");
+  }
+
+  /** The same wrapped-IllegalReferenceCountException shape, since that is the exact reported production exception. */
+  @Test
+  void aWrappedIllegalReferenceCountExceptionIsClassifiedAsAProcessingFailure() {
+    io.netty.util.IllegalReferenceCountException refCntViolation =
+        new io.netty.util.IllegalReferenceCountException(0, -1);
+    org.springframework.web.reactive.function.client.WebClientRequestException wrapped =
+        new org.springframework.web.reactive.function.client.WebClientRequestException(
+            refCntViolation, org.springframework.http.HttpMethod.GET,
+            java.net.URI.create("https://api.example.com:6443/apis/project.openshift.io/v1/projects"),
+            new org.springframework.http.HttpHeaders());
+
+    Throwable classified = OpenShiftApiClient.classify(wrapped, false);
+
+    assertThat(classified).isInstanceOf(OpenShiftApiException.class);
+    assertThat(((OpenShiftApiException) classified).kind()).isEqualTo(Kind.MALFORMED_RESPONSE);
+  }
 }
