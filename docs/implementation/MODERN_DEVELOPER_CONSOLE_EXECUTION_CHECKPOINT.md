@@ -275,22 +275,86 @@ structured-field requirement), a real screenshot there would still be worth taki
 
 ---
 
+## Session 3 — B3 substantially complete, row-state decision resolved, A8 done
+
+Continuation mission (`MODERN_DEVELOPER_CONSOLE_IMPLEMENTATION_CONTINUE_SESSION_3`). Verified HEAD (`2254cfe`)
+matched local/remote/PR#61 exactly before starting; CI was green (Backend/Frontend/Windows/macOS PASS, E2E still
+running, not blocking per the mission's own instruction) at session start.
+
+**Row-state decision (explicitly requested this session):** the SELECTED × ROOT combined-state model from
+Session 2's own deferral was resolved and implemented — see `1e9bc9e` in the commit table above for the full
+mechanism (selection owns background+hairline, root owns outline+an independent ring marker, neither channel
+competes). Found and fixed one genuine regression during E2E verification in the same commit: an initial version
+gave `.selectedRow:hover` its own darker background, breaking the existing "hover never erases the selected state"
+invariant (byte-identical background required) - reverted to match the pre-existing exact-color behaviour.
+
+**B3 completed this session** (commits `1e9bc9e` through `85fdc8f`, each individually verified — full suite,
+build, targeted + geometry E2E, real-browser light/dark, real-browser evidence for every state):
+
+| Item | Status | Commit |
+|---|---|---|
+| Combined SELECTED × ROOT row states | DONE | `1e9bc9e` |
+| Sticky header restyle (v2 tokens, sentence-case) | DONE | `7a33f51` |
+| State panels (error/empty, icon+card) | DONE | `1d3c536` |
+| First-search skeleton | DONE | `1d3c536` |
+| Re-search stale-row treatment | DONE | `1d3c536` |
+| Invalid-query state | DONE (no separate code path exists — subsumed by the generic error panel, confirmed by reading `runSearch`'s error handling) | `d23d4d9` |
+| Load-more failure state | DONE | `d23d4d9` |
+| Message width protection | **Already existed** (`ResultsTable.module.css`'s `min-width: 1266px` floor, UX-R4 §13/§25) — confirmed, not rebuilt |
+| Severity visual language | DONE (Session 2, `286e7da`) |
+| Compact row visual grammar | DONE (Session 1, `739d6f3`) |
+| A8 — Tags column narrows when Inspector docks | DONE | `85fdc8f` |
+| Sticky Time cell/column | **Deliberately deferred** — see below |
+| Full dark-theme parity for the whole table | **Partial** — see below |
+
+**Sticky Time cell/column — deliberately deferred, not attempted.** The design's own prototype hardcodes
+stickiness to `.c-time` specifically (`position: sticky; left: 0`), safe in a static demo with no column
+reordering. This production app's columns ARE genuinely user-reorderable (`tablePreferences.ts`'s
+`moveColumn`/`moveColumnToIndex`, confirmed by reading it and by an existing test asserting Level can become the
+first cell) — copying the design's selector verbatim would create a sticky column stuck in the middle of the
+table whenever a user moves Time out of first position, not at the left edge. A correct implementation needs
+`:first-child` selectors (tracking whichever column the user has moved to position 1) plus an explicit opaque
+background per row-state on that cell (severity/selected/root/hover/error all need to paint through correctly
+while the cell is lifted out of normal flow for sticky positioning) plus z-index reconciliation with the sticky
+header's own top-left corner. Real, verifiable complexity with genuine cross-browser risk, not squeezed into this
+session - a real follow-up slice.
+
+**Dark-theme parity — partial, matches the existing, already-documented foundation-only state.** Every piece this
+session added (severity marks, root marker/outline, selected background+hairline, sticky header, state panels,
+skeleton, load-more) uses `--v2-*` tokens, which DO correctly resolve per-theme (re-verified this session in the
+SELECTED_ROOT real-browser check: dark-theme trigger-line/accent colours resolved correctly). The REST of the
+table (row backgrounds for plain/hover, most cell text, borders) is still v1-token-styled and does not yet follow
+`data-theme='dark'` at all - this is the same foundation-only condition Session 1 already documented, not a new
+gap, and not something this session's additions make any worse.
+
+### Not started this session (deferred to B2/B4, unchanged from Session 2's assessment)
+
+B2 Search Shell (genuine RECOMPOSE, its own planning session - see the unchanged assessment below), B4 remaining
+composition beyond the width/tabs fix already done in Session 1, B5 Investigation, B6 Settings/Mapping (beyond
+classification), B7.
+
+---
+
 ## Resuming — exact next task
 
 1. **Re-verify the branch is where this file says it is**: `git log --oneline -10` on `ux/v2-modern-developer-
-   console` — check what's at HEAD against this file's own record. As of this checkpoint, HEAD is `286e7da` (B3
-   severity mark). CI has not yet been re-checked since `0ef2827` — run `gh pr checks 61` (or check whatever
-   commit is actually at HEAD) before assuming green.
-2. **Done through Session 2**: everything in the commit table above through `286e7da` (A5, A6, B3 severity mark).
-   What's left in B3: the row-state hairline redesign (see "Assessed and deliberately deferred" above — needs a
-   deliberate decision on the selected+root simultaneous case, not a blind copy of the prototype), sticky header
-   and the loading/re-search/empty/error panels are still v1-token-styled (verified structurally already in
-   place: `position: sticky` exists, severity row marking exists) — restyling those to v2 tokens is the next
-   contained, lower-risk B3 piece. **Also flagged for a separate lane, not part of this redesign**: a pre-existing
-   WCAG AA `color-contrast` defect affecting 593 elements (`--color-text-tertiary` on tinted row backgrounds) -
-   see its own entry above for the measured evidence; fixing it properly needs an audit of every state background
-   that token appears against, real scope of its own.
-3. **Then B2 Search Shell.** Checked `COMPONENT_INVENTORY.md` (design branch) precisely for what this actually
+   console` — check what's at HEAD against this file's own record. As of this checkpoint, HEAD is `85fdc8f` (A8
+   Tags column narrows). CI has not yet been re-checked on this exact commit — run `gh pr checks 61` before
+   assuming green.
+2. **B3 is substantially complete** — see the Session 3 table above. The two remaining B3 items (sticky Time
+   column, full dark-theme parity) are deliberately deferred with documented reasons, not gaps to silently close.
+3. **Next: B4 Inspector composition completion.** Session 1 already did the width (500px) and five-tabs-on-one-
+   row fit (`0ef2827`), and confirmed the action-hierarchy requirement ("Add extraction from this event" vs
+   "Create another tag rule") already shipped in PR #60. Per this mission's own B4 list, still to verify/complete:
+   overlay behaviour below the approved breakpoint (check whether the Inspector already overlays vs docks
+   responsively, or whether this needs building), header hierarchy, selected-event position indicator ("Event N
+   of M loaded" - already visible in this session's own screenshots, confirm it's real not incidental), previous/
+   next controls (already visible, confirm truthful), classification blocks, extraction value states (redacted/
+   missing/invalid/truncated distinctions), colour parity with Search (should already be inherited via the shared
+   `TagChip` restyle from Session 1), responsive overlay, dark-theme parity. Read `EventInspector.tsx` and its
+   sibling files fresh at the start of that work rather than assuming from this summary - this checkpoint has not
+   yet done that detailed a pass over B4's remaining scope the way it has for B3.
+4. **Then B2 Search Shell.** Checked `COMPONENT_INVENTORY.md` (design branch) precisely for what this actually
    requires, rather than assuming: `app/Shell.tsx` is marked **RECOMPOSE**, not restyle —
    (a) the three separate settings popover triggers (**Privacy & masking**, **Docker settings**, **OpenShift**)
    consolidate into ONE **Settings** entry point with sections, (b) Scope trail moves from the Shell into the
@@ -301,6 +365,6 @@ structured-field requirement), a real screenshot there would still be worth taki
    (confirms the earlier assessment that a `Shell.module.css`/`Toolbar.module.css` colour-only pass would be
    low-value) - scope it as its own deliberate slice with real planning time, not squeezed into a session's
    remaining hours.
-4. Keep running the full typecheck/test/build/targeted-E2E discipline after every bounded change, and the full
+5. Keep running the full typecheck/test/build/targeted-E2E discipline after every bounded change, and the full
    E2E suite (frontend) / full `mvn test` (if backend is touched again) at the next wave boundary — not after
    every small CSS edit (this mission's own testing policy).
