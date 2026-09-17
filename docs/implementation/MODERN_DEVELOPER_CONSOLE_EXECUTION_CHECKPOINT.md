@@ -1082,46 +1082,166 @@ new delete modal confirmed rendering correctly in dark theme.
 Committed as `85bce8c`, pushed to `origin/ux/v2-modern-developer-console`. CI triggered on push — **re-check
 `gh pr checks 61` before starting further work, do not assume green.**
 
-### B6.4 through B6.6 — still NOT STARTED (out of this session's explicit scope)
+## Session 9 — B6.4/B6.5/B6.6 COMPLETE — B6 EXIT GATE REACHED
 
-Per this session's own explicit mission scope ("This session is B6.3 ONLY... Do NOT opportunistically start
-B6.4"), `RuleEditor.tsx` (~1380 lines) and `ImportPanel.tsx` (~285 lines) remain completely untouched — confirmed
-by an empty `git diff` on both files. `RuleEditor.tsx` still needs a fresh, full read next session before B6.4
-work starts — do not guess its structure from this or any prior session's memory alone; it is large and the
-design's own corresponding prototype function(s) for the rule wizard have not yet been read by any session.
+Mission (`MODERN_DEVELOPER_CONSOLE_IMPLEMENTATION_SESSION_9_COMPLETE_B6`), authorized to execute B6.4 → B6.5 →
+B6.6 → full B6 integrated regression sequentially in one session, without pausing for approval between
+sub-features as long as each one's own targeted verification passed. Verified branch/HEAD/PR#61 all matched the
+expected resume point (`c120181`) before starting, working tree clean of code changes.
 
-## Resuming — exact next task (Session 9)
+### Research — two parallel read-only forks, both respected their boundary this time
 
-1. **Re-verify the branch**: `git log --oneline -5` on `ux/v2-modern-developer-console` — HEAD should be
-   `85bce8c` (or this checkpoint's own commit on top of it). Run `gh pr checks 61` to confirm CI is green on the
-   latest push before starting new work.
-2. **B6.1 Field Mapping, B6.2 Settings workspace, and B6.3 Classification Rules list are all COMPLETE** — see
-   their own writeups above.
-3. **Next real scope is B6.4 Rule Builder** (`RuleEditor.tsx`), then B6.5 Assisted Extraction (largely the same
-   file's own extraction step — confirm the exact boundary between B6.4 and B6.5 against `COMPONENT_INVENTORY.md`
-   before assuming they're two separate files), then B6.6 Import/Export (`ImportPanel.tsx`) — each needs its own
-   fresh fork-based research pass (reading the actual current file in full, plus the design's own corresponding
-   prototype function — check `classification.js`/`classification.css` on the design branch first, since B6.3
-   found the rule-management markup lives there, separately from the main `app.js`/`app.css` B6.1/B6.2 used; the
-   rule-builder/wizard markup may live in the same separate file pair, not the main one). Re-confirm every
-   already-completed A-item (A1a/A2/A3/A4/A5/A6/A8/A9/A11/A12) and D40 are preserved exactly as each of these
-   surfaces is touched. A1b stays explicitly NOT implemented.
-4. **`ClassificationRulesList.module.css` vs `ClassificationRulesWorkspace.module.css`**: when B6.4 touches
-   `RuleEditor.tsx`, it will still import the OLD, v1-styled `ClassificationRulesWorkspace.module.css` — do not
-   assume it should switch to the new list module (different content entirely) or that the old module is now
-   dead code (it is not — `ImportPanel.tsx` and the `chooseRule` view still use it too). If B6.4 fully recomposes
-   `RuleEditor.tsx`, it will likely need its OWN new CSS module, by the same reasoning B6.3 applied.
+Given Session 7's own incident (a fork exceeded a "research only" mandate) and Session 8's clean research (the
+boundary held), this session's two forks — one for B6.4/B6.5 (`RuleEditor.tsx`), one for B6.6 (`ImportPanel.tsx`)
+— were both launched with an explicit, emphatic read-only boundary, and both were verified via `git status`
+immediately on completion, before reading their reports: **zero files touched by either fork.** Both reports were
+still independently re-verified against the actual source (the coordinator read both `RuleEditor.tsx` and
+`ImportPanel.tsx` in full itself) before implementing, per the same standing discipline regardless of whether the
+boundary holds.
+
+**Key research finding**: the design's own rule-builder AND import/export markup both live in the same separate
+`docs/ux-v2-modern-developer-console/prototype/scripts/classification.js`/`styles/classification.css` file pair
+B6.3 already discovered for the rules list — never in the main `app.js`/`app.css`. Both `RuleEditor.tsx` and
+`ImportPanel.tsx` were confirmed to still import the same shared, fully-v1
+`ClassificationRulesWorkspace.module.css` B6.3 deliberately left untouched.
+
+### A significant, session-spanning tooling gap found and fixed: bare `tsc --noEmit` is a silent no-op here
+
+Mid-session, a real typecheck error (`ReferenceError: styles is not defined` at runtime, from a premature import
+removal) was **missed** by the exact `npx tsc --noEmit` command this entire multi-session mission had been using
+to report `TYPECHECK=PASS`. Root cause: this repo's root `tsconfig.json` is solution-style (`"files": []` +
+`"references"` only) — a bare `tsc --noEmit` resolves against it, matches zero files, and exits clean regardless
+of real errors anywhere in the project. The project's own `npm run typecheck` script (`tsc -b --noEmit`, build
+mode, follows the references) is the only command that actually checks anything. Verified the gap is real by
+deliberately reintroducing the missing import and confirming the bare command still reported nothing while
+`npm run typecheck` correctly caught it at every call site. **Every `TYPECHECK=PASS` claim from this point
+forward in this session used the correct command; earlier sessions' own typecheck claims in this same mission
+cannot be retroactively verified and should be treated as unconfirmed if ever in doubt** - flagged via feedback
+separately, and recorded here so a future session doesn't repeat it.
+
+### B6.4/B6.5 Rule Builder + Assisted Extraction — COMPLETE (`df6e447`)
+
+Recomposed `RuleEditor.tsx` (the multi-step wizard shared by new/edit/duplicate/create-from-event, including its
+own Assisted Extraction step) to full v2 tokens via a new `RuleEditor.module.css`. **Implementation strategy**:
+kept every one of the 39 class names the 1380-line file already references from the old shared module identical
+in the new module - the component itself needed only one import-line change, not a rename across ~150
+`className` references, which is what made a recompose this file's size tractable at bounded risk (a mechanical
+rename by hand across a file this large is exactly the kind of change most likely to introduce a typo only a
+real render catches).
+
+One purely additive enhancement: each step-rail button gained a decorative checkmark/number badge
+(`aria-hidden="true"`, a sibling of the existing text node, never replacing it) - confirmed necessary to do this
+way by grepping the test suite first, since several tests assert the exact accessible name `"N. Label"` (e.g.
+`getByRole('button', { name: '5. Save' })`) across 3 different test files.
+
+**Deliberately not built** (documented, not silently dropped): the design's own persistent "draft summary"
+sidebar (no current equivalent, the Save step's own summary `<dl>` covers most of the value at a different point
+in the flow); the design's own separate, narrower 3-step wizard shell for "Add extraction from this event"
+(production continues reusing the full wizard component, per an explicit historical instruction from an earlier
+mission brief: "reuse existing editor/domain implementation, do not fork save behavior" - the two actions are
+already behaviorally distinct via different `mode`/`initialStep`, only the rail's visual narrowness differs from
+the mock); the design's inline colour-conflict "Use {Colour}" button (redundant with the existing swatch-radio
+picker).
+
+Verified: `npm run typecheck` clean; full unit suite 1172/1172 PASS (zero test files touched); the real end-to-end
+wizard flow in both `classification-rules.spec.ts` tests PASS unmodified; production build clean; real-browser
+responsive check at all six required widths in both themes, zero horizontal overflow, coverage bar and error
+banners confirmed legible in dark theme.
+
+### B6.6 Import/Export — COMPLETE (`2cf02a3`)
+
+Recomposed `ImportPanel.tsx` to full v2 tokens via a new `ImportPanel.module.css`, same "keep every class name
+identical" strategy (17 classes). Two purely visual enhancements: the plain-text stat list is now styled as
+pills via CSS alone (exact same text content, `screen.getByText('New: 1')`-style assertions untouched); the
+Apply button uses B6.2's `danger` Button variant when mode is `REPLACE_ALL` (label stays exactly "Apply
+import"/"Applying…" in every mode - confirmed a test asserts this exact label with REPLACE_ALL already selected,
+and `variant` never affects a Button's accessible name).
+
+A1a/A1b reconfirmed untouched: the tag-colour-conflict block still blocks Apply truthfully with zero resolution
+UI anywhere (no "Use {Colour}" button, no radio group) - the `canApply`/`blockers` logic itself has an empty
+diff, only JSX class names and one `variant` line changed.
+
+With this commit, the old shared `ClassificationRulesWorkspace.module.css` had zero remaining importers anywhere
+in the codebase (confirmed via a repo-wide grep) and was **deleted** rather than left as dead code.
+`ClassificationRulesWorkspace.tsx`'s own outer shell no longer needs a v1/v2 branch either, since every view
+(list/editor/chooseRule/import) now renders full v2 - the `isRecomposedShell` conditional from B6.4/B6.5 was
+removed, the shell always uses `ClassificationRulesList.module.css`'s wrapper/header/title/hint classes.
+
+Verified: same full battery as B6.4/B6.5, plus a real exported two-rule pack (not a hand-written fixture, to get
+an authentic preview) used for the responsive/theme check - stat pills, coloured tag chips, and the REPLACE_ALL
+danger-styled Apply button all confirmed rendering correctly in dark theme at all six widths.
+
+### Full B6 integrated regression — COMPLETE, zero regressions found
+
+- **Full unit suite**: 1172/1172 PASS (run fresh after each of the three sub-feature commits, not just once at
+  the end).
+- **Full E2E suite**: run via 5 isolated shards (this sandbox's own background-process memory ceiling, same
+  workaround as Sessions 7/8) - **323 passed, 1 pre-existing skip, 1 unrelated Live-tail Clear test
+  (`phase-ui-parity-acceleration.spec.ts`, a file never touched this session) reconfirmed passing on an isolated
+  single-worker re-run** - matching this branch's established clean baseline exactly, zero regressions
+  attributable to B6.4/B6.5/B6.6.
+- **Holistic cross-sub-feature integration check** (new this session, beyond what any single sub-feature's own
+  targeted verification covers): a real-browser Playwright journey through list → new-rule wizard (all 5 steps)
+  → Save → back on the list with the new rule visible → Export → Import preview → Cancel → Delete, run in both
+  light and dark theme at 1440px, asserting zero horizontal overflow at every single checkpoint along the way -
+  confirms the three sub-features' own CSS modules and the shared workspace shell compose correctly together,
+  not just individually. Two test-script mistakes were found and fixed during this check (an intentionally-empty
+  condition value correctly rejected by real server validation; a delete-confirmation notice paragraph
+  legitimately containing the deleted rule's own name) - both were verified to be script imprecision, not product
+  defects, before being fixed.
+- **D40/A1a/A1b reconfirmed** end to end: a live `TagColorPolicy` same-tag-different-colour refusal was
+  reproduced via a direct API call during B6.3's own visual testing and never touched since; every commit this
+  session confirmed an empty diff on the actual colour/conflict business logic, changing only presentation.
+
+**B6 EXIT GATE — ALL CRITERIA MET:**
+
+```
+FIELD_MAPPING=COMPLETE
+SETTINGS_WORKSPACE=COMPLETE
+CLASSIFICATION_RULES=COMPLETE
+RULE_BUILDER=COMPLETE
+ASSISTED_EXTRACTION=COMPLETE
+IMPORT_EXPORT=COMPLETE
+SEARCH_BEHAVIOR_PRESERVED=YES
+MAPPING_BEHAVIOR_PRESERVED=YES
+CLASSIFICATION_BEHAVIOR_PRESERVED=YES
+D40_PRESERVED=YES
+A1B_IMPLEMENTED=NO
+TYPECHECK=PASS
+UNIT_TESTS=PASS
+PRODUCTION_BUILD=PASS
+TARGETED_E2E=PASS
+RESPONSIVE_1920/1440/1366/1024/768/390=PASS
+LIGHT_THEME=PASS
+DARK_THEME=PASS
+```
+
+**B6 (Modern Developer Console: Field Mapping, Settings, Classification Rules, Rule Builder, Assisted
+Extraction, Import/Export) is COMPLETE as of `2cf02a3`**, pending only this checkpoint's own push and a final CI
+confirmation on the actual pushed HEAD.
+
+### Not started this session (deferred, per the mission's own exclusion list, unchanged)
+
+B7 Live redesign, a global dark-theme sweep, a global accessibility sweep, legacy-token cleanup, search
+performance work, the OpenShift PR64 HTTP-buffer backend fix, Loki enablement, the Live EXCLUDE fix, A1b.
+
+## Resuming — exact next task (Session 10)
+
+1. **Re-verify the branch**: `git log --oneline -5` on `ux/v2-modern-developer-console` — HEAD should be this
+   checkpoint's own commit on top of `2cf02a3`. Run `gh pr checks 61` to confirm CI is green on the latest push
+   before starting new work - **do not assume green without checking**, per this mission's own standing rule.
+2. **B6 is now COMPLETE** - all six sub-features (Field Mapping, Settings, Classification Rules, Rule Builder,
+   Assisted Extraction, Import/Export) done and verified, full integrated regression clean. This is a genuine
+   milestone, not a partial-progress checkpoint.
+3. **Next real scope**: whatever the owner names next - B7 Live redesign is the most likely candidate per the
+   mission's own original wave structure, but this checkpoint does not assume that without an explicit mission
+   brief naming it. Do not start B7 or any other out-of-scope item without an explicit mission.
+4. **Tooling lesson to carry forward**: always use `npm run typecheck` (`tsc -b --noEmit`) in this repo, never a
+   bare `npx tsc --noEmit` - the root `tsconfig.json` is solution-style and a bare invocation silently checks
+   zero files.
 5. **If a research fork is used again**: state the "research only, no edits" boundary explicitly, and
-   independently re-verify any output before trusting it regardless of whether the boundary held — Session 7's
-   incident and this session's clean research both confirm behavior varies, so verification stays mandatory
-   either way.
-6. **E2E full-suite runs in this sandbox**: use `npx playwright test --shard=N/5` (or similar) run sequentially,
-   one at a time, with **nothing else invoked concurrently** — confirmed again this session as the reliable
-   pattern (5/5 shards completed cleanly; no `run_in_background` attempts were needed or tried).
-7. Keep the same discipline: typecheck/full-unit/build/targeted-E2E after each bounded change; commit and push
-   after each sub-surface reaches a coherent, fully-verified state — do not batch multiple sub-features into one
-   commit.
-8. **B6 exit gate is not yet reached** — FIELD_MAPPING=COMPLETE, SETTINGS_WORKSPACE=COMPLETE,
-   CLASSIFICATION_RULES=COMPLETE, but RULE_BUILDER/ASSISTED_EXTRACTION/IMPORT_EXPORT all remain NOT_STARTED. Do
-   not report B6 as COMPLETE until all six sub-features and every exit-gate field in the mission brief are
-   genuinely true.
+   independently re-verify any output before trusting it regardless of whether the boundary held.
+6. **E2E full-suite runs in this sandbox**: use `npx playwright test --shard=N/5` run sequentially, one at a
+   time, with nothing else invoked concurrently - confirmed reliable across three consecutive sessions now.
+7. Keep the same discipline going forward: typecheck (the correct command)/full-unit/build/targeted-E2E after
+   each bounded change; commit and push after each coherent, fully-verified milestone.
