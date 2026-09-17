@@ -1,9 +1,23 @@
+/*
+ * B2 (Session 4) - `min-height` moved to the design's own 44px query-bar target
+ * (`prototype/styles/app.css`'s `.querybar`), a pure layout change that's theme-neutral either way.
+ *
+ * `background`/`border-bottom` deliberately stayed on v1 tokens, NOT switched to the design's v2
+ * `--surface-bar`/`--line`: tried the v2 pair first and measured a real regression in dark mode, not a
+ * cosmetic nitpick - it produced a dark bar with the still-v1 (unrestyled) child controls
+ * (SourceSelect/ComposeProjectSelect/etc., each its own COMPONENT_INVENTORY.md RESTYLE row, real scope of
+ * its own) staying stark white on top, a patchier and more confusing result than the current uniformly-
+ * light-in-both-themes bar. Same reasoning already applied to the Shell header's own workspace trail this
+ * session: v2 tokens on a container whose children aren't restyled yet make the mismatch WORSE, not just
+ * incomplete - only worth doing once the children are restyled together, as one coherent unit.
+ */
 .toolbar {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
+  min-height: var(--v2-h-querybar);
+  padding: 7px var(--space-4);
   background: var(--color-bg-raised);
   border-bottom: var(--border-width) solid var(--color-border);
 }
