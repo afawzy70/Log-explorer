@@ -75,14 +75,32 @@
   padding-bottom: 0;
 }
 
+/*
+ * B3 RESTYLE (COMPONENT_INVENTORY.md's ResultsTable.tsx entry - sticky header is already correct
+ * mechanically, `position: sticky; top: 0` predates this pass; this updates its colours/type to the B1
+ * design). A real, deliberate style delta, not a guess: the design's own `.grid thead th` (`prototype/
+ * styles/app.css`) drops the uppercase/letter-spacing treatment entirely in favour of plain sentence-case
+ * semibold text - confirmed against the design's own rendered reference screenshot ("Time", "Level",
+ * "Service"...), not assumed from the token names alone. `z-index: 2` is new (the design's own value) so a
+ * later addition of a positioned element that scrolls with the body can never render on top of the sticky
+ * header - `ActionsCell`'s and `TableSettingsControl`'s own popovers already sit at `z-index: 20`, well
+ * above this, so nothing regresses.
+ *
+ * Deliberately NOT copied: the design's explicit `height: var(--v2-h-row-header)` with `padding: 0 8px`
+ * (replacing padding-based sizing entirely). This table's header shares its box model with `.table th,
+ * .table td` above, including density-aware padding; forcing a fixed pixel height on top of that risked
+ * clipping text at typical zoom/font-scale without a real, verified need - a pixel value that must be true
+ * to preserve, not a target to hit for its own sake (CLAUDE.md §4 table geometry invariants). The header's
+ * own measured height is unchanged by this commit.
+ */
 .table thead th {
-  font-size: var(--font-size-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  color: var(--color-text-secondary);
-  background: var(--color-bg-canvas);
+  font: var(--v2-text-colhead);
+  color: var(--v2-ink-2);
+  background: var(--v2-surface-bar);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
   position: sticky;
   top: 0;
+  z-index: 2;
 }
 
 /*
