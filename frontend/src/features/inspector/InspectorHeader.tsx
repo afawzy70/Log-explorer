@@ -1,6 +1,7 @@
 import type { RefObject } from 'react';
 import type { LogEvent } from '../../shared/api/types';
 import { Button } from '../../shared/ui/Button';
+import { Icon } from '../../shared/ui/Icon';
 import { VisuallyHidden } from '../../shared/ui/VisuallyHidden';
 import { SEVERITY_LEVELS } from '../search/severityLevels';
 import { resolveService } from '../results/columnMapping';
@@ -61,53 +62,67 @@ export function InspectorHeader({
   const color = levelColor(event.severity);
   return (
     <div className={styles.header}>
-      <div className={styles.badgeRow}>
+      {/*
+       * B4 (Session 4) - restyled to the design's own `.insp-meta`/`.insp-title`/`.insp-actions` grouping
+       * (prototype/scripts/app.js's `inspector()` render function): level+service on the meta line with
+       * Close at its trailing edge, the title with a decorative "this is the event you're inspecting"
+       * crosshair mark, then one actions row with the classification/context buttons on the leading edge
+       * and Previous/Next/position grouped at the trailing edge. Presentation only - every prop, aria-label,
+       * button behaviour, and visible copy is unchanged from before this restyle; only DOM grouping and
+       * visual treatment moved. Deliberately does NOT add the design's own date/time to the meta line -
+       * that's new displayed data, not a restyle, and out of this bounded pass's scope.
+       */}
+      <div className={styles.meta}>
         <span className={styles.levelBadge}>
           {color ? <span className={styles.levelDot} style={{ background: color }} aria-hidden="true" /> : null}
           {event.severity ?? 'UNKNOWN'}
         </span>
+        <span className={styles.dotSep} aria-hidden="true" />
         <span className={styles.service}>{resolveService(event)}</span>
-        {position ? (
-          /*
-           * Announced politely rather than assertively: it changes on every
-           * Previous/Next, and an assertive live region would interrupt a
-           * screen-reader user mid-sentence on each step.
-           */
-          <span className={styles.position} aria-live="polite">
-            Event {position.index} of {position.total} loaded
-          </span>
-        ) : null}
+        <Button ref={closeButtonRef} variant="ghost" className={styles.closeButton} onClick={onClose}>
+          <VisuallyHidden>Close event inspector</VisuallyHidden>
+          <Icon name="x" size="sm" />
+        </Button>
       </div>
-      <h1 className={styles.title}>{deriveInspectorTitle(event)}</h1>
-      <div className={styles.nav}>
-        <div className={styles.navGroup}>
+      <h1 className={styles.title}>
+        <Icon name="crosshair" size="sm" className={styles.titleIcon} />
+        <span>{deriveInspectorTitle(event)}</span>
+      </h1>
+      <div className={styles.actions}>
+        <ContextAction event={event} onConfirm={onShowContext} />
+        {/*
+          * Owner mission §"Inspector action semantics": one action never means two things. An unclassified event
+          * offers only rule creation; a classified one offers extending a rule that already matched it, and
+          * says "another" where it would otherwise read as the same action.
+          */}
+        {onAddExtraction && isClassified ? (
+          <Button variant="ghost" onClick={onAddExtraction}>
+            Add extraction from this event
+          </Button>
+        ) : null}
+        {onCreateTagRule ? (
+          <Button variant="ghost" onClick={onCreateTagRule}>
+            {isClassified ? 'Create another tag rule' : 'Create tag rule from this event'}
+          </Button>
+        ) : null}
+        <div className={styles.nav}>
+          {position ? (
+            /*
+             * Announced politely rather than assertively: it changes on every
+             * Previous/Next, and an assertive live region would interrupt a
+             * screen-reader user mid-sentence on each step.
+             */
+            <span className={styles.position} aria-live="polite">
+              Event {position.index} of {position.total} loaded
+            </span>
+          ) : null}
           <Button variant="ghost" onClick={onPrevious} disabled={!hasPrevious} aria-label="Previous event">
             ← Previous
           </Button>
           <Button variant="ghost" onClick={onNext} disabled={!hasNext} aria-label="Next event">
             Next →
           </Button>
-          <ContextAction event={event} onConfirm={onShowContext} />
-          {/*
-            * Owner mission §"Inspector action semantics": one action never means two things. An unclassified event
-            * offers only rule creation; a classified one offers extending a rule that already matched it, and
-            * says "another" where it would otherwise read as the same action.
-            */}
-          {onAddExtraction && isClassified ? (
-            <Button variant="ghost" onClick={onAddExtraction}>
-              Add extraction from this event
-            </Button>
-          ) : null}
-          {onCreateTagRule ? (
-            <Button variant="ghost" onClick={onCreateTagRule}>
-              {isClassified ? 'Create another tag rule' : 'Create tag rule from this event'}
-            </Button>
-          ) : null}
         </div>
-        <Button ref={closeButtonRef} variant="ghost" onClick={onClose}>
-          <VisuallyHidden>Close event inspector</VisuallyHidden>
-          <span aria-hidden="true">✕</span>
-        </Button>
       </div>
     </div>
   );
