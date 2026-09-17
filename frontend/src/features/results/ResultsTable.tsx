@@ -422,6 +422,9 @@ export function ResultsTable({
                   {visibleColumns.map((col) => (
                     <td key={col.id} className={col.cellClassName}>
                       {col.render(event, { onOpenJourney })}
+                      {col.id === 'time' && isContextRoot ? (
+                        <span className={styles.rootMarker} aria-hidden="true" />
+                      ) : null}
                     </td>
                   ))}
                   <td className={styles.actionsCell}>

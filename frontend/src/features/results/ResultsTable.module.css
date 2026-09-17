@@ -200,6 +200,25 @@
   background: var(--v2-sev-trace-mark);
 }
 
+/*
+ * The context-root row's independent marker (see the combined SELECTED x ROOT state comment further
+ * below) - a ring around the severity mark, in the same 22px Time-cell gutter. `pointer-events: none` so
+ * it never intercepts the row's own click-to-inspect. Injected only into the `time` column's `<td>` by
+ * `ResultsTable.tsx`, sized to clear every severity-mark shape (largest is the 10x8px WARN triangle)
+ * without touching the timestamp text that starts at the cell's own 22px padding edge.
+ */
+.rootMarker {
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--v2-trigger-line);
+  pointer-events: none;
+}
+
 @media (forced-colors: active) {
   .sevMarkError,
   .sevMarkWarn,
@@ -211,6 +230,9 @@
   }
   .sevMarkTrace {
     background: CanvasText;
+  }
+  .rootMarker {
+    border-color: CanvasText;
   }
 }
 
@@ -379,54 +401,55 @@
 }
 
 /*
- * "Selected row stays identifiable" (IMPLEMENTATION_PLAN.md "Phase H"),
- * strengthened for UX-R4 §7: the investigator must be able to answer
- * "which event am I currently investigating?" instantly, in a dense table,
- * while the inspector is open. Two independent cues, neither of them
- * colour alone: a distinct background *and* a 4px accent rail (wider than
- * both severity rails above, so a selected ERROR row still reads as
- * selected rather than merely red). `aria-selected` on the row itself
- * (ResultsTable.tsx) carries the same state non-visually.
+ * Session 3 - combined SELECTED x ROOT state model. Production can have a row that is genuinely BOTH
+ * selected AND the context root at once (re-opening the inspector on the root event itself) - unlike the
+ * design prototype's simplified model, which assumes only one of the two is ever true per view (its own
+ * `--accent`/`--trigger-line` and `--accent-tint`/`--selected` tokens are literally identical values,
+ * confirming the prototype never needed to keep them visually apart). The previous implementation here
+ * made ROOT win outright over SELECTED on their shared background/box-shadow channel, so a selected+root
+ * row visually read as "root only" - `aria-selected` was still true, but nothing on screen showed it.
+ * That's a real requirement gap, not a simplification: fixed by giving SELECTED and ROOT each their own,
+ * non-competing visual channel, so both literally coexist on the same row:
  *
- * The `:hover` variant repeats the same declarations rather than relying
- * on the cascade, so selection survives the pointer resting on the row -
- * §8's explicit "do not allow hover styling to erase selected state".
+ *   SELECTED owns: row background tint + a top/bottom hairline (`box-shadow`, inset). Two independent
+ *   cues, neither colour alone: a distinct background *and* the hairline (never erased by hover - the
+ *   `:hover` variant repeats the declarations rather than relying on the cascade, per §8's explicit "do
+ *   not allow hover styling to erase selected state"). `aria-selected` on the row carries the same state
+ *   non-visually.
+ *
+ *   ROOT owns: a dashed row `outline` (a different CSS box entirely from `box-shadow`/`background`, so it
+ *   can never be clobbered by SELECTED's or a severity row's declarations, whichever wins the shared
+ *   channel) plus an independent ring marker around the Time cell's severity mark (`.rootMarker`, injected
+ *   by `ResultsTable.tsx`'s row-render loop only into the `time` column's `<td>` - not threaded through
+ *   `ColumnRenderContext`, keeping this additive rather than touching every column definition).
+ *   `aria-current="location"` plus a visually-hidden "Original event you were investigating" label (in the
+ *   Actions cell) carry the same state non-visually.
+ *
+ * Because these two states never fight over the same CSS property, UNSELECTED_NON_ROOT, SELECTED_NON_ROOT,
+ * UNSELECTED_ROOT, and SELECTED_ROOT are all four genuinely, simultaneously legible - not just class-name
+ * presence, but real distinct paint. Severity rows keep their existing lower-precedence background/
+ * box-shadow (`.errorRow`/`.warnRow` above); SELECTED still wins that one shared channel over severity,
+ * exactly as before (same specificity, later source order).
  */
 .table tbody tr.selectedRow,
 .table tbody tr.selectedRow:hover {
-  background: var(--color-bg-selected);
-  box-shadow: inset 4px 0 0 var(--color-accent);
+  background: var(--v2-selected);
+  box-shadow: inset 0 1px 0 var(--v2-accent), inset 0 -1px 0 var(--v2-accent);
 }
 
-/*
- * UI Gap Closure Pass - "Context ordering": marks the row a "Show ±30
- * seconds" context view is centered on. Never color alone - `aria-current`
- * on the row itself (see ResultsTable.tsx) and a visually-hidden label in
- * its Actions cell both carry the same meaning non-visually; the dashed
- * border (a different pattern than `.selectedRow`'s solid one) keeps the
- * two distinct even if both classes are ever applied to the same row at
- * once (re-opening the inspector on the root event itself).
- */
 .table tbody tr.contextRootRow {
-  background: var(--color-accent-bg);
-  box-shadow: inset 3px 0 0 var(--color-accent);
-  outline: 1px dashed var(--color-accent);
+  outline: 1px dashed var(--v2-trigger-line);
   outline-offset: -1px;
 }
 
-/*
- * UX-R4: the context-root marker must keep winning over both the new
- * severity rails and `.selectedRow` when the investigator re-opens the
- * inspector on the root event itself - the dashed outline is what
- * distinguishes "the event you came here from" from "the event you have
- * selected", and it is the only cue that survives being both at once.
- * Raised to `.table tbody tr.contextRootRow` so it matches the
- * specificity of the interaction states above and wins on source order,
- * exactly as it did before those rules existed (when every row rule was
- * a bare single class).
- */
-.table tbody tr.contextRootRow:hover {
-  background: var(--color-accent-bg);
+@media (forced-colors: active) {
+  .table tbody tr.selectedRow,
+  .table tbody tr.selectedRow:hover {
+    box-shadow: inset 0 1px 0 Highlight, inset 0 -1px 0 Highlight;
+  }
+  .table tbody tr.contextRootRow {
+    outline-color: CanvasText;
+  }
 }
 
 /*
