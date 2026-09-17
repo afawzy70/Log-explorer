@@ -109,6 +109,62 @@ public class OpenShiftApiClient {
 
   private static final Duration TIMEOUT = Duration.ofSeconds(15);
 
+  /**
+   * OPENSHIFT_REAL_ROOT_CAUSE_RECONCILIATION - the PROVEN real-cluster root
+   * cause of the originally-reported connection failure: {@code
+   * .retrieve().bodyToMono(JsonNode.class)} (used by {@link #get}, the
+   * shared call underneath {@code fetchProjects}/{@code fetchNamespaces}/
+   * {@code fetchUsername}/{@code fetchWorkloads}/{@code fetchPods}/{@code
+   * fetchWorkloadSelector}) is subject to Spring WebFlux's own default
+   * in-memory codec aggregation limit ({@code spring.codec.max-in-memory-size},
+   * 256 KiB) when no {@link ExchangeStrategies} is configured - which
+   * {@link #build} never did before this constant existed. A real
+   * corporate cluster's {@code GET /apis/project.openshift.io/v1/projects}
+   * response measured ~342,197 bytes - over the 256 KiB (262,144 byte)
+   * default - and decoding it threw {@link
+   * org.springframework.core.io.buffer.DataBufferLimitException}
+   * (extends {@link IllegalStateException} - the same exception family
+   * {@code io.netty.util.IllegalReferenceCountException} belongs to,
+   * which is why the earlier buffer-cancellation-race investigation kept
+   * finding a real, but ultimately secondary, hazard in the same
+   * exception-handling neighborhood without it being the actual trigger).
+   * Confirmed as the real fix: the owner's own corporate cluster connects
+   * successfully once this bound is configured, and failed before it -
+   * "codec limit fix" is not a hypothesis here, it is an observed,
+   * real-environment before/after result.
+   *
+   * <h2>Why 16 MiB, not something smaller</h2>
+   *
+   * <p>Bounded (never {@link Integer#MAX_VALUE}/unlimited, never a
+   * negative "no limit" sentinel - CLAUDE.md §4 "no unbounded scans" and
+   * this mission's own explicit requirement) but generous enough that a
+   * genuinely large corporate cluster's project/namespace/workload list
+   * (the observed real response was already ~342 KB with a modest
+   * project count; a cluster with an order of magnitude more
+   * projects/namespaces, or a workload list for a namespace with many
+   * Deployments/Pods, could plausibly reach several MB of JSON) does not
+   * fail an otherwise-legitimate, successful read. 16 MiB matches this
+   * class's own {@code DirectPodLogProperties}-adjacent bounded-read
+   * philosophy (a fixed, generous, non-unlimited byte cap - see {@link
+   * #readBounded}) applied to the JSON side of this same client instead.
+   * Each OpenShift JSON call is synchronous/request-scoped (never
+   * retained after decoding, never cached) and this client's own
+   * concurrency is already bounded elsewhere (one call at a time per
+   * Connect/refresh/scope action, never an unbounded fan-out) - so even
+   * several concurrent metadata calls each briefly holding up to 16 MiB
+   * is a bounded, acceptable desktop-app memory footprint, not a
+   * pathological one. A response actually exceeding 16 MiB - itself
+   * already an extreme outlier for cluster metadata - fails safely with
+   * an honest message (see {@link #classify}) rather than exhausting
+   * memory.
+   */
+  private static final int MAX_JSON_RESPONSE_BYTES = 16 * 1024 * 1024;
+
+  private static final org.springframework.web.reactive.function.client.ExchangeStrategies JSON_EXCHANGE_STRATEGIES =
+      org.springframework.web.reactive.function.client.ExchangeStrategies.builder()
+          .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(MAX_JSON_RESPONSE_BYTES))
+          .build();
+
   private final OpenShiftProxyConfigService proxyConfigService;
   private final Map<String, String> environment;
 
@@ -1191,6 +1247,22 @@ public class OpenShiftApiClient {
   }
 
   /**
+   * OPENSHIFT_REAL_ROOT_CAUSE_RECONCILIATION - the honest message for the
+   * PROVEN real-cluster failure ({@link org.springframework.core.io.buffer.DataBufferLimitException},
+   * a response larger than {@link #MAX_JSON_RESPONSE_BYTES}). Never
+   * "unexpected response (HTTP 200)" (the response was not unexpected -
+   * it was simply larger than Log Explorer is currently configured to
+   * buffer) and never the generic {@link #processingFailure} wording
+   * either (that would incorrectly suggest a decode/content problem, not
+   * a size bound).
+   */
+  private static OpenShiftApiException bufferLimitExceeded() {
+    return new OpenShiftApiException(
+        Kind.MALFORMED_RESPONSE,
+        "OpenShift returned a response larger than Log Explorer's configured buffer limit.");
+  }
+
+  /**
    * Maps transport/HTTP failures to the categories the UI distinguishes.
    *
    * <p>The original exception is kept only as a cause. Its message is
@@ -1214,6 +1286,31 @@ public class OpenShiftApiClient {
   static Throwable classify(Throwable error, boolean proxyConfigured) {
     if (error instanceof OpenShiftApiException) {
       return error;
+    }
+    // OPENSHIFT_REAL_ROOT_CAUSE_RECONCILIATION - the PROVEN real-cluster
+    // failure mode: a response larger than MAX_JSON_RESPONSE_BYTES throws
+    // DataBufferLimitException (extends IllegalStateException, so it would
+    // otherwise fall into the generic #processingFailure branch below, or -
+    // a real, empirically-observed Spring WebFlux 6.2.x behavior, NOT the
+    // "retrieve() only ever wraps 4xx/5xx in WebClientResponseException"
+    // assumption the rest of this method was written under - into the
+    // WebClientResponseException branch further down, reporting a
+    // confusing "the cluster returned an unexpected response (HTTP 200)"
+    // for a response that was completely fine except for its size). Walks
+    // the FULL cause chain of `error` itself (not just a nested exception's
+    // cause), bounded depth, so it catches every wrapping shape observed:
+    // bare, wrapped in WebClientRequestException (transport-stage), and
+    // wrapped in WebClientResponseException (this newly-discovered stage,
+    // where Spring's own error message literally reads "200 OK from GET
+    // ..., but response failed with cause: DataBufferLimitException...").
+    // Checked before every other branch specifically because "too large to
+    // process" and "malformed/wrong status" are genuinely different,
+    // more/less actionable truths - and because leaving this to the
+    // WebClientResponseException branch's own generic status-based message
+    // would silently reintroduce the exact misleading "(HTTP 200)" wording
+    // this whole investigation exists to eliminate.
+    if (isDataBufferLimitFailure(error)) {
+      return bufferLimitExceeded();
     }
     // OPENSHIFT_HTTP_BUFFER_LIFECYCLE Phase E - checked before the
     // WebClientResponseException branch below deliberately: a decode
@@ -1265,6 +1362,10 @@ public class OpenShiftApiClient {
                 + "certificate.",
             error);
       }
+      // (DataBufferLimitException wrapped inside a WebClientRequestException
+      // is already caught by the top-level isDataBufferLimitFailure(error)
+      // check at the start of this method, which walks error's FULL cause
+      // chain - no need to repeat it here.)
       // OPENSHIFT_REAL_ENVIRONMENT_BUFFER_BUG_RECOVERY_2 Step 5/7 - a
       // connection that fails WHILE reading a response already in
       // progress (Reactor Netty's own "Error occurred while reading the
@@ -1350,6 +1451,27 @@ public class OpenShiftApiClient {
   }
 
   /**
+   * OPENSHIFT_REAL_ROOT_CAUSE_RECONCILIATION - the same bounded cause-chain
+   * walk as {@link #isBufferLifecycleFailure}, specifically for {@link
+   * org.springframework.core.io.buffer.DataBufferLimitException} - kept
+   * as its own method (rather than folded into that one) so the more
+   * specific "too large" message ({@link #bufferLimitExceeded}) can be
+   * chosen before the generic buffer-lifecycle message, both here and at
+   * the top level of {@link #classify}.
+   */
+  private static boolean isDataBufferLimitFailure(Throwable cause) {
+    Throwable current = cause;
+    int guard = 0;
+    while (current != null && guard++ < 10) {
+      if (current instanceof org.springframework.core.io.buffer.DataBufferLimitException) {
+        return true;
+      }
+      current = current.getCause();
+    }
+    return false;
+  }
+
+  /**
    * Pre-closure functional recovery (§31) - walks the cause chain (never
    * just the immediate cause) for Netty's own {@link
    * io.netty.handler.proxy.ProxyConnectException}, the definitive signal
@@ -1371,41 +1493,47 @@ public class OpenShiftApiClient {
   }
 
   /**
-   * OPENSHIFT_REAL_ENVIRONMENT_BUFFER_BUG_RECOVERY_2 - a fresh connection
-   * per call ({@link HttpClient#newConnection()}), never one from Reactor
-   * Netty's JVM-wide default {@link HttpClient#create()} pool.
+   * OPENSHIFT_REAL_ROOT_CAUSE_RECONCILIATION - back to {@link
+   * HttpClient#create()} (Reactor Netty's normal, JVM-wide-shared
+   * connection pool), reverting the previous recovery attempt's {@link
+   * HttpClient#newConnection()} (a fresh, never-pooled connection per
+   * call).
    *
-   * <p><b>Why.</b> {@code #build} is the ONE HttpClient construction site
-   * every OpenShift call goes through - JSON discovery ({@link #get}) AND
-   * raw-DataBuffer log streaming ({@link #followPodLog}/{@link
-   * #fetchPodLog}) alike - so, before this change, they all shared one
-   * pool of TCP+TLS connections to the same cluster host:port. A pooled
-   * connection that goes stale (an idle-connection reset by a corporate
-   * firewall/load-balancer/proxy sitting between Log Explorer and the
-   * cluster - a real condition a local-loopback test can never
-   * reproduce, since nothing on loopback ever silently kills an idle
-   * connection) is, by Reactor Netty's own documented design, retried
-   * ONCE automatically on a fresh connection ({@code FluxRetryWhen} -
-   * present in the real, captured stack trace for this bug). That retry
-   * delivering its response to a subscriber/response wrapper associated
-   * with the FIRST, already-terminated attempt is a well-known Reactor
-   * Netty bug class for exactly this "stale pooled connection" shape, and
-   * matches the reported symptom's own signature (an exception "observed
-   * post termination", a read error immediately followed by "the
-   * connection will be closed").
+   * <p><b>Why the revert.</b> A real corporate OpenShift cluster's own
+   * {@code GET /apis/project.openshift.io/v1/projects} response
+   * (~342,197 bytes) exceeded Spring WebFlux's default in-memory codec
+   * limit (256 KiB) - proven, real-environment root cause, independently
+   * confirmed by the owner: adding the bounded {@link
+   * #JSON_EXCHANGE_STRATEGIES} codec limit alone made the real cluster
+   * connect successfully. The earlier buffer-cancellation-race
+   * investigation (see {@code
+   * docs/verification/OPENSHIFT_HTTP_BUFFER_LIFECYCLE_RECOVERY_2_REPORT.md})
+   * found a genuine, but ultimately secondary, Reactor Netty hazard in
+   * the same exception family ({@code DataBufferLimitException} and
+   * {@code IllegalReferenceCountException} both extend {@link
+   * IllegalStateException}) and hypothesized pooling as a contributing
+   * factor - disabling it entirely at that point was a reasonable,
+   * evidence-motivated hardening step, but not the proven fix.
    *
-   * <p>Every OpenShift call this client makes is low-frequency (an
-   * occasional Connect/refresh, or a small number of concurrent log
-   * streams) - never a hot path where per-request TCP/TLS handshake cost
-   * would matter. Eliminating the stale-pooled-connection-retry category
-   * entirely, at negligible real cost, is safer than trying to tune pool
-   * eviction timing to guess at an unknown corporate network's own idle-
-   * connection-reset window. This does not disable connection pooling
-   * generally in this codebase (Loki's own client is untouched) - only
-   * this specific, low-frequency, high-blast-radius-if-wrong client.
+   * <p>Re-tested directly, this session, WITH the codec fix in place:
+   * repeating the earlier race-reproduction test
+   * ({@code repeatedCancellationOfAStillStreamingResponseNeverCorruptsTheNextCall})
+   * 5 times with pooling restored shows the exact same result as with
+   * pooling disabled - an occasional, harmless {@code
+   * Operators.onErrorDropped} log line for a signal Reactor Netty itself
+   * safely discards, NEVER observed to corrupt a live/subsequent request
+   * in either configuration. Pooling is not what determines whether that
+   * artificial stress scenario logs a dropped signal; the codec fix is
+   * what determines whether the REAL reported failure (and this session's
+   * own large-response regression tests) succeeds or fails. Given no
+   * local evidence connects pooling itself to a real correctness cost,
+   * and per-call TCP+TLS handshakes (the cost of disabling it) are a real,
+   * avoidable overhead for what is otherwise a low-frequency but not
+   * negligible client (Connect, refresh, and log-fetch calls), pooling is
+   * restored.
    */
   private WebClient build(URI server, String caPath) {
-    HttpClient httpClient = HttpClient.newConnection().responseTimeout(TIMEOUT);
+    HttpClient httpClient = HttpClient.create().responseTimeout(TIMEOUT);
 
     if (caPath != null && !caPath.isBlank()) {
       SslContext sslContext = buildSslContext(caPath);
@@ -1431,6 +1559,7 @@ public class OpenShiftApiClient {
     return WebClient.builder()
         .baseUrl(server.toString())
         .clientConnector(new ReactorClientHttpConnector(httpClient))
+        .exchangeStrategies(JSON_EXCHANGE_STRATEGIES)
         .build();
   }
 

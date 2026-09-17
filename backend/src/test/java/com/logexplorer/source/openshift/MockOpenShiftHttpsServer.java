@@ -171,6 +171,42 @@ final class MockOpenShiftHttpsServer implements AutoCloseable {
           respond(exchange, 200, user("developer"));
         }
       }
+      // OPENSHIFT_REAL_ROOT_CAUSE_RECONCILIATION - the actual proven
+      // real-cluster failure shape: ~9000 items, same per-item density as
+      // LARGE_PROJECTS_LIST above, produces a body comfortably over
+      // Spring's historical 256 KiB default (measured ~800 KB) but well
+      // under OpenShiftApiClient's new 16 MiB bound - must fail against
+      // the OLD (unconfigured) default and succeed against the new,
+      // bounded configuration.
+      case VERY_LARGE_PROJECTS_LIST -> {
+        if (isProjects || isNamespaces) {
+          String[] names = new String[9000];
+          for (int i = 0; i < names.length; i++) {
+            names[i] = "project-" + i + "-with-a-realistically-longish-name-to-pad-the-body-size";
+          }
+          respond(exchange, 200, list(names));
+        } else {
+          respond(exchange, 200, user("developer"));
+        }
+      }
+      // OPENSHIFT_REAL_ROOT_CAUSE_RECONCILIATION - deliberately larger than
+      // OpenShiftApiClient's own 16 MiB bound (heavily padded per-item
+      // names, not just more items - keeps the item/request count
+      // manageable for a fast test) - must fail safely even against the
+      // NEW, bounded configuration, proving the bound is real and not
+      // silently unlimited.
+      case OVER_CONFIGURED_JSON_LIMIT -> {
+        if (isProjects || isNamespaces) {
+          String padding = "x".repeat(2000);
+          String[] names = new String[9000];
+          for (int i = 0; i < names.length; i++) {
+            names[i] = "project-" + i + "-" + padding;
+          }
+          respond(exchange, 200, list(names));
+        } else {
+          respond(exchange, 200, user("developer"));
+        }
+      }
       default -> {
         if (isProjects || isNamespaces) {
           respond(exchange, 200, list("payments", "accounts", "gateway"));

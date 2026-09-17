@@ -50,7 +50,18 @@ final class MockOpenShiftServer implements AutoCloseable {
     /** HTTPS-only diagnostic (see {@code MockOpenShiftHttpsServer}) - the body arrives in several delayed chunks, so an external timeout can race a still-streaming response. */
     CHUNKED_SLOW,
     /** HTTP 200 with a genuinely zero-length body (distinct from {@link #EMPTY_PROJECTS}'s valid {@code {"items":[]}}). */
-    EMPTY_BODY
+    EMPTY_BODY,
+    /**
+     * OPENSHIFT_REAL_ROOT_CAUSE_RECONCILIATION - HTTPS-only (see {@code
+     * MockOpenShiftHttpsServer}) - the actual proven real-cluster failure
+     * shape: a body genuinely larger than Spring WebFlux's historical
+     * default 256 KiB in-memory codec limit (unlike {@link
+     * #LARGE_PROJECTS_LIST}, which is large enough to force multi-chunk
+     * TLS delivery but was never large enough to exceed 256 KiB).
+     */
+    VERY_LARGE_PROJECTS_LIST,
+    /** HTTPS-only (see {@code MockOpenShiftHttpsServer}) - deliberately larger than {@code OpenShiftApiClient}'s own configured 16 MiB bound, proving that bound is real. */
+    OVER_CONFIGURED_JSON_LIMIT
   }
 
   private final HttpServer server;

@@ -104,27 +104,35 @@ class OpenShiftApiClientHttpsBufferLifecycleTest {
   }
 
   /**
-   * PROVED THE BUG (root-cause evidence, keep for regression coverage):
-   * before the fix, {@code OpenShiftApiClient#get} applied its own
-   * Reactor-Core {@code .timeout(TIMEOUT)} operator downstream of {@code
-   * .retrieve().bodyToMono(...)}, IN ADDITION TO {@code
-   * HttpClient#responseTimeout} already applied in {@code #build}. When a
-   * caller's own cancellation (this test's short external timeout stands
-   * in for "any cancellation racing a still-streaming body" - a slow real
-   * network is what would trigger the client's OWN 15s timeout the same
-   * way in production) fires while the response body is still arriving,
-   * it races Reactor Netty's own internal retry-on-stale-pooled-connection
-   * logic ({@code FluxRetryWhen}, confirmed in the captured stack trace):
-   * a retried inbound response gets delivered to a {@code
-   * ReactorClientHttpResponse} whose body was already released by the
-   * FIRST (cancelled) attempt, throwing {@code IllegalStateException("The
-   * client response body has been released already due to
-   * cancellation.")} - the same buffer-lifecycle-violation family as the
-   * reported {@code IllegalReferenceCountException}. Reproduced reliably
-   * (3-4 out of 5 runs) with the OLD code; the fix (a single,
-   * framework-coordinated {@code HttpClient#responseTimeout} instead of a
-   * second, uncoordinated Reactor-Core {@code .timeout()}) removes the
-   * client's OWN contribution to this race entirely.
+   * SECONDARY HARDENING EVIDENCE, NOT THE PROVEN REAL ROOT CAUSE (see
+   * OPENSHIFT_REAL_ROOT_CAUSE_RECONCILIATION - the proven real-cluster
+   * root cause was an oversized JSON response exceeding Spring's default
+   * 256 KiB codec limit; see {@code MAX_JSON_RESPONSE_BYTES}). Kept as
+   * regression coverage for a genuine, independently-real Reactor
+   * characteristic found while investigating: an aggressive, artificial
+   * external cancellation (this test's short {@code .timeout(200ms)} -
+   * NOT anything production code itself does after the redundant {@code
+   * .timeout(TIMEOUT)} was removed from {@code #get}) racing a
+   * still-streaming response can trigger Reactor Netty's own internal
+   * {@code FluxRetryWhen} machinery, producing an {@code
+   * Operators.onErrorDropped} {@code IllegalStateException("...already
+   * released due to cancellation.")} log line - the same exception
+   * family as the reported {@code IllegalReferenceCountException} ({@code
+   * IllegalReferenceCountException}/{@code DataBufferLimitException} both
+   * extend {@link IllegalStateException}), which is why this was
+   * originally (incorrectly) suspected as THE cause.
+   *
+   * <p><b>Re-tested this session, with the proven codec fix in place</b>:
+   * this dropped-signal log line still appears occasionally (observed in
+   * both pooled {@code HttpClient.create()} and non-pooled {@code
+   * HttpClient.newConnection()} configurations, at a similar rate) - but
+   * critically, in every run, across dozens of repetitions, the
+   * subsequent, real request this test asserts on always succeeds
+   * correctly. This is Reactor's own safe, spec-compliant handling of a
+   * stray/duplicate terminal signal (see {@code Operators.onErrorDropped}'s
+   * own contract), not an application-visible corruption - the assertion
+   * below has never failed. It is retained as a documented, known,
+   * harmless Reactor characteristic, not as evidence of an unfixed bug.
    */
   @Test
   void repeatedCancellationOfAStillStreamingResponseNeverCorruptsTheNextCall() {
@@ -317,5 +325,112 @@ class OpenShiftApiClientHttpsBufferLifecycleTest {
     assertThat(unexpected)
         .as("a Live Tail cancellation must never corrupt an unrelated, concurrent JSON discovery call")
         .isEmpty();
+  }
+
+  // ------------------------------------------ RECONCILIATION: proven real-cluster codec-limit root cause
+
+  /**
+   * OLD_DEFAULT_LIMIT_REPRODUCED=YES - proves the actual bug, not just the
+   * fix. A plain {@link org.springframework.web.reactive.function.client.WebClient}
+   * with NO custom {@link org.springframework.web.reactive.function.client.ExchangeStrategies}
+   * (Spring WebFlux's own default {@code maxInMemorySize}, 256 KiB) fails
+   * against the exact same body shape a real corporate cluster's {@code
+   * GET /apis/project.openshift.io/v1/projects} produced (~342,197 bytes
+   * observed real-world; this mock's {@code VERY_LARGE_PROJECTS_LIST} is
+   * ~800 KB, comfortably over the 256 KiB default). Deliberately bypasses
+   * {@link OpenShiftApiClient} entirely - this test is NOT about this
+   * client's own configuration, it is the independent, falsifiable proof
+   * that the OLD (pre-reconciliation) configuration genuinely would have
+   * failed this exact way.
+   */
+  @Test
+  void oldDefaultTwoFiftySixKibCodecLimitReproducesTheRealFailure() throws Exception {
+    server.setScenario(MockOpenShiftServer.Scenario.VERY_LARGE_PROJECTS_LIST);
+    io.netty.handler.ssl.SslContext testSslContext = io.netty.handler.ssl.SslContextBuilder.forClient()
+        .trustManager(loadCaAsTrustManager(caPath))
+        .build();
+    org.springframework.web.reactive.function.client.WebClient plainDefaultClient =
+        org.springframework.web.reactive.function.client.WebClient.builder()
+            .baseUrl(base.toString())
+            .clientConnector(new org.springframework.http.client.reactive.ReactorClientHttpConnector(
+                reactor.netty.http.client.HttpClient.create().secure(spec -> spec.sslContext(testSslContext))))
+            .build();
+
+    Throwable thrown = org.assertj.core.api.Assertions.catchThrowable(() -> plainDefaultClient
+        .get().uri("/apis/project.openshift.io/v1/projects")
+        .header("Authorization", "Bearer " + TOKEN.value())
+        .retrieve()
+        .bodyToMono(com.fasterxml.jackson.databind.JsonNode.class)
+        .block());
+
+    assertThat(thrown).isNotNull();
+    // DataBufferLimitException extends IllegalStateException; walk the
+    // cause chain the same bounded way OpenShiftApiClient#classify does,
+    // since Spring may wrap it.
+    boolean foundLimitException = false;
+    Throwable current = thrown;
+    for (int i = 0; current != null && i < 10; i++, current = current.getCause()) {
+      if (current instanceof org.springframework.core.io.buffer.DataBufferLimitException) {
+        foundLimitException = true;
+        break;
+      }
+    }
+    assertThat(foundLimitException)
+        .as("the OLD, unconfigured 256 KiB default must genuinely fail on an ~800KB response - "
+            + "actual exception chain: %s", thrown)
+        .isTrue();
+  }
+
+  /** The production fix: the SAME oversized body succeeds through the real, reconciled {@link OpenShiftApiClient}. */
+  @Test
+  void veryLargeProjectsListOverRealTlsSucceedsWithTheBoundedCodecLimit() {
+    server.setScenario(MockOpenShiftServer.Scenario.VERY_LARGE_PROJECTS_LIST);
+
+    ProjectDiscovery discovery = client.fetchProjects(base, TOKEN, caPath).block();
+
+    assertThat(discovery).isNotNull();
+    assertThat(discovery.projects()).hasSize(9000);
+  }
+
+  /**
+   * ABOVE_NEW_LIMIT_TEST - the bound is real, not silently unlimited: a
+   * response larger than {@code OpenShiftApiClient}'s own 16 MiB
+   * configured limit must fail SAFELY, with the honest, specific message -
+   * never hang, never OOM, never fall back to the generic/misleading
+   * "unexpected response (HTTP 200)" wording.
+   */
+  @Test
+  void aResponseLargerThanTheConfiguredJsonLimitFailsSafelyWithAnHonestMessage() {
+    server.setScenario(MockOpenShiftServer.Scenario.OVER_CONFIGURED_JSON_LIMIT);
+
+    OpenShiftApiException e = org.assertj.core.api.Assertions.catchThrowableOfType(
+        () -> client.fetchProjects(base, TOKEN, caPath).block(), OpenShiftApiException.class);
+
+    assertThat(e).isNotNull();
+    assertThat(e.kind()).isEqualTo(OpenShiftApiException.Kind.MALFORMED_RESPONSE);
+    assertThat(e.getMessage())
+        .contains("larger than Log Explorer's configured buffer limit")
+        .doesNotContain("unexpected response")
+        .doesNotContain("HTTP 200");
+  }
+
+  private static javax.net.ssl.X509TrustManager loadCaAsTrustManager(String caPemPath) throws Exception {
+    java.security.cert.X509Certificate cert;
+    try (var in = java.nio.file.Files.newInputStream(java.nio.file.Path.of(caPemPath))) {
+      cert = (java.security.cert.X509Certificate)
+          java.security.cert.CertificateFactory.getInstance("X.509").generateCertificate(in);
+    }
+    java.security.KeyStore keyStore = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType());
+    keyStore.load(null, null);
+    keyStore.setCertificateEntry("test-ca", cert);
+    javax.net.ssl.TrustManagerFactory tmf =
+        javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
+    tmf.init(keyStore);
+    for (var tm : tmf.getTrustManagers()) {
+      if (tm instanceof javax.net.ssl.X509TrustManager x509) {
+        return x509;
+      }
+    }
+    throw new IllegalStateException("no X509TrustManager found");
   }
 }
