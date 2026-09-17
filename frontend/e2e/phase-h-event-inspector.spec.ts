@@ -165,6 +165,9 @@ test('View details is always available in the row actions menu, never disabled',
   await expect(page.getByRole('menuitem', { name: /view details/i })).toBeVisible();
 });
 
+// B4 (Session 3) - the design's own 1365px breakpoint was tried and reverted (EventInspector.module.css's
+// own comment has the full rationale: it put the default Playwright/common-laptop 1280px viewport into
+// overlay mode, breaking interaction with a row underneath the now-overlaid panel). 1024px kept.
 const WIDE_WIDTHS = [1920, 1440, 1280];
 const NARROW_WIDTHS = [1024, 768, 390];
 
@@ -176,7 +179,7 @@ for (const width of WIDE_WIDTHS) {
 
     // Compares the visible/clipped results area, not the raw `<table>`
     // element - the table is deliberately wider than its scroll container
-    // (`min-width: 900px`, horizontally scrollable), so its own
+    // (`min-width: 1266px`, horizontally scrollable), so its own
     // unclipped bounding box legitimately extends further right than
     // what's actually painted; that's not an overlap with the panel.
     await assertNoOverlap(page, '[data-testid="results-scroll-wrapper"]', '[role="dialog"][aria-label="Event details"]');
@@ -194,14 +197,14 @@ for (const width of NARROW_WIDTHS) {
     await assertNoHorizontalOverflow(page);
     await captureScreenshot(page, 'h', `inspector-${width}px`);
 
-    if (width > 420) {
+    if (width > 520) {
       // The backdrop is real and dismisses the panel - proves this is a
       // genuine overlay/sheet, not just a squeezed panel. Only checked
-      // where the panel (capped at 420px) leaves a visible backdrop area
-      // to click - at 390px the sheet legitimately fills the whole
-      // viewport (a real full-screen-sheet UX, not a bug), so there is no
-      // "outside" pixel; Escape and the Close button (covered elsewhere)
-      // are that width's dismissal path.
+      // where the panel (capped at 520px, B4 Session 3) leaves a visible
+      // backdrop area to click - at 390px the sheet legitimately fills the
+      // whole viewport (a real full-screen-sheet UX, not a bug), so there
+      // is no "outside" pixel; Escape and the Close button (covered
+      // elsewhere) are that width's dismissal path.
       await page.mouse.click(5, 5);
       await expect(page.getByRole('dialog', { name: /event details/i })).not.toBeVisible();
     }
