@@ -180,15 +180,17 @@ test.describe('UX-R4 §17/§18/§19 - row actions', () => {
 test.describe('UX-R4 §9/§10/§12 - truthful sorting', () => {
   test('G/H: Newest first and Oldest first are real, opposite orderings', async ({ page }) => {
     await runRealSearch(page);
-    const sort = page.getByRole('combobox', { name: /sort/i });
-    await expect(sort).toHaveValue('BACKWARD');
+    // B2 (Session 4) - the Sort `<select>` became a toggle button (COMPONENT_INVENTORY.md's SortControl.tsx
+    // RECOMPOSE), living in the scope strip; a click always flips to the other ordering.
+    const sort = page.getByRole('button', { name: /^sort order:/i });
+    await expect(sort).toHaveAccessibleName(/newest first/i);
     await captureScreenshot(page, PHASE, 'AFTER-G-newest-first');
 
     const newestTop = await messageOf(page, 0);
 
-    await sort.selectOption('FORWARD');
+    await sort.click();
     await expect(page.getByRole('table')).toBeVisible();
-    await expect(sort).toHaveValue('FORWARD');
+    await expect(sort).toHaveAccessibleName(/oldest first/i);
     const oldestTop = await messageOf(page, 0);
     await captureScreenshot(page, PHASE, 'AFTER-H-oldest-first');
 
@@ -206,7 +208,7 @@ test.describe('UX-R4 §9/§10/§12 - truthful sorting', () => {
     const descending = await readTimes();
     expect(descending).toEqual([...descending].sort((a, b) => b - a));
 
-    await page.getByRole('combobox', { name: /sort/i }).selectOption('FORWARD');
+    await page.getByRole('button', { name: /^sort order:/i }).click();
     await expect(page.getByRole('table')).toBeVisible();
     const ascending = await readTimes();
     expect(ascending).toEqual([...ascending].sort((a, b) => a - b));
@@ -220,7 +222,7 @@ test.describe('UX-R4 §9/§10/§12 - truthful sorting', () => {
       .toBeGreaterThan(200);
     const afterLoadMore = await rows(page).count();
 
-    await page.getByRole('combobox', { name: /sort/i }).selectOption('FORWARD');
+    await page.getByRole('button', { name: /^sort order:/i }).click();
     await expect(page.getByRole('table')).toBeVisible();
 
     await expect.poll(async () => rows(page).count()).toBeLessThan(afterLoadMore);
@@ -228,7 +230,7 @@ test.describe('UX-R4 §9/§10/§12 - truthful sorting', () => {
 
   test('pagination keeps the committed direction and never duplicates a row', async ({ page }) => {
     await runRealSearch(page);
-    await page.getByRole('combobox', { name: /sort/i }).selectOption('FORWARD');
+    await page.getByRole('button', { name: /^sort order:/i }).click();
     await expect(page.getByRole('table')).toBeVisible();
 
     await page.getByRole('button', { name: /load more/i }).click();
@@ -247,7 +249,7 @@ test.describe('UX-R4 §9/§10/§12 - truthful sorting', () => {
     await page.getByRole('menuitem', { name: /show surroundings/i }).click();
     await expect(page.getByRole('button', { name: /back to original search/i })).toBeVisible({ timeout: 15_000 });
 
-    await expect(page.getByRole('combobox', { name: /sort/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^sort order:/i })).toHaveCount(0);
   });
 });
 
