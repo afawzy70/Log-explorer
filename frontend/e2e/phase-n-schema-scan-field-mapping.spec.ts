@@ -40,6 +40,22 @@ async function openMappingPanel(page: import('@playwright/test').Page) {
   return panel;
 }
 
+/**
+ * Session 6 (B6 recompose) - the always-fully-expanded `<li>` card list
+ * became a table with a collapsed row per field plus an on-demand editor
+ * row for candidate-list mutation controls (picker/manual-entry/move/
+ * remove). Verify/Mark-needs-change/read-only candidate display stayed on
+ * the collapsed row; only the interactive candidate editor is now gated
+ * behind this Edit/Map toggle. Call this before any picker/Add/Remove/Move
+ * interaction - a no-op if the row's editor is already open.
+ */
+async function openFieldEditor(row: import('@playwright/test').Locator) {
+  const toggle = row.getByRole('button', { name: /^(edit candidates for|map) /i });
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
+    await toggle.click();
+  }
+}
+
 async function resetMappingProfile(page: import('@playwright/test').Page) {
   const panel = page.getByTestId('field-mapping-workspace');
   if (await panel.isVisible().catch(() => false)) {
@@ -64,11 +80,11 @@ test('running a Quick Schema Scan against the real fixture source shows real Ori
   const sampleOptionsText = await sampleSelect.locator('option').allTextContents();
   expect(sampleOptionsText.some((t) => /INFO|ERROR|WARN/i.test(t))).toBe(true);
 
-  // The Discovered Source Schema table - real paths from the fixture's own MDC shape. Scoped
-  // to the one <table> on this panel, since a discovered path also appears as picker <option>
-  // text in every field row that doesn't yet have it mapped.
+  // The Discovered Source Schema table - real paths from the fixture's own MDC shape. Session 6
+  // (B6 recompose) added a second, real <table> for the canonical-field mapping grid, so this
+  // must be scoped by the schema table's own accessible name, not "the one <table> on this panel".
   await expect(panel.getByText(/discovered source schema/i)).toBeVisible();
-  const schemaTable = panel.locator('table');
+  const schemaTable = panel.getByRole('table', { name: 'Discovered source schema' });
   // Owner mission "Service Filter, Docker Performance, and Verified
   // Default Mapping" §C - cif/customerId are now emitted (and default-
   // mapped) at the top level, not nested under mdc - was 'mdc.cif'/
@@ -117,14 +133,18 @@ test('the discovered-paths picker lets a user map a canonical field without typi
   await panel.getByRole('button', { name: /run quick schema scan/i }).click();
   await expect(panel.getByText(/discovered source schema/i)).toBeVisible({ timeout: 10_000 });
 
-  const journeyRow = panel.locator('li', { has: page.getByText('Journey Name', { exact: true }) }).first();
-  const picker = journeyRow.getByLabel(/add a discovered path as a candidate/i);
+  const journeyRow = panel.locator('tr', { has: page.getByText('Journey Name', { exact: true }) }).first();
+  await openFieldEditor(journeyRow);
+  // The candidate editor renders as a full-width sibling <tr>, not a
+  // descendant of the collapsed row - scoped to the panel, since only one
+  // field's editor is ever open at once.
+  const picker = panel.getByLabel(/add a discovered path as a candidate/i);
   await expect(picker.locator('option')).not.toHaveCount(0);
   // Pick whichever real discovered path the picker offers first (not a hardcoded guess).
   const firstRealOption = await picker.locator('option').nth(1).getAttribute('value');
   expect(firstRealOption).toBeTruthy();
   await picker.selectOption(firstRealOption!);
-  await journeyRow.getByRole('button', { name: /^add$/i }).click();
+  await panel.getByRole('button', { name: /^add$/i }).click();
   await expect(journeyRow.locator('code', { hasText: firstRealOption! })).toBeVisible();
 
   await panel.getByRole('button', { name: /^validate mapping$/i }).click();
@@ -172,14 +192,14 @@ test('the owner-approved default mapping starts Verified with no scan required; 
   await selectFixtureSource(page);
   const panel = await openMappingPanel(page);
 
-  const serviceRow = panel.locator('li', { has: page.getByText('Service', { exact: true }) }).first();
+  const serviceRow = panel.locator('tr', { has: page.getByText('Service', { exact: true }) }).first();
   await expect(serviceRow.getByText('Verified', { exact: true })).toBeVisible();
   await expect(serviceRow.getByText('Unverified', { exact: true })).not.toBeVisible();
   // No "run a scan first" hint for an already-VERIFIED, untouched default -
   // QUICK_SCAN_NOT_REQUIRED_FOR_DEFAULT_VERIFICATION.
   await expect(serviceRow.getByText(/run a quick schema scan first/i)).toHaveCount(0);
 
-  const uiIdentifierRow = panel.locator('li', { has: page.getByText('UI Identifier', { exact: true }) }).first();
+  const uiIdentifierRow = panel.locator('tr', { has: page.getByText('UI Identifier', { exact: true }) }).first();
   await expect(uiIdentifierRow.getByText('Unverified', { exact: true })).toBeVisible();
   await expect(uiIdentifierRow.getByRole('button', { name: /^verify$/i })).toBeDisabled();
 
@@ -187,12 +207,13 @@ test('the owner-approved default mapping starts Verified with no scan required; 
   await expect(panel.getByText(/observed \d+ events?/i)).toBeVisible({ timeout: 10_000 });
 
   // UI Identifier has no default candidate - map it via the discovered-paths picker first.
-  const picker = uiIdentifierRow.getByLabel(/add a discovered path as a candidate/i);
+  await openFieldEditor(uiIdentifierRow);
+  const picker = panel.getByLabel(/add a discovered path as a candidate/i);
   const uiIdentifierOption = picker.locator('option', { hasText: /uiidentifier/i }).first();
   const uiIdentifierValue = await uiIdentifierOption.getAttribute('value');
   expect(uiIdentifierValue).toBeTruthy();
   await picker.selectOption(uiIdentifierValue!);
-  await uiIdentifierRow.getByRole('button', { name: /^add$/i }).click();
+  await panel.getByRole('button', { name: /^add$/i }).click();
   await panel.getByRole('button', { name: /^validate mapping$/i }).click();
   await expect(panel.getByText(/no invalid paths/i)).toBeVisible({ timeout: 10_000 });
   await panel.getByRole('button', { name: /save mapping/i }).click();
@@ -229,7 +250,7 @@ test('a picked candidate genuinely persists after Save (proven by reopening the 
   await panel.getByRole('button', { name: /run quick schema scan/i }).click();
   await expect(panel.getByText(/discovered source schema/i)).toBeVisible({ timeout: 10_000 });
 
-  const cifRow = panel.locator('li', { has: page.getByText('CIF', { exact: true }) }).first();
+  const cifRow = panel.locator('tr', { has: page.getByText('CIF', { exact: true }) }).first();
   // Replace the default candidate with a different real discovered path -
   // proves persistence of a genuinely CHANGED mapping, not just re-saving
   // the untouched default (which would pass even with the old bug, since
@@ -237,13 +258,14 @@ test('a picked candidate genuinely persists after Save (proven by reopening the 
   // Owner mission "Service Filter, Docker Performance, and Verified
   // Default Mapping" §C - CIF's default candidate is now the top-level
   // "cif" path (was "mdc.cif").
-  await cifRow.getByRole('button', { name: /^remove cif$/i }).click();
-  const picker = cifRow.getByLabel(/add a discovered path as a candidate/i);
+  await openFieldEditor(cifRow);
+  await panel.getByRole('button', { name: /^remove cif$/i }).click();
+  const picker = panel.getByLabel(/add a discovered path as a candidate/i);
   const customerIdOption = picker.locator('option', { hasText: /customerid/i }).first();
   const customerIdValue = await customerIdOption.getAttribute('value');
   expect(customerIdValue).toBeTruthy();
   await picker.selectOption(customerIdValue!);
-  await cifRow.getByRole('button', { name: /^add$/i }).click();
+  await panel.getByRole('button', { name: /^add$/i }).click();
   await expect(cifRow.locator('code', { hasText: customerIdValue! })).toBeVisible();
 
   await panel.getByRole('button', { name: /^validate mapping$/i }).click();
@@ -255,7 +277,7 @@ test('a picked candidate genuinely persists after Save (proven by reopening the 
   // Persistence proof: leave the workspace entirely and come back - a real fresh GET, not client memory.
   await panel.getByRole('button', { name: /back to search results/i }).click();
   const reopened = await openMappingPanel(page);
-  const cifRowAgain = reopened.locator('li', { has: page.getByText('CIF', { exact: true }) }).first();
+  const cifRowAgain = reopened.locator('tr', { has: page.getByText('CIF', { exact: true }) }).first();
   await expect(cifRowAgain.locator('code', { hasText: customerIdValue! })).toBeVisible();
   await expect(cifRowAgain.locator('code', { hasText: 'cif', exact: true })).toHaveCount(0);
 
@@ -278,7 +300,7 @@ test('Mark needs change flags a field explicitly, and editing its candidate neve
   await selectFixtureSource(page);
   const panel = await openMappingPanel(page);
 
-  const serviceRow = panel.locator('li', { has: page.getByText('Service', { exact: true }) }).first();
+  const serviceRow = panel.locator('tr', { has: page.getByText('Service', { exact: true }) }).first();
   await serviceRow.getByRole('button', { name: /mark needs change/i }).click();
   await expect(serviceRow.getByText('Needs change', { exact: true })).toBeVisible({ timeout: 10_000 });
 
