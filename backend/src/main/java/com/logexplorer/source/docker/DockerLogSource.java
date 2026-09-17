@@ -383,10 +383,19 @@ public class DockerLogSource implements LogSource {
     // Docker's own receive timestamp, containerId as a stable tiebreaker
     // for equal timestamps (never left to HTTP-response arrival order).
     Comparator<Instant> nativeOrder = forward ? Comparator.naturalOrder() : Comparator.reverseOrder();
+    long sortStartNanos = System.nanoTime();
     merged.sort(
         Comparator.<ContainerLine, Instant>comparing(cl -> cl.line().dockerTimestamp(), Comparator.nullsLast(nativeOrder))
             .thenComparing(cl -> cl.container().getId()));
+    long sortMillis = Duration.ofNanos(System.nanoTime() - sortStartNanos).toMillis();
 
+    // SEARCH_LATENCY_INVESTIGATION_AND_SAFE_OPTIMIZATION Phase 2 - safe
+    // diagnostic timing for the CPU-bound parse+classify+filter phase,
+    // extending the same debug-log pattern readAllContainersInParallel
+    // already established for the I/O phase. Counts and durations only -
+    // never a log line, query value, or any field from `request`/an event.
+    long pipelineStartNanos = System.nanoTime();
+    int classifiedCount = 0;
     List<CanonicalLogEvent> events = new ArrayList<>(merged.size());
     for (ContainerLine cl : merged) {
       Map<String, String> labels = cl.container().getLabels();
@@ -424,11 +433,17 @@ public class DockerLogSource implements LogSource {
       // about which events are returned or what tags they carry.
       if (EventFilters.matchesExceptTags(enriched, request)) {
         CanonicalLogEvent classified = parser.classify(enriched);
+        classifiedCount++;
         if (EventFilters.tagsMatch(classified, request)) {
           events.add(classified);
         }
       }
     }
+    log.debug(
+        "Docker historical search pipeline: {} raw line(s) merged/sorted in {} ms, {} classified (of {}), "
+            + "{} returned in {} ms",
+        merged.size(), sortMillis, classifiedCount, merged.size(), events.size(),
+        Duration.ofNanos(System.nanoTime() - pipelineStartNanos).toMillis());
     return events;
   }
 

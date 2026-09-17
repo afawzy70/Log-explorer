@@ -18,12 +18,15 @@ import com.logexplorer.core.search.PageCursor;
 import com.logexplorer.core.search.PageCursorCodec;
 import com.logexplorer.source.LogSource;
 import com.logexplorer.source.LogSourceRegistry;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
@@ -81,6 +84,8 @@ import reactor.core.publisher.Mono;
 @Component
 public class SearchService {
 
+  private static final Logger log = LoggerFactory.getLogger(SearchService.class);
+
   private final LogSourceRegistry registry;
   private final SearchGuardrails guardrails;
   private final ConcurrencyGuard concurrencyGuard;
@@ -98,6 +103,7 @@ public class SearchService {
   }
 
   public Mono<SearchResult> search(SearchRequest request) {
+    long startNanos = System.nanoTime();
     return Mono.defer(() -> {
       // Project-Scoped Schema Scan mission §8: the readiness gate must be
       // evaluated against the SELECTED project/namespace's own saved
@@ -153,7 +159,19 @@ public class SearchService {
       // an exact total possible.
       return guarded
           .timeout(validated.timeout())
-          .map(outcome -> toResult(outcome, validated.effectiveLimit(), request, cursor, queryPlan));
+          .map(outcome -> toResult(outcome, validated.effectiveLimit(), request, cursor, queryPlan))
+          // SEARCH_LATENCY_INVESTIGATION_AND_SAFE_OPTIMIZATION Phase 2 -
+          // safe, temporary/diagnostic request-total timing. Source type,
+          // page index (page 1 vs a later page), returned/effective-limit
+          // counts and truncation are all already-non-sensitive fields this
+          // same result already exposes to the browser (ResultCounts,
+          // CLAUDE.md §2 "never log search values, ... raw log events") -
+          // nothing here is new exposure, only a duration measurement.
+          .doOnNext(result -> log.debug(
+              "Search total: source={} page={} durationMs={} returned={} effectiveLimit={} truncated={}",
+              request.sourceId(), cursor == null ? 1 : cursor.pageIndex() + 1,
+              Duration.ofNanos(System.nanoTime() - startNanos).toMillis(),
+              result.counts().returned(), validated.effectiveLimit(), result.counts().truncated()));
     });
   }
 
