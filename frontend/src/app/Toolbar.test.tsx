@@ -120,7 +120,9 @@ describe('Toolbar', () => {
     // range" chip button (UX-R1 §3) also mentions "Last 1 day" in its own
     // accessible name, so a loose regex would now match two buttons.
     const timeRange = screen.getByRole('button', { name: 'Last 1 day' });
-    const severityGroup = screen.getByRole('group', { name: /severity/i });
+    // B2 (Session 4) - the level chips now live behind this field trigger's popover (SeverityFilter's own
+    // RECOMPOSE), not an always-present `role="group"` - the trigger itself is what's always in the DOM.
+    const severityTrigger = screen.getByRole('button', { name: /^severity:/i });
     const search = screen.getByRole('textbox', { name: /search messages/i });
     const searchButton = screen.getByRole('button', { name: /^search$/i });
     const moreFilters = screen.getByRole('button', { name: /^more filters/i });
@@ -132,8 +134,8 @@ describe('Toolbar', () => {
 
     expect(position(source)).toBeLessThan(position(service));
     expect(position(service)).toBeLessThan(position(timeRange));
-    expect(position(timeRange)).toBeLessThan(position(severityGroup));
-    expect(position(severityGroup)).toBeLessThan(position(search));
+    expect(position(timeRange)).toBeLessThan(position(severityTrigger));
+    expect(position(severityTrigger)).toBeLessThan(position(search));
     expect(position(search)).toBeLessThan(position(searchButton));
     expect(position(searchButton)).toBeLessThan(position(moreFilters));
   });

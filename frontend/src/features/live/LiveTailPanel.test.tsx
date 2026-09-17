@@ -381,6 +381,8 @@ describe('LiveTailPanel', () => {
       expect(screen.getByText('an info line')).toBeInTheDocument();
       expect(screen.getByText('an error line')).toBeInTheDocument();
 
+      // B2 (Session 4) - the level chips now live behind the Severity field trigger's popover.
+      await user.click(screen.getByRole('button', { name: /^severity:/i }));
       await user.click(screen.getByRole('button', { name: /^errors only$/i }));
 
       expect(screen.queryByText('an info line')).not.toBeInTheDocument();
@@ -390,6 +392,7 @@ describe('LiveTailPanel', () => {
     it('the reused SeverityFilter never fires a search - purely local/display filtering', async () => {
       const user = userEvent.setup();
       const { live } = renderPanel('live', { visibleEvents: [event()] });
+      await user.click(screen.getByRole('button', { name: /^severity:/i }));
       await user.click(screen.getByRole('button', { name: /^errors only$/i }));
       expect(live.start).not.toHaveBeenCalled();
       expect(live.clear).not.toHaveBeenCalled();

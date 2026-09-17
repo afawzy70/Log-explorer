@@ -1,3 +1,63 @@
+/*
+ * B2 (Session 4) - the field trigger + popover wrapper (matching TableSettingsControl.tsx's own
+ * established pattern). Kept on v1 tokens for the trigger CHROME (border/background), same reasoning as
+ * Toolbar.module.css's own comment: this sits directly beside SourceSelect/ComposeProjectSelect/etc., which
+ * aren't restyled yet - v2 chrome here alone would be the same kind of patchy mismatch already found and
+ * reverted for the toolbar container and the Shell header's workspace trail. The severity MARKS inside
+ * (`.marks`) are the one deliberate exception: small enough, and specifically v2-designed shapes, to use
+ * `SeverityMark`'s own v2 tokens without creating that mismatch.
+ */
+.wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: var(--border-width) solid var(--color-border);
+  background: var(--color-bg-raised);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.trigger:hover {
+  background: var(--color-bg-hover);
+}
+
+.marks {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.summaryText {
+  white-space: nowrap;
+}
+
+.panel {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 0;
+  z-index: 20;
+  background: var(--color-bg-raised);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-3);
+  min-width: 280px;
+}
+
+.heading {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
 .group {
   display: inline-flex;
   align-items: center;

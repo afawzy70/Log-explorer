@@ -48,7 +48,8 @@ test.describe('Task 1 - What failed recently?', () => {
     await page.getByLabel(/^end$/i).fill(fmt(now));
     await page.getByRole('button', { name: /^apply$/i }).click();
 
-    // "Errors only"
+    // "Errors only" - B2 (Session 4): now behind the Severity field trigger's popover.
+    await page.getByRole('button', { name: /^severity:/i }).click();
     await page.getByRole('button', { name: /errors only/i }).click();
 
     // "run"
