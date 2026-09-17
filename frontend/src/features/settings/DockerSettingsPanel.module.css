@@ -16,10 +16,17 @@
   background: var(--color-bg-hover);
 }
 
+/*
+ * B2 (Session 4) - anchored to `left: 0` (opens rightward), not the original `right: 0`. This trigger used
+ * to sit far enough right in the old Shell header row that a right-anchored, leftward-opening popover always
+ * had room; relocated into `SettingsWorkspace`'s narrow left-hand section list, that same popover clipped
+ * off the left edge of the viewport (measured in the real app, not assumed) - opening rightward instead
+ * gives it the workspace's own wide content column to grow into.
+ */
 .panel {
   position: absolute;
   top: calc(100% + var(--space-2));
-  right: 0;
+  left: 0;
   z-index: 20;
   background: var(--color-bg-raised);
   border: var(--border-width) solid var(--color-border);

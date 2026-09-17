@@ -40,8 +40,40 @@
   flex: 1;
 }
 
-/* Matches the other settings triggers' own visual language (Docker/OpenShift/Privacy panels) - this one opens a full page (`FieldMappingWorkspace`) instead of a popover. */
+/*
+ * B2 (Session 4) - the workspace trail (COMPONENT_INVENTORY.md's `app/Shell.tsx` "a workspace trail
+ * (Search › Trace) is added"). Deliberately v1 tokens, NOT v2, even though this is new B2 surface: it lives
+ * inside `.header`, whose own background (`--color-bg-raised`) is still v1 and does not yet follow
+ * `data-theme='dark'` (the Shell header itself isn't in this session's scope to re-theme). v2 text tokens
+ * here read as light-toned in dark mode and washed out against that still-light background - measured in
+ * the real app, not assumed (the same defect class `SettingsWorkspace.module.css`'s own comment documents
+ * and fixes by giving that surface its OWN v2 background instead). Matching the trail's tokens to its
+ * actual (still v1) container is the correct fix here, not doing the same - re-theming the whole Shell
+ * header is real, separate scope.
+ */
+.workspaceTrail {
+  display: flex;
+  align-items: center;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.workspaceTrail [aria-current='page'] {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.trailSeparator {
+  margin: 0 var(--space-1);
+  color: var(--color-text-tertiary);
+  vertical-align: -2px;
+}
+
+/* Matches the other settings triggers' own visual language - this one opens a full page instead of a popover. */
 .mappingWorkspaceTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   border: var(--border-width) solid var(--color-border);
   background: var(--color-bg-raised);
   border-radius: var(--radius-md);

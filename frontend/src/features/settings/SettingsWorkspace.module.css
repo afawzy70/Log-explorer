@@ -1,0 +1,113 @@
+/*
+ * B2 (Session 4) - matches the existing takeover-workspace convention (FieldMappingWorkspace.module.css's
+ * own `.wrapper`/`.header` pair), restyled to v2 tokens since this is new B2 surface, not a restyle of
+ * something already v1-styled.
+ *
+ * `background`/`min-height` are deliberate, not decorative: neither existing workspace sets its own
+ * background (both rely on the surrounding page, which is still v1-styled and doesn't follow
+ * `data-theme='dark'` yet - the known, already-documented foundation-only state). This component's OWN text
+ * uses v2 tokens that DO follow dark theme, so without its own matching v2 background it looked washed-out
+ * in dark mode (light-toned text over the still-light v1 page background) - measured in the real app, not
+ * assumed. Self-contained theming, per this session's own "use v2 tokens from the start" instruction.
+ */
+.wrapper {
+  padding: var(--space-4);
+  background: var(--v2-bg-app);
+  min-height: 100%;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.title {
+  margin: 0;
+  font: var(--v2-text-workspace);
+  color: var(--v2-ink-1);
+}
+
+.body {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.nav {
+  position: sticky;
+  top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-right: var(--v2-bw) solid var(--v2-line);
+  padding-right: var(--space-3);
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2);
+  border-radius: var(--v2-r-md);
+  font: var(--v2-text-body);
+  color: var(--v2-ink-2);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.navItem:hover,
+.navItem:focus-visible {
+  background: var(--v2-hover);
+  color: var(--v2-ink-1);
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.section {
+  scroll-margin-top: var(--space-4);
+}
+
+.sectionHeading {
+  margin: 0 0 var(--space-1);
+  font: var(--v2-text-section);
+  color: var(--v2-ink-1);
+}
+
+.sectionHint {
+  margin: 0 0 var(--space-3);
+  font: var(--v2-text-body);
+  color: var(--v2-ink-2);
+  max-width: 60ch;
+}
+
+.sectionRow {
+  margin-bottom: var(--space-2);
+}
+
+.sectionRow:last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 768px) {
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .nav {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-right: 0;
+    border-bottom: var(--v2-bw) solid var(--v2-line);
+    padding-right: 0;
+    padding-bottom: var(--space-3);
+  }
+}

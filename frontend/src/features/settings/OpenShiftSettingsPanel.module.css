@@ -9,10 +9,11 @@
   display: inline-block;
 }
 
+/* B2 (Session 4) - anchored `left: 0` (opens rightward) - see DockerSettingsPanel.module.css's identical fix for the full measured rationale (this trigger moved into SettingsWorkspace's narrow left-hand section list, same clipping). */
 .panel {
   position: absolute;
   top: calc(100% + var(--space-2));
-  right: 0;
+  left: 0;
   z-index: 20;
   background: var(--color-bg-raised);
   border: var(--border-width) solid var(--color-border);

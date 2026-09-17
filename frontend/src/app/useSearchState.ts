@@ -424,16 +424,26 @@ export function useSearchState() {
   const [classificationWorkspaceIntent, setClassificationWorkspaceIntent] =
     useState<ClassificationWorkspaceIntent>(null);
 
+  /**
+   * B2 (Session 4) - the consolidated Settings entry point (COMPONENT_INVENTORY.md's `app/Shell.tsx`
+   * RECOMPOSE entry: "the three settings popover triggers become one Settings entry"). A third takeover,
+   * mutually exclusive with the two above on the exact same basis - opening it closes the mapping/
+   * classification workspaces, and each of those closes it in turn.
+   */
+  const [settingsWorkspaceOpen, setSettingsWorkspaceOpen] = useState(false);
+
   const openMappingWorkspace = useCallback(() => {
     setClassificationWorkspaceOpen(false);
     setClassificationWorkspaceEvent(null);
     setClassificationWorkspaceIntent(null);
+    setSettingsWorkspaceOpen(false);
     setMappingWorkspaceOpen(true);
   }, []);
   const closeMappingWorkspace = useCallback(() => setMappingWorkspaceOpen(false), []);
 
   const openClassificationWorkspace = useCallback(() => {
     setMappingWorkspaceOpen(false);
+    setSettingsWorkspaceOpen(false);
     setClassificationWorkspaceEvent(null);
     setClassificationWorkspaceIntent(null);
     setClassificationWorkspaceKey((k) => k + 1);
@@ -444,6 +454,15 @@ export function useSearchState() {
     setClassificationWorkspaceEvent(null);
     setClassificationWorkspaceIntent(null);
   }, []);
+
+  const openSettingsWorkspace = useCallback(() => {
+    setMappingWorkspaceOpen(false);
+    setClassificationWorkspaceOpen(false);
+    setClassificationWorkspaceEvent(null);
+    setClassificationWorkspaceIntent(null);
+    setSettingsWorkspaceOpen(true);
+  }, []);
+  const closeSettingsWorkspace = useCallback(() => setSettingsWorkspaceOpen(false), []);
 
   const refreshClassificationTags = useCallback(() => {
     fetchClassificationRules()
@@ -957,6 +976,7 @@ export function useSearchState() {
     setSelectedIndex(null);
     focusRestoreRef.current = null;
     setMappingWorkspaceOpen(false);
+    setSettingsWorkspaceOpen(false);
     setClassificationWorkspaceEvent(event);
     setClassificationWorkspaceIntent('createRule');
     setClassificationWorkspaceKey((k) => k + 1);
@@ -972,6 +992,7 @@ export function useSearchState() {
     setSelectedIndex(null);
     focusRestoreRef.current = null;
     setMappingWorkspaceOpen(false);
+    setSettingsWorkspaceOpen(false);
     setClassificationWorkspaceEvent(event);
     setClassificationWorkspaceIntent('addExtraction');
     setClassificationWorkspaceKey((k) => k + 1);
@@ -1347,6 +1368,9 @@ export function useSearchState() {
     mappingWorkspaceOpen,
     openMappingWorkspace,
     closeMappingWorkspace,
+    settingsWorkspaceOpen,
+    openSettingsWorkspace,
+    closeSettingsWorkspace,
     classificationWorkspaceOpen,
     classificationWorkspaceEvent,
     classificationWorkspaceIntent,

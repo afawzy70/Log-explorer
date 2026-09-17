@@ -42,6 +42,14 @@ const ClassificationRulesWorkspace = lazy(() =>
   })),
 );
 
+/**
+ * B2 (Session 4) - the consolidated Settings entry point's takeover workspace, same lazy-loaded/
+ * only-after-explicit-action basis as the two above.
+ */
+const SettingsWorkspace = lazy(() =>
+  import('../features/settings/SettingsWorkspace').then((m) => ({ default: m.SettingsWorkspace })),
+);
+
 /** Local, non-blocking loading state (§9) - matches `ResultsPanel`'s own `.loading` convention, never a full-screen spinner. */
 function SectionLoadingFallback({ label }: { label: string }) {
   return (
@@ -166,11 +174,7 @@ function AppContent() {
        * own comment for why a z-index-only fix does not work here.
        */}
       <div data-app-chrome>
-        <Shell
-          state={state}
-          openShiftScope={openShiftScopeState.scope}
-          onOpenShiftScopeChanged={openShiftScopeState.refresh}
-        />
+        <Shell state={state} openShiftScope={openShiftScopeState.scope} liveModeActive={liveModeActive} />
         <Toolbar
           state={state}
           openShiftScope={openShiftScopeState.scope}
@@ -183,7 +187,15 @@ function AppContent() {
       </div>
       <div className={styles.mainRow}>
         <div className={styles.resultsColumn}>
-          {state.mappingWorkspaceOpen ? (
+          {state.settingsWorkspaceOpen ? (
+            <Suspense fallback={<SectionLoadingFallback label="Loading settings…" />}>
+              <SettingsWorkspace
+                state={state}
+                onOpenShiftScopeChanged={openShiftScopeState.refresh}
+                onClose={state.closeSettingsWorkspace}
+              />
+            </Suspense>
+          ) : state.mappingWorkspaceOpen ? (
             <Suspense fallback={<SectionLoadingFallback label="Loading mapping verification…" />}>
               <FieldMappingWorkspace
                 sourceId={state.selectedSourceId}
