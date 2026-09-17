@@ -40,6 +40,7 @@ import javax.net.ssl.SSLContext;
 final class MockOpenShiftHttpsServer implements AutoCloseable {
 
   private final HttpsServer server;
+  private final java.util.concurrent.ExecutorService executor;
   private final Path tempDir;
   private final String caPemPath;
   private volatile MockOpenShiftServer.Scenario scenario = MockOpenShiftServer.Scenario.OK;
@@ -76,7 +77,15 @@ final class MockOpenShiftHttpsServer implements AutoCloseable {
       }
     });
     server.createContext("/", this::handle);
-    server.setExecutor(null);
+    // A real cluster serves requests concurrently. A never-completing
+    // pod-log stream (see #streamPodLogForever) would otherwise starve
+    // every other request on the default single-threaded executor.
+    executor = java.util.concurrent.Executors.newCachedThreadPool(runnable -> {
+      Thread t = new Thread(runnable, "mock-openshift-https");
+      t.setDaemon(true); // never blocks JVM/test-runner shutdown
+      return t;
+    });
+    server.setExecutor(executor);
     server.start();
   }
 
@@ -114,9 +123,15 @@ final class MockOpenShiftHttpsServer implements AutoCloseable {
   private void handle(HttpExchange exchange) throws IOException {
     requestCount.incrementAndGet();
     String path = exchange.getRequestURI().getPath();
-    boolean isProjects = path.contains("/projects");
-    boolean isNamespaces = path.contains("/namespaces");
+    boolean isPodLog = path.contains("/log");
+    boolean isProjects = !isPodLog && path.contains("/projects");
+    boolean isNamespaces = !isPodLog && path.contains("/namespaces");
     boolean isUser = path.contains("/users/");
+
+    if (isPodLog) {
+      streamPodLogForever(exchange);
+      return;
+    }
 
     switch (scenario) {
       case UNAUTHORIZED_401 -> respond(exchange, 401, "{\"message\":\"Unauthorized\"}");
@@ -165,6 +180,33 @@ final class MockOpenShiftHttpsServer implements AutoCloseable {
           respond(exchange, 404, "{\"message\":\"not found\"}");
         }
       }
+    }
+  }
+
+  /**
+   * A real Kubernetes {@code ?follow=true} pod log stream: never completes
+   * on its own, delivers one log line every 100ms until the CLIENT
+   * disconnects (exactly what {@code OpenShiftApiClient#followPodLog}/live
+   * tail expects and what a real cancellation - "Stop" button, connection
+   * dropped, OpenShift disconnect - actually looks like at the wire level).
+   * Writes stop the instant the client socket closes ({@code IOException}
+   * on write), mirroring a real TCP disconnect.
+   */
+  private void streamPodLogForever(HttpExchange exchange) throws IOException {
+    exchange.getResponseHeaders().add("Content-Type", "text/plain");
+    exchange.sendResponseHeaders(200, 0);
+    try (OutputStream out = exchange.getResponseBody()) {
+      int i = 0;
+      while (true) {
+        String line = "2026-01-01T00:00:00.000Z line-" + (i++) + " synthetic pod log content\n";
+        out.write(line.getBytes(StandardCharsets.UTF_8));
+        out.flush();
+        Thread.sleep(100);
+      }
+    } catch (IOException clientDisconnected) {
+      // Expected, normal end-of-stream once the client cancels/closes.
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
     }
   }
 
@@ -218,6 +260,7 @@ final class MockOpenShiftHttpsServer implements AutoCloseable {
   @Override
   public void close() {
     server.stop(0);
+    executor.shutdownNow();
     try {
       Files.walk(tempDir)
           .sorted(java.util.Comparator.reverseOrder())

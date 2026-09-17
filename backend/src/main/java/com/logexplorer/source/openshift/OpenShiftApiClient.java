@@ -28,6 +28,7 @@ import java.util.stream.Collectors;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.reactivestreams.Subscription;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -84,6 +85,18 @@ import reactor.netty.transport.ProxyProvider;
  */
 @Component
 public class OpenShiftApiClient {
+
+  /**
+   * OPENSHIFT_REAL_ENVIRONMENT_BUFFER_BUG_RECOVERY_2 Step 1A - bounded,
+   * observational-only diagnostics for {@link LineDecodingSubscriber}/
+   * {@link BoundedBodyCollector}'s own buffer-ownership transitions.
+   * Separate logger name from {@link OpenShiftConnectDiagnostics} (which
+   * covers the Connect/discovery flow) since this one can, at TRACE, be
+   * genuinely per-buffer during an active live tail - a reader enabling
+   * Connect diagnostics must never accidentally also turn this on.
+   */
+  private static final org.slf4j.Logger BUFFER_LOG =
+      org.slf4j.LoggerFactory.getLogger("com.logexplorer.source.openshift.buffer");
 
   /** OpenShift's own "who am I" endpoint. */
   private static final String USER_PATH = "/apis/user.openshift.io/v1/users/~";
@@ -590,10 +603,13 @@ public class OpenShiftApiClient {
 
   /** The {@link BaseSubscriber} behind {@link #decodeLines}. */
   private static final class LineDecodingSubscriber extends BaseSubscriber<DataBuffer> {
+    private static final String COMPONENT = "LineDecodingSubscriber";
+
     private final FluxSink<DecodedLine> sink;
     private final LiveLineDecoder decoder;
     private final Runnable onPartialDroppedByError;
     private final AtomicReference<Boolean> downstreamCancelled = new AtomicReference<>(Boolean.FALSE);
+    private final AtomicInteger bufferSequence = new AtomicInteger();
 
     LineDecodingSubscriber(int maxLineBytes, FluxSink<DecodedLine> sink, Runnable onPartialDroppedByError) {
       this.sink = sink;
@@ -603,11 +619,25 @@ public class OpenShiftApiClient {
 
     @Override
     protected void hookOnSubscribe(Subscription subscription) {
+      if (BUFFER_LOG.isDebugEnabled()) {
+        BUFFER_LOG.debug("component={} operation=SUBSCRIBED", COMPONENT);
+      }
       request(1);
     }
 
     @Override
     protected void hookOnNext(DataBuffer buffer) {
+      // Bounded, observational-only (this mission's own hard requirement:
+      // never refCnt()/retain()/release()/touch() a buffer merely to log -
+      // readableByteCount() is a plain accessor, not a lifecycle operation,
+      // and releaseAttempted below is always true here regardless of what
+      // is logged, per the unconditional `finally` this method already had.
+      if (BUFFER_LOG.isTraceEnabled()) {
+        BUFFER_LOG.trace(
+            "component={} operation=hookOnNext bufferSequence={} readableByteCount={} cancelRequested={} "
+                + "releaseAttempted=true",
+            COMPONENT, bufferSequence.incrementAndGet(), buffer.readableByteCount(), downstreamCancelled.get());
+      }
       try {
         if (Boolean.TRUE.equals(downstreamCancelled.get())) {
           return;
@@ -628,6 +658,9 @@ public class OpenShiftApiClient {
 
     @Override
     protected void hookOnComplete() {
+      if (BUFFER_LOG.isDebugEnabled()) {
+        BUFFER_LOG.debug("component={} operation=ON_COMPLETE terminalSignalObserved=true", COMPONENT);
+      }
       // Clean EOF - mission §12/§26-A: flush any buffered-but-unterminated
       // fragment as exactly one final, truthfully-marked event, never
       // silently discarded.
@@ -637,6 +670,9 @@ public class OpenShiftApiClient {
 
     @Override
     protected void hookOnCancel() {
+      if (BUFFER_LOG.isDebugEnabled()) {
+        BUFFER_LOG.debug("component={} operation=ON_CANCEL terminalSignalObserved=true", COMPONENT);
+      }
       // Either our own downstream-bridged cancel, or the subscription
       // simply never delivering another signal - nothing more to emit
       // either way, and the downstream FluxSink is already being (or has
@@ -650,6 +686,10 @@ public class OpenShiftApiClient {
 
     @Override
     protected void hookOnError(Throwable error) {
+      if (BUFFER_LOG.isDebugEnabled()) {
+        BUFFER_LOG.debug("component={} operation=ON_ERROR terminalSignalObserved=true exceptionClass={}",
+            COMPONENT, error.getClass().getName());
+      }
       // Mission §12/§26-B: a genuine transport failure with a buffered
       // fragment is real, unrecoverable loss the user did not cause -
       // never re-emitted as if it were a complete line, but truthfully
@@ -892,10 +932,13 @@ public class OpenShiftApiClient {
    * PodLogFetchResult}.
    */
   private static final class BoundedBodyCollector extends BaseSubscriber<DataBuffer> {
+    private static final String COMPONENT = "BoundedBodyCollector";
+
     private final long maxBytes;
     private final MonoSink<PodLogFetchResult> sink;
     private final ByteArrayOutputStream out = new ByteArrayOutputStream();
     private final AtomicReference<CancelCause> cause = new AtomicReference<>(CancelCause.NONE);
+    private final AtomicInteger bufferSequence = new AtomicInteger();
     private volatile boolean terminalEmitted = false;
 
     BoundedBodyCollector(long maxBytes, MonoSink<PodLogFetchResult> sink) {
@@ -905,11 +948,22 @@ public class OpenShiftApiClient {
 
     @Override
     protected void hookOnSubscribe(Subscription subscription) {
+      if (BUFFER_LOG.isDebugEnabled()) {
+        BUFFER_LOG.debug("component={} operation=SUBSCRIBED", COMPONENT);
+      }
       request(1);
     }
 
     @Override
     protected void hookOnNext(DataBuffer buffer) {
+      // Bounded, observational-only - see LineDecodingSubscriber#hookOnNext's
+      // matching comment for why this never touches buffer lifecycle state.
+      if (BUFFER_LOG.isTraceEnabled()) {
+        BUFFER_LOG.trace(
+            "component={} operation=hookOnNext bufferSequence={} readableByteCount={} subscriberState={} "
+                + "releaseAttempted=true",
+            COMPONENT, bufferSequence.incrementAndGet(), buffer.readableByteCount(), cause.get());
+      }
       try {
         if (cause.get() != CancelCause.NONE) {
           // A buffer that arrived after cancel() was already requested -
@@ -954,11 +1008,18 @@ public class OpenShiftApiClient {
 
     @Override
     protected void hookOnComplete() {
+      if (BUFFER_LOG.isDebugEnabled()) {
+        BUFFER_LOG.debug("component={} operation=ON_COMPLETE terminalSignalObserved=true", COMPONENT);
+      }
       emitSuccessOnce();
     }
 
     @Override
     protected void hookOnCancel() {
+      if (BUFFER_LOG.isDebugEnabled()) {
+        BUFFER_LOG.debug("component={} operation=ON_CANCEL cancelRequested={} terminalSignalObserved=true",
+            COMPONENT, cause.get());
+      }
       if (cause.get() == CancelCause.INTERNAL_CAP) {
         // Our own cap-triggered cancel() - still a successful, bounded
         // result, never an error; the caller asked for "at most maxBytes,"
@@ -976,6 +1037,10 @@ public class OpenShiftApiClient {
 
     @Override
     protected void hookOnError(Throwable error) {
+      if (BUFFER_LOG.isDebugEnabled()) {
+        BUFFER_LOG.debug("component={} operation=ON_ERROR terminalSignalObserved=true exceptionClass={}",
+            COMPONENT, error.getClass().getName());
+      }
       if (terminalEmitted) {
         return;
       }
@@ -1083,20 +1148,32 @@ public class OpenShiftApiClient {
       return Mono.error(e);
     }
     boolean proxyConfigured = ProxyRoute.resolve(proxyConfigService.current(), environment, server.getHost()).isPresent();
-    return client
-        .get()
-        .uri(path)
-        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value())
-        .retrieve()
-        .bodyToMono(JsonNode.class)
-        // OPENSHIFT_HTTP_BUFFER_LIFECYCLE Phase E - a genuinely empty 2xx
-        // body (Jackson's reactive decoder completes an empty Mono for a
-        // zero-byte body, never an error) must not silently become a bare
-        // `null` a caller then NPEs on - it is exactly the same "we got a
-        // success status but cannot make sense of what came back" truth as
-        // a decode failure, so it gets the identical honest message.
-        .switchIfEmpty(Mono.error(OpenShiftApiClient::processingFailure))
-        .onErrorMap(e -> classify(e, proxyConfigured));
+    String operation = OpenShiftConnectDiagnostics.operationFor(path);
+    return Mono.deferContextual(ctx -> {
+      String attemptId = OpenShiftConnectDiagnostics.attemptId(ctx);
+      long startNanos = System.nanoTime();
+      OpenShiftConnectDiagnostics.requestStarted(attemptId, operation);
+      return client
+          .get()
+          .uri(path)
+          .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value())
+          .retrieve()
+          .bodyToMono(JsonNode.class)
+          // OPENSHIFT_HTTP_BUFFER_LIFECYCLE Phase E - a genuinely empty 2xx
+          // body (Jackson's reactive decoder completes an empty Mono for a
+          // zero-byte body, never an error) must not silently become a bare
+          // `null` a caller then NPEs on - it is exactly the same "we got a
+          // success status but cannot make sense of what came back" truth as
+          // a decode failure, so it gets the identical honest message.
+          .switchIfEmpty(Mono.error(OpenShiftApiClient::processingFailure))
+          .doOnSubscribe(s -> OpenShiftConnectDiagnostics.debugSignal(attemptId, operation, "SUBSCRIBED"))
+          .doOnSuccess(json -> OpenShiftConnectDiagnostics.responseCompleted(
+              attemptId, operation, OpenShiftConnectDiagnostics.millisSince(startNanos), "application/json"))
+          .doOnCancel(() -> OpenShiftConnectDiagnostics.debugSignal(attemptId, operation, "REQUEST_CANCELLED"))
+          .doOnError(e -> OpenShiftConnectDiagnostics.requestFailed(
+              attemptId, operation, OpenShiftConnectDiagnostics.millisSince(startNanos), e))
+          .onErrorMap(e -> classify(e, proxyConfigured));
+    });
   }
 
   /**
@@ -1127,7 +1204,14 @@ public class OpenShiftApiClient {
    *     {@link #isProxyConnectFailure} javadoc for why the exception type
    *     alone is not always enough to detect a proxy-hop failure.
    */
-  private static Throwable classify(Throwable error, boolean proxyConfigured) {
+  // Package-private rather than private (same rationale as
+  // OpenShiftConnectionService#fallbackToNamespaces - see its own javadoc):
+  // OPENSHIFT_REAL_ENVIRONMENT_BUFFER_BUG_RECOVERY_2 Step 5/7's new
+  // WebClientRequestException-wraps-a-buffer-lifecycle-failure branch is
+  // tested directly against a constructed exception chain, not only
+  // indirectly through a real (hard to deterministically engineer) network
+  // failure.
+  static Throwable classify(Throwable error, boolean proxyConfigured) {
     if (error instanceof OpenShiftApiException) {
       return error;
     }
@@ -1181,6 +1265,26 @@ public class OpenShiftApiClient {
                 + "certificate.",
             error);
       }
+      // OPENSHIFT_REAL_ENVIRONMENT_BUFFER_BUG_RECOVERY_2 Step 5/7 - a
+      // connection that fails WHILE reading a response already in
+      // progress (Reactor Netty's own "Error occurred while reading the
+      // incoming data" class of failure, including the buffer-lifecycle-
+      // violation family this whole investigation is about) arrives here
+      // wrapped one level deeper than the top-level CodecException/
+      // IllegalStateException check above - WebClientRequestException is
+      // the outer wrapper, the real cause is underneath. Deliberately does
+      // NOT claim "HTTP 200" the way #processingFailure does for the
+      // confirmed-2xx decode-failure case above - this path does not know
+      // whether a status was ever fully received, only that data transfer
+      // itself was interrupted, so the message says exactly that and
+      // nothing more.
+      if (isBufferLifecycleFailure(cause)) {
+        return new OpenShiftApiException(
+            Kind.MALFORMED_RESPONSE,
+            "OpenShift's response was interrupted while Log Explorer was reading it. This is usually transient "
+                + "- try again.",
+            error);
+      }
       // Pre-closure functional recovery (§31) - a real classification gap
       // found via audit: Kind.PROXY existed in the enum but was never
       // thrown; every proxy-connect failure (the proxy host itself is
@@ -1224,6 +1328,28 @@ public class OpenShiftApiClient {
   }
 
   /**
+   * OPENSHIFT_REAL_ENVIRONMENT_BUFFER_BUG_RECOVERY_2 Step 5/7 - the same
+   * "walk the cause chain, bounded depth" technique as {@link
+   * #isProxyConnectFailure}, looking for the buffer-lifecycle-violation
+   * family this investigation is about ({@link
+   * org.springframework.core.codec.CodecException} and {@link
+   * IllegalStateException} - {@code io.netty.util.IllegalReferenceCountException}
+   * extends the latter) wrapped inside a {@link WebClientRequestException}
+   * rather than surfacing at the top level.
+   */
+  private static boolean isBufferLifecycleFailure(Throwable cause) {
+    Throwable current = cause;
+    int guard = 0;
+    while (current != null && guard++ < 10) {
+      if (current instanceof org.springframework.core.codec.CodecException || current instanceof IllegalStateException) {
+        return true;
+      }
+      current = current.getCause();
+    }
+    return false;
+  }
+
+  /**
    * Pre-closure functional recovery (§31) - walks the cause chain (never
    * just the immediate cause) for Netty's own {@link
    * io.netty.handler.proxy.ProxyConnectException}, the definitive signal
@@ -1244,8 +1370,42 @@ public class OpenShiftApiClient {
     return false;
   }
 
+  /**
+   * OPENSHIFT_REAL_ENVIRONMENT_BUFFER_BUG_RECOVERY_2 - a fresh connection
+   * per call ({@link HttpClient#newConnection()}), never one from Reactor
+   * Netty's JVM-wide default {@link HttpClient#create()} pool.
+   *
+   * <p><b>Why.</b> {@code #build} is the ONE HttpClient construction site
+   * every OpenShift call goes through - JSON discovery ({@link #get}) AND
+   * raw-DataBuffer log streaming ({@link #followPodLog}/{@link
+   * #fetchPodLog}) alike - so, before this change, they all shared one
+   * pool of TCP+TLS connections to the same cluster host:port. A pooled
+   * connection that goes stale (an idle-connection reset by a corporate
+   * firewall/load-balancer/proxy sitting between Log Explorer and the
+   * cluster - a real condition a local-loopback test can never
+   * reproduce, since nothing on loopback ever silently kills an idle
+   * connection) is, by Reactor Netty's own documented design, retried
+   * ONCE automatically on a fresh connection ({@code FluxRetryWhen} -
+   * present in the real, captured stack trace for this bug). That retry
+   * delivering its response to a subscriber/response wrapper associated
+   * with the FIRST, already-terminated attempt is a well-known Reactor
+   * Netty bug class for exactly this "stale pooled connection" shape, and
+   * matches the reported symptom's own signature (an exception "observed
+   * post termination", a read error immediately followed by "the
+   * connection will be closed").
+   *
+   * <p>Every OpenShift call this client makes is low-frequency (an
+   * occasional Connect/refresh, or a small number of concurrent log
+   * streams) - never a hot path where per-request TCP/TLS handshake cost
+   * would matter. Eliminating the stale-pooled-connection-retry category
+   * entirely, at negligible real cost, is safer than trying to tune pool
+   * eviction timing to guess at an unknown corporate network's own idle-
+   * connection-reset window. This does not disable connection pooling
+   * generally in this codebase (Loki's own client is untouched) - only
+   * this specific, low-frequency, high-blast-radius-if-wrong client.
+   */
   private WebClient build(URI server, String caPath) {
-    HttpClient httpClient = HttpClient.create().responseTimeout(TIMEOUT);
+    HttpClient httpClient = HttpClient.newConnection().responseTimeout(TIMEOUT);
 
     if (caPath != null && !caPath.isBlank()) {
       SslContext sslContext = buildSslContext(caPath);

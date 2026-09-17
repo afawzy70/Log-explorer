@@ -41,6 +41,30 @@ class OpenShiftApiClientHttpsBufferLifecycleTest {
     }
   }
 
+  /**
+   * PRODUCTION_CONNECT_ORCHESTRATION_TEST - the exact real request graph
+   * (Step 2): {@code OpenShiftConnectionService#connect} ->
+   * discoverProjectsOrNamespaces (fetchProjects, .onErrorResume-guarded
+   * namespaces fallback) -> .flatMap -> fetchUsername
+   * (.defaultIfEmpty(Optional.empty())) -> .map (session.connect) ->
+   * .onErrorMap -> .doOnSuccess/.doOnError (this mission's new
+   * diagnostics) -> .contextWrite(attemptId), over real TLS, end to end -
+   * not just the individual OpenShiftApiClient calls other tests in this
+   * class exercise in isolation.
+   */
+  @Test
+  void productionConnectOrchestrationEndToEndOverRealTls() {
+    OpenShiftConnectionService service =
+        new OpenShiftConnectionService(client, new OpenShiftSession(), new LoopbackBindingGuard("127.0.0.1"));
+    String loginCommand = "oc login --token=" + TOKEN.value() + " --server=" + server.baseUrl()
+        + " --certificate-authority=" + caPath;
+
+    OpenShiftSession session = service.connect(loginCommand, "test-connection").block();
+
+    assertThat(session).isNotNull();
+    assertThat(session.operationSnapshot().isConnected()).isTrue();
+  }
+
   @Test
   void singleProjectsFetchOverRealTlsSucceeds() {
     ProjectDiscovery discovery = client.fetchProjects(base, TOKEN, caPath).block();
@@ -231,5 +255,67 @@ class OpenShiftApiClientHttpsBufferLifecycleTest {
         () -> client.fetchProjects(base, TOKEN, caPath).block(), OpenShiftApiException.class);
     assertThat(thrown.kind()).isEqualTo(OpenShiftApiException.Kind.MALFORMED_RESPONSE);
     assertThat(thrown.getMessage()).contains("HTTP 200").contains("could not process");
+  }
+
+  // -------------------------------------------- RECOVERY_2: production-topology reproduction
+
+  /**
+   * OPENSHIFT_REAL_ENVIRONMENT_BUFFER_BUG_RECOVERY_2 Step 6 - the
+   * production characteristic the original reproduction never modeled: a
+   * real Log Explorer instance is not only ever calling {@code get()}
+   * (JSON discovery). {@code OpenShiftApiClient#followPodLog} (Live Tail)
+   * and {@code #fetchPodLog} consume raw {@code Flux<DataBuffer>} via
+   * hand-written {@code BaseSubscriber}s ({@code LineDecodingSubscriber},
+   * {@code BoundedBodyCollector}) that manually call {@code
+   * DataBufferUtils.release(buffer)} - and {@code OpenShiftApiClient#build}
+   * gives EVERY call, JSON or raw-buffer alike, the SAME Reactor Netty
+   * {@code HttpClient.create()} - the JVM-wide DEFAULT, SHARED connection
+   * pool. A real user reconnecting to OpenShift while a Live Tail session
+   * from a PREVIOUS connection is still active (or was just abruptly
+   * stopped) is an entirely ordinary sequence, not a contrived one - the
+   * two code paths are not actually isolated from each other in
+   * production despite looking unrelated in the source.
+   *
+   * <p>This test: starts a genuine, never-completing pod-log stream (the
+   * mock server writes one line every 100ms forever, exactly like a real
+   * {@code kubectl logs -f}), lets a few lines flow through {@code
+   * LineDecodingSubscriber}'s manual-release path, cancels it mid-stream
+   * (simulating Stop / a dropped connection) WHILE immediately firing a
+   * JSON discovery call that can reuse the same now-returned-to-the-pool
+   * connection - repeated many times to give any pool-reuse/buffer-
+   * lifecycle race a real chance to manifest.
+   */
+  @Test
+  void cancellingALiveTailStreamNeverCorruptsAConcurrentJsonDiscoveryCall() {
+    java.util.List<Throwable> unexpected = new java.util.ArrayList<>();
+    for (int i = 0; i < 20; i++) {
+      java.util.concurrent.CountDownLatch gotSomeLines = new java.util.concurrent.CountDownLatch(3);
+      reactor.core.Disposable tail = client
+          .followPodLog(base, TOKEN, caPath, "ns", "pod", "container", 0, 8192, () -> { }, () -> { })
+          .doOnNext(line -> gotSomeLines.countDown())
+          .subscribe(line -> { }, error -> unexpected.add(error));
+      try {
+        gotSomeLines.await(2, java.util.concurrent.TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+      // Stop the tail (real "disconnect" cancellation) and, essentially
+      // simultaneously, issue a normal JSON discovery call - the exact
+      // "reconnect while a prior stream is winding down" production shape.
+      tail.dispose();
+      try {
+        ProjectDiscovery discovery = client.fetchProjects(base, TOKEN, caPath).block();
+        assertThat(discovery).isNotNull();
+      } catch (Exception e) {
+        unexpected.add(e);
+      }
+    }
+    for (Throwable t : unexpected) {
+      System.out.println("[BufferLifecycleTest] cross-contamination candidate: "
+          + t.getClass().getName() + ": " + t.getMessage());
+    }
+    assertThat(unexpected)
+        .as("a Live Tail cancellation must never corrupt an unrelated, concurrent JSON discovery call")
+        .isEmpty();
   }
 }
