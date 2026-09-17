@@ -160,8 +160,11 @@ should say "frontend + a small additive backend field", not "frontend only".
 - **CI confirmed green twice more since**, each on the actual latest push at the time, not assumed:
   - On `dabf489` (polish commit, supersedes `d94b0ac`) at 23:01 Kuwait: Backend (2m8s), Frontend (1m31s), E2E
     (7m2s), Windows (4m52s), macOS (2m10s) — all 5 PASS.
-  - On `0ef2827` (B4 Inspector width/tabs, latest as of this checkpoint) at 23:26 Kuwait: Backend (2m5s), Frontend
-    (1m28s), E2E (6m41s), Windows (3m41s), macOS (2m1s) — all 5 PASS.
+  - On `0ef2827` (B4 Inspector width/tabs) at 23:26 Kuwait (Session 1): Backend (2m5s), Frontend (1m28s), E2E
+    (6m41s), Windows (3m41s), macOS (2m1s) — all 5 PASS.
+  - On `ae2c22b` (Session 2, through A5/A6/B3 severity mark) at 07:38 Kuwait: Backend (2m9s), Frontend (1m17s), E2E
+    (8m27s), Windows (8m46s), macOS (1m36s) — all 5 PASS. Re-checked directly via `gh pr checks 61` on the exact
+    commit, not assumed.
 
 ### Known regressions
 
