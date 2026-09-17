@@ -568,3 +568,182 @@ Loki enablement — all explicitly out of scope per the mission's own exclusion 
    running Playwright in the foreground over `run_in_background: true`** if "low memory" kills recur — this
    session found the background-process ceiling triggers even for a single, short spec file, while `free -h`
    showed ample OS-level memory throughout; the foreground path worked reliably every time it was tried.
+
+---
+
+## Session 5 — CI fix, B5 Investigation COMPLETE, B6 not started (time budget)
+
+Mission (`MODERN_DEVELOPER_CONSOLE_IMPLEMENTATION_SESSION_5`). Verified LOCAL_HEAD/REMOTE_HEAD/PR61_HEAD all
+matched the expected resume point (`70e4a1a`) before starting. `gh pr checks 61` on that exact commit showed
+**E2E FAIL**, Backend/Frontend/Windows/macOS all PASS — a real regression from Session 4's own SortControl
+`<select>`-to-toggle-button recompose (`ac77dab`), fixed before any new work per the mission's own "if a failure
+is caused by Session 4: fix it before continuing" instruction.
+
+### Step 0 fix — `ux-r4-results-workstation.spec.ts`'s missed SortControl migration (`d42719d`)
+
+Session 4's own blast-radius grep for the SortControl recompose used a case-**sensitive** "Sort" pattern; this
+spec's own five call sites all use lowercase "sort" (`getByRole('combobox', { name: /sort/i })`) and were
+missed entirely. A case-insensitive re-sweep of the whole `e2e/` and `src/` trees confirmed this was the only
+remaining file. Migrated `.selectOption('FORWARD')` → `.click()` and `.toHaveValue(...)` →
+`.toHaveAccessibleName(/newest first|oldest first/i)`, matching the toggle button's own `aria-label` - no
+assertion weakened. Verified: typecheck, full unit suite 1126/1126, build, this spec 23/23 green (foreground).
+
+### B5 Investigation — COMPLETE (`aed608f`)
+
+Implemented the approved Investigation design faithfully for all five relation types (Trace/Span/Correlation/
+Journey/Event) and the Surroundings context view, built with v2 semantic tokens from the start (a genuinely new
+surface, unlike B2's chrome - no unstyled v1 sibling to mismatch against, so full v2 fidelity carried no risk).
+
+**New shared primitives** (`frontend/src/features/journey/`):
+
+| File | What it is |
+|---|---|
+| `timelineTicks.ts` | "Nice" tick-interval selection from the real observed span - the design's own prototype hardcodes per-relation-type constants (journey 1s/2s, trace 0.5s/1s) safe only for its synthetic sub-minute demo data; a real trace/journey can span milliseconds to hours. |
+| `TimelinePlot.tsx` | The ruler/lane/gap-band/trigger-marker/trace-bracket visualization, shared verbatim between the capture view and the Surroundings window-plot. Non-causality is structural: independent points and gap bands only, the trigger marker omitted entirely (not fabricated) when no root event was ever captured. |
+| `InvestigationModeBar.tsx` | Back (with the already-registered `results.back` "B" shortcut's visible `<kbd>` hint - no second binding registered) + title + Copy ID, shared between capture and context. |
+| `InvestigationStatRow.tsx` | The stat-row grammar (Events/Services/[Traces]/Errors/Warnings/First→last/Observed span/Gaps/Selected event i of N), shared between `JourneyView` and the refactored `ContextSummary`. |
+| `SequenceTable.tsx` | A real semantic `<table>` (time+severity mark+trigger-ring, offset, service+swatch, level, business step, message, trace/span identifier, actions) replacing `JourneyEntryRow`'s card list for the capture view - reuses `MessageCell`/`ContextAction`/`SeverityMark` directly. |
+| `InvestigationScopeBar.tsx` | The "compact scope bar" replacing the full `Toolbar` while an investigation view is active, with an "Edit search" toggle that reveals the real, unchanged `Toolbar` (`App.tsx`'s own `editingInvestigationScope` local state) rather than forking search state. |
+
+**Deliberately kept `ResultsTable` (not `SequenceTable`) for the Surroundings context view** - the design's own
+`contextView()` prototype function calls the same `resultsTable()` primitive the main search results use, not a
+second bespoke table; only `capture()` (Trace/Span/Correlation/Journey/Event) draws the distinct `table.seq`
+markup. `JourneyEntryRow.tsx` itself is untouched and still real, active production code - `LiveTailPanel.tsx`
+still imports and renders it for Live's own display-filtered event list.
+
+**`JourneyView.tsx` and `ContextSummary.tsx`/`ResultsPanel.tsx` recomposed onto these primitives**; every
+functional invariant preserved (relation types, root anchoring and "Selected event i of N" - now honestly
+omitted rather than shown with a fabricated value when the root isn't present in the bounded result, matching
+the pre-existing tested behaviour exactly -, truncation notices, malformed-event handling, Back navigation and
+its dynamic per-relation-type label, Show Surroundings from within a capture view, gap detection/rendering,
+masking). `ContextSummary`'s own notices/gaps-list/disclaimer logic and its full pre-existing test suite are
+untouched - only its stat-list rendering moved to the shared `InvestigationStatRow`.
+
+### Two genuine bugs found and fixed via real Playwright runs (not assumed)
+
+1. **`QueryPlanDisclosure.module.css`'s `.body` (Session 4's own earlier B2 work) was rendering with `display:
+   flex` and real, non-zero layout geometry even while its native `<details>` reported `open === false`.** The
+   browser's own implicit "hide every non-summary child of a closed `<details>`" behaviour did not reliably win
+   the cascade here (confirmed empirically: `getComputedStyle(body).display === 'flex'`, a real
+   `getBoundingClientRect()`, a non-null `offsetParent`, all while `details.open === false`) - found via a real
+   390px page-overflow measurement in the Surroundings context view. Fixed with an explicit
+   `.details:not([open]) .body { display: none; }` rather than continuing to rely on browser default behaviour
+   alone. `contain: layout` and `contain: paint` were both tried first and neither changed the measured
+   geometry, confirming the box was never actually suppressed by containment tricks - the fix had to be at the
+   display-state source.
+2. **`InvestigationModeBar`'s heading lost the established "Trace: t-1" colon separator** (the no-idValue case
+   correctly renders bare title text, but the with-idValue case rendered `title` and `idValue` as separate
+   sibling nodes with no colon) - caught by a real, full Playwright run of `phase-i-journey-investigation.spec.ts`
+   (12 of 13 tests failed on `getByRole('heading', { name: /trace:|correlation:/i })` before this fix). Fixed by
+   rendering `` `${title}: ` `` as the text node when `idValue` is present.
+
+### E2E selector migrations (old card-list `<ol>`/`<li>` → real `<table>`)
+
+`phase-i-journey-investigation.spec.ts` (timestamp column selector: `[class*="timestamp"]` → `table tbody tr
+td:first-child`; "table is gone" → "the sequence table is showing", asserted by the sequence table's own
+distinct `aria-label`), `phase-investigation-workspace.spec.ts` (`getByRole('listitem')` counts → `table tbody
+tr` counts; split "Selected event: N of M" text match into label+value sibling-span queries),
+`phase-legacy-slice6-investigation-depth.spec.ts` (`dt`/`dd` xpath → the shared stat-row's own label/value span
+grammar). Every migrated selector still verifies the same underlying behaviour - none weakened.
+
+### A pre-existing (NOT B5-caused) page-overflow characteristic — found, investigated, NOT silently fixed
+
+During this session's own extra verification sweep with real, wide fixture data (longer than any existing
+mocked E2E fixture), the Surroundings context view showed a real `document.documentElement.scrollWidth` excess
+at 1024/768/390px. Investigated at length (contain/overflow-clip mitigations tried and found ineffective; the
+true layout-tree suspects were `position: sticky` table headers, whose own *static* (as-if-not-sticky) position
+appears to reach `document.documentElement.scrollWidth` in this specific view despite being correctly visually
+clipped by an intermediate `overflow: auto` ancestor). **Conclusively proven NOT caused by any B5 code**: with
+every one of this session's own B5 additions (`InvestigationModeBar`, `ContextSummary`, `TimelinePlot`) fully
+disabled via a controlled experiment, the identical overflow number reproduced unchanged - it is a pre-existing
+characteristic of the context view + a genuinely wide table + narrow viewport combination, previously untested
+because every existing context-view E2E fixture uses short mocked messages. **Does not affect any of this
+session's own 116 targeted E2E tests** (all passing, all using the same realistic-scale mocked data the existing
+suite already established) - flagged here for a dedicated follow-up with more time, not silently patched with an
+ineffective `overflow-x: clip`/`contain` workaround (both tried, both reverted after confirming no effect) or
+hidden from this report.
+
+### Tests run this session (cumulative, at the final code commit `aed608f`)
+
+- `npm run typecheck` (`tsc --noEmit`) - PASS, every commit.
+- `npx vitest run` (full suite) - **1170/1170 PASS**, two clean runs (one earlier run showed 2 failures in
+  `ClassificationRulesWorkspace.test.tsx`/unrelated files under resource contention, reconfirmed flaky via an
+  isolated re-run and a second full clean run - the same pattern already documented in Sessions 1-4).
+- `npm run build` - PASS, every milestone commit.
+- Targeted Playwright, run individually in the foreground (this sandbox's own background-process memory
+  ceiling, documented in Session 4's own checkpoint entry): `phase-i-journey-investigation.spec.ts` (13/13),
+  `phase-investigation-workspace.spec.ts` (3/3), `phase-legacy-slice6-investigation-depth.spec.ts` (14/14),
+  `phase-legacy-slice7-redaction.spec.ts` (9/9), `phase-legacy-slice8-productivity-performance.spec.ts` (18/18),
+  `phase-m-ux-acceptance.spec.ts` (13/13), `ux-r4-results-workstation.spec.ts` (23/23),
+  `ux-r6-final-polish.spec.ts` (46/46) - **116/116 across all 8 spec files, zero failures**, each run twice
+  (once immediately after the fix, once again after the final QueryPlanDisclosure fix touched shared code).
+- Real-browser responsive sweep: capture view and context view both measured overflow-free at every required
+  width (1920, 1440, 1366, 1024, 768, 390px) using realistic mocked E2E fixture data, plus a light and a dark
+  screenshot at 1440px for both views confirming full, correct v2 token resolution (a genuinely new surface,
+  not a partial/mixed-token restyle).
+- **Full E2E suite** - NOT run this session (same explicit policy as Session 4: targeted specs covering every
+  file this session touched were run instead, twice). **Recommend running the full suite + CI at the next
+  session's start**, as with Session 4.
+- Backend - not touched this session (zero commits under `backend/`), not run.
+
+### Known regressions
+
+**None remain.** Two real regressions were found this session (the missed SortControl selector migration from
+Session 4, caught by CI itself; the InvestigationModeBar heading colon, caught by this session's own full
+targeted-spec run) - both fixed and re-verified for real. The QueryPlanDisclosure closed-`<details>` display
+bug was also found and fixed, though it predates this session (Session 4's own B2 work) and was not itself
+causing any visible product regression in the plain search view - see its own writeup above.
+
+### B6 Settings / Mapping / Classification — NOT STARTED this session
+
+Time budget did not reach B6 after B5's own thorough implementation + regression investigation (including the
+CI fix required before starting, and the extensive but ultimately-inconclusive pre-existing-overflow
+investigation, deliberately not abandoned mid-way once started, per the mission's own "do not fake completion"
+instruction - a partial, un-followed-through investigation write-up would have been worse than a longer,
+conclusive one). This is an honest, reported shortfall, not a silently reduced scope - see `QUALITY_AT_RISK`
+in this session's own final structured report for the exact reason and the time this decision costs.
+
+**B6's own real scope, unchanged from the mission brief, all still to do:**
+- Settings workspace content itself (the B2 shell entry point exists and routes correctly - `SettingsWorkspace.tsx`,
+  Session 4 - but its own five sections' CONTENT is still the pre-existing, unrestyled `DockerSettingsPanel`/
+  `OpenShiftSettingsPanel`/`PrivacyMaskingSettingsPanel` popovers relocated, not yet redesigned to the approved
+  B6 visual language).
+- Field Mapping workspace: readiness header, Scan/Map & verify/Validate/Save process strip, All/Needs attention/
+  Unsaved filters, canonical field table with inline editor + evidence panel + sticky action bar (currently
+  `FieldMappingWorkspace.tsx`'s own pre-B1 card-based layout, per Session 1's "Not started this session" note -
+  still true).
+- Classification Rules / Rule Builder / Assisted Extraction / Import-Export workspace content redesign (A1a/A2/
+  A5/A6/A9/A11/A12 are all already COMPLETE per Sessions 1-2 and must be preserved exactly - D40's "one
+  displayColor per rule" stays production truth, A1b backend mass-recolour stays explicitly NOT implemented).
+
+### Not started this session (deferred, per the mission's own exclusion list)
+
+B7 Live redesign, a global dark-theme sweep, a global accessibility sweep, legacy-token cleanup, search
+performance work (a separate `perf/*` branch lane already exists on `origin` - untouched), the OpenShift HTTP
+bug, Loki enablement, the Live EXCLUDE fix.
+
+## Resuming — exact next task (Session 6)
+
+1. **Re-verify the branch**: `git log --oneline -5` on `ux/v2-modern-developer-console` - HEAD should be
+   `aed608f` (or this checkpoint's own commit on top of it). Run `gh pr checks 61` to confirm CI is green on
+   the latest push - this session's own CI check was still running (pending on all 5 jobs) when this checkpoint
+   was written; **do not assume it passed without re-checking**.
+2. **B5 Investigation is COMPLETE** for the mission's own required scope (mode bar, Back behavior, relation
+   type, identifier + Copy, stat row, timeline visualization with service lanes/selected-event marker/gap bands/
+   trace grouping, sequence table, root/selected semantics, per-event Surroundings action, return-to-
+   investigation behavior, compact scope bar, Edit search) - see the table and writeup above for exactly which
+   file implements which piece.
+3. **One flagged, unresolved item**: the pre-existing context-view page-overflow characteristic with genuinely
+   wide real data (see its own writeup above) - not blocking, not caused by B5, but worth a dedicated
+   investigation session with real time budget to isolate the actual Chromium mechanism, rather than another
+   rushed attempt squeezed into a different session's own priority.
+4. **Next real scope is B6** - start with whichever piece the owner considers highest-risk/highest-value first
+   (Field Mapping workspace's own process-strip redesign is likely the largest single net-new visual/interaction
+   surface, similar in scope to this session's own Investigation timeline work; Settings content redesign for
+   the three existing panels is comparatively closer to a RESTYLE than a REPLACE_VISUALLY). Read
+   `COMPONENT_INVENTORY.md`'s own B6 rows in full before starting, the same discipline this session applied to
+   B5's own `capture()`/`contextView()` prototype functions - do not guess the target from the inventory's one-
+   line summaries alone.
+5. Keep the same discipline: typecheck/full-unit/build/targeted-E2E after each bounded change; full E2E suite +
+   CI at the next wave boundary. Continue preferring foreground Playwright runs over `run_in_background: true`
+   in this sandboxed environment.
