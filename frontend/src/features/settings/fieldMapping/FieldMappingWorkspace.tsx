@@ -743,8 +743,16 @@ export function FieldMappingWorkspace({
 
 /**
  * B6.1 (Session 6) - the process strip (`COMPONENT_INVENTORY.md`'s own
- * required item): Scan / Map & verify / Validate / Save, each stated
- * truthfully from real counts only - never a fabricated "done" claim.
+ * required item). DRIFT-13 remediation: restores the approved explicit 5-step
+ * model - Scan / Map fields / Validate / Save / Verify - confirmed from the
+ * design's own rendered process strip (`b1/13-mapping-workspace-1440x900.png`)
+ * and the LERUX-1 review record ("per-field Verify and Mark needs change,
+ * with the step order Scan → Map → Validate → Save → Verify"), not the
+ * 4-step "Map & verify" merge this strip previously used. Verify is
+ * inherently per-field (the same row-level Verified/Needs-change actions the
+ * table already exposes), so it is a descriptive step, not a new global
+ * gate/action of its own - each step is stated truthfully from real counts
+ * only, never a fabricated "done" claim.
  */
 function ProcessStrip({
   scanned,
@@ -766,7 +774,7 @@ function ProcessStrip({
       state: scanned ? 'done' : 'current',
     },
     {
-      label: 'Map & verify',
+      label: 'Map fields',
       detail: `${counts.verified} verified · ${counts.unverified} unverified · ${counts.needsChange} needs change · ${counts.notMapped} not mapped`,
       state: 'current',
     },
@@ -779,6 +787,11 @@ function ProcessStrip({
       label: 'Save',
       detail: hasUnsavedEdits ? `${counts.unsaved} unsaved field${counts.unsaved === 1 ? '' : 's'}` : 'Saved',
       state: hasUnsavedEdits ? 'current' : 'done',
+    },
+    {
+      label: 'Verify',
+      detail: 'Per field, against the latest scan',
+      state: counts.unverified === 0 && counts.needsChange === 0 && counts.notMapped === 0 ? 'done' : 'current',
     },
   ];
   return (
