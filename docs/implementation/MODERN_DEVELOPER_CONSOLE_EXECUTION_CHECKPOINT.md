@@ -1718,3 +1718,82 @@ UNTRACKED_OWNER_REQUIREMENTS=0
    App Shell) - confirmed reliable across five consecutive sessions now; rendered-browser evidence (real
    screenshots, real computed styles, real axe-core runs via CDN injection where `jest-axe`'s jsdom can't
    reach) beats source-reading or token-math alone for any accessibility/visual claim.
+
+---
+
+## Session 12 — Mandatory Impeccable Visual Fidelity Audit EXECUTED (audit-only, no remediation)
+
+Mission (`MANDATORY_IMPECCABLE_VISUAL_FIDELITY_AUDIT_PR61_VS_PR58`), per Owner Requirement §29. **Audit only —
+no production code, CSS, tokens, components, or backend files were modified.** Verified before starting: the
+working tree matched Session 11's final commit (`c0e745f`) exactly, CI green on that exact HEAD (Backend/
+Frontend/E2E/Windows/macOS all PASS, previously confirmed).
+
+Built a complete 96-state B1 design inventory (from `design/v2-modern-developer-console`'s own
+`screenshots/capture-report.json`, read via `git show`, never checked out), assigned every state a mapping
+type (`DIRECT_EQUIVALENT`/`PRODUCTION_DYNAMIC_EQUIVALENT`/`NOT_APPLICABLE` with reason — zero states silently
+omitted), then deep-audited the highest-value workspaces (Search/Results incl. dark theme, Inspector Overview +
+Request Flow, Investigation Trace, More Filters, Field Mapping, Settings, Live, Classification Rules) with real
+Playwright captures of the running production app (`SPRING_PROFILES_ACTIVE=dev`, Fixture source, synthetic data
+only) against the design's own pre-captured screenshots and, for Live specifically, the design's own `app.js`
+prototype source read directly as ground truth (not inferred from a screenshot alone).
+
+**Full findings, evidence, and the complete drift/adaptation registers are in
+`docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUDIT.md`** — not duplicated here. Headline results:
+
+- **13 `VISUAL_DESIGN_DRIFT` findings** (DRIFT-001 through DRIFT-013), 5 MAJOR, 4 MEDIUM, 5 MINOR-ish, 0
+  BLOCKER. The two most significant: **DRIFT-001** (the full editable Search toolbar stays visible on every
+  workspace — Settings/Field Mapping/Classification Rules/Live — instead of being hidden or replaced by D15's
+  compact scope bar; confirmed independently on 4 separate workspaces; Investigation is the one workspace that
+  correctly implements the compact-scope-bar pattern, proving it's buildable) and **DRIFT-002** (More Filters
+  is a narrow single-column scrolling drawer in production vs. the design's full-width 5-column inline panel).
+- **DRIFT-010 is a self-reported regression**: this same hardening initiative's own Session 11 Stage 5 change
+  to `LiveTailPanel.module.css`'s row padding was based on an incorrect premise about which density is
+  production's true default. This audit traced the real default through `tablePreferences.ts` →
+  `ResultsPanel.tsx` → `ResultsTable.tsx` and confirmed it is `'compact'`, matching the design's own explicit
+  `--h-row: 28px /* compact (default) */` token comment — Live's density change moved it away from, not
+  towards, fidelity. **Not reverted this session** (audit-only mission, no remediation permitted); disclosed
+  honestly for a future remediation mission to act on.
+- **4 `INTENTIONAL_PRODUCTION_ADAPTATION` findings** (ADAPT-001 through ADAPT-004), each backed by reading the
+  actual production source/behavior, not guessed: malformed-row field extraction (`LogLineParser.java`'s
+  `malformed()` never attempts field extraction — proven), Live's conditional zero-count hiding
+  (`LiveTailPanel.tsx` lines 245-247), Investigation's always-visible (vs. design's hover-only) causality
+  disclaimer, and the Inspector's 1024px breakpoint staying put rather than reverting to the design's 1365px
+  (this mission's own brief explicitly named this as the expected, correct classification, backed by Session
+  3/4's own documented regression history).
+- **Token/color-system fidelity is a strong, measured MATCH**: `tokensV2.css` (production) and the design's own
+  `prototype/styles/tokens.css` were compared value-by-value across the full B1 light+dark palette — every
+  checked token is byte-identical. Every drift finding is structural/layout, never a color mismatch.
+- **3 `REVIEW_REQUIRED` items** left honestly unresolved rather than force-classified: the Journey ID row/
+  Journey context section (the code path exists — confirmed in `RequestFlowSection.tsx`/`JourneyView.tsx` —
+  but the Fixture test-data source never populates `journeyId` on any available synthetic event, tried twice),
+  Compose project/Container/Thread Inspector fields (plausibly Docker-source-specific, unverified against a
+  real Docker source), and the Tags-column-width-when-docked behavior (A8, not independently re-measured this
+  pass).
+
+**Verification before commit**: `git diff <Session-11-HEAD c0e745f> -- frontend backend` was empty — confirmed
+zero production code changed by this audit. `npm run typecheck` PASS, full frontend unit suite PASS (1163/
+1163), `npm run build` PASS. Full backend/E2E rerun was not required locally (no product code changed) per this
+mission's own explicit instruction. A temporary local capture spec (`frontend/e2e/_tmp-audit-capture.spec.ts`)
+and a temporary local dev-backend process used to produce the audit's own screenshots were both removed/stopped
+before commit, per this mission's "temporary local audit scripts may be created outside tracked production
+paths and removed before completion" rule.
+
+**Committed to PR #61**: `docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUDIT.md` (the audit report),
+`docs/verification/visual-fidelity/` (representative production evidence screenshots — design-side evidence is
+referenced by its exact path on `design/v2-modern-developer-console` rather than re-committed, avoiding
+hundreds of redundant duplicate screenshots per this mission's own instruction), and this checkpoint update.
+**No production code, CSS, component, token, or backend file was touched.**
+
+```
+IMPECCABLE_VISUAL_FIDELITY_GATE_RECORDED=YES
+IMPECCABLE_VISUAL_FIDELITY_AUDIT_EXECUTED=YES
+FINAL_UI_UX_ACCEPTANCE=NOT_YET_AUTHORIZED
+UNTRACKED_OWNER_REQUIREMENTS=0
+PRODUCTION_CODE_CHANGED_BY_AUDIT=NO
+REMEDIATION_PERFORMED=NO
+```
+
+**This audit does not authorize remediation, merge, main integration, or Source Experience Parity
+implementation.** The next action belongs to the ChatGPT/Owner supervisor, per this mission's own explicit
+instruction — a future mission should read `docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUDIT.md` in full
+before deciding what, if anything, to remediate and in what order.
