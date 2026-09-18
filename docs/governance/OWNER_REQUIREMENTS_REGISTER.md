@@ -2543,6 +2543,28 @@ the source/Search integration slice named above.
 does not touch Search, Toolbar, ScopeStrip, or OpenShift/Docker scope
 selection in any way. `UNTRACKED_OWNER_REQUIREMENTS=0`.
 
+**Addendum — implemented (`SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT` mission).** The status block above is
+left unedited as the historical record of Session 8 (which recorded the requirement only). This requirement
+was subsequently implemented — see `docs/verification/SOURCE_EXPERIENCE_PARITY_VERIFICATION.md` for the full
+contract discovery, architecture, Docker/OpenShift behavior, Settings/Search responsibility split, security
+reverification, automated tests, and responsive/accessibility evidence. In summary: OpenShift's
+Project/Workload/Pod/Container scope selection moved from Settings (read-only there now) into the Search
+toolbar itself, using the exact same Search button/Results table/Inspector Docker already used, with the
+backend's own `OpenShiftSession` remaining the single authoritative scope state throughout (no new backend
+capability or endpoint was needed — `Search` already read that committed session scope, never a
+request-carried field). No new owner requirement was found in the process — `UNTRACKED_OWNER_REQUIREMENTS=0`
+holds.
+
+```
+SOURCE_EXPERIENCE_PARITY_IMPLEMENTED=YES
+IMPLEMENTATION_VERIFICATION=docs/verification/SOURCE_EXPERIENCE_PARITY_VERIFICATION.md
+OPENSHIFT_SCOPE_HIERARCHY=PROJECT_THEN_WORKLOAD_THEN_OPTIONAL_POD_THEN_OPTIONAL_CONTAINER
+SETTINGS_OWNS=CONNECTION_CONFIGURATION_ONLY
+SEARCH_OWNS=SCOPE_SELECTION
+SINGLE_AUTHORITATIVE_SCOPE_STATE=YES
+UNTRACKED_OWNER_REQUIREMENTS=0
+```
+
 ---
 
 ## 29. Mandatory visual fidelity gate — production implementation vs. the approved design reference

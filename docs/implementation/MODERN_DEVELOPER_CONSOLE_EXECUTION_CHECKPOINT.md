@@ -2110,3 +2110,52 @@ NEXT_ACTION=CHATGPT_OWNER_FINAL_UI_UX_REMEDIATION_REVIEW
 the rendered app, verified — it is explicitly NOT `FINAL_UI_UX_ACCEPTANCE` and NOT merge authorization.** That
 sign-off remains an explicit owner decision this remediation mission has no standing to grant on its own; PR
 #61 stays open, draft, and unmerged pending it, exactly as the mission required throughout.
+
+## Session 17 — Source Experience Parity (Docker/OpenShift) IMPLEMENTED
+
+`MISSION=SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT` — a new product requirement slice built on top of the
+accepted UI baseline (`AUDIT_COMPLETE=YES`, `VISUAL_DRIFT_REMEDIATION_COMPLETE=YES`, both left untouched and
+not reopened), implementing owner requirements register §28
+(`SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT`, previously `RECORDED` but `NOT_YET` implemented since Session 8).
+
+- **Contract discovery first** (Phase 0): read the actual backend (`OpenShiftSession`, `OpenShiftScope`,
+  `OpenShiftLogSource`) and frontend (`OpenShiftSettingsPanel.tsx`, `Toolbar.tsx`, `useSearchState.ts`) code
+  before writing anything, confirming Search already reads the backend's own committed session scope (never a
+  request-carried field) — meaning zero backend/Java changes were needed, only frontend composition.
+- **Relocated, not duplicated**: extracted `OpenShiftScopeControls` (Workload/Pod/Container, every
+  loading/empty/FORBIDDEN/PARTIAL state preserved byte-for-byte) out of Settings into a new
+  `frontend/src/features/search/openshift/` module, driven by a new `useOpenShiftScopeEditor` hook that calls
+  the exact same mutation APIs Settings used to call, then refreshes the same already-lifted
+  `useOpenShiftScopeSummary` instance Shell's `ScopeTrail` already read — one authoritative scope state
+  throughout, never two.
+- **`Toolbar.tsx`** now renders this new `OpenShiftScopeSelect` in place of `ServiceMultiSelect` when OpenShift
+  is the selected source, and gates `ServiceMultiSelect` itself by the `serviceDiscovery` capability
+  (previously unconditional for every source - a real, if minor, pre-existing gap this mission closed as part
+  of doing the OpenShift gating correctly).
+- **`OpenShiftSettingsPanel.tsx`** no longer edits scope - it shows the current Project/Workload/Pod/Container
+  read-only, sourced from the same lifted summary, with a hint pointing to Search.
+- **A real regression found and fixed by the mission's own E2E gate**: the relocated hint text (full sentences
+  like "No pods currently match this scope") inherited a `white-space: nowrap` rule from `ComposeProjectSelect`
+  (whose own hints are short), producing a real, reproducible 17px page-level overflow at 390px once pod
+  discovery resolved. Diagnosed with a DOM measurement script, fixed with `flex-wrap`/normal wrapping,
+  reverified with 6 repeated runs at zero overflow.
+- **Full regression gate**: `npm run typecheck` PASS, frontend unit suite PASS (1169/1169), backend suite PASS
+  (1424/1424, unchanged - no backend file touched), production build PASS, full E2E suite PASS (326/327, 1
+  pre-existing `NOT_AVAILABLE` real-cluster skip) across 4 shards.
+- **`REAL_OPENSHIFT_VALIDATION=NOT_AVAILABLE`** (consistent with every prior OS-1x slice - this repository has
+  never had real OpenShift credentials) - a short Owner real-cluster validation procedure is recorded in the
+  verification doc instead of a fabricated PASS.
+
+```
+MISSION=SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT
+SOURCE_EXPERIENCE_PARITY_IMPLEMENTED=YES
+VERIFICATION_REPORT=docs/verification/SOURCE_EXPERIENCE_PARITY_VERIFICATION.md
+FULL_REGRESSION_GATE=PASS
+REAL_OPENSHIFT_VALIDATION=NOT_AVAILABLE
+AUDIT_COMPLETE=YES (unchanged)
+VISUAL_DRIFT_REMEDIATION_COMPLETE=YES (unchanged)
+UNTRACKED_OWNER_REQUIREMENTS=0
+MERGE_AUTHORIZED=NO
+PR_61_STATE=OPEN, DRAFT, NOT_MERGED
+NEXT_ACTION=CHATGPT_OWNER_SOURCE_PARITY_REVIEW
+```
