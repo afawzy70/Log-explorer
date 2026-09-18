@@ -1545,3 +1545,23 @@ above as the most obvious first target - independently re-verifying, not blindly
    styles, and running the real E2E suite - keep doing that after every bounded change, not just at the end.
 9. Keep the same discipline going forward: typecheck (the correct command)/full-unit/build/targeted-or-full-E2E
    after each bounded change; commit and push after each coherent, fully-verified milestone.
+
+## New owner requirement recorded (not executed) — mandatory visual fidelity gate
+
+Per an explicit owner instruction after the Session 10 continuation above, a new requirement was persisted in
+`docs/governance/OWNER_REQUIREMENTS_REGISTER.md` §29: passing implementation/functional/responsive/
+accessibility/dark-theme tests and CI is **not sufficient** for final Modern Developer Console UI/UX
+acceptance. A separate, mandatory Visual Fidelity Audit must compare the actual rendered production
+implementation (PR #61) against the approved Impeccable/B1 design reference (**PR #58, `design/v2-modern-
+developer-console` — the authoritative visual reference**) across every major workspace, classifying every
+meaningful difference as `INTENTIONAL_PRODUCTION_ADAPTATION` or `VISUAL_DESIGN_DRIFT`, with any drift requiring
+remediation before acceptance. **This audit was explicitly NOT executed this session** - it is deliberately a
+separate, later mission, run only after the internal implementation/hardening gate (Stages 2-6 above, currently
+partial) is reached.
+
+```
+IMPECCABLE_VISUAL_FIDELITY_GATE_RECORDED=YES
+IMPECCABLE_VISUAL_FIDELITY_AUDIT_EXECUTED=NO
+FINAL_UI_UX_ACCEPTANCE=NOT_YET_AUTHORIZED
+UNTRACKED_OWNER_REQUIREMENTS=0
+```

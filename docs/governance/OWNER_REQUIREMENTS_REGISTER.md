@@ -2542,3 +2542,83 @@ the source/Search integration slice named above.
 **Scope discipline.** B6.3 (Classification Rules workspace recompose)
 does not touch Search, Toolbar, ScopeStrip, or OpenShift/Docker scope
 selection in any way. `UNTRACKED_OWNER_REQUIREMENTS=0`.
+
+---
+
+## 29. Mandatory visual fidelity gate — production implementation vs. the approved design reference
+
+`IMPECCABLE_VISUAL_FIDELITY_GATE` — recorded during the Modern Developer Console implementation (Session 10
+continuation, `MODERN_DEVELOPER_CONSOLE_SESSION_10_CONTINUATION_GLOBAL_HARDENING` mission) as an explicit
+owner-approved requirement. **This entry records and preserves the requirement only; the audit itself is not
+executed by this session** — it is deliberately a separate, later mission, so it is never silently skipped or
+folded into ordinary hardening work.
+
+**The requirement.** Passing implementation, functional tests, responsive tests, accessibility tests, dark
+theme, and CI is **not sufficient** to declare the Modern Developer Console finally UI/UX-accepted. After
+internal implementation/hardening is complete (i.e. after the B1–B7 build-out and the global hardening stages
+in `docs/implementation/MODERN_DEVELOPER_CONSOLE_EXECUTION_CHECKPOINT.md` have reached their own internal
+completion gate), a separate, mandatory **Visual Fidelity Audit** must compare the actual rendered production
+implementation on `ux/v2-modern-developer-console` (PR #61) against the approved Impeccable/B1 design reference
+on `design/v2-modern-developer-console` (**PR #58 — the authoritative visual reference**, `docs/ux-v2-modern-
+developer-console/` and its prototype captures on that branch, not this branch's own prose description of what
+it believes it built).
+
+**Method.** The comparison must be against the actual approved design captures/prototype rendered output, not
+merely against design tokens, prose specs, or the implementation agent's own self-report of what it did.
+Representative states of every major workspace must be covered:
+
+- Application Shell
+- Search
+- Results
+- Inspector
+- Investigation
+- Settings
+- Field Mapping
+- Classification Rules
+- Rule Builder
+- Assisted Extraction
+- Import/Export
+- Live
+- Dialogs and other important transient states
+
+At minimum, the audit must evaluate: layout geometry, spacing, typography, density, component sizing,
+alignment, borders, radii, shadows/elevation, table geometry, column geometry, icon treatment, controls, tags,
+severity treatment, visual hierarchy, state styling, light theme, dark theme, and responsive behavior — using
+equivalent viewport/state combinations between the two branches wherever possible.
+
+**Classification, not automatic defect-finding.** A production/design difference is **not automatically a
+defect**. Every meaningful difference found must be classified as exactly one of:
+
+1. `INTENTIONAL_PRODUCTION_ADAPTATION` — required because real production behavior/functionality (real data,
+   real states, real interaction constraints) genuinely differs from what a static prototype can represent,
+   with evidence for why.
+2. `VISUAL_DESIGN_DRIFT` — the production implementation failed to reproduce the approved design's fidelity
+   without a justified functional reason.
+
+Any `VISUAL_DESIGN_DRIFT` found must be remediated and reverified before final UI/UX acceptance is granted. The
+audit must **never** recommend weakening real production functionality merely to achieve screenshot similarity,
+and must **never** recommend copying prototype behavior that conflicts with an already-proven production
+requirement (e.g. any of CLAUDE.md's non-negotiable rules, or a requirement already `VERIFIED` elsewhere in
+this register).
+
+**This gate is separate from, and in addition to, normal accessibility/responsive hardening** (this register's
+existing Stage 3/Stage 4 global-hardening work) — passing those does not satisfy this gate, and this gate does
+not substitute for them.
+
+```
+IMPECCABLE_VISUAL_FIDELITY_GATE_RECORDED=YES
+IMPECCABLE_VISUAL_FIDELITY_AUDIT_EXECUTED=NO
+FINAL_UI_UX_ACCEPTANCE=NOT_YET_AUTHORIZED
+DESIGN_REFERENCE_PR=58 (design/v2-modern-developer-console, B1 "Instrument Neutral")
+PRODUCTION_IMPLEMENTATION_PR=61 (ux/v2-modern-developer-console)
+AUDIT_TIMING=SEPARATE_FUTURE_MISSION_AFTER_INTERNAL_IMPLEMENTATION_COMPLETION
+AUDIT_METHOD=RENDERED_PRODUCTION_UI_VS_RENDERED_APPROVED_DESIGN_CAPTURES
+DIFFERENCE_CLASSIFICATION_VOCABULARY=INTENTIONAL_PRODUCTION_ADAPTATION_OR_VISUAL_DESIGN_DRIFT
+VISUAL_DESIGN_DRIFT_MUST_BE_REMEDIATED=YES
+FUNCTIONALITY_NEVER_WEAKENED_FOR_SCREENSHOT_SIMILARITY=YES
+UNTRACKED_OWNER_REQUIREMENTS=0
+```
+
+**Scope discipline.** This entry only records and preserves the requirement, per this session's explicit
+instruction. No visual comparison, no screenshot diffing against PR #58, and no remediation work was performed
+under this entry. `UNTRACKED_OWNER_REQUIREMENTS=0`.
