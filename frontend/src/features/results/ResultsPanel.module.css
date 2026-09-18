@@ -18,63 +18,14 @@
 }
 
 /*
- * UX-R4 §36 - this row carries one more control than it used to (Sort,
- * alongside the counts summary, Columns and Refresh), and at 390px that
- * was enough to push Refresh 34px past the viewport and overflow the
- * *page* - which CLAUDE.md §4 forbids outright, unlike the results
- * table's own wrapper scroll. Found by measuring the real rendered page
- * at 390px, not by eye. Wrapping is the fix rather than hiding a control:
- * every control here stays reachable at every width, it simply takes a
- * second line when there is not room for one.
+ * Session 11 (Stage 6, safe legacy cleanup) - `.summaryRow` (a former UX-R4 §36 wrapping-row fix),
+ * `.summary` (incl. the `.summaryRow > .summary` child-combinator rule that depended on it), `.empty`,
+ * `.error`, `.loading`, `.errorTitle`, `.errorDetail` removed here: `.summary`/`.empty`/`.error`/
+ * `.loading` were flagged as dead in Stage 2 (grep-confirmed zero consumers in ResultsPanel.tsx,
+ * superseded by `.statePanel*`'s B3 restyle and ScopeStrip's own counts `readout`); `.summaryRow`
+ * itself and `.errorTitle`/`.errorDetail` were found dead by the same check while removing the rest.
+ * Re-confirmed zero consumers immediately before deletion, per Stage 6's own mandate.
  */
-.summaryRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
-}
-
-/*
- * The counts sentence is the only elastic member of the row - it may
- * shrink and wrap so the controls beside it never have to.
- */
-.summaryRow > .summary {
-  flex: 1 1 12rem;
-  min-width: 0;
-}
-
-/*
- * Session 11 - `.summary`/`.empty`/`.error`/`.loading` below (and `.errorTitle`/`.errorDetail` further down)
- * have no consumer in ResultsPanel.tsx (grep confirmed: superseded by `.statePanel*`'s B3 restyle and
- * ScopeStrip's own counts `readout`, never removed). Left in place rather than deleted here (Stage 2 is a
- * token pass, not the dead-code audit), but migrated to v2 tokens for internal consistency; flagged as a
- * Stage 6 dead-code candidate.
- */
-.summary {
-  color: var(--v2-ink-2);
-  font-size: var(--font-size-sm);
-}
-
-.empty {
-  color: var(--v2-ink-3);
-  padding: var(--space-6) 0;
-  text-align: center;
-}
-
-.error {
-  color: var(--v2-danger);
-  background: var(--v2-danger-tint);
-  border-radius: var(--v2-r-sm);
-  padding: var(--space-3);
-}
-
-.loading {
-  color: var(--v2-ink-2);
-  padding: var(--space-6) 0;
-  text-align: center;
-}
 
 /*
  * B3 (COMPONENT_INVENTORY.md's ResultsPanel.tsx RECOMPOSE entry - "loading, empty, error ... use the new
@@ -244,18 +195,3 @@
   font: var(--v2-text-meta);
 }
 
-/*
- * UX-R6 §11 - the failed-search state. Sized to its content (no giant
- * empty region below it) and laid out as title / detail / action so the
- * investigator can read what happened and act on it without leaving the
- * workspace.
- */
-.errorTitle {
-  margin: 0 0 var(--space-1) 0;
-  font-weight: 600;
-}
-
-.errorDetail {
-  margin: 0 0 var(--space-3) 0;
-  color: var(--v2-ink-1);
-}
