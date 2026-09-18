@@ -92,8 +92,8 @@ test('real fixture events render correctly: the eight default columns, newest fi
     'Service',
     'What happened',
     'Tags',
-    'User/Customer',
-    'Correlation/Trace',
+    'User / Customer',
+    'Correlation / Trace',
     'Actions',
   ]);
 

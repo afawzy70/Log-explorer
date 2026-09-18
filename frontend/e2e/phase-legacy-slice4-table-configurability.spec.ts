@@ -42,8 +42,8 @@ import { headerLabel } from './inspector-helpers';
 
 // Tags joined the default set with the owner mission "Classification real search scope, assisted extraction, and
 // visual tagging" (CLAUDE.md §4, register §27 CSX-8) - a saved rule must be visible in the table after a re-search.
-const DEFAULT_HEADERS = ['Time', 'Level', 'Service', 'What happened', 'Tags', 'User/Customer', 'Correlation/Trace', 'Actions'];
-const CUSTOMIZED_HEADERS = ['Time', 'Service', 'Level', 'What happened', 'Tags', 'User/Customer', 'Correlation/Trace', 'Logger', 'Trace ID', 'Actions'];
+const DEFAULT_HEADERS = ['Time', 'Level', 'Service', 'What happened', 'Tags', 'User / Customer', 'Correlation / Trace', 'Actions'];
+const CUSTOMIZED_HEADERS = ['Time', 'Service', 'Level', 'What happened', 'Tags', 'User / Customer', 'Correlation / Trace', 'Logger', 'Trace ID', 'Actions'];
 const STORAGE_KEY = 'logexplorer.tablePreferences.v1';
 
 async function gotoFixtureAllLevels(page: Page) {

@@ -280,7 +280,7 @@ export const COLUMN_REGISTRY: ColumnDefinition[] = [
   },
   {
     id: 'userCustomer',
-    label: 'User/Customer',
+    label: 'User / Customer',
     defaultVisible: true,
     width: '160px',
     cellClassName: styles.idCell,
@@ -303,7 +303,7 @@ export const COLUMN_REGISTRY: ColumnDefinition[] = [
   },
   {
     id: 'correlationTrace',
-    label: 'Correlation/Trace',
+    label: 'Correlation / Trace',
     defaultVisible: true,
     width: '170px',
     cellClassName: styles.idCell,

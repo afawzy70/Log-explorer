@@ -115,7 +115,7 @@ describe('TableSettingsControl', () => {
     render(<Harness />);
     await open(user);
 
-    for (const label of ['Level', 'Service', 'What happened', 'Tags', 'User/Customer', 'Correlation/Trace']) {
+    for (const label of ['Level', 'Service', 'What happened', 'Tags', 'User / Customer', 'Correlation / Trace']) {
       await user.click(screen.getByRole('checkbox', { name: label }));
     }
 

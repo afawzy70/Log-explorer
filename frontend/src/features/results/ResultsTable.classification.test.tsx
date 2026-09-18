@@ -182,8 +182,8 @@ describe('ResultsTable - classification tags column', () => {
       'Service',
       'What happened',
       'Tags',
-      'User/Customer',
-      'Correlation/Trace',
+      'User / Customer',
+      'Correlation / Trace',
       'Actions',
     ]);
 
@@ -193,8 +193,8 @@ describe('ResultsTable - classification tags column', () => {
       'Level',
       'Service',
       'What happened',
-      'User/Customer',
-      'Correlation/Trace',
+      'User / Customer',
+      'Correlation / Trace',
       'Actions',
     ]);
     const row = screen.getAllByRole('row')[1];

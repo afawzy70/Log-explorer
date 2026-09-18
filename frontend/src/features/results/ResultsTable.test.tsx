@@ -74,8 +74,8 @@ describe('ResultsTable', () => {
       'Service',
       'What happened',
       'Tags',
-      'User/Customer',
-      'Correlation/Trace',
+      'User / Customer',
+      'Correlation / Trace',
       'Actions',
     ]);
   });
@@ -310,8 +310,8 @@ describe('ResultsTable', () => {
         'Level',
         'Service',
         'What happened',
-        'User/Customer',
-        'Correlation/Trace',
+        'User / Customer',
+        'Correlation / Trace',
         'Logger',
         'Actions',
       ]);
@@ -331,7 +331,7 @@ describe('ResultsTable', () => {
         />,
       );
       const headers = screen.getAllByRole('columnheader').map((h) => headerLabel(h));
-      expect(headers).toEqual(['Time', 'Level', 'What happened', 'User/Customer', 'Correlation/Trace', 'Actions']);
+      expect(headers).toEqual(['Time', 'Level', 'What happened', 'User / Customer', 'Correlation / Trace', 'Actions']);
     });
 
     it('reordering columnOrder changes header and cell order together, so rows still correspond correctly to headers', () => {

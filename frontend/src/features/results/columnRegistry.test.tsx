@@ -37,8 +37,8 @@ describe('columnRegistry', () => {
       'Service',
       'What happened',
       'Tags',
-      'User/Customer',
-      'Correlation/Trace',
+      'User / Customer',
+      'Correlation / Trace',
     ]);
     // Note: "Actions" is the last column but is deliberately not a registry
     // entry at all (see ResultsTable.tsx/columnRegistry.tsx's own comments) -
