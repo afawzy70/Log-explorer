@@ -1383,8 +1383,10 @@ targeted locally) failed 4 tests, all genuinely caused by this session's Live ch
   by inspecting what the test actually touches, not just its retry outcome.
 
 After these fixes: full local E2E suite re-run in all 5 shards, 100% green (no failures, the one pre-existing
-skip is an unrelated `NOT_AVAILABLE` real-OpenShift-cluster test). Pushed as a second commit; CI re-run pending
-at the time this entry was written.
+skip is an unrelated `NOT_AVAILABLE` real-OpenShift-cluster test). Pushed as commit `721c12f`. Real CI on that
+exact HEAD confirmed green on all five checks: Backend PASS (2m28s), Frontend PASS (1m35s), E2E PASS (10m14s),
+Windows desktop PASS (3m57s), macOS desktop PASS (2m9s) - `gh pr checks 61` output captured directly, not
+inferred. `CI_ALL_GREEN=YES` on PR #61 HEAD `721c12f60fcdc391e9eb9428b1335036a7b67755`.
 
 **Lesson recorded for future sessions**: a structural UI change (list → table) invalidates far more than the
 locators literally named after the old shape - it also invalidates test helpers that rely on *incidental*
