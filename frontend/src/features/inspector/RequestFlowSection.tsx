@@ -1,5 +1,6 @@
 import type { JourneyField, LogEvent } from '../../shared/api/types';
 import { Button } from '../../shared/ui/Button';
+import { Icon } from '../../shared/ui/Icon';
 import { copyToClipboard } from '../../shared/browser/clipboard';
 import { buildRequestFlowIdentifiers } from './sections';
 import { EmptySectionNote, InspectorSection } from './InspectorSection';
@@ -53,7 +54,19 @@ export function RequestFlowSection({ event, onOpenJourney }: RequestFlowSectionP
       {identifiers.length === 0 ? (
         <EmptySectionNote>No journey, correlation, trace, span, or event ID on this event.</EmptySectionNote>
       ) : (
-        <ul className={styles.list}>
+        <>
+          {/*
+            * DRIFT-010 remediation - the approved causality-safety copy, reusing the same core wording
+            * Investigation's own disclaimer already establishes (JourneyView.tsx) so the product states
+            * this invariant consistently everywhere it applies, not just where Investigation happens to
+            * show gaps. Sharing an ID or appearing in this list is never evidence that one event caused
+            * another.
+            */}
+          <p className={styles.causalityNote}>
+            Opening an ID here shows related events ordered by timestamp — this does not indicate causality
+            between events.
+          </p>
+          <ul className={styles.list}>
           {identifiers.map((id) => (
             <li key={id.field} className={styles.row}>
               <span className={styles.label}>{id.label}</span>
@@ -73,10 +86,14 @@ export function RequestFlowSection({ event, onOpenJourney }: RequestFlowSectionP
                 */}
               <span className={styles.rowActions}>
                 {JOURNEY_CLICKABLE_FIELDS.has(id.field) ? (
+                  // DRIFT-009 remediation: restores the approved bordered icon+label pill treatment
+                  // (variant="secondary" is this shared Button's already-bordered style - see
+                  // Button.module.css's own .secondary rule) - same click behaviour, unchanged.
                   <Button
-                    variant="ghost"
+                    variant="secondary"
                     onClick={() => onOpenJourney(id.field as JourneyField, id.value, event)}
                   >
+                    <Icon name="arrow-right" size="sm" />
                     {JOURNEY_ACTION_LABELS[id.field as JourneyField]}
                   </Button>
                 ) : null}
@@ -86,7 +103,8 @@ export function RequestFlowSection({ event, onOpenJourney }: RequestFlowSectionP
               </span>
             </li>
           ))}
-        </ul>
+          </ul>
+        </>
       )}
     </InspectorSection>
   );

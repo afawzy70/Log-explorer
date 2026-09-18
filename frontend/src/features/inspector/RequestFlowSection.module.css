@@ -1,3 +1,10 @@
+/* DRIFT-010 remediation - matches InspectorSection.module.css's own .emptyNote muted-note treatment. */
+.causalityNote {
+  margin: 0 0 var(--space-2);
+  color: var(--v2-ink-3);
+  font-size: var(--font-size-sm);
+}
+
 .list {
   margin: 0;
   padding: 0;

@@ -42,6 +42,14 @@ export interface InspectorHeaderProps {
   onCreateTagRule?: () => void;
   /** Only meaningful for an event that already has classifications - it extends one of the rules that matched. */
   onAddExtraction?: () => void;
+  /**
+   * DRIFT-003 remediation - the approved design keeps "View Trace" reachable as a persistent top-level
+   * Inspector action (not only inside the Request Flow tab, which still keeps its own copy of every
+   * identifier's own action - this is an additional entry point, not a move). Only present when the
+   * event actually has a traceId; undefined (not a disabled button) when it doesn't, matching how
+   * RequestFlowSection's own identifier list already omits an action row for a field with no value.
+   */
+  onViewTrace?: () => void;
 }
 
 /** "Header: severity, service, title derived from message/error code. No invented diagnosis or root cause." (HANDOVER.md §16.1) */
@@ -57,6 +65,7 @@ export function InspectorHeader({
   onShowContext,
   onCreateTagRule,
   onAddExtraction,
+  onViewTrace,
 }: InspectorHeaderProps) {
   const isClassified = event.classifications.length > 0;
   const color = levelColor(event.severity);
@@ -90,6 +99,11 @@ export function InspectorHeader({
       </h1>
       <div className={styles.actions}>
         <ContextAction event={event} onConfirm={onShowContext} />
+        {onViewTrace ? (
+          <Button variant="ghost" onClick={onViewTrace}>
+            View Trace
+          </Button>
+        ) : null}
         {/*
           * Owner mission §"Inspector action semantics": one action never means two things. An unclassified event
           * offers only rule creation; a classified one offers extending a rule that already matched it, and
