@@ -157,21 +157,62 @@
   margin-bottom: 0;
 }
 
-/* ------------------------------------------------------------------ step rail */
-.steps {
-  list-style: none;
+/* ------------------------------------------------------------------ wizard shell */
+/*
+ * DRIFT-015 remediation - persistent vertical step sidebar + main column, matching the design's own rule-
+ * builder/extend-rule composition (`familyA-57-detect-*`, `familyA-87-extend-choose-rule-*`). Collapses to a
+ * single column with the original horizontal step row under the existing 767px breakpoint below.
+ */
+.wizard {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.stepRail {
+  position: sticky;
+  top: var(--space-3);
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-  margin: 0 0 var(--space-3);
+  flex-direction: column;
+  gap: var(--space-2);
   padding: var(--space-2);
   background: var(--v2-surface-inspector, var(--v2-surface-work));
   border: var(--v2-bw) solid var(--v2-line);
   border-radius: var(--v2-r-md);
 }
 
+.stepRailHint {
+  margin: 0;
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-3);
+}
+
+.scopeNote {
+  margin: 0 0 var(--space-1);
+  padding-bottom: var(--space-1);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+}
+
+.wizardMain {
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------------ step rail */
+.steps {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+}
+
 .stepButton {
-  display: inline-flex;
+  display: flex;
+  width: 100%;
   align-items: center;
   gap: 6px;
   border: var(--v2-bw) solid transparent;
@@ -181,6 +222,7 @@
   font: var(--v2-text-meta);
   color: var(--v2-ink-2);
   cursor: pointer;
+  text-align: left;
 }
 
 .stepButton:hover {
@@ -480,7 +522,24 @@
     align-items: stretch;
   }
 
+  /* Do not force a desktop sidebar into a narrow viewport (DRIFT-015 remediation's own explicit constraint) -
+     collapse back to a single column with the step rail as a horizontal, wrapping row above the content,
+     exactly the layout this wizard already used and had already verified responsive at this width. */
+  .wizard {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stepRail {
+    position: static;
+  }
+
   .steps {
+    flex-direction: row;
+    flex-wrap: wrap;
     gap: 2px;
+  }
+
+  .stepButton {
+    width: auto;
   }
 }

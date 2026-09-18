@@ -34,6 +34,7 @@ import { TagChip } from '../../../shared/ui/TagChip';
 import { extractedFieldItem } from '../../inspector/ClassificationSection';
 import { formatUtcTimestamp } from '../../inspector/timestampFormat';
 import { resolveService } from '../../results/columnMapping';
+import { formatInterval } from '../../../shared/time/interval';
 import {
   MATCHER_LABELS,
   REVISION_CONFLICT_MESSAGE,
@@ -60,7 +61,7 @@ const STEP_LABELS: Record<StepId, string> = {
   save: 'Save',
 };
 
-const EDITOR_TITLES: Record<EditorMode, string> = {
+export const EDITOR_TITLES: Record<EditorMode, string> = {
   new: 'New rule',
   edit: 'Edit rule',
   duplicate: 'Duplicate rule',
@@ -232,6 +233,18 @@ export function RuleEditor({
       ...(sourceEvent ? Object.keys(sourceEvent.unknownMdcFields ?? {}).map((k) => `mdc.${k}`) : []),
     ]),
   );
+
+  // DRIFT-015 remediation - a compact, read-only note of the search scope Detect/Test/Suggest actually sample
+  // from, since this wizard is a takeover workspace with no Search toolbar visible at all (DRIFT-001 hides it
+  // for every settings-style workspace) - without this, "the current search scope" in the Detect step's own
+  // hint text refers to something the wizard never otherwise shows. Only non-sensitive fields (source id,
+  // Compose project, the time window) are read from the scope - never any of its filter/identifier values.
+  const scopeForNote = buildScope(sourceEvent);
+  const scopeNote = scopeForNote
+    ? [scopeForNote.sourceId, scopeForNote.composeProject, formatInterval(scopeForNote.start, scopeForNote.end)]
+        .filter((part): part is string => Boolean(part))
+        .join(' · ')
+    : null;
 
   // ---- Detect ----
   const [detecting, setDetecting] = useState(false);
@@ -1330,12 +1343,22 @@ export function RuleEditor({
   }
 
   return (
-    <section aria-labelledby={`${id}-title`} className={styles.section}>
-      <h2 id={`${id}-title`} className={styles.subheading}>
-        {EDITOR_TITLES[mode]}
-        {mode === 'edit' && initialRule.name ? `: ${initialRule.name}` : ''}
-      </h2>
-      <nav aria-label="Rule steps">
+    <section aria-labelledby={`${id}-title`} className={styles.wizard}>
+      {/*
+       * DRIFT-015 remediation - a persistent vertical step list (every step always visible and reachable, not
+       * hidden behind a horizontal row that only shows once scrolled to), matching the design's own rule-
+       * builder/extend-rule sidebar. Free step-jumping is unchanged (still a plain onClick={() => setStep(s)},
+       * no disabled state) - this only changes the list's geometry, never which steps can be reached or when.
+       * Collapses back to the original horizontal row under the existing 767px breakpoint (see the media query
+       * below) rather than forcing a desktop sidebar into a narrow viewport.
+       */}
+      <nav aria-label="Rule steps" className={styles.stepRail}>
+        <p className={styles.stepRailHint}>Every step stays reachable, in any order. Nothing is saved until Save rule.</p>
+        {scopeNote ? (
+          <p className={styles.scopeNote}>
+            Sampling from <span className={styles.mono}>{scopeNote}</span>
+          </p>
+        ) : null}
         <ol className={styles.steps}>
           {steps.map((s, i) => (
             <li key={s}>
@@ -1359,28 +1382,34 @@ export function RuleEditor({
           ))}
         </ol>
       </nav>
-      <h3 ref={stepHeadingRef} tabIndex={-1} className={styles.stepHeading}>
-        Step {stepIndex + 1} of {steps.length}: {STEP_LABELS[step]}
-      </h3>
-      <datalist id={fieldsListId}>
-        {datalistKeys.map((k) => (
-          <option key={k} value={k} />
-        ))}
-      </datalist>
-      {content}
-      <div className={styles.navRow}>
-        <Button variant="ghost" onClick={onCancel}>
-          Cancel
-        </Button>
-        <div className={styles.buttonRow} style={{ margin: 0 }}>
-          <Button onClick={() => setStep(steps[stepIndex - 1])} disabled={stepIndex <= 0}>
-            Back
+      <div className={styles.wizardMain}>
+        <h2 id={`${id}-title`} className={styles.subheading}>
+          {EDITOR_TITLES[mode]}
+          {mode === 'edit' && initialRule.name ? `: ${initialRule.name}` : ''}
+        </h2>
+        <h3 ref={stepHeadingRef} tabIndex={-1} className={styles.stepHeading}>
+          Step {stepIndex + 1} of {steps.length}: {STEP_LABELS[step]}
+        </h3>
+        <datalist id={fieldsListId}>
+          {datalistKeys.map((k) => (
+            <option key={k} value={k} />
+          ))}
+        </datalist>
+        {content}
+        <div className={styles.navRow}>
+          <Button variant="ghost" onClick={onCancel}>
+            Cancel
           </Button>
-          {stepIndex < steps.length - 1 ? (
-            <Button variant="primary" onClick={() => setStep(steps[stepIndex + 1])}>
-              Next
+          <div className={styles.buttonRow} style={{ margin: 0 }}>
+            <Button onClick={() => setStep(steps[stepIndex - 1])} disabled={stepIndex <= 0}>
+              Back
             </Button>
-          ) : null}
+            {stepIndex < steps.length - 1 ? (
+              <Button variant="primary" onClick={() => setStep(steps[stepIndex + 1])}>
+                Next
+              </Button>
+            ) : null}
+          </div>
         </div>
       </div>
     </section>

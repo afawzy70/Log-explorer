@@ -23,7 +23,7 @@ import type {
 import type { ClassificationWorkspaceIntent } from '../../../app/useSearchState';
 import { TagChip, TagCountBadge } from '../../../shared/ui/TagChip';
 import { SettingsNav } from '../SettingsNav';
-import { RuleEditor } from './RuleEditor';
+import { EDITOR_TITLES, RuleEditor } from './RuleEditor';
 import type { EditorMode, StepId } from './RuleEditor';
 import { ImportPanel } from './ImportPanel';
 import {
@@ -650,7 +650,11 @@ export function ClassificationRulesWorkspace({
     );
   }
 
-  const onImportSubview = view.kind === 'import';
+  // DRIFT-015/DRIFT-016 remediation - the workspace-trail breadcrumb extends with one more segment while the
+  // rule wizard, the "which rule to extend" chooser, or Import is the active view, so it always names exactly
+  // where the user is, never just "Classification rules" regardless of sub-view.
+  const trailSegment =
+    view.kind === 'import' ? 'Import' : view.kind === 'editor' ? EDITOR_TITLES[view.mode] : view.kind === 'chooseRule' ? 'Extend rule' : null;
 
   return (
     <div className={listStyles.wrapper} data-testid="classification-rules-workspace">
@@ -666,7 +670,7 @@ export function ClassificationRulesWorkspace({
               /
             </li>
             <li>
-              {onImportSubview ? (
+              {trailSegment ? (
                 <button
                   type="button"
                   className={listStyles.breadcrumbLink}
@@ -678,13 +682,13 @@ export function ClassificationRulesWorkspace({
                 <span aria-current="page">Classification rules</span>
               )}
             </li>
-            {onImportSubview ? (
+            {trailSegment ? (
               <>
                 <li aria-hidden="true" className={listStyles.breadcrumbSep}>
                   /
                 </li>
                 <li>
-                  <span aria-current="page">Import</span>
+                  <span aria-current="page">{trailSegment}</span>
                 </li>
               </>
             ) : null}
