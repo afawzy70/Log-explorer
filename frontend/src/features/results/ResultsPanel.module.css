@@ -45,26 +45,33 @@
   min-width: 0;
 }
 
+/*
+ * Session 11 - `.summary`/`.empty`/`.error`/`.loading` below (and `.errorTitle`/`.errorDetail` further down)
+ * have no consumer in ResultsPanel.tsx (grep confirmed: superseded by `.statePanel*`'s B3 restyle and
+ * ScopeStrip's own counts `readout`, never removed). Left in place rather than deleted here (Stage 2 is a
+ * token pass, not the dead-code audit), but migrated to v2 tokens for internal consistency; flagged as a
+ * Stage 6 dead-code candidate.
+ */
 .summary {
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
   font-size: var(--font-size-sm);
 }
 
 .empty {
-  color: var(--color-text-tertiary);
+  color: var(--v2-ink-3);
   padding: var(--space-6) 0;
   text-align: center;
 }
 
 .error {
-  color: var(--color-danger);
-  background: var(--color-danger-bg);
-  border-radius: var(--radius-sm);
+  color: var(--v2-danger);
+  background: var(--v2-danger-tint);
+  border-radius: var(--v2-r-sm);
   padding: var(--space-3);
 }
 
 .loading {
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
   padding: var(--space-6) 0;
   text-align: center;
 }
@@ -250,5 +257,5 @@
 
 .errorDetail {
   margin: 0 0 var(--space-3) 0;
-  color: var(--color-text);
+  color: var(--v2-ink-1);
 }

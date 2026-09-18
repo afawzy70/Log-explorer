@@ -1,9 +1,15 @@
+/*
+ * Session 11 - full v2 tokens for the table's own remaining v1 leaks. The sticky header, severity marks, and
+ * selected/root row states were already v2 (B3); this closes the rest (scroll wrapper, sort header, hover/
+ * focus row states, timestamp weighting, protected-value/id-label text, error/warn row tints, the gap row) so
+ * the whole table is coherently dark-theme correct, not just its newer pieces.
+ */
 /* Horizontal scroll belongs around the table; the page itself must never overflow (CLAUDE.md §4). */
 .scrollWrapper {
   overflow-x: auto;
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-raised);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-surface-work);
 }
 
 /*
@@ -36,8 +42,9 @@
   padding: var(--space-2) var(--space-3);
   text-align: left;
   vertical-align: top;
-  border-bottom: var(--border-width) solid var(--color-border);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
   overflow: hidden;
+  color: var(--v2-ink-1);
 }
 
 /*
@@ -129,13 +136,13 @@
 }
 
 .sortableHeader:hover {
-  color: var(--color-text);
+  color: var(--v2-ink-1);
 }
 
 .sortableHeader:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
+  outline: 2px solid var(--v2-focus);
   outline-offset: 2px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--v2-r-sm);
 }
 
 /* Never color-only: the glyph itself changes (▲/▼ vs ↕), plus aria-sort on the <th> and a visually-hidden text description. */
@@ -263,11 +270,11 @@
  * concatenate back to exactly the canonical `formatTimestampCell` string.
  */
 .timeDatePart {
-  color: var(--color-text-tertiary);
+  color: var(--v2-ink-3);
 }
 
 .timeClockPart {
-  color: var(--color-text);
+  color: var(--v2-ink-1);
 }
 
 .levelCell {
@@ -300,13 +307,13 @@
 }
 
 .idLabel {
-  color: var(--color-text-tertiary);
+  color: var(--v2-ink-3);
   font-family: var(--font-sans);
   margin-right: var(--space-1);
 }
 
 .protectedValue {
-  color: var(--color-protected);
+  color: var(--v2-masked);
 }
 
 /*
@@ -340,7 +347,7 @@
 .idLinkCell:hover,
 .idLinkCell:focus-visible {
   text-decoration: underline;
-  color: var(--color-accent);
+  color: var(--v2-accent-ink);
 }
 
 /*
@@ -376,12 +383,12 @@
  * all legitimately win over it at equal specificity.
  */
 .table tbody tr.errorRow {
-  background: color-mix(in srgb, var(--color-severity-error-bg) 60%, transparent);
-  box-shadow: inset 3px 0 0 var(--color-severity-error);
+  background: var(--v2-sev-error-row);
+  box-shadow: inset 3px 0 0 var(--v2-sev-error);
 }
 
 .table tbody tr.warnRow {
-  box-shadow: inset 3px 0 0 var(--color-severity-warn);
+  box-shadow: inset 3px 0 0 var(--v2-sev-warn);
 }
 
 /*
@@ -406,7 +413,7 @@
 }
 
 .table tbody tr[data-row-index]:hover {
-  background: var(--color-bg-hover);
+  background: var(--v2-hover);
 }
 
 /*
@@ -414,7 +421,7 @@
  * it is not clipped by the scroll wrapper on the first/last row.
  */
 .table tbody tr[data-row-index]:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
+  outline: 2px solid var(--v2-focus);
   outline-offset: -2px;
 }
 
@@ -481,11 +488,11 @@
  * `.selectedRow`/`.contextRootRow`.
  */
 .gapRow {
-  background: var(--color-bg-hover);
-  color: var(--color-text-secondary);
+  background: var(--v2-surface-sunken);
+  color: var(--v2-ink-2);
   font-style: italic;
-  border-top: 1px dashed var(--color-border);
-  border-bottom: 1px dashed var(--color-border);
+  border-top: 1px dashed var(--v2-line);
+  border-bottom: 1px dashed var(--v2-line);
 }
 
 

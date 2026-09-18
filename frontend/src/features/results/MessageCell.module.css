@@ -22,11 +22,12 @@
   font-size: var(--font-size-xs);
 }
 
+/* Session 11 - full v2 tokens. */
 .toggle {
   flex-shrink: 0;
   border: none;
   background: transparent;
-  color: var(--color-accent);
+  color: var(--v2-accent-ink);
   cursor: pointer;
   font-size: var(--font-size-xs);
   padding: 0;
@@ -35,8 +36,8 @@
 .badge {
   flex-shrink: 0;
   font-size: var(--font-size-xs);
-  color: var(--color-text-tertiary);
-  background: var(--color-bg-hover);
-  border-radius: var(--radius-sm);
+  color: var(--v2-ink-3);
+  background: var(--v2-surface-sunken);
+  border-radius: var(--v2-r-sm);
   padding: 0 var(--space-1);
 }
