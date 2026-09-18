@@ -4,6 +4,7 @@ import type { LogEvent } from '../../shared/api/types';
 import { eventIdentity } from '../../app/useSearchState';
 import { SeverityMark } from '../../shared/ui/SeverityMark';
 import { VisuallyHidden } from '../../shared/ui/VisuallyHidden';
+import { TagChip, TagCountBadge, tagColorsOf } from '../../shared/ui/TagChip';
 import { MessageCell } from '../results/MessageCell';
 import { EMPTY_VALUE, formatTimestampCell, resolveService } from '../results/columnMapping';
 import { ContextAction } from '../inspector/ContextAction';
@@ -40,6 +41,32 @@ export interface SequenceTableProps {
  * Context/Surroundings view instead reuses `ResultsTable` unchanged - see `JourneyView.tsx`'s own comment for
  * why the split follows the design's own two distinct table markups, not an arbitrary choice).
  */
+/**
+ * DRIFT-012 remediation - identical rendering to Results' own TagsCell (columnRegistry.tsx): first tag
+ * as a real TagChip, a neutral (not coloured) TagCountBadge for the rest, using the same `tagColorsOf`
+ * D40 colour resolution. This reuses `event.tags`/`event.classifications`, which are already present on
+ * every `LogEvent` this table receives from the same `/journey` endpoint Search itself uses - a
+ * frontend-only change, never a second, independent classification pass.
+ */
+function TagsCell({ event }: { event: LogEvent }) {
+  const tags = event.tags ?? [];
+  if (tags.length === 0) {
+    return <>{EMPTY_VALUE}</>;
+  }
+  const colors = tagColorsOf(event.classifications);
+  const [first, ...rest] = tags;
+  const all = tags.join(', ');
+  return (
+    <span className={styles.tagsGroup} title={all}>
+      <VisuallyHidden>{`Tags: ${all}`}</VisuallyHidden>
+      <span aria-hidden="true" className={styles.tagsGroup}>
+        <TagChip tag={first} color={colors[first]} title={all} />
+        {rest.length > 0 ? <TagCountBadge count={rest.length} title={all} /> : null}
+      </span>
+    </span>
+  );
+}
+
 export function SequenceTable({ events, startMs, rootIdentity, gaps, onShowContext, identifierColumn, ariaLabel }: SequenceTableProps) {
   const gapsByAfterIndex = new Map(gaps.map((g) => [g.afterIndex, g]));
 
@@ -53,6 +80,7 @@ export function SequenceTable({ events, startMs, rootIdentity, gaps, onShowConte
           <col className={styles.colLevel} />
           <col className={styles.colStep} />
           <col />
+          <col className={styles.colTags} />
           <col className={styles.colIdentifier} />
           <col className={styles.colActions} />
         </colgroup>
@@ -68,6 +96,7 @@ export function SequenceTable({ events, startMs, rootIdentity, gaps, onShowConte
             <th scope="col">Level</th>
             <th scope="col">Business step</th>
             <th scope="col">What happened</th>
+            <th scope="col">Tags</th>
             <th scope="col">{identifierColumn.header}</th>
             <th scope="col">
               <VisuallyHidden>Actions</VisuallyHidden>
@@ -113,6 +142,9 @@ export function SequenceTable({ events, startMs, rootIdentity, gaps, onShowConte
                   <td>
                     <MessageCell event={event} />
                   </td>
+                  <td>
+                    <TagsCell event={event} />
+                  </td>
                   <td>{identifierColumn.render(event)}</td>
                   <td className={styles.actionsCell}>
                     <ContextAction event={event} onConfirm={() => onShowContext(event)} />
@@ -120,7 +152,7 @@ export function SequenceTable({ events, startMs, rootIdentity, gaps, onShowConte
                 </tr>
                 {gap ? (
                   <tr className={styles.gapRow} data-testid="journey-gap-marker">
-                    <td colSpan={8}>
+                    <td colSpan={9}>
                       Gap detected — {formatGapDuration(gap.durationMs)} with no observed events ({formatUtcTimestamp(gap.fromTimestamp)} →{' '}
                       {formatUtcTimestamp(gap.toTimestamp)})
                     </td>

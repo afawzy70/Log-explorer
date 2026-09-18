@@ -58,6 +58,11 @@
   width: 150px;
 }
 
+/* DRIFT-012 remediation (D25) - matches this table's other 150px columns. */
+.colTags {
+  width: 150px;
+}
+
 .colIdentifier {
   width: 150px;
 }
@@ -143,4 +148,13 @@
   .triggerRing {
     box-shadow: inset 0 0 0 1.5px CanvasText;
   }
+}
+
+/* DRIFT-012 remediation - matches ResultsTable.module.css's own .tagsGroup rule exactly. */
+.tagsGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  overflow: hidden;
 }
