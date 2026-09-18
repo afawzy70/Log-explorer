@@ -272,7 +272,8 @@ test.describe('Legacy Remediation Slice 8 — productivity, safe preferences & f
     await page.getByRole('menuitem', { name: /view details/i }).click();
     const dialog = page.getByRole('dialog', { name: /event details/i });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('heading', { name: /overview/i })).toBeVisible();
+    // DRIFT-008 remediation: Overview shows "When & where" as its sub-heading, not a redundant "Overview" heading.
+    await expect(dialog.getByRole('heading', { name: /when & where/i })).toBeVisible();
     await page.getByRole('button', { name: /close event inspector/i }).click();
     await expect(dialog).not.toBeVisible();
   });

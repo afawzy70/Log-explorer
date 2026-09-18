@@ -40,5 +40,9 @@
 @media (max-width: 768px) {
   .kept {
     margin-left: 0;
+    /* DRIFT-001 remediation - this bar is now also reused for Live, whose own kept-note text can run
+       longer than Investigation's; letting it wrap here (instead of nowrap) prevents any future note
+       text from forcing page-level horizontal overflow at narrow widths - found via real E2E. */
+    white-space: normal;
   }
 }

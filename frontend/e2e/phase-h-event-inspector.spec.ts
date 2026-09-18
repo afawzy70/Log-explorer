@@ -42,7 +42,10 @@ test('opening the inspector shows every section with real, fully-populated fixtu
   await expect(dialog.getByRole('tab', { name: /business \/ error/i })).toBeVisible();
   await expect(dialog.getByRole('tab', { name: /all fields/i })).toBeVisible();
 
-  await expect(dialog.getByRole('heading', { name: /^overview$/i })).toBeVisible();
+  // DRIFT-008 remediation: Overview no longer shows its own redundant "Overview" heading (the tabpanel is
+  // already named "Overview" via aria-labelledby to the tab itself) - it shows the "When & where"
+  // sub-heading over its grouped fields instead.
+  await expect(dialog.getByRole('heading', { name: /when & where/i })).toBeVisible();
 
   // Real fixture events always have every protected field populated -
   // "Protected / masked" must be visible, never a raw value - somewhere

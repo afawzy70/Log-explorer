@@ -136,25 +136,29 @@ function AppContent() {
   // B5 Investigation - "compact scope bar" (mission's own required item): the full `Toolbar` is replaced by a
   // read-only summary + "Edit search" while a Trace/Span/Correlation/Journey/Event capture or a Surroundings
   // context view is the active view - the exact same precedence the main-column ternary below already uses
-  // (Settings/Field mapping/Classification/Live all take priority over it), so the two can never disagree
+  // (Settings/Field mapping/Classification all take priority over it), so the two can never disagree
   // about which view is actually on screen. `editingInvestigationScope` is purely local, ephemeral UI state
   // (never part of `SearchState`) - clicking "Edit search" reveals the real `Toolbar`, unchanged, so every
   // existing filter control stays reachable; it never duplicates or forks that state.
-  const investigating =
-    !state.settingsWorkspaceOpen &&
-    !state.mappingWorkspaceOpen &&
-    !state.classificationWorkspaceOpen &&
-    !liveModeActive &&
-    (state.journeyQuery != null || state.breadcrumbLabel != null);
+  const noToolbarWorkspace = state.settingsWorkspaceOpen || state.mappingWorkspaceOpen || state.classificationWorkspaceOpen;
+  const investigating = !noToolbarWorkspace && !liveModeActive && (state.journeyQuery != null || state.breadcrumbLabel != null);
+  /*
+   * DRIFT-001 remediation - Live now uses the same compact scope bar Investigation already established,
+   * instead of the full always-editable Search toolbar. `InvestigationScopeBar` is genuinely reusable as-is
+   * (Source/Project/Time + one "kept" note + Edit search) - no parallel component was built for this.
+   */
+  const compactScopeActive = !noToolbarWorkspace && (investigating || liveModeActive);
   const [editingInvestigationScope, setEditingInvestigationScope] = useState(false);
   useEffect(() => {
-    if (!investigating && editingInvestigationScope) {
+    if (!compactScopeActive && editingInvestigationScope) {
       setEditingInvestigationScope(false);
     }
-  }, [investigating, editingInvestigationScope]);
-  const keptNote = state.journeyQuery
-    ? 'Search filters are kept — return with Back'
-    : `${state.restoreOriginalSearchLabel.replace(/^Back to /, '')} is kept — return with Back`;
+  }, [compactScopeActive, editingInvestigationScope]);
+  const keptNote = liveModeActive
+    ? 'Live keeps streaming while you edit search'
+    : state.journeyQuery
+      ? 'Search filters are kept — return with Back'
+      : `${state.restoreOriginalSearchLabel.replace(/^Back to /, '')} is kept — return with Back`;
 
   // "Source navigation ... closes stream" (HANDOVER.md §18.4) - changing
   // the active source mid-tail means the investigator has moved on from
@@ -203,7 +207,7 @@ function AppContent() {
        */}
       <div data-app-chrome>
         <Shell state={state} openShiftScope={openShiftScopeState.scope} liveModeActive={liveModeActive} />
-        {investigating && !editingInvestigationScope ? (
+        {noToolbarWorkspace ? null : compactScopeActive && !editingInvestigationScope ? (
           <InvestigationScopeBar state={state} keptNote={keptNote} onEditSearch={() => setEditingInvestigationScope(true)} />
         ) : (
           <>
@@ -216,7 +220,7 @@ function AppContent() {
                   : undefined
               }
             />
-            {investigating ? (
+            {compactScopeActive ? (
               <div className={styles.editSearchDoneRow}>
                 <Button variant="ghost" onClick={() => setEditingInvestigationScope(false)}>
                   Done editing search

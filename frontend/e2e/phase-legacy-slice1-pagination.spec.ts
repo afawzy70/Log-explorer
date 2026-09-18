@@ -103,14 +103,14 @@ test('opening the inspector before Load More preserves the selected event throug
 
   const dialog = page.getByRole('dialog', { name: /event details/i });
   await expect(dialog).toBeVisible();
-  const inspectorTimeBefore = await dialog.getByRole('heading', { name: /^overview$/i }).locator('..').textContent();
+  const inspectorTimeBefore = await dialog.getByRole('heading', { name: /when & where/i }).locator('..').textContent();
 
   await page.getByRole('button', { name: /^load more$/i }).click();
   await expect.poll(async () => page.locator('tbody tr').count(), { timeout: 5_000 }).toBeGreaterThan(200);
 
   // The inspector is still open, on the same event, after the page grew.
   await expect(dialog).toBeVisible();
-  const inspectorTimeAfter = await dialog.getByRole('heading', { name: /^overview$/i }).locator('..').textContent();
+  const inspectorTimeAfter = await dialog.getByRole('heading', { name: /when & where/i }).locator('..').textContent();
   expect(inspectorTimeAfter).toBe(inspectorTimeBefore);
   const firstRowTimeAfter = await page.locator('tbody tr').nth(0).locator('td').first().textContent();
   expect(firstRowTimeAfter).toBe(firstRowTimeBefore); // the underlying result set was appended to, never reordered/replaced
