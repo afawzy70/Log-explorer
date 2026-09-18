@@ -246,11 +246,18 @@
   font: var(--v2-text-body);
 }
 
+/*
+ * Session 11 (Stage 5 - cross-workspace consistency) - row cell padding matches Results' and
+ * Investigation's own default (comfortable) density, `var(--space-2) var(--space-3)`. Previously
+ * `var(--space-1) var(--space-2)` - Results' own COMPACT density value, with no stated reason and no
+ * density toggle of its own, so Live rendered visibly more cramped than every other table in the
+ * product by default, not by an intentional or user-facing choice.
+ */
 .table th,
 .table td {
   text-align: left;
   vertical-align: top;
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border-bottom: var(--v2-bw) solid var(--v2-line);
 }
 
