@@ -12,7 +12,7 @@ import {
   splitTimestampCell,
 } from '../results/columnMapping';
 import { colorForService } from '../journey/serviceColor';
-import { SeverityFilter } from '../search/SeverityFilter';
+import { LiveSeverityFilter } from './LiveSeverityFilter';
 import { ALL_SEVERITY_LEVEL_IDS } from '../search/severityLevels';
 import { VISIBLE_CAP } from './liveTailTypes';
 import type { LiveTailHandle } from './useLiveTail';
@@ -55,9 +55,11 @@ const SCROLL_TOP_THRESHOLD = 4;
  * <p>Severity/text filtering here is purely local/client-side over
  * `live.visibleEvents` (the already-bounded, already-masked retained
  * set) - it never changes what is requested from the server and never
- * reconnects. `SeverityFilter` is the exact same component the
- * historical toolbar uses, reused as-is (never a duplicated severity
- * expression language).
+ * reconnects. `LiveSeverityFilter` (DRIFT-005 remediation) is Live's own
+ * always-visible 4-segment display filter, matching the design's own
+ * `live()` markup - distinct from Search's collapsed `SeverityFilter`
+ * popover trigger, but built from the same `severityLevels.ts` data and
+ * toggle semantics, never a duplicated severity expression language.
  *
  * <p><b>Follow newest</b>: `containerRef`'s own scroll position drives
  * it, not a separate simulated "virtual scroll" - scrolling away from
@@ -226,7 +228,9 @@ export function LiveTailPanel({ live, sourceDisplayName, onStart }: LiveTailPane
       ) : null}
 
       <div className={styles.filterRow}>
-        <SeverityFilter selected={filterLevels} onChange={setFilterLevels} />
+        <LiveSeverityFilter selected={filterLevels} onChange={setFilterLevels} />
+        {/* DRIFT-006 remediation: restores the design's own explanatory copy for the display filter. */}
+        <span className={styles.filterNote}>Display filter only — does not change what is received.</span>
         <label className={styles.textFilterLabel}>
           <VisuallyHidden>Filter live events by text</VisuallyHidden>
           <input

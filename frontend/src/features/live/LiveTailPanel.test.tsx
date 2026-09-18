@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { LiveTailPanel } from './LiveTailPanel';
@@ -407,19 +407,19 @@ describe('LiveTailPanel', () => {
       expect(screen.getByText('an info line')).toBeInTheDocument();
       expect(screen.getByText('an error line')).toBeInTheDocument();
 
-      // B2 (Session 4) - the level chips now live behind the Severity field trigger's popover.
-      await user.click(screen.getByRole('button', { name: /^severity:/i }));
-      await user.click(screen.getByRole('button', { name: /^errors only$/i }));
+      // DRIFT-005 remediation - the level toggles are always-visible segmented buttons now, no popover.
+      const severityGroup = screen.getByRole('group', { name: /displayed severity/i });
+      await user.click(within(severityGroup).getByRole('button', { name: /^info$/i }));
 
       expect(screen.queryByText('an info line')).not.toBeInTheDocument();
       expect(screen.getByText('an error line')).toBeInTheDocument();
     });
 
-    it('the reused SeverityFilter never fires a search - purely local/display filtering', async () => {
+    it('LiveSeverityFilter never fires a search - purely local/display filtering', async () => {
       const user = userEvent.setup();
       const { live } = renderPanel('live', { visibleEvents: [event()] });
-      await user.click(screen.getByRole('button', { name: /^severity:/i }));
-      await user.click(screen.getByRole('button', { name: /^errors only$/i }));
+      const severityGroup = screen.getByRole('group', { name: /displayed severity/i });
+      await user.click(within(severityGroup).getByRole('button', { name: /^error$/i }));
       expect(live.start).not.toHaveBeenCalled();
       expect(live.clear).not.toHaveBeenCalled();
     });

@@ -49,6 +49,9 @@
   font: 650 11px/16px var(--v2-font-ui);
   letter-spacing: 0.04em;
   white-space: nowrap;
+  /* DRIFT-004: design's own `.acq`/`.acq-live` class visually uppercases the literal text "Live" - the
+     accessible name (from the real text content) stays exactly "Live", this is presentation only. */
+  text-transform: uppercase;
 }
 
 .liveDot {
@@ -188,6 +191,11 @@
   background: var(--v2-surface-work);
 }
 
+.filterNote {
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-3);
+}
+
 .textFilterLabel {
   flex: 1 1 260px;
   min-width: 180px;
@@ -247,17 +255,17 @@
 }
 
 /*
- * Session 11 (Stage 5 - cross-workspace consistency) - row cell padding matches Results' and
- * Investigation's own default (comfortable) density, `var(--space-2) var(--space-3)`. Previously
- * `var(--space-1) var(--space-2)` - Results' own COMPACT density value, with no stated reason and no
- * density toggle of its own, so Live rendered visibly more cramped than every other table in the
- * product by default, not by an intentional or user-facing choice.
+ * DRIFT-011 remediation: Session 11's own Stage 5 change (below, kept for history) was based on an
+ * incorrect premise - it claimed to match Results' "default (comfortable) density", but Results'
+ * real default (tablePreferences.ts's defaultTablePreferences()) is 'compact', which renders with
+ * exactly this var(--space-1) var(--space-2) padding. Live has no density toggle of its own, so it
+ * should match the one default every other table in the product actually uses. Reverted.
  */
 .table th,
 .table td {
   text-align: left;
   vertical-align: top;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-2);
   border-bottom: var(--v2-bw) solid var(--v2-line);
 }
 
@@ -282,25 +290,27 @@
 }
 
 .colTime {
-  /* Matches Results' own Time column width (`columnRegistry.tsx`'s `width: '190px'`) - the same
-     formatted timestamp string needs the same room, split the same way (see `.timeDatePart`/`.timeClockPart`). */
-  width: 190px;
+  /* DRIFT-007 remediation: matches the design's own exact `live()` colgroup spec
+     (prototype/scripts/app.js) rather than Results' own Time column width - the `.timeText` ellipsis
+     safety mechanism below still applies at this narrower width, so a very long formatted timestamp
+     truncates gracefully rather than overflowing the column. */
+  width: 172px;
 }
 
 .colLevel {
-  width: 80px;
+  width: 70px;
 }
 
 .colService {
-  width: 160px;
+  width: 180px;
 }
 
 .colTags {
-  width: 150px;
+  width: 156px;
 }
 
 .colId {
-  width: 140px;
+  width: 120px;
 }
 
 .timeCell {

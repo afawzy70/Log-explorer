@@ -1,0 +1,53 @@
+/*
+ * DRIFT-005 remediation - the always-visible 4-button segmented severity display filter for Live,
+ * matching the design's own `.segmented` grammar (prototype/scripts/app.js's `live()`). Follows the
+ * same "filled area when pressed, not colour alone" convention SeverityFilter.tsx's own popover chips
+ * already use (an unpressed segment has no background fill; a pressed one does), plus a visible focus
+ * ring and a 28px min touch target matching this project's own established hit-target baseline
+ * (ResultsTable.module.css's Actions trigger, explicitly documented as "a deliberate 28x28px WCAG 2.5.8
+ * hit target").
+ */
+.group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.segment {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 28px;
+  border: var(--v2-bw) solid var(--v2-line);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
+  border-radius: var(--v2-r-sm);
+  padding: var(--space-1) var(--space-2);
+  font: var(--v2-text-meta);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.segment[aria-pressed='true'] {
+  border-color: currentColor;
+}
+
+.segment:focus-visible {
+  outline: 2px solid var(--v2-focus);
+  outline-offset: 2px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--v2-r-full);
+  flex-shrink: 0;
+}
+
+@media (forced-colors: active) {
+  .segment[aria-pressed='true'] {
+    border-width: 2px;
+    border-style: solid;
+  }
+}

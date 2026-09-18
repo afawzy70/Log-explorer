@@ -71,11 +71,11 @@ test.describe('Legacy Remediation Slice 5 — Live resilience, follow-newest, fi
     const totalBefore = await rows(page).count();
     const receivedTextBefore = await panel.getByText(/received:/i).textContent();
 
-    // B2 (Session 4) - the level chips now live behind the Severity field trigger's popover, same as the
-    // reused SeverityFilter's own recompose in Search. The popover stays open after a toggle (no draft/
-    // Apply step), so the "All" click just below reuses this same open popover - no second open needed.
-    await panel.getByRole('button', { name: /^severity:/i }).click();
-    await panel.getByRole('button', { name: /^errors only$/i }).click();
+    // DRIFT-005 remediation - the level toggles are always-visible segmented buttons (no popover, no
+    // "All"/"Errors only" quick actions, matching the approved design's own four-button grammar).
+    const severityGroup = panel.getByRole('group', { name: /displayed severity/i });
+    await severityGroup.getByRole('button', { name: /^info$/i }).click();
+    await severityGroup.getByRole('button', { name: /^warn$/i }).click();
     const afterSeverityFilter = await rows(page).count();
     expect(afterSeverityFilter).toBeLessThanOrEqual(totalBefore);
 
@@ -85,8 +85,8 @@ test.describe('Legacy Remediation Slice 5 — Live resilience, follow-newest, fi
     expect(receivedTextAfter).not.toBe(null);
     void receivedTextBefore;
 
-    await panel.getByRole('button', { name: /^all$/i }).click();
-    await page.keyboard.press('Escape');
+    await severityGroup.getByRole('button', { name: /^info$/i }).click();
+    await severityGroup.getByRole('button', { name: /^warn$/i }).click();
     await expect.poll(async () => rows(page).count()).toBeGreaterThanOrEqual(afterSeverityFilter);
 
     // Text filter: an impossible needle must produce the "no events match" message, not the true-empty message.
@@ -229,14 +229,12 @@ test.describe('Legacy Remediation Slice 5 — Live resilience, follow-newest, fi
     // burst of 5 every ~4.2s) while interacting with controls throughout -
     // proves the UI stays responsive during genuine sustained load, not
     // just immediately after Start.
-    // B2 (Session 4) - the level chips now live behind the Severity field trigger's popover; opened once
-    // and left open across the loop below (it stays open after each toggle - no draft/Apply step - and
-    // nothing in the loop interacts elsewhere on the page).
-    await panel.getByRole('button', { name: /^severity:/i }).click();
+    // DRIFT-005 remediation - the level toggles are always-visible segmented buttons, no popover to open.
+    const severityGroup = panel.getByRole('group', { name: /displayed severity/i });
     for (let i = 0; i < 4; i++) {
       await page.waitForTimeout(2_000);
-      await panel.getByRole('button', { name: /^errors only$/i }).click();
-      await panel.getByRole('button', { name: /^all$/i }).click();
+      await severityGroup.getByRole('button', { name: /^info$/i }).click();
+      await severityGroup.getByRole('button', { name: /^info$/i }).click();
     }
 
     const finalCount = await rows(page).count();
