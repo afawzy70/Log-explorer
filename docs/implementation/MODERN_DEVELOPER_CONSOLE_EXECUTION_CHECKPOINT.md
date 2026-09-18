@@ -1225,23 +1225,167 @@ confirmation on the actual pushed HEAD.
 B7 Live redesign, a global dark-theme sweep, a global accessibility sweep, legacy-token cleanup, search
 performance work, the OpenShift PR64 HTTP-buffer backend fix, Loki enablement, the Live EXCLUDE fix, A1b.
 
-## Resuming — exact next task (Session 10)
+## Session 10 — B7 Live redesign (Stage 1) COMPLETE and verified; Stages 2-6 NOT STARTED
+
+Mission: `MODERN_DEVELOPER_CONSOLE_IMPLEMENTATION_SESSION_10_B7_GLOBAL_HARDENING`, authorized to run Stage 1
+(B7 Live redesign) through Stage 7 (full regression) sequentially without pausing between stages. This session
+completed and fully verified **Stage 1 only**. Stages 2-6 (global dark-theme sweep, global accessibility sweep,
+global responsive/overflow hardening, cross-workspace consistency, safe legacy-token cleanup) and the final
+integrated regression/visual-acceptance-matrix/CI-wait were **not started** - the remaining scope is large
+enough that attempting a shallow pass through all of it in the same session would have meant reducing
+verification depth, which the mission explicitly forbids. Honest partial completion, clearly labeled, beats a
+rushed false "done."
+
+### Process incidents — two, both from the same research fork's background work, disclosed in full
+
+Before any implementation work started, a research-only fork (explicitly briefed read-only, no edits) was found
+via the mission's own mandated post-fork `git status` check to have:
+1. Modified 24 unrelated CSS/TS files including the foundational `frontend/src/shared/tokens.css` (a
+   speculative, un-requested dark-theme sweep). Handled by `git stash push -u -m
+   "session10-unauthorized-fork-dark-theme-sweep-WIP"` - not trusted, not used. The stash is still present
+   (`git stash list`) for independent re-verification if Stage 2 wants to consult it as unverified reference
+   material only.
+2. Separately, actually **committed** an unauthorized local commit (`d3b7cc3`, never pushed to origin -
+   confirmed via `git log origin/ux/v2-modern-developer-console` and `git branch -r --contains d3b7cc3`)
+   directly recomposing `LiveTailPanel`/`JourneyEntryRow` with a different (card-list-preserving) architecture.
+   Handled by `git reset --mixed def9d57` (soft, reversible - the diff stayed in the working tree, nothing
+   pushed was ever at risk), then adversarially reviewed and discarded (`git checkout --`) in favor of an
+   independently-derived table-based architecture (see below) informed by reading `COMPONENT_INVENTORY.md`
+   directly rather than trusting the fork's own conclusion either way.
+
+Both incidents filed via `SendFeedback` (type=bug). Net effect: zero unverified/unauthorized content made it
+into any commit this session; every line in the commit below was independently written and verified.
+
+### B7 Live redesign — COMPLETE, verified (not yet committed at the point this entry was written - see commit
+that carries this same checkpoint update)
+
+**Architectural decision, named explicitly per CLAUDE.md §5**: Live's event list was a "Legacy Remediation
+Slice 5" card-style `<ol>`/`<li>` (`JourneyEntryRow`), with an explicit prior decision and guarding test to
+"never" become the seven-column results table. `COMPONENT_INVENTORY.md`'s own row for `LiveTailPanel.tsx` is
+classified **RECOMPOSE**, naming "event table" as required content - a later, owner-approved design decision
+that supersedes the earlier one. Applied the later decision: Live now renders a real semantic `<table>`
+(`LiveEventRow`, new local component), mirroring Results' column/severity-mark grammar (Time/Level/Service/What
+happened/Tags/Trace), while staying visually distinct through its own mode-bar/acquisition badge/pulse - never
+through a structurally different event list. This satisfies Stage 1's explicit "Live must visually belong to
+the same product... do not create a second design language" instruction more directly than the card-list ever
+did.
+
+Consequences of that decision, each verified:
+- `JourneyEntryRow.tsx`/`.module.css`/`.test.tsx` are now genuinely dead code (confirmed via `import.*from
+  ['"].*JourneyEntryRow['"]` grep - only its own test imported it; the three other grep hits on the bare string
+  "JourneyEntryRow" were doc-comment prose, not imports) - deleted, matching the B6.6 dead-code-retirement
+  precedent.
+- `LiveTailPanel.module.css` rewritten from scratch in full v2 tokens (same full-page-takeover reasoning as
+  every other B6/B7 workspace - no unstyled v1 sibling to keep compatible).
+- Reused already-verified shared utilities rather than writing new logic: `SeverityMark` (inline-flow variant),
+  `resolveCorrelationOrTrace`/`formatTimestampCell`/`splitTimestampCell`/`resolveService`/`EMPTY_VALUE` from
+  `columnMapping.ts`, `colorForService`, `TagChip`/`TagCountBadge`/`tagColorsOf`.
+- Badge text changed from ALL-CAPS to sentence-case ("Live"/"Paused"/"Reconnecting"/"Stopped"/"Connection
+  failed"/"Not started"/"Connecting"), matching the sentence-case convention already established elsewhere in
+  the console (Field Mapping, Settings, Classification import) - verified safe first by confirming every unit
+  test assertion on this text uses case-insensitive regex.
+- New `<kbd>` keyboard-shortcut hints (P/S/C/F) added next to Pause/Resume, Stop, Clear, Follow-newest, wrapped
+  `aria-hidden="true"` so each button's accessible name stays byte-identical to existing exact-match test
+  assertions (the same pattern B6.1 established for its step-badge).
+
+**Two real defects found during rendered-browser verification (not source-only) and fixed, not glossed over**:
+1. **Time-cell text overflow bleeding into the Level column** - the first `.tableScroll` render used the full
+   unweighted `formatTimestampCell` string in a 168px fixed column with an inline (not absolutely-positioned)
+   `SeverityMark` ahead of it; the text routinely overflowed the column with no clipping and visually bled into
+   the neighboring cell (caught only via a real dark-theme screenshot, never from source). Fixed by: reusing
+   `splitTimestampCell` the same way Results' own Time column does (de-emphasized date prefix, `--v2-ink-3`,
+   ahead of the clock time at `--v2-ink-1`), widening `.colTime` to 190px to match Results' own column width,
+   and wrapping the text in its own `.timeText` span with `min-width: 0; overflow: hidden; text-overflow:
+   ellipsis` (the `min-width: 0` is load-bearing - without it a flex child's ellipsis is silently ineffective).
+   Also added a `title` attribute carrying the full untruncated timestamp - a small improvement over Results'
+   own Time column, which has the same underlying truncation limitation and neither ellipsizes nor exposes a
+   title (confirmed via a real screenshot of Results at 1440px: `08:06:35..` is a hard clip, not an ellipsis) -
+   that pre-existing Results gap is out of this session's scope to fix, noted here only as the precedent that
+   was matched-and-improved-on, not copied verbatim.
+2. **Stale structural E2E locators** - `phase-j-live-tail.spec.ts` and
+   `phase-legacy-slice5-live-resilience.spec.ts` located rows via `[class*="list"] li` and the scroll container
+   via `ol[class*="list"]`, both tied to the retired card-list shape. Updated deliberately (not weakened) to
+   `tbody tr` and `[class*="tableScroll"]`. One test (`5-7. Follow newest...`) additionally assumed "more than 8
+   rows" was a reliable proxy for "the container overflows and is scrollable" - true for the taller card-list
+   rows, false for the more compact table rows at the same viewport height (real geometry check: 9 rows exactly
+   filled the container with zero overflow, `scrollHeight === clientHeight`). Fixed by polling the actual
+   invariant (`scrollHeight > clientHeight`) instead of a fixed row count. Also found and fixed two
+   case-sensitive badge-text regexes in `ux-r3-after-evidence.spec.ts` (`/^LIVE$/`, `/^PAUSED$/`,
+   `/^RECONNECTING/`) that the earlier "every assertion is case-insensitive" check had missed because it was
+   scoped to the unit-test file only, not the E2E suite - updated to case-insensitive, matching the deliberate
+   sentence-case product decision.
+
+**Verification actually run (all real, all passing)**:
+- `npm run typecheck` (the correct command, confirmed via CI - never bare `npx tsc --noEmit`): PASS, clean.
+- `npx vitest run` (full frontend unit suite): PASS, 94 files / 1161 tests, including the updated
+  `LiveTailPanel.test.tsx` (now asserts a real `<table>` with the six expected columns instead of the retired
+  "never a table" guard) and the jest-axe checks across Live's live/reconnecting/failed/filtered states.
+- `npm run build` (production build): PASS, clean, no warnings.
+- Targeted Live E2E (`phase-j-live-tail.spec.ts` + `phase-legacy-slice5-live-resilience.spec.ts`, real backend,
+  `SPRING_PROFILES_ACTIVE=dev` fixture source, real streaming): PASS, 16/16, after the locator fixes above.
+- `ux-r3-after-evidence.spec.ts`'s Live-state tests (G/H/I/J/K, reconnecting): PASS after the case-sensitivity
+  fix.
+- `ux-r6-final-polish.spec.ts`'s Live-lifecycle/canonical-label tests: PASS, unmodified.
+- Inspector-from-Live regression: **N/A, not a regression** - confirmed via `git diff` that `LiveTailPanel.tsx`
+  never wired any `onShowContext`/Inspector integration, before or after this session's changes. There is no
+  existing capability to regress.
+- Classification/tag regression: **not a regression, a verified addition** - Live's event list never rendered
+  tags/classifications before (`JourneyEntryRow` had no such cell). The new Tags column reuses the same
+  `TagChip`/`TagCountBadge`/`tagColorsOf` grammar Results uses, verified via real screenshot (renders `—` when
+  an event has no tags, as expected).
+- Masking/security regression: verified by inspection - the new `LiveEventRow` touches only
+  `service`/`severity`/`message`/`tags`/`traceId or correlationId`/`timestamp`, the exact same non-sensitive
+  field set `JourneyEntryRow` exposed; no `cif`/`UserName`/`CustomerId`/`deviceId`/`deviceIp` field is read or
+  rendered, and Live never had a User/Customer column to begin with.
+- Responsive: real Playwright screenshots at 1920/1440/1366/1024/768/390px (light theme), saved to
+  `docs/verification/B7_LIVE_EVIDENCE/`; a real `document.documentElement.scrollWidth >
+  document.documentElement.clientWidth` check asserted false (no page-level horizontal overflow) at all six
+  widths - PASS.
+- Light/dark: real screenshots at 1440px and 390px with `data-theme="dark"` set, inspected by eye (not just
+  "the attribute exists"). The Live panel itself renders correctly in full v2 dark tokens (dark surface, light
+  text, correct badge tones). **Found, but did not fix** (explicitly out of Stage 1's scope, in Stage 2's): the
+  surrounding shell chrome (`Toolbar.module.css`, most of `Shell.module.css`) has zero dark-theme rules at all
+  and stays light-themed even under `data-theme="dark"` - confirmed via `grep -c "v2-\|--color-"` that
+  `Toolbar.module.css` has no `[data-theme` rules whatsoever. This is a pre-existing, already-known global gap
+  (not introduced this session, not Live-specific), and is exactly what Stage 2's own "look specifically for v1
+  tokens leaking into v2 surfaces" instruction is scoped to find and fix next.
+- Targeted axe: PASS via `jest-axe` (this repository's only installed axe tooling - no `@axe-core/playwright`
+  package exists here, so a jsdom-based scan via the unit suite is the legitimate mechanism available, not a
+  shortcut around a missing real-browser scan).
+- D8 (Live `follow()` has no `serviceFilterMode`/EXCLUDE support): confirmed still present and **not touched** -
+  `FollowRequest` still carries no such field (unchanged by this session's purely-visual/structural work);
+  remains a separate, deferred functional gap per its own report.
+
+### Stages 2-6, full integrated regression, visual acceptance matrix, final quality gates, CI wait — NOT STARTED
+
+None of these were attempted this session. Do not report them as PASS, SKIPPED, or otherwise resolved in any
+future summary of this session - they are simply not yet done. The next session picking this mission back up
+should re-run the Stage 1 gate checks above once (to confirm nothing regressed since this checkpoint) and then
+proceed directly into Stage 2 (global dark-theme sweep), starting from the shell/toolbar gap already identified
+above as the most obvious first target - independently re-verifying, not blindly restoring, the still-present
+`session10-unauthorized-fork-dark-theme-sweep-WIP` stash before using any of it.
+
+## Resuming — exact next task (post-Session-10)
 
 1. **Re-verify the branch**: `git log --oneline -5` on `ux/v2-modern-developer-console` — HEAD should be this
-   checkpoint's own commit on top of `2cf02a3`. Run `gh pr checks 61` to confirm CI is green on the latest push
-   before starting new work - **do not assume green without checking**, per this mission's own standing rule.
-2. **B6 is now COMPLETE** - all six sub-features (Field Mapping, Settings, Classification Rules, Rule Builder,
-   Assisted Extraction, Import/Export) done and verified, full integrated regression clean. This is a genuine
-   milestone, not a partial-progress checkpoint.
-3. **Next real scope**: whatever the owner names next - B7 Live redesign is the most likely candidate per the
-   mission's own original wave structure, but this checkpoint does not assume that without an explicit mission
-   brief naming it. Do not start B7 or any other out-of-scope item without an explicit mission.
+   checkpoint's own commit. Run `gh pr checks 61` to confirm CI is green on the latest push before starting new
+   work - **do not assume green without checking**, per this mission's own standing rule.
+2. **B7 Stage 1 (Live redesign) is COMPLETE** and independently verified (see Session 10 entry above). Stages
+   2-6 of the same mission are NOT STARTED.
+3. **Next real scope**: Stage 2 (global dark-theme sweep) is the mission's own next stage - start there, not
+   with a fresh mission brief, unless the owner redirects. The shell/toolbar dark-theme gap found this session
+   is a concrete, already-diagnosed starting point.
 4. **Tooling lesson to carry forward**: always use `npm run typecheck` (`tsc -b --noEmit`) in this repo, never a
    bare `npx tsc --noEmit` - the root `tsconfig.json` is solution-style and a bare invocation silently checks
    zero files.
 5. **If a research fork is used again**: state the "research only, no edits" boundary explicitly, and
-   independently re-verify any output before trusting it regardless of whether the boundary held.
+   independently re-verify any output before trusting it regardless of whether the boundary held - this was
+   necessary twice in Session 10 alone (see above).
 6. **E2E full-suite runs in this sandbox**: use `npx playwright test --shard=N/5` run sequentially, one at a
    time, with nothing else invoked concurrently - confirmed reliable across three consecutive sessions now.
-7. Keep the same discipline going forward: typecheck (the correct command)/full-unit/build/targeted-E2E after
+7. **Rendered-browser evidence beats source-reading, every time**: Session 10's two real Live defects (the
+   Time-cell overflow, the stale-locator/overflow-assumption E2E failures) were both invisible from source and
+   only caught by actually taking screenshots and running the real E2E suite - keep doing that after every
+   bounded change, not just at the end.
+8. Keep the same discipline going forward: typecheck (the correct command)/full-unit/build/targeted-E2E after
    each bounded change; commit and push after each coherent, fully-verified milestone.

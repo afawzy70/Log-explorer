@@ -138,11 +138,15 @@ test.describe('UX-R3 AFTER evidence - real rendered UI, post-redesign', () => {
     // Wait for the panel's own status badge (role=status), never the
     // toolbar's always-visible "Live" button - the BEFORE spec's flaky
     // wait condition matched the wrong element; fixed here.
-    await expect(page.getByTestId('live-tail-panel').getByRole('status')).toHaveText(/^LIVE$/, { timeout: 10_000 });
+    // B7 (Session 10) - badge text moved to sentence case ("Live"/"Paused"/
+    // "Reconnecting"), matching the sentence-case convention already used
+    // elsewhere in the console (Field Mapping, Settings, Classification
+    // import); case-insensitive so this assertion tracks intent, not casing.
+    await expect(page.getByTestId('live-tail-panel').getByRole('status')).toHaveText(/^live$/i, { timeout: 10_000 });
     await captureScreenshot(page, PHASE, 'AFTER-H-live-active');
 
     await page.getByRole('button', { name: /^pause$/i }).click();
-    await expect(page.getByTestId('live-tail-panel').getByRole('status')).toHaveText(/^PAUSED$/);
+    await expect(page.getByTestId('live-tail-panel').getByRole('status')).toHaveText(/^paused$/i);
     await captureScreenshot(page, PHASE, 'AFTER-I-live-paused-distinct-badge');
 
     await page.getByRole('button', { name: /back to search results/i }).click();
@@ -154,7 +158,7 @@ test.describe('UX-R3 AFTER evidence - real rendered UI, post-redesign', () => {
     await gotoFixture(page);
     await alwaysFailLiveConnections(page);
     await page.getByRole('button', { name: /^live$/i }).click();
-    await expect(page.getByTestId('live-tail-panel').getByRole('status')).toHaveText(/^RECONNECTING/, { timeout: 10_000 });
+    await expect(page.getByTestId('live-tail-panel').getByRole('status')).toHaveText(/^reconnecting/i, { timeout: 10_000 });
     await captureScreenshot(page, PHASE, 'AFTER-J-live-reconnecting');
   });
 

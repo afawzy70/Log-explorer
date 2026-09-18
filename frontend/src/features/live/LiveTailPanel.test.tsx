@@ -332,14 +332,40 @@ describe('LiveTailPanel', () => {
     expect(counts).toHaveTextContent('Dropped (server buffer full): 7');
   });
 
-  it('renders each visible event using the journey-style entry row, never the seven-column results table', () => {
+  it('B7 (Session 10): renders visible events in a real event table - COMPONENT_INVENTORY.md classifies LiveTailPanel RECOMPOSE with "event table" as required content, superseding the earlier card-list decision (CLAUDE.md §5)', () => {
     renderPanel('live', {
       visibleEvents: [event({ message: 'alpha' }), event({ message: 'beta' })],
     });
+    const table = screen.getByRole('table', { name: /live events, newest first/i });
+    expect(table).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /^time$/i })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /^level$/i })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /^service$/i })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /^what happened$/i })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /^tags$/i })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /^trace$/i })).toBeInTheDocument();
     expect(screen.getByText('alpha')).toBeInTheDocument();
     expect(screen.getByText('beta')).toBeInTheDocument();
-    expect(screen.queryByRole('table')).not.toBeInTheDocument();
-    expect(screen.getByRole('list')).toBeInTheDocument();
+    expect(screen.getAllByRole('row')).toHaveLength(3); // header row + 2 event rows
+  });
+
+  it('REQUIREMENTS_TRACEABILITY.md #72: Trace/Span/Correlation/Event IDs stay discoverable (via the ID cell\'s title) even though only one shows as visible text - the retired card-list showed all four inline, the table has no room to', () => {
+    renderPanel('live', {
+      visibleEvents: [
+        event({
+          message: 'alpha',
+          traceId: 'trace-1',
+          spanId: 'span-1',
+          correlationId: 'corr-1',
+          eventId: 'evt-1',
+        }),
+      ],
+    });
+    const idCell = screen.getByText('trace-1');
+    expect(idCell).toHaveAttribute(
+      'title',
+      'Trace ID: trace-1 · Span ID: span-1 · Correlation ID: corr-1 · Event ID: evt-1',
+    );
   });
 
   it('shows an empty-state message rather than nothing when there are no visible events yet', () => {
@@ -487,9 +513,13 @@ describe('LiveTailPanel', () => {
 
       expect(screen.queryByRole('button', { name: /jump to newest/i })).not.toBeInTheDocument();
 
-      const list = screen.getByRole('list');
-      Object.defineProperty(list, 'scrollTop', { value: 50, writable: true });
-      fireEvent.scroll(list);
+      // B7 (Session 10) - the scrollable element is now the table's wrapping
+      // div (`.tableScroll`, holding the `containerRef`/`onScroll` handler),
+      // not the table itself: a semantic <table> carries no scroll role of
+      // its own, so the wrapper is reached via the table's parent.
+      const scrollContainer = screen.getByRole('table').parentElement as HTMLElement;
+      Object.defineProperty(scrollContainer, 'scrollTop', { value: 50, writable: true });
+      fireEvent.scroll(scrollContainer);
 
       expect(screen.getByRole('button', { name: /jump to newest/i })).toBeInTheDocument();
     });
@@ -501,9 +531,9 @@ describe('LiveTailPanel', () => {
       act(() => latestMockEventSource().emit('log', event()));
       act(() => vi.advanceTimersByTime(BATCH_FLUSH_MS));
 
-      const list = screen.getByRole('list');
-      Object.defineProperty(list, 'scrollTop', { value: 50, writable: true });
-      fireEvent.scroll(list);
+      const scrollContainer = screen.getByRole('table').parentElement as HTMLElement;
+      Object.defineProperty(scrollContainer, 'scrollTop', { value: 50, writable: true });
+      fireEvent.scroll(scrollContainer);
       expect(screen.getByRole('button', { name: /jump to newest/i })).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('button', { name: /jump to newest/i }));

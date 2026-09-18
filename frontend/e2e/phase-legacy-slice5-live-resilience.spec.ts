@@ -33,8 +33,13 @@ function panelOf(page: Page) {
   return page.getByTestId('live-tail-panel');
 }
 
+/*
+ * B7 (Session 10) - Live's event list is now a real <table> (COMPONENT_
+ * INVENTORY.md's own RECOMPOSE classification, CLAUDE.md §5), so a "row"
+ * is a <tbody> <tr>, not a card-list <li>.
+ */
 function rows(page: Page) {
-  return panelOf(page).locator('[class*="list"] li');
+  return panelOf(page).locator('tbody tr');
 }
 
 /** Aborts every /logs/live connection attempt - simulates a hard connection failure. */
@@ -110,9 +115,18 @@ test.describe('Legacy Remediation Slice 5 — Live resilience, follow-newest, fi
     const panel = panelOf(page);
 
     await expect(panel.getByRole('button', { name: /^✓ follow newest$/i })).toBeVisible({ timeout: 5_000 });
-    await expect.poll(async () => rows(page).count(), { timeout: 15_000 }).toBeGreaterThan(8);
 
-    const list = page.locator('[data-testid="live-tail-panel"] ol[class*="list"]');
+    const list = page.locator('[data-testid="live-tail-panel"] [class*="tableScroll"]');
+    /*
+     * B7 (Session 10) - table rows are shorter than the old card-list
+     * entries, so a fixed row-count is no longer a reliable proxy for
+     * "enough content to overflow the container". Poll the real invariant
+     * instead: the container must actually be scrollable.
+     */
+    await expect
+      .poll(async () => list.evaluate((el) => el.scrollHeight > el.clientHeight), { timeout: 15_000 })
+      .toBe(true);
+
     await list.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
     await list.dispatchEvent('scroll');
 
