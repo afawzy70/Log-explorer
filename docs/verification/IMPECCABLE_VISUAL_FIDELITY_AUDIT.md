@@ -1786,6 +1786,57 @@ vertical sidebar at 1440px and its collapse to a horizontal row at 390px, dark t
 `document.documentElement.scrollWidth - clientWidth === 0` at every width checked. No console errors were
 observed in any of these passes.
 
+## Independent-review evidence mapping (`FINAL_REMEDIATION_VISUAL_EVIDENCE_CLOSURE`)
+
+A later, separate mission (`FINAL_REMEDIATION_VISUAL_EVIDENCE_CLOSURE`, start head `091c18c1e846cfd0673da271
+bdd640a19024ce5c`) closed the independent-review evidence gap for Groups C-G, whose own commits above had real
+Playwright verification performed at the time but did not commit their screenshots. **No production, backend,
+or desktop code changed in that mission** — `git diff 091c18c..HEAD -- frontend/src backend desktop` is empty;
+only this file, the files listed below, and this doc's own history are touched. Group A's and Group B's
+existing evidence (already committed under `docs/verification/visual-fidelity-remediation/`) was preserved and
+reused, not recaptured. Every capture below is from the real PR #61 application (`SPRING_PROFILES_ACTIVE=dev`,
+deterministic Fixture source — synthetic/anonymized data throughout, no real customer data), at 1440×900 unless
+noted, with `document.documentElement.scrollWidth - clientWidth === 0` and zero console errors confirmed at
+every width captured.
+
+| Drift ID | Production screenshot | PR #58 design reference (`design/v2-modern-developer-console` @ `4668e49a`) | Verdict |
+|---|---|---|---|
+| DRIFT-003 (Inspector top-level View Trace) | `group-c-inspector-overview-drift003-008-1440x900.png` — "View Trace" sits in the header action row beside "Show Surroundings" and "Create tag rule from this event" | `screenshots/b1/04-inspector-overview-1440x900.png` | **CLOSED** |
+| DRIFT-008 (Overview message + When & where hierarchy) | Same screenshot — the message renders in its own boxed treatment, followed by a "WHEN & WHERE" subheading and its field list, no redundant "Overview" heading | `screenshots/b1/04-inspector-overview-1440x900.png` | **CLOSED** |
+| DRIFT-009 (Request Flow action chrome) | `group-c-inspector-request-flow-drift009-010-1440x900.png` — each identifier row (Correlation ID/Trace ID/Span ID/Event ID) has an arrow-icon, bordered ("secondary") action button ("Find same Correlation"/"View Trace"/"View Span"/"Find same Event") | `screenshots/b1/06-inspector-request-flow-1440x900.png` | **CLOSED** |
+| DRIFT-010 (Request Flow causality-safety copy) | Same screenshot — "Opening an ID here shows related events ordered by timestamp — this does not indicate causality between events." appears above the identifier list | `screenshots/b1/06-inspector-request-flow-1440x900.png` | **CLOSED** |
+| DRIFT-012 (Investigation Tags column) | `group-d-investigation-tags-column-drift012-1440x900.png` — the `SequenceTable` header reads Time / Offset / Service / Level / Business step / What happened / **Tags** / Span ID, correctly positioned before Span ID | `screenshots/b1/72-investigation-trace-tags-1440x900.png` | **CLOSED** (structural column placement; see note below on tag-content rendering) |
+| DRIFT-013 (Field Mapping 5-step model) | `group-e-field-mapping-5-step-drift013-1440x900.png` — ① Scan → ② Map fields → ③ Validate → ④ Save → ⑤ Verify, all five present and in order | `screenshots/b1/13-mapping-workspace-1440x900.png` | **CLOSED** |
+| DRIFT-004 (Live badge uppercase) | `group-f-live-severity-density-drift004-005-006-007-011-1440x900.png` — "LIVE" renders uppercase | `screenshots/b1/18-live-1440x900.png` | **CLOSED** |
+| DRIFT-005 (Live 4-button severity control) | Same screenshot — Debug/Info/Warn/Error render as four always-visible, individually toggleable buttons (not a collapsed popover) | `screenshots/b1/18-live-1440x900.png` | **CLOSED** |
+| DRIFT-006 (Live "display filter only" copy) | Same screenshot — "Display filter only — does not change what is received." appears beside the filter input | `screenshots/b1/18-live-1440x900.png` | **CLOSED** |
+| DRIFT-007 (Live column widths) | Same screenshot — Time/Level/Service/What happened/Tags/Trace column proportions match the design reference | `screenshots/b1/18-live-1440x900.png` | **CLOSED** |
+| DRIFT-011 (Live row density) | Same screenshot — compact row height/padding matches the design reference | `screenshots/b1/18-live-1440x900.png` | **CLOSED** |
+| DRIFT-014 (Results header copy) | `group-g-results-header-copy-drift014-1440x900.png` — headers read "User / Customer" and "Correlation / Trace" (spaced around the slash) | `screenshots/b1/92-results-tags-default-column-1440x900.png` | **CLOSED** |
+
+**Responsive**: `group-f-live-severity-density-drift004-005-006-007-011-390x844.png` confirms Live's badge,
+severity control, filter note, and compact table collapse cleanly at 390px with zero horizontal overflow —
+material because DRIFT-004/005/006/007/011 are all Live-panel treatment changes and Live's own narrow-width
+behavior (the `InvestigationScopeBar`-based compact bar from DRIFT-001) was not separately re-verified after
+Group F's own commit.
+
+**Note on DRIFT-012's tag content.** The evidence-capture backend instance for this mission used a fresh,
+empty classification-rules store (no rules configured), so the captured Investigation trace has no tags to
+render (`—` in the Tags cell) — this proves the column's structural presence and position, not the `TagChip`/
+`TagCountBadge`/`+n` rendering path itself. That rendering path is not new code introduced by DRIFT-012's fix:
+`SequenceTable`'s `TagsCell` reuses Results' own `TagChip`/`TagCountBadge`/`tagColorsOf` components verbatim
+(same commit, `c220e17`), and both components already have real tag/`+n` coverage in the existing, passing
+`ResultsTable.classification.test.tsx` and `SequenceTable`'s own 74-test suite (unchanged, still passing per
+the full regression gate below). This is disclosed rather than worked around with a fabricated or synthetic
+tag rule seeded outside the ordinary app flow, per this mission's own "use synthetic/anonymized data" (not
+manufactured backend state) and "minimum states necessary" instructions.
+
+```
+DRIFT_001_016_EVIDENCE_ACCOUNTED_FOR=YES
+DRIFTS_CONFIRMED_CLOSED=DRIFT-003,004,005,006,007,008,009,010,011,012,013,014 (Groups C/D/E/F/G, this pass) + DRIFT-001,002,015,016 (Groups A/B, prior evidence, preserved)
+DRIFTS_FOUND_STILL_OPEN=NONE
+```
+
 ## Full regression gate (after all groups)
 
 ```
@@ -1827,4 +1878,35 @@ FINAL_UI_UX_ACCEPTANCE=NOT_YET_AUTHORIZED
 MERGE_AUTHORIZED=NO
 PR_61_STATE=OPEN, DRAFT, NOT_MERGED
 NEXT_ACTION=CHATGPT_OWNER_FINAL_UI_UX_REMEDIATION_REVIEW
+```
+
+**Addendum — independent-review evidence closure.** The block above is left unedited as the historical record
+of the `IMPECCABLE_VISUAL_DRIFT_REMEDIATION_PR61` mission itself (which implemented and regression-gated all
+16 drifts but did not commit Groups C-G's own screenshots). A later `FINAL_REMEDIATION_VISUAL_EVIDENCE_CLOSURE`
+mission (start head `091c18c1e846cfd0673da271bdd640a19024ce5c`) closed that evidence gap only — see this
+document's own "Independent-review evidence mapping" section above for the per-drift screenshot-to-design-
+reference table. No production, backend, or desktop code changed in that pass.
+
+```
+MISSION=FINAL_REMEDIATION_VISUAL_EVIDENCE_CLOSURE
+STATUS=COMPLETE
+START_HEAD=091c18c1e846cfd0673da271bdd640a19024ce5c
+PRODUCTION_CODE_CHANGED=NO
+GROUP_A_EXISTING_EVIDENCE=PRESERVED
+GROUP_B_EXISTING_EVIDENCE=PRESERVED
+GROUP_C_EVIDENCE=CAPTURED (DRIFT-003, DRIFT-008, DRIFT-009, DRIFT-010)
+GROUP_D_EVIDENCE=CAPTURED (DRIFT-012, structural; tag-content caveat documented above)
+GROUP_E_EVIDENCE=CAPTURED (DRIFT-013)
+GROUP_F_EVIDENCE=CAPTURED (DRIFT-004, DRIFT-005, DRIFT-006, DRIFT-007, DRIFT-011; 1440px + 390px)
+GROUP_G_EVIDENCE=CAPTURED (DRIFT-014)
+DRIFT_001_016_EVIDENCE_ACCOUNTED_FOR=YES
+DRIFTS_CONFIRMED_CLOSED=16 (DRIFT-001 through DRIFT-016)
+DRIFTS_FOUND_STILL_OPEN=NONE
+VISUAL_DRIFT_REMEDIATION_COMPLETE=YES
+PR61_OPEN=YES
+PR61_DRAFT=YES
+PR61_NOT_MERGED=YES
+FINAL_UI_UX_ACCEPTANCE=NOT_YET_AUTHORIZED
+MERGE_AUTHORIZED=NO
+NEXT_ACTION=CHATGPT_OWNER_FINAL_UI_UX_ACCEPTANCE_REVIEW
 ```
