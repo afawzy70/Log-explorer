@@ -266,7 +266,7 @@ test.describe('Task 5 - Monitor live logs', () => {
     await expect(panel).toBeVisible();
 
     await expect(panel.getByRole('status')).toHaveText(/^live$/i, { timeout: 5_000 });
-    await expect(panel.locator('[class*="list"] li').first()).toBeVisible({ timeout: 5_000 });
+    await expect(panel.locator('tbody tr').first()).toBeVisible({ timeout: 5_000 });
     await captureScreenshot(page, 'm', 'task5-live-tail-following');
 
     await panel.getByRole('button', { name: /^pause$/i }).click();

@@ -1356,6 +1356,45 @@ Consequences of that decision, each verified:
   `FollowRequest` still carries no such field (unchanged by this session's purely-visual/structural work);
   remains a separate, deferred functional gap per its own report.
 
+### CI caught four real E2E failures the local targeted runs missed - fixed, not waived
+
+After the first commit (`a40daa9`) was pushed, PR #61's real CI `E2E` job (the full suite, not the two files
+targeted locally) failed 4 tests, all genuinely caused by this session's Live changes, none flaky:
+- `phase-ui-gap-closure.spec.ts` "14-15. Live: keyboard shortcuts...": pressing `p` had no effect. Root cause,
+  confirmed by local reproduction (not assumed): the test's own `panel.click()` - meant only to move focus off
+  any text input before sending a keyboard shortcut - clicks the geometric centre of the whole
+  `live-tail-panel` element's bounding box. The retired card-list was tall enough that this centre point always
+  landed on inert space; the new table is materially more compact, so the same centre point now lands inside
+  the "Filter displayed events..." text input, and the shortcut registry's own `isTypingTarget` guard correctly
+  (and silently) suppresses the keypress. Fixed by clicking the panel's `<h1>` heading instead - an explicit,
+  always-present, never-interactive target that matches the test's actual stated intent, not an implementation
+  detail of where the old list happened to leave empty space.
+- `phase-legacy-slice8-productivity-performance.spec.ts` "9. Live keyboard controls...",
+  `phase-m-ux-acceptance.spec.ts` "Task 5 - Monitor live logs...", `phase-ui-parity-acceleration.spec.ts` "11.
+  Live: Clear...": three more `.locator('li')` / `[class*="list"] li"` structural queries tied to the retired
+  `<ol>`/`<li>` shape that the first round's grep (scoped to files matching `[class*="list"] li` specifically)
+  missed because these used the bare `.locator('li')` form instead. A repo-wide `grep -rn "\.locator\('li'\)"`
+  after this found exactly these three remaining instances - all updated to `tbody tr`.
+- One additional test (`phase-legacy-slice6-investigation-depth.spec.ts` "11. filtering the toolbar...") was
+  marked **flaky** (failed once, passed on retry) in the same CI run. Investigated and NOT changed: it doesn't
+  reference `LiveTailPanel`, `JourneyEntryRow`, or any table/list locator this session touched - its failure
+  point is an Inspector "Show Surroundings" dialog button timeout, unrelated to this session's changes. Treated
+  as a pre-existing intermittent CI timing issue, not silently dismissed - the "unrelated" conclusion is backed
+  by inspecting what the test actually touches, not just its retry outcome.
+
+After these fixes: full local E2E suite re-run in all 5 shards, 100% green (no failures, the one pre-existing
+skip is an unrelated `NOT_AVAILABLE` real-OpenShift-cluster test). Pushed as a second commit; CI re-run pending
+at the time this entry was written.
+
+**Lesson recorded for future sessions**: a structural UI change (list → table) invalidates far more than the
+locators literally named after the old shape - it also invalidates test helpers that rely on *incidental*
+geometry (a click landing "somewhere safe") rather than an *explicit* target. Grep for the old class/role names
+finds the first kind; only running the full suite (not just the two or three files judged "most relevant")
+finds the second kind. This session's targeted-file selection for local E2E verification was reasonable but
+not sufficient - the real CI E2E job is the authoritative check, and this mission's own Stage 1 gate already
+required it; treat "targeted Live E2E passed" as necessary, not sufficient, until the full suite has also run
+at least once.
+
 ### Stages 2-6, full integrated regression, visual acceptance matrix, final quality gates, CI wait — NOT STARTED
 
 None of these were attempted this session. Do not report them as PASS, SKIPPED, or otherwise resolved in any

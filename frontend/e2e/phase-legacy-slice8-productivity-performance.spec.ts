@@ -161,7 +161,7 @@ test.describe('Legacy Remediation Slice 8 — productivity, safe preferences & f
     await expect(panel.getByRole('status')).toHaveText(/^live$/i);
 
     await expect
-      .poll(async () => (await panel.locator('li').count().catch(() => 0)) > 0, { timeout: 15_000 })
+      .poll(async () => (await panel.locator('tbody tr').count().catch(() => 0)) > 0, { timeout: 15_000 })
       .toBe(true);
     await page.keyboard.press('c');
     // Clear only fires while there is at least one visible event - a

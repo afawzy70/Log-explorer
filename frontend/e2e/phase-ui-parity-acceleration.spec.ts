@@ -183,11 +183,11 @@ test.describe('UI Parity Acceleration Pass', () => {
     await expect(panel).toBeVisible();
     await expect(panel.getByRole('status')).toHaveText(/^live$/i, { timeout: 10_000 });
 
-    await expect.poll(async () => panel.locator('li').count(), { timeout: 15_000 }).toBeGreaterThan(0);
+    await expect.poll(async () => panel.locator('tbody tr').count(), { timeout: 15_000 }).toBeGreaterThan(0);
     await captureScreenshot(page, 'ui-parity', 'live-state');
 
     await page.getByRole('button', { name: /^clear$/i }).click();
-    await expect(panel.locator('li')).toHaveCount(0);
+    await expect(panel.locator('tbody tr')).toHaveCount(0);
     // Still connected - the state label never reverted to "Not started".
     await expect(panel.getByRole('status')).toHaveText(/^live$/i);
   });

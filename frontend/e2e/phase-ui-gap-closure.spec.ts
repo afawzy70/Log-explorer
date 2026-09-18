@@ -161,7 +161,14 @@ test.describe('UI Gap Closure Pass', () => {
     const panel = page.getByTestId('live-tail-panel');
     await expect(panel.getByRole('status')).toHaveText(/^live$/i, { timeout: 10_000 }); // 15. existing Start-on-click control
 
-    await panel.click(); // ensure focus is not inside any text input before sending shortcuts
+    // B7 (Session 10) - `panel.click()`'s default centre-point click is no
+    // longer a safe, non-input target: the table is more vertically
+    // compact than the retired card-list, so the panel's geometric centre
+    // can now land inside the "Filter displayed events..." input instead
+    // of empty space. Click the always-present, never-interactive heading
+    // instead - the actual intent ("focus is not inside any text input"),
+    // not an incidental side effect of clicking somewhere in the panel.
+    await panel.getByRole('heading').click();
     await page.keyboard.press('p'); // 14. keyboard Pause
     await expect(panel.getByRole('status')).toHaveText(/^paused$/i);
 
@@ -173,9 +180,9 @@ test.describe('UI Gap Closure Pass', () => {
     await page.keyboard.press('f'); // 14. keyboard Follow-newest toggle
     await expect(followButton).toHaveAttribute('aria-pressed', before === 'true' ? 'false' : 'true');
 
-    await expect.poll(async () => panel.locator('li').count(), { timeout: 15_000 }).toBeGreaterThan(0);
+    await expect.poll(async () => panel.locator('tbody tr').count(), { timeout: 15_000 }).toBeGreaterThan(0);
     await page.keyboard.press('c'); // 14. keyboard Clear
-    await expect(panel.locator('li')).toHaveCount(0);
+    await expect(panel.locator('tbody tr')).toHaveCount(0);
     await expect(panel.getByRole('status')).toHaveText(/^live$/i); // Clear never stops the connection
 
     await page.keyboard.press('s'); // 14. keyboard Stop
