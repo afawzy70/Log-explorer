@@ -1978,3 +1978,87 @@ whether to (a) run one more deliberately-scoped pass to close the named responsi
 dialog at 4 non-1440 widths) before authorizing remediation, or (b) authorize remediation now against the
 frozen 14-item drift register while treating the responsive gap as a known, accepted risk to close later. Either
 is a legitimate Owner decision — this session does not make it.
+
+---
+
+## Session 15 — Responsive Micro-Closure EXECUTED (audit-only, no remediation); AUDIT_COMPLETE=YES
+
+Mission (`IMPECCABLE_RESPONSIVE_FIDELITY_MICRO_CLOSURE`) — a fourth and final audit pass closing the one
+remaining blocker Session 14 identified: 9 of 20 design responsive states (the New Rule wizard and Import
+dialog family) had never been responsively audited beyond 1440px. Verified before starting: HEAD matched the
+expected `7ab056d`, worktree clean, PR #61 OPEN/DRAFT/NOT_MERGED, CI green on that exact HEAD. **Audit only —
+zero production files modified.**
+
+**Full findings are in `docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUDIT.md`'s own "Responsive Micro-
+Closure" section** — not duplicated here. Headline outcomes:
+
+- **Corrected the mission's own tentative container grouping with code evidence, not assumption**: "Extend an
+  existing rule" (state 87) has no separate component — it reuses `RuleEditor.tsx`/`.module.css` (the same New
+  Rule wizard container), confirmed via a direct grep for its `.chooserItem`/`.chooserName` classes sitting
+  right next to the wizard's own `.navRow`/`.steps`. The corrected families: Family A (`RuleEditor` — 21
+  states) and Family B (`ImportPanel` — 7 states), both proven via code to have exactly one responsive
+  breakpoint each (`max-width: 767px`), not five.
+- **Found and corrected a real capture-technique defect mid-pass**: the first round of Family A screenshots
+  used `fullPage: true`, which mishandles `RuleEditor.module.css`'s `position: sticky; bottom: 0` nav row —
+  Playwright's page-stitching "freezes" sticky elements at the wrong scroll offset, making the Cancel/Back/Next
+  footer appear to float mid-page. Verified via a plain viewport screenshot and manual scroll that this was a
+  pure tooling artifact, not a product bug — the sticky footer renders correctly pinned to the bottom in the
+  real app. All Family A evidence in the final set uses corrected viewport captures.
+- **Reached a genuine, non-fabricated "which rule to extend" chooser (design state 87)** by seeding two really
+  overlapping classification rules through the actual UI (not fixture manipulation) and using "Add extraction
+  from this event" on a doubly-classified event — real production data, real backend response, real screenshot.
+- **Found two genuinely new drift items** (DRIFT-015, DRIFT-016), both MAJOR, by extracting and directly
+  comparing production's Family A/B captures against the actual design reference images at matching widths for
+  the first time (neither prior pass had pulled these specific design screenshots): the New Rule/Extend-rule
+  wizard uses a horizontal top stepper instead of design's persistent left-sidebar stepper with a workspace-
+  trail breadcrumb (functionally equivalent — verified via code that production's steps are already freely
+  clickable — but structurally different); and Import lacks the design's full Settings-shell context (left-nav,
+  breadcrumb, 4-step progress header), rendering as a bare standalone panel instead.
+- **Zero horizontal overflow found at any tested width for any state in either family** — every overflow check
+  (`document.documentElement.scrollWidth` vs `clientWidth`, measured in-page) came back clean.
+- **State 85 (extraction suggestions with real variable content) remains the sole open item**, genuinely
+  external-data-bound for a fourth consecutive pass — its shared container was validated responsively via a
+  real sibling capture, but the unique suggestion-row content itself still cannot be produced without either a
+  real event set this environment doesn't have or a prohibited fixture change.
+- **`RESPONSIVE_FIDELITY_AUDIT_COMPLETE=YES`, and therefore `AUDIT_COMPLETE=YES`** — every acceptance condition
+  Session 14 and this session together require is now satisfied. This does **not** mean visual fidelity has
+  passed or remediation is authorized — 16 drift items (0 BLOCKER, 9 MAJOR, 7 MINOR) remain open remediation
+  candidates, up from 14 because of this pass's own two new findings.
+
+**Verification before commit**: `git diff 7ab056d..HEAD -- frontend backend desktop` was empty. `npm run
+typecheck` PASS, full frontend unit suite PASS (1163/1163, unchanged), `npm run build` PASS. No backend/E2E
+rerun performed locally (no product code changed; starting-HEAD CI already proved backend/E2E/desktop health).
+Temporary local capture specs and dev processes were removed/stopped before commit. `sofra-caddy-1` (the
+unrelated real Docker stack on host port 80, discovered in Session 14) was not touched, per this mission's
+explicit instruction.
+
+**Committed to PR #61**: the "Responsive Micro-Closure" section appended to
+`docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUDIT.md` (all three prior sections preserved unchanged above
+it), `docs/verification/visual-fidelity-responsive-micro-closure/` (13 new production screenshots + 1 exported
+classification-rule pack), and this checkpoint update. **No production code, CSS, component, token, or backend
+file was touched.**
+
+```
+IMPECCABLE_VISUAL_FIDELITY_GATE_RECORDED=YES
+IMPECCABLE_VISUAL_FIDELITY_AUDIT_EXECUTED=YES
+IMPECCABLE_VISUAL_FIDELITY_AUDIT_COMPLETION_PASS_EXECUTED=YES
+IMPECCABLE_VISUAL_FIDELITY_FINAL_AUDIT_CLOSURE_EXECUTED=YES
+IMPECCABLE_RESPONSIVE_FIDELITY_MICRO_CLOSURE_EXECUTED=YES
+DARK_THEME_AUDIT_COMPLETE=YES
+CLASSIFICATION_FIDELITY_AUDIT_COMPLETE=YES
+RESPONSIVE_FIDELITY_AUDIT_COMPLETE=YES
+AUDIT_COMPLETE=YES
+FINAL_UI_UX_ACCEPTANCE=NOT_YET_AUTHORIZED
+UNTRACKED_OWNER_REQUIREMENTS=0
+PRODUCTION_CODE_CHANGED_BY_AUDIT=NO
+REMEDIATION_PERFORMED=NO
+FINAL_DRIFT_COUNT=16 (0 BLOCKER, 9 MAJOR, 7 MINOR - up from 14; DRIFT-015/016 newly discovered and recorded,
+  not suppressed, per this mission's own explicit "do not force the count to remain 14" instruction)
+FINAL_REVIEW_REQUIRED_COUNT=2 (both external-data-bound, exact future acceptance evidence stated, unchanged)
+```
+
+**`AUDIT_COMPLETE=YES` means audit coverage is complete — it is explicitly NOT visual-fidelity pass, NOT final
+UI/UX acceptance, and NOT merge authorization.** The next action belongs to the ChatGPT/Owner supervisor: read
+`docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUDIT.md` in full (all four sections) and decide what, if
+anything, to remediate from the frozen 16-item drift register, in what order, and whether to authorize final
+UI/UX acceptance. This session does not make that decision.

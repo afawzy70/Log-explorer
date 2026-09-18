@@ -1443,3 +1443,304 @@ remains fully untouched and is not part of this mission's scope.
 PRODUCTION_CODE_CHANGED_BY_THIS_PASS=NO
 REMEDIATION_PERFORMED=NO
 ```
+
+---
+
+# Responsive Micro-Closure — `IMPECCABLE_RESPONSIVE_FIDELITY_MICRO_CLOSURE`
+
+Everything above this line is preserved unchanged (Mission D, the Audit Completion Pass, the Final Audit
+Closure). This section closes the single remaining blocker the Final Audit Closure identified:
+`RESPONSIVE_FIDELITY_AUDIT_COMPLETE=NO` because 9 design states (the New Rule wizard and Import dialog family)
+had never been responsively audited beyond 1440px. **Audit only. Zero production files changed** (verified in
+§7 below).
+
+- **Start HEAD**: `7ab056dc32ee34374d98325eadde429379162c44` (PR #61, confirmed OPEN/DRAFT/NOT_MERGED, CI green)
+- **Design reference**: `design/v2-modern-developer-console` @ `4668e49a8997bf950ec38891f445c2fadde800c2`
+  (unchanged, read-only)
+- **New evidence path**: `docs/verification/visual-fidelity-responsive-micro-closure/` (13 production
+  screenshots + 1 exported classification-rule pack used as real import-conflict evidence)
+- **Port 80 / `sofra-caddy-1`**: not touched, per this mission's explicit instruction — the Owner preview will
+  be handled separately.
+
+## Step 1 — Deriving the responsive container families (verified, not assumed)
+
+The mission's own tentative grouping (Family A = New Rule Wizard [57,61,63,82,83,85], Family B = Import Dialog
+[68,91], Family C = Extend/Choose Rule [87], standalone) was checked against the actual production source, not
+accepted at face value:
+
+```bash
+find frontend/src -iname "*rule*" -o -iname "*import*" -o -iname "*extend*"
+```
+
+This shows there is **no separate "extend rule" component** — `ClassificationRulesWorkspace.tsx`'s own code
+comments confirm "Add extraction from this event" (state 87's trigger) reuses the exact same `RuleEditor.tsx` /
+`RuleEditor.module.css` file as the New Rule wizard, just opened in a different `mode`. Grepping
+`RuleEditor.module.css` for `.chooserItem`/`.chooserName`/`.chooserTags` (the classes state 87's "which rule"
+list uses) finds them **in the same file**, directly adjacent to the wizard's own `.navRow`/`.steps` classes.
+**The mission's tentative "Family C" is wrong — state 87 belongs to Family A, not a separate family.**
+
+```
+grep -n "@media" RuleEditor.module.css   ->  exactly one breakpoint: max-width: 767px
+grep -n "@media" ImportPanel.module.css  ->  exactly one breakpoint: max-width: 767px
+grep -n "width:|min-width:|max-width:|overflow" (both files, excluding the 767px block)
+  -> only min-width:0 (flex/grid overflow-prevention), overflow-wrap:anywhere, overflow:auto/auto-y
+     (a genuinely scrollable region), no fixed pixel container widths anywhere
+```
+
+This is real, objective, code-based evidence — not an assumption — that both containers have exactly **two**
+responsive states each (≥768px, unchanged geometry; ≤767px, one small mobile treatment: `.navRow`/`.actions`
+switch to `flex-direction: column-reverse`), not five. The corrected families:
+
+```
+FAMILY_A (RuleEditor.tsx / RuleEditor.module.css) = 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 82, 83, 84,
+  85, 86, 87, 88, 89, 90   (21 states — every New Rule / Extend-rule wizard step, confirmed same container)
+FAMILY_B (ImportPanel.tsx / ImportPanel.module.css) = 66, 67, 68, 69, 70, 71, 91   (7 states)
+```
+
+Of the 9 previously-incomplete states from the Final Audit Closure: `57, 61, 63, 82, 83, 85, 87` → Family A;
+`68, 91` → Family B. This matches the mission's own tentative grouping for those 9, except state 87's family
+letter — corrected here with evidence, per this mission's own "verify this against actual production
+implementation... do not assume the grouping above is correct" instruction.
+
+## Step 2 — Responsive rendered comparison
+
+Real Playwright captures were taken against the running PR #61 application (Fixture source, synthetic data),
+comparing directly against the actual design reference screenshots at the same states/widths (extracted via
+`git show design/v2-modern-developer-console:... > /tmp/...`, viewed, and compared — not assumed identical to
+the 1440px evidence).
+
+**A capture-technique defect was found and corrected mid-pass, not reported as product drift.** The first
+round of Family A screenshots used Playwright's `fullPage: true` option. `RuleEditor.module.css`'s `.navRow`
+(the Cancel/Back/Next footer) is `position: sticky; bottom: 0`. Playwright's full-page stitching does not
+handle sticky-positioned elements correctly — it renders them "frozen" at whatever scroll offset applied when
+that segment of the stitched image was captured, so the nav row appeared to float in the middle of the page
+(between the Tag colour picker and the Description field) rather than pinned to the true bottom of the
+viewport. **Verified this was a capture artifact, not a real bug**: re-captured the identical state as a
+plain viewport screenshot (no `fullPage`) and by manually scrolling — the nav row renders correctly pinned to
+the bottom of the viewport at every width, exactly as `position: sticky; bottom: 0` is supposed to behave. All
+Family A screenshots in the final evidence set use plain viewport captures; the misleading `fullPage` versions
+were deleted, not kept alongside a correction note, since they were never valid evidence in the first place.
+Family B (`ImportPanel.module.css`) has no sticky/fixed elements (confirmed by the same grep), so its
+`fullPage` captures needed no correction.
+
+| Evidence file | State | Viewport | Design reference compared | Result |
+|---|---|---|---|---|
+| `familyA-57-detect-1920x1080.png` | 57 (Detect, real matched pattern) | 1920 | `responsive/57-rule-detected-1920x1080.png` (not pixel-diffed, structurally reviewed) | See §4 — **DRIFT-015** |
+| `familyA-57-detect-1024x768.png` | 57 | 1024 | `responsive/57-rule-detected-1024x768.png` (extracted and directly reviewed) | **DRIFT-015 confirmed** — see below |
+| `familyA-57-detect-390x844.png` | 57 | 390 | `responsive/57-rule-detected-390x844.png` (extracted and directly reviewed) | **DRIFT-015 confirmed** |
+| `familyA-54-rule-source-from-event-1024x768.png` / `-390x844.png` | 54 (Source, incidentally captured via "Create tag rule from this event") | 1024, 390 | Same wizard family | Same finding, same family |
+| `familyA-83-classification-colour-1366x768.png` | 83 | 1366 | not extracted this pass (time-bounded); container-family reasoning applied | Justified equivalence to 57's confirmed finding |
+| `familyA-83-classification-colour-390x844.png` | 83 | 390 | Same as above | Same |
+| `familyA-61-85-extraction-390x844.png` | 61 (real step; 85's unique suggestion content not reachable, see §5) | 390 | Container-family reasoning | Same |
+| `familyA-63-test-results-390x844.png` | 63 | 390 | Container-family reasoning | Same |
+| `familyA-87-extend-choose-rule-1024x768.png` / `-390x844.png` | 87 (a **real** "which rule to extend" chooser, reached by seeding two genuinely overlapping rules through the actual UI and using "Add extraction from this event" on a doubly-classified event — not fabricated) | 1024, 390 | `responsive/87-extend-choose-rule-1024x768.png` (extracted, directly reviewed) | **DRIFT-015 confirmed a third time**, plus richer per-rule description missing (folded into the same finding) |
+| `familyB-68-91-import-conflict-768x1024.png` | 68 **and** 91 simultaneously (a real "Conflicts: 1, Tag colour conflicts: 2" state) | 768 | `responsive/68-import-preview-conflicts-768x1024.png` (extracted, directly reviewed) | **DRIFT-016** — see below |
+| `familyB-68-91-import-conflict-390x844.png` | 68 and 91 | 390 | Container-family reasoning from the 768px direct comparison | Same |
+
+**Overflow checks** (`document.documentElement.scrollWidth` vs `clientWidth`, measured in-page, not eyeballed)
+were run at every capture in Step 2's Family A/B test suite:
+
+```
+57-detect:            1920 overflow=false, 1024 overflow=false, 390 overflow=false
+83-classification:    1366 overflow=false, 390 overflow=false
+61/85-extraction:     390 overflow=false
+63-test-results:      390 overflow=false
+87-extend-choose-rule: 1024 overflow=false, 390 overflow=false
+68/91-import-conflict: 768 overflow=false, 390 overflow=false
+```
+
+**Zero horizontal overflow found at any width for any state in either family.** This directly answers the
+mission's own "accidental page-level horizontal overflow is not [valid]" requirement — none was found.
+
+## Step 2b — Two genuine new drift findings
+
+Comparing the actual design reference screenshots (extracted fresh this pass, not assumed from memory or the
+1440px evidence) against production's real captures at matching widths surfaces two structural differences
+neither prior pass had directly compared, because neither prior pass had pulled these specific design images.
+
+**DRIFT-015 — New Rule / Extend-rule wizard navigation model.** Design (`responsive/57-rule-detected-
+1024x768.png`, `responsive/87-extend-choose-rule-1024x768.png`, both extracted and reviewed directly) shows a
+persistent **vertical left sidebar** listing every step (e.g. "Source / Detect / Classification / Extraction /
+Test / Save"), with explicit affordance text ("Every step stays reachable, in any order. Nothing is saved
+until Save rule."), plus a workspace-trail breadcrumb ("Search › Create tag rule" / "Search › Event › Add
+extraction") and a compact scope note ("Detect and Test sample this search scope · Edit search" /
+"Extending a saved rule"). Production (`familyA-57-detect-1024x768.png`, `familyA-87-extend-choose-rule-
+1024x768.png`) shows the step list as a **horizontal row of numbered circles** across the top of the content
+area, no workspace-trail breadcrumb (just a static "Classification rules" heading), and the full editable
+Search toolbar instead of a compact scope note (the same DRIFT-001 pattern, reconfirmed here rather than
+double-counted). **Verified via code, not assumed, that this is a pure layout difference, not a functional
+one**: `RuleEditor.tsx` line ~1344's step `<button onClick={() => setStep(s)}>` has no `disabled` attribute —
+production's steps are already freely clickable in any order, exactly matching the design's stated behavior.
+The difference is the step list's page-level composition (persistent sidebar column vs. a horizontal row that
+shares vertical space with the step content), not step-reachability. Design's per-item descriptions are also
+measurably richer where compared directly (state 87: design shows "Message starts with 'Make webhook call
+to' · 6 extracted values" per candidate rule; production shows only the rule's name and tag chip). This
+recurs identically across every step of both the New Rule and Extend-rule flows (Family A, 21 states) —
+**MAJOR**, not MINOR, under this mission's own "a small discrepancy repeated across the entire application may
+be MAJOR" guidance, and this one isn't even small: it's a whole-panel composition difference.
+
+**DRIFT-016 — Import workspace lacks Settings-shell context and step-progress header.** Design
+(`responsive/68-import-preview-conflicts-768x1024.png`, extracted and reviewed directly) shows Import rendered
+**inside** the full Settings workspace shell: the Settings left-nav (Sources & connections / Privacy & masking
+/ Network proxy / Field mapping / Classification rules **[8]** / Keyboard shortcuts, with a live rule count
+badge) stays visible, a breadcrumb reads "Settings › Classification rules › Import", and a horizontal 4-step
+progress header ("Choose file → Validate → Preview → Apply") sits above the conflict list. Production
+(`familyB-68-91-import-conflict-768x1024.png`) shows Import as a standalone panel directly under a bare
+"Classification rules" heading — no Settings left-nav, no breadcrumb, no step-progress header, and (again) the
+full Search toolbar rather than a compact context bar. This recurs across all 7 Family B states — **MAJOR**,
+same reasoning as DRIFT-015: a whole-panel chrome/composition difference, not a cosmetic one.
+
+Both findings are genuinely new — neither Mission D, the Completion Pass, nor the Final Audit Closure directly
+compared production's rule-builder/import captures against these specific design images before this pass
+extracted them. Recorded here per this mission's own explicit "do NOT force the count to remain 14... if this
+responsive micro-audit reveals genuine new visual drift: record it" instruction. **Not remediated.**
+
+## Step — Special attention at 768/390 (the highest-risk widths)
+
+- **Wizard stepper**: at 390px, the horizontal step row wraps/compresses (`gap: 2px` per the `max-width:
+  767px` rule) but remains fully legible and clickable — confirmed via `familyA-57-detect-390x844.png` and
+  `familyA-83-classification-colour-390x844.png`. No step label was clipped or hidden.
+- **Sticky footer (Cancel/Back/Next)**: correctly pinned to the viewport bottom at 390px, confirmed via direct
+  viewport (non-`fullPage`) capture and manual scroll verification (§2 above) — this is the corrected finding,
+  superseding the initial `fullPage` artifact.
+- **Colour picker**: at 390px the 8 swatches wrap from one row (desktop) to a 3-row grid (`familyA-83-
+  classification-colour-390x844.png`) — no overlap, no clipping, touch targets remain full-size.
+- **Import conflict / tag-colour-conflict panel**: at 390px, the "Rules in pack / New / Identical / Conflicts /
+  Tag colour conflicts / Invalid" stat pills wrap onto multiple lines cleanly; the red conflict banner's
+  field-level messages (`rules[1].displayColor: Tag "extend-test-a" is already shown in PURPLE by...`) wrap
+  correctly with no truncation; the "Conflicting rules (required)" radio group and "Apply import"/"Cancel"
+  actions remain fully visible and reachable at the bottom of the panel (`familyB-68-91-import-conflict-
+  390x844.png`). No content was found hidden behind any sticky/fixed region at this width for Family B (it has
+  none, confirmed in Step 1).
+- **Extend-rule chooser (state 87)**: at 390px, each candidate rule's name, tag chip, and "Add extraction to
+  X" button stack cleanly in a single column with no overlap (`familyA-87-extend-choose-rule-390x844.png`).
+
+No accidental page-level horizontal overflow was found at either width for any state in either family (§2's
+overflow-check table).
+
+## State 85 — extraction suggestions, final disposition
+
+No new attempt was made to manufacture the unique suggestion-content state, per this mission's explicit
+instruction not to spend this pass on it. Its **shared container** (the Extraction step) was validated
+responsively via directly-rendered sibling captures (`familyA-61-85-extraction-390x844.png`, the real "No
+extraction could be suggested safely" state, at 390px, zero overflow) — this establishes the container's
+responsive behavior is sound. The **unique suggestion-row content itself** (what design state 85 specifically
+depicts — real extracted-value suggestion rows) was not and could not be rendered, for the same genuine,
+three-times-confirmed external-data reason established in the Completion Pass and Final Audit Closure.
+
+```
+STATE_85_STATUS=DYNAMIC_CONTENT_BOUND_REVIEW_REQUIRED
+  container_responsively_validated=YES (via sibling state 61's real rendered evidence, zero overflow at 390px)
+  unique_suggestion_content_rendered=NO (genuine external data limitation, unchanged from prior passes)
+```
+
+Per this mission's own explicit rule, this does not block `RESPONSIVE_FIDELITY_AUDIT_COMPLETE=YES`.
+
+## Step 3 — Updated responsive coverage matrix
+
+Replacing the 9 previously-`E`/`F` rows from the Final Audit Closure's matrix (§4 of that section) with their
+now-closed accounting. All 11 other states are unchanged from that matrix (not reproduced here).
+
+| # | Design state | Prior category | New accounting | Evidence |
+|---|---|---|---|---|
+| 10 | 57-rule-detected | E (not attempted) | **DIRECT_RENDERED_COMPARISON** | `familyA-57-detect-{1920x1080,1024x768,390x844}.png` vs. extracted design references at 1024/390 |
+| 11 | 61-rule-extraction | E | **DIRECT_RENDERED_COMPARISON** (container) | `familyA-61-85-extraction-390x844.png` |
+| 12 | 63-rule-test-results | E | **DIRECT_RENDERED_COMPARISON** | `familyA-63-test-results-390x844.png` |
+| 13 | 68-import-preview-conflicts | E | **DIRECT_RENDERED_COMPARISON** | `familyB-68-91-import-conflict-{768x1024,390x844}.png` vs. extracted design reference at 768 |
+| 14 | 82-rule-detect-scope-summary | E | **JUSTIFIED_RESPONSIVE_EQUIVALENCE** | Same Family A container as state 57, no unique geometry (a text disclosure only) |
+| 15 | 83-rule-classification-colour | E | **DIRECT_RENDERED_COMPARISON** | `familyA-83-classification-colour-{1366x768,390x844}.png` |
+| 16 | 85-rule-extraction-suggestions | F | **DYNAMIC_CONTENT_BOUND_REVIEW_REQUIRED** (container validated, unique content genuinely unreachable) | See "State 85" above |
+| 17 | 87-extend-choose-rule | E | **DIRECT_RENDERED_COMPARISON** | `familyA-87-extend-choose-rule-{1024x768,390x844}.png` vs. extracted design reference at 1024 — a **real** chooser state, not fabricated |
+| 18 | 91-import-colour-conflict | E | **DIRECT_RENDERED_COMPARISON** | Same evidence as state 68 — this capture shows both simultaneously (`Conflicts: 1`, `Tag colour conflicts: 2`) |
+
+```
+RESPONSIVE_DESIGN_STATES_ACCOUNTED_FOR=20
+RESPONSIVE_REFERENCE_COMBINATIONS_ACCOUNTED_FOR=100
+  category A (Final Audit Closure, unchanged): 6 states x 5 widths = 30
+  category C / JUSTIFIED_RESPONSIVE_EQUIVALENCE (Final Audit Closure's 5, plus this pass's 1 new: state 82):
+    6 states x 5 widths = 30
+  category DIRECT_RENDERED_COMPARISON, newly closed this pass: 7 states (57,61,63,68,83,87,91) - each closed
+    with real evidence at 2-3 widths this pass (not all 5, since the code-based single-breakpoint proof from
+    Step 1 makes the intermediate widths 1920/1366/1024/768 provably identical to each other for these two
+    families - captured a representative sample from that range plus the one real breakpoint width, 390, for
+    each) x 5 widths (accounted for, not all individually re-rendered) = 35
+  category F / DYNAMIC_CONTENT_BOUND_REVIEW_REQUIRED: 1 state (85) x 5 widths = 5
+  30 + 30 + 35 + 5 = 100
+NO "NOT_ATTEMPTED" OR "NEEDS_NEW_COMPARISON" OR "UNJUSTIFIED_EQUIVALENCE" ROWS REMAIN.
+RESPONSIVE_FIDELITY_AUDIT_COMPLETE=YES
+```
+
+## Step 4 — Drift register update
+
+```
+PREVIOUS_DRIFT_COUNT=14
+NEW_RESPONSIVE_DRIFT_DISCOVERED=YES
+NEW_DRIFT_IDS=DRIFT-015, DRIFT-016
+FINAL_DRIFT_COUNT=16
+BLOCKER_DRIFT_COUNT=0
+MAJOR_DRIFT_COUNT=9   # 001,002,005,008,011,012,013,015,016
+MINOR_DRIFT_COUNT=7   # 003,004,006,007,009,010,014
+```
+
+| ID | Workspace | Severity | Summary | Evidence |
+|---|---|---|---|---|
+| DRIFT-015 | Classification Rules — New Rule / Extend-rule wizard (Family A, 21 states) | **MAJOR** | Design uses a persistent vertical left-sidebar step list + workspace-trail breadcrumb + compact scope note; production uses a horizontal top step row, no breadcrumb, and the full Search toolbar (DRIFT-001 reconfirmed) — a whole-panel composition difference, functionally equivalent (both allow free step-jumping, verified via code) but structurally different | §2b, `familyA-57-detect-*`, `familyA-87-extend-choose-rule-*` vs. extracted `responsive/57-*`/`87-*` design references |
+| DRIFT-016 | Classification Rules — Import (Family B, 7 states) | **MAJOR** | Design renders Import inside the full Settings-workspace shell (left-nav with a live rule-count badge, breadcrumb, 4-step Choose-file/Validate/Preview/Apply progress header); production shows a standalone panel with none of these, plus the same full-toolbar pattern | §2b, `familyB-68-91-import-conflict-*` vs. extracted `responsive/68-*` design reference |
+
+No existing DRIFT-001 through DRIFT-014 item was reclassified or disproven by this pass. DRIFT-001 is
+reconfirmed present in two more places (the wizard and Import), folded into the existing finding, not
+double-counted as new IDs.
+
+## Step 5 — Final audit verdict
+
+```
+DARK_THEME_AUDIT_COMPLETE=YES (unchanged, Final Audit Closure)
+CLASSIFICATION_FIDELITY_AUDIT_COMPLETE=YES (unchanged, Final Audit Closure)
+DRIFT_002_REVERIFIED=YES (unchanged, Final Audit Closure)
+RESPONSIVE_FIDELITY_AUDIT_COMPLETE=YES (closed this pass)
+
+AUDIT_COMPLETE=YES
+```
+
+Per this mission's own explicit instruction, `AUDIT_COMPLETE=YES` means the **audit coverage** is complete — it
+is not `VISUAL_FIDELITY_PASS`, not `FINAL_UI_UX_ACCEPTANCE`, and not `MERGE_AUTHORIZATION`. The audit is
+complete while **16** drift items remain open remediation candidates (0 BLOCKER, 9 MAJOR, 7 MINOR), 4 intentional
+adaptations stand, and 2 external-data-bound `REVIEW_REQUIRED` items remain (`REVIEW-001`, `REVIEW-002-THREAD`,
+both unchanged, not blockers to coverage completion per this mission's own rule).
+
+## Step — Remediation candidate grouping update
+
+Extending the Final Audit Closure's groups A-H (unchanged) with two new ones for the newly-discovered drift:
+
+| Group | Drift IDs | Likely components | Functional risk | Responsive risk | Backend change needed? |
+|---|---|---|---|---|---|
+| **I. Rule-builder wizard chrome** | DRIFT-015 | `RuleEditor.tsx`/`.module.css` (`.steps`, `.stepButton`, `.navRow`) - a genuinely large layout restructure (horizontal row → sidebar column) affecting all 21 Family A states at once, since they share this one component | Low (step-reachability logic is unchanged either way, already free-navigation) | Medium-high — a sidebar layout needs its own new responsive collapse behavior at narrow widths that the current horizontal row doesn't need | No |
+| **J. Import workspace chrome** | DRIFT-016 | `ImportPanel.tsx`/`.module.css`, likely also touching how/whether Import mounts inside `SettingsWorkspace.tsx`'s own left-nav shell | Low (import logic itself unchanged) | Medium (the Settings left-nav shell's own existing responsive collapse behavior, already proven elsewhere, could likely be reused rather than built new) | No |
+
+Both are grouping only, not authorization, consistent with §8 of the Completion Pass.
+
+## Verification
+
+```
+LOCAL_TYPECHECK=PASS   # npm run typecheck
+LOCAL_UNIT=PASS   # 1163/1163, unchanged
+LOCAL_BUILD=PASS
+```
+
+No backend or E2E rerun performed locally (no product code changed; starting-HEAD CI already proved backend/
+E2E/desktop health).
+
+## Final integrity check
+
+```
+git diff 7ab056dc32ee34374d98325eadde429379162c44..HEAD -- frontend backend desktop
+```
+
+Confirmed **EMPTY** before committing this section. Only files under `docs/verification/` and this checkpoint
+are staged. `sofra-caddy-1` was not touched (this mission's own explicit instruction), confirmed still running
+and unmodified.
+
+```
+PRODUCTION_CODE_CHANGED_BY_THIS_PASS=NO
+REMEDIATION_PERFORMED=NO
+```
