@@ -1,9 +1,10 @@
+import { useState } from 'react';
 import { Button } from '../../shared/ui/Button';
-import { Icon } from '../../shared/ui/Icon';
 import { DockerSettingsPanel } from './DockerSettingsPanel';
 import { OpenShiftSettingsPanel } from './OpenShiftSettingsPanel';
 import { PrivacyMaskingSettingsPanel } from './PrivacyMaskingSettingsPanel';
 import { KeyboardShortcutsHelp } from '../../app/KeyboardShortcutsHelp';
+import { SettingsNav } from './SettingsNav';
 import type { SearchState } from '../../app/useSearchState';
 import styles from './SettingsWorkspace.module.css';
 
@@ -11,12 +12,6 @@ export interface SettingsWorkspaceProps {
   state: SearchState;
   onOpenShiftScopeChanged: () => void;
   onClose: () => void;
-}
-
-interface NavSection {
-  id: string;
-  icon: Parameters<typeof Icon>[0]['name'];
-  label: string;
 }
 
 /*
@@ -41,15 +36,17 @@ interface NavSection {
  * (`state.openMappingWorkspace`/`state.openClassificationWorkspace`, already mutually exclusive with this
  * one - see `useSearchState.ts`) - B6.2 does not touch either of those workspaces' own content.
  */
-const NAV_SECTIONS: NavSection[] = [
-  { id: 'sources', icon: 'database', label: 'Sources & connections' },
-  { id: 'masking', icon: 'shield-check', label: 'Privacy & masking' },
-  { id: 'mapping', icon: 'scan-search', label: 'Field mapping' },
-  { id: 'classification', icon: 'tags', label: 'Classification rules' },
-  { id: 'shortcuts', icon: 'keyboard', label: 'Keyboard shortcuts' },
-];
-
 export function SettingsWorkspace({ state, onOpenShiftScopeChanged, onClose }: SettingsWorkspaceProps) {
+  // DRIFT-016 remediation - "active" section for the shared nav's own highlight, tracked from whichever
+  // section last received a scroll-into-view (defaults to the first, "sources"). Purely a visual affordance;
+  // every section is always in the DOM and reachable regardless of this value.
+  const [activeSectionId, setActiveSectionId] = useState('sources');
+
+  function selectSection(id: string) {
+    setActiveSectionId(id);
+    document.getElementById(`settings-${id}`)?.scrollIntoView({ block: 'start' });
+  }
+
   return (
     <div className={styles.wrapper} data-testid="settings-workspace">
       <div className={styles.header}>
@@ -59,14 +56,7 @@ export function SettingsWorkspace({ state, onOpenShiftScopeChanged, onClose }: S
         <h1 className={styles.title}>Settings</h1>
       </div>
       <div className={styles.body}>
-        <nav className={styles.nav} aria-label="Settings sections">
-          {NAV_SECTIONS.map((section) => (
-            <a key={section.id} href={`#settings-${section.id}`} className={styles.navItem}>
-              <Icon name={section.icon} size="sm" />
-              {section.label}
-            </a>
-          ))}
-        </nav>
+        <SettingsNav activeId={activeSectionId} onSelect={selectSection} />
         <div className={styles.content}>
           <section id="settings-sources" className={styles.section} aria-labelledby="settings-sources-heading">
             <h2 id="settings-sources-heading" className={styles.sectionHeading}>
@@ -127,9 +117,15 @@ export function SettingsWorkspace({ state, onOpenShiftScopeChanged, onClose }: S
               Rules tag matching events and extract named values from them, applied by the server to every
               search.
             </p>
+            {/*
+             * DRIFT-016 remediation - "Manage classification rules", not the bare section title, now that
+             * SettingsNav's own "Classification rules" nav item (also opening this same destination) renders
+             * alongside every section including this one; same disambiguation pattern this section's own
+             * "Log schema & field mapping" button above already used against its "Field mapping" nav item.
+             */}
             <div className={styles.sectionRow}>
               <Button variant="secondary" onClick={state.openClassificationWorkspace}>
-                Classification rules
+                Manage classification rules
               </Button>
             </div>
           </section>

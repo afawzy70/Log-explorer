@@ -204,7 +204,15 @@ function renderWorkspace(props: Partial<Parameters<typeof ClassificationRulesWor
   const onRulesChanged = vi.fn();
   const buildScope = vi.fn(() => SCOPE);
   const utils = render(
-    <ClassificationRulesWorkspace sourceEvent={null} buildScope={buildScope} onRulesChanged={onRulesChanged} onClose={onClose} {...props} />,
+    <ClassificationRulesWorkspace
+      sourceEvent={null}
+      buildScope={buildScope}
+      onRulesChanged={onRulesChanged}
+      onClose={onClose}
+      onOpenMapping={vi.fn()}
+      onOpenSettings={vi.fn()}
+      {...props}
+    />,
   );
   return { ...utils, onClose, onRulesChanged, buildScope };
 }

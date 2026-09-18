@@ -113,7 +113,14 @@ function renderWorkspace() {
   const onRulesChanged = vi.fn();
   const buildScope = vi.fn(() => SCOPE);
   const utils = render(
-    <ClassificationRulesWorkspace sourceEvent={null} buildScope={buildScope} onRulesChanged={onRulesChanged} onClose={onClose} />,
+    <ClassificationRulesWorkspace
+      sourceEvent={null}
+      buildScope={buildScope}
+      onRulesChanged={onRulesChanged}
+      onClose={onClose}
+      onOpenMapping={vi.fn()}
+      onOpenSettings={vi.fn()}
+    />,
   );
   return { ...utils, onClose, onRulesChanged, buildScope };
 }

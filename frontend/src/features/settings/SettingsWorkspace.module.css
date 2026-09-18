@@ -66,12 +66,24 @@
   color: var(--v2-ink-2);
   text-decoration: none;
   white-space: nowrap;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
 }
 
 .navItem:hover,
 .navItem:focus-visible {
   background: var(--v2-hover);
   color: var(--v2-ink-1);
+}
+
+/* DRIFT-016 remediation - the active section, non-color-only (bold weight + a left accent bar, not tint alone). */
+.navItem[aria-current='page'] {
+  background: var(--v2-accent-tint);
+  color: var(--v2-accent-ink);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--v2-accent);
 }
 
 .content {

@@ -21,10 +21,16 @@
 
 .header {
   display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) 0;
+}
+
+.headerRow {
+  display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4) 0;
 }
 
 .title {
@@ -39,8 +45,59 @@
   margin: var(--space-1) var(--space-4) 0;
 }
 
+/* DRIFT-016 remediation - Settings context (nav + breadcrumb), restoring the approved "Classification
+   Rules is reached inside Settings" composition instead of a standalone takeover with no way back other
+   than "Back to search results". Grid mirrors SettingsWorkspace.module.css's own `.body`/`.nav` pair
+   exactly, since SettingsNav renders with that module's classes regardless of caller. */
 .body {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: var(--space-4);
   padding: var(--space-3) var(--space-4) var(--space-4);
+  align-items: start;
+}
+
+.content {
+  min-width: 0;
+}
+
+.breadcrumb {
+  margin: 0;
+}
+
+.breadcrumbList {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-3);
+}
+
+.breadcrumbLink {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: var(--v2-ink-3);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.breadcrumbLink:hover,
+.breadcrumbLink:focus-visible {
+  color: var(--v2-ink-1);
+}
+
+.breadcrumbList [aria-current='page'] {
+  color: var(--v2-ink-2);
+  font-weight: 600;
+}
+
+.breadcrumbSep {
+  color: var(--v2-ink-3);
 }
 
 /* ------------------------------------------------------------------ status banners */
@@ -370,6 +427,13 @@
 
 /* ------------------------------------------------------------------ responsive */
 @media (max-width: 767px) {
+  /* Same collapse as SettingsWorkspace.module.css's own `.body`/`.nav` pair - SettingsNav renders its own
+     `.nav` from that module and already goes horizontal/wrapping under this same breakpoint, so only the
+     grid-to-stack here needs restating locally. */
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .toolbar {
     flex-direction: column;
     align-items: stretch;

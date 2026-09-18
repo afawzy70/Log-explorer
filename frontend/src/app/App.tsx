@@ -261,6 +261,8 @@ function AppContent() {
                 buildScope={state.buildClassificationSampleScope}
                 onRulesChanged={state.refreshClassificationTags}
                 onClose={state.closeClassificationWorkspace}
+                onOpenMapping={state.openMappingWorkspace}
+                onOpenSettings={state.openSettingsWorkspace}
               />
             </Suspense>
           ) : liveModeActive ? (

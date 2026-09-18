@@ -22,6 +22,7 @@ import type {
 } from '../../../shared/api/types';
 import type { ClassificationWorkspaceIntent } from '../../../app/useSearchState';
 import { TagChip, TagCountBadge } from '../../../shared/ui/TagChip';
+import { SettingsNav } from '../SettingsNav';
 import { RuleEditor } from './RuleEditor';
 import type { EditorMode, StepId } from './RuleEditor';
 import { ImportPanel } from './ImportPanel';
@@ -56,6 +57,16 @@ export interface ClassificationRulesWorkspaceProps {
   /** Called after any successful write so app-wide tag lists can refresh. */
   onRulesChanged?: () => void;
   onClose: () => void;
+  /**
+   * DRIFT-016 remediation - the shared Settings nav rendered here needs to navigate to the other two
+   * top-level takeover workspaces it lists (Field mapping directly; Sources & connections/Privacy &
+   * masking/Keyboard shortcuts all live inside Settings itself). Both are the exact same
+   * `state.openMappingWorkspace`/`state.openSettingsWorkspace` functions `App.tsx` already owns, passed
+   * through rather than the whole `SearchState` object, matching this component's existing narrow-props
+   * convention.
+   */
+  onOpenMapping: () => void;
+  onOpenSettings: () => void;
 }
 
 type View =
@@ -99,6 +110,8 @@ export function ClassificationRulesWorkspace({
   buildScope,
   onRulesChanged,
   onClose,
+  onOpenMapping,
+  onOpenSettings,
 }: ClassificationRulesWorkspaceProps) {
   const headingId = useId();
   const fileInputId = useId();
@@ -188,6 +201,25 @@ export function ClassificationRulesWorkspace({
       return;
     }
     setView({ kind: 'editor', mode: 'edit', initialRule: rule, initialStep: 'extraction' });
+  }
+
+  /**
+   * DRIFT-016 remediation - the shared Settings nav's own section id space (SettingsNav.tsx) is wider than
+   * this workspace: "mapping" leaves to the Field Mapping workspace, "sources"/"masking"/"shortcuts" leave to
+   * Settings itself (opened on its own default first section, same as opening Settings from anywhere else -
+   * this workspace has no way to tell Settings which of its sections to scroll to, and none is needed since
+   * Settings shows all of them at once). "classification" is where we already are, so it just returns to the
+   * rule list rather than leaving.
+   */
+  function selectSettingsSection(id: string) {
+    if (id === 'mapping') {
+      onOpenMapping();
+    } else if (id === 'classification') {
+      clearListMessages();
+      setView({ kind: 'list' });
+    } else {
+      onOpenSettings();
+    }
   }
 
   function clearListMessages() {
@@ -618,21 +650,63 @@ export function ClassificationRulesWorkspace({
     );
   }
 
+  const onImportSubview = view.kind === 'import';
+
   return (
     <div className={listStyles.wrapper} data-testid="classification-rules-workspace">
       <div className={listStyles.header}>
-        <Button variant="ghost" onClick={onClose}>
-          ← Back to search results
-        </Button>
-        <h1 id={headingId} ref={headingRef} tabIndex={-1} className={listStyles.title}>
-          Classification rules
-        </h1>
+        <nav aria-label="Breadcrumb" className={listStyles.breadcrumb}>
+          <ol className={listStyles.breadcrumbList}>
+            <li>
+              <button type="button" className={listStyles.breadcrumbLink} onClick={onOpenSettings}>
+                Settings
+              </button>
+            </li>
+            <li aria-hidden="true" className={listStyles.breadcrumbSep}>
+              /
+            </li>
+            <li>
+              {onImportSubview ? (
+                <button
+                  type="button"
+                  className={listStyles.breadcrumbLink}
+                  onClick={() => { clearListMessages(); setView({ kind: 'list' }); }}
+                >
+                  Classification rules
+                </button>
+              ) : (
+                <span aria-current="page">Classification rules</span>
+              )}
+            </li>
+            {onImportSubview ? (
+              <>
+                <li aria-hidden="true" className={listStyles.breadcrumbSep}>
+                  /
+                </li>
+                <li>
+                  <span aria-current="page">Import</span>
+                </li>
+              </>
+            ) : null}
+          </ol>
+        </nav>
+        <div className={listStyles.headerRow}>
+          <Button variant="ghost" onClick={onClose}>
+            ← Back to search results
+          </Button>
+          <h1 id={headingId} ref={headingRef} tabIndex={-1} className={listStyles.title}>
+            Classification rules
+          </h1>
+        </div>
       </div>
       <p className={listStyles.hint}>
         Rules tag matching events and extract named values from them. They are applied by the server to the events each
         search retrieves.
       </p>
-      <div className={listStyles.body}>{body}</div>
+      <div className={listStyles.body}>
+        <SettingsNav activeId="classification" onSelect={selectSettingsSection} />
+        <div className={listStyles.content}>{body}</div>
+      </div>
     </div>
   );
 }

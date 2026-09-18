@@ -268,6 +268,8 @@ function renderWorkspace(sourceEvent: LogEvent) {
       buildScope={buildScope}
       onRulesChanged={onRulesChanged}
       onClose={onClose}
+      onOpenMapping={vi.fn()}
+      onOpenSettings={vi.fn()}
     />,
   );
   return { ...utils, onClose, onRulesChanged, buildScope };
