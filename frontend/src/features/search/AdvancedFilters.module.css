@@ -31,54 +31,60 @@
 }
 
 /*
- * A genuine docked right-side drawer (UI Gap Closure Pass), not an
- * anchored popover - `position: fixed` relative to the viewport, full
- * height, so it can never inherit the toolbar-wrap left-edge-reachability
- * bug a popover here once had (see `.actions`' own comment below), and
- * the four field groups no longer need an internal scroll to reach the
- * action row on a typical screen. Deliberately no dimming backdrop -
- * "results remain visible beside it" (the mission's own requirement) -
- * `useDismissableLayer` still closes it on outside click/Escape without
- * one. `prefers-reduced-motion` gets an instant appearance, never a slide.
+ * DRIFT-002 remediation - a wide panel spanning the content width, docked
+ * below the toolbar (`panelTop`, set from AdvancedFilters.tsx's own
+ * `[data-app-chrome]` measurement, is unchanged - only the horizontal
+ * geometry changed from a 420px right-edge drawer to this full-width
+ * panel), matching the approved design's "every field group visible at
+ * once" composition instead of a narrow single-column drawer requiring
+ * scrolling to reach every group. `position: fixed` still means it can
+ * never inherit the toolbar-wrap left-edge-reachability bug a popover
+ * here once had (see `.actions`' own comment below). Deliberately no
+ * dimming backdrop - "results remain visible beside/below it" (the
+ * mission's own requirement) - `useDismissableLayer` still closes it on
+ * outside click/Escape without one. `prefers-reduced-motion` gets an
+ * instant appearance, never a slide. `max-height` + `.scrollArea`'s own
+ * `overflow-y: auto` (not the whole panel) is what keeps Reset/Cancel/
+ * Apply always reachable at the panel's own bottom on a short viewport,
+ * same invariant the previous drawer's `.groups` scroll already proved.
  */
 .panel {
   position: fixed;
   top: 0;
+  left: 0;
   right: 0;
+  /* Bounds the panel to the real remaining viewport height below `top` (set inline from the toolbar's
+     own measured height, same as before this remediation) - a fixed `max-height` calc here previously let
+     the panel's own bottom edge extend past the real viewport bottom whenever the toolbar wrapped taller
+     (e.g. at 768px/390px), pushing Reset/Cancel/Apply out of view entirely instead of just requiring a
+     scroll - found via real E2E (Apply "outside of the viewport"), not assumed safe. */
   bottom: 0;
   z-index: 30;
   display: flex;
   flex-direction: column;
   background: var(--v2-surface-raised);
   color: var(--v2-ink-1);
-  border-left: var(--v2-bw) solid var(--v2-line);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
   box-shadow: var(--v2-shadow-sheet);
   padding: var(--space-4);
-  width: 420px;
-  max-width: 100vw;
   overflow: hidden;
-  animation: slideIn 180ms ease-out;
+  animation: slideDown 180ms ease-out;
 }
 
-@keyframes slideIn {
+@keyframes slideDown {
   from {
-    transform: translateX(100%);
+    transform: translateY(-12px);
+    opacity: 0;
   }
   to {
-    transform: translateX(0);
+    transform: translateY(0);
+    opacity: 1;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .panel {
     animation: none;
-  }
-}
-
-/* Full-width on narrow screens (mission: "may become full-width... if more usable") - same right-docked slide-in, just spanning the whole viewport. */
-@media (max-width: 640px) {
-  .panel {
-    width: 100vw;
   }
 }
 
@@ -96,7 +102,7 @@
  * real bug the popover-anchored predecessor had - see `.actions`' own
  * comment).
  */
-.groups {
+.scrollArea {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -105,9 +111,34 @@
   min-height: 0;
 }
 
+/*
+ * DRIFT-002 remediation - a real multi-column grid (Who/customer, Request
+ * flow, What happened, Client context, Classification tags all
+ * simultaneously visible on a wide viewport), not a single stacked
+ * column. `auto-fit`/`minmax` reflows to fewer columns as the panel
+ * narrows (down to one column once it can no longer fit a 220px group at
+ * its own minimum width), matching the same responsive philosophy every
+ * other multi-column surface in this product already uses - never a
+ * fixed column count that could overflow.
+ */
+.groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4) var(--space-5);
+}
+
 .group {
   border: none;
   padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+/* DRIFT-002 remediation - Advanced query is its own full-width section below the grid, matching design. */
+.advancedQueryGroup {
+  border: none;
+  border-top: var(--v2-bw) solid var(--v2-line);
+  padding: var(--space-4) 0 0;
   margin: 0;
 }
 
