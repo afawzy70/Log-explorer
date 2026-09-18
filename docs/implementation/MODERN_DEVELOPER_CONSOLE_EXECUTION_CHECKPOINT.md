@@ -1510,6 +1510,126 @@ proceed directly into Stage 2 (global dark-theme sweep), starting from the shell
 above as the most obvious first target - independently re-verifying, not blindly restoring, the still-present
 `session10-unauthorized-fork-dark-theme-sweep-WIP` stash before using any of it.
 
+## Session 11 — Stages 2-6 COMPLETE, internal implementation hardening finished
+
+Mission: `MODERN_DEVELOPER_CONSOLE_SESSION_11_COMPLETE_GLOBAL_HARDENING`, resuming from HEAD `c5ac2b6`
+(Stage 1 accepted, Stage 2 partial, Owner Requirement §29 recorded). No research forks/sub-agents used
+this session, per the mission's own explicit process change - all inspection, implementation, and
+verification performed directly.
+
+### Pre-stage: startup gate and requirement confirmation
+
+Verified exactly per the mission's own gate: branch/HEAD match, worktree clean, PR #61
+Open/Draft/not-merged, starting-HEAD CI green (`gh pr checks 61`), and confirmed
+`IMPECCABLE_VISUAL_FIDELITY_GATE_RECORDED=YES` / `IMPECCABLE_VISUAL_FIDELITY_AUDIT_EXECUTED=NO` /
+`FINAL_UI_UX_ACCEPTANCE=NOT_YET_AUTHORIZED` / `UNTRACKED_OWNER_REQUIREMENTS=0` were already true before
+starting.
+
+### Stage 2 (2A/2B) — Results dark-theme closure — COMPLETE (`fd31330`)
+
+Migrated `ResultsTable.module.css`, `ResultsPanel.module.css`, `MessageCell.module.css` - the last
+remaining v1-token production CSS in the app - to `--v2-*` tokens, using the dedicated
+`--v2-sev-error-row`/`--v2-sev-warn-row` tokens for row tints (built for exactly this, confirmed to
+exist during the audit). Repo-wide verification confirmed **zero remaining `--color-*` consumers
+anywhere** in the frontend after this commit. Real dark-theme screenshots across Results
+default/hover/selected+Inspector/scrolled/empty, plus a broader sweep confirming Investigation,
+Classification Rules, Rule Builder, Field Mapping, and Live were all already coherently dark (no new
+gap). `GLOBAL_DARK_THEME=PASS`.
+
+### Stage 3 — Global accessibility, 593-element contrast defect — COMPLETE (`25430bf`)
+
+Re-measured the historical defect against the *current* rendered implementation rather than assuming
+it carried over: confirmed the exact `2.9460:1` figure historically reported matches
+`--color-text-tertiary` (v1) against the v1 `--color-bg-selected` background precisely, and confirmed
+via repo-wide grep that token has zero remaining consumers post-Stage-2. Its v2 replacement,
+`--v2-ink-3`, was recomputed against every row-state background it can appear on - worst case 4.63:1
+(selected row, both themes), a real margin above the 4.5:1 AA floor. Backed by 22 real-browser
+axe-core runs (CDN-injected into live Playwright pages - `jest-axe` under jsdom doesn't reliably
+evaluate `color-contrast`) across every major workspace/dialog/theme combination: zero violations of
+any kind. `KNOWN_593_CONTRAST_DEFECT_STATUS=RESOLVED`. `GLOBAL_ACCESSIBILITY=PASS`. No code changes
+required - see `docs/verification/STAGE3_ACCESSIBILITY_REPORT.md`.
+
+### Stage 4 — Global responsive/overflow hardening — COMPLETE (`4ee1aa6`)
+
+Closed a real gap: 1366px had never been tested anywhere in the existing E2E suite (confirmed via
+grep - the suite's own widths are 1280, not 1366). 18 real Playwright runs at all six required widths
+(1920/1440/1366/1024/768/390) across Search+Results+Inspector, Settings+Classification, Live, each
+asserting real `scrollWidth<=clientWidth`. Zero page-level overflow defects found anywhere. The
+Inspector's `max-width: 1024px` dock/overlay breakpoint - explicitly flagged by the mission as
+previously regressed when moved to 1365px - was verified correct at both 1366px (docked) and 1024px
+(overlay) and was **not** touched. `GLOBAL_RESPONSIVE=PASS` at all six widths. No code changes
+required - see `docs/verification/STAGE4_RESPONSIVE_REPORT.md`.
+
+### Stage 5 — Global visual/interaction consistency — COMPLETE (`c879af9`)
+
+Reviewed the product as one whole. Confirmed already-consistent: header/trail pattern, Button
+component grammar, shared `SeverityMark`/`TagChip` usage, monospace conventions, dialog/popover
+chrome. Found and fixed one real inconsistency: Live's table used Results' own *compact*-density cell
+padding as its only (non-toggleable) density, with no stated reason - visibly more cramped than the
+product's shared default. Matched it to the default. Investigated and deliberately left alone one
+ambiguous case (`ResultsPanel` vs `ClassificationRulesList` empty-state layout/border-style
+difference) - a defensible informational-vs-call-to-action distinction, not an unambiguous defect,
+recorded for the separate Impeccable/PR #58 audit to resolve with the real reference in hand rather
+than guessed at here. `GLOBAL_VISUAL_CONSISTENCY=PASS`. See
+`docs/verification/STAGE5_VISUAL_CONSISTENCY_REPORT.md`.
+
+### Stage 6 — Safe legacy cleanup — COMPLETE (`8eb654a`)
+
+Deleted, each individually proven dead via repo-wide grep across every `.css`/`.tsx`/`.ts` file
+(production and test), the desktop packaging directory/scripts, and the backend Java source:
+`tokens.css`'s entire v1 `--color-*` palette (~49 declarations), `--radius-sm/md/lg`,
+`--border-width`, `--shadow-sm`, `--shadow-md`, and 7 dead classes in `ResultsPanel.module.css`. Two
+genuine exceptions found and **fixed, not deleted alongside the rest**: the global `:focus-visible`
+fallback rule (`--color-focus-ring` → `--v2-focus`, verified via real-browser computed-style check in
+both themes) and `EventInspector.module.css`'s overlay shadow (`--shadow-md` → `--v2-shadow-pop`).
+`--motion-base` (also unused) deliberately retained - not part of a retired system, a different, lower
+-value cleanup category. CSS bundle measurably shrank 66.15 kB → 64.05 kB across this session's
+cleanup. `LEGACY_V1_CLEANUP=PASS`. See `docs/verification/STAGE6_LEGACY_CLEANUP_REPORT.md`.
+
+### Full integrated regression and final verification
+
+- `npm run typecheck`: PASS, clean, at every commit this session.
+- Full frontend unit suite: PASS, 1163/1163, at every commit this session.
+- Production build: PASS, clean, at every commit this session.
+- Full Playwright E2E suite, all 5 shards: run to 100% green **four separate times** across this
+  session's commits (after Stage 2's Results migration, after Stage 5's Live density fix, after Stage
+  6's cleanup, plus the original Stage 2 App-shell migration) - 323 passed each time, one pre-existing
+  unrelated `NOT_AVAILABLE` skip. Every major functional area the mission's own regression checklist
+  names (Search, Results, Inspector, Investigation, Settings, Classification, Live) is covered by this
+  suite's existing, currently-passing specs - no test was weakened or skipped to obtain green.
+- Full backend Maven verify (`./mvnw --batch-mode verify`): PASS, 1424 tests, 0 failures, 0 errors, 0
+  skipped, `BUILD SUCCESS`. No backend files were touched this session; run anyway as required
+  evidence, not assumed from "no backend changes."
+
+### Security invariants
+
+Preserved and unaffected - this entire session's changes were CSS token values, one row-padding value,
+and dead-code deletion; no TLS/auth/masking/logging/storage code was touched.
+`SECURITY_INVARIANTS_PRESERVED=YES`.
+
+### Source Experience Parity and D40 tag-color model
+
+Neither touched. `SOURCE_EXPERIENCE_PARITY_REQUIREMENT_PRESERVED=YES`,
+`SOURCE_EXPERIENCE_PARITY_IMPLEMENTED=NO` (unchanged). D40's one-`displayColor`-per-rule tag model,
+`TagColorPolicy`, and `tagColorsOf` were read (to confirm `TagChip.module.css`'s already-v2 `--v2-tag-
+*` tokens were the real, only rendering path) but not modified in any way - no mass-recoloring
+semantics introduced.
+
+### Internal implementation completion
+
+```
+MODERN_DEVELOPER_CONSOLE_INTERNAL_IMPLEMENTATION_COMPLETE=YES
+```
+
+All required conditions are met: B1-B7 complete, Global Dark Theme PASS, Global Accessibility PASS
+(known contrast defect resolved with current rendered evidence), Global Responsive PASS at all six
+widths, Global Visual Consistency PASS, Safe Legacy Cleanup PASS, full integrated functional
+regression PASS, security invariants preserved, `UNTRACKED_OWNER_REQUIREMENTS=0`. **This means only
+"the production implementation is internally hardened."** It does NOT mean final UI/UX accepted (Owner
+Requirement §29's Impeccable/PR #58 fidelity audit remains unexecuted and mandatory before that),
+Source Experience Parity implemented, latest main integrated, or PR #61 merge authorized - none of
+those were in this mission's scope and none were done.
+
 ## Resuming — exact next task (post-Session-10-continuation)
 
 1. **Re-verify the branch**: `git log --oneline -5` on `ux/v2-modern-developer-console` — HEAD should be this
@@ -1565,3 +1685,36 @@ IMPECCABLE_VISUAL_FIDELITY_AUDIT_EXECUTED=NO
 FINAL_UI_UX_ACCEPTANCE=NOT_YET_AUTHORIZED
 UNTRACKED_OWNER_REQUIREMENTS=0
 ```
+
+## Resuming — exact next task (post-Session-11)
+
+1. **Re-verify the branch**: `git log --oneline -5` on `ux/v2-modern-developer-console` — HEAD should be this
+   checkpoint's own commit. Run `gh pr checks 61` to confirm CI is green on the exact latest push before
+   starting new work - **do not assume green without checking**.
+2. **Modern Developer Console internal implementation hardening is COMPLETE**
+   (`MODERN_DEVELOPER_CONSOLE_INTERNAL_IMPLEMENTATION_COMPLETE=YES`, Session 11). B1-B7 built, Stages 2-6 of
+   the global hardening mission all PASS, full integrated regression PASS, backend verify PASS,
+   `UNTRACKED_OWNER_REQUIREMENTS=0`. This means the production implementation is internally hardened - it does
+   **not** mean final UI/UX accepted, and does **not** authorize merge.
+3. **Next real scope is the mandatory Impeccable Visual Fidelity Audit** (Owner Requirement §29,
+   `docs/governance/OWNER_REQUIREMENTS_REGISTER.md`): compare the actual rendered PR #61 production UI against
+   the approved design reference on `design/v2-modern-developer-console` (PR #58) across every major workspace,
+   classifying every meaningful difference as `INTENTIONAL_PRODUCTION_ADAPTATION` or `VISUAL_DESIGN_DRIFT`, and
+   remediating any real drift. This was deliberately never executed by any session so far -
+   `IMPECCABLE_VISUAL_FIDELITY_AUDIT_EXECUTED=NO` still holds. Read the design reference branch directly
+   (`git show design/v2-modern-developer-console:docs/ux-v2-modern-developer-console/...`) rather than
+   assuming; it is reference-only and must not be modified.
+4. **After that audit, and only after it**: `FINAL_UI_UX_ACCEPTANCE` can be authorized, and only then do
+   Source Experience Parity implementation, latest-main integration, or PR #61 merge become in-scope for a
+   future mission to even consider - none of them are authorized by this checkpoint.
+5. **Known, deliberately-preserved findings from Session 11, not yet acted on**: the `ResultsPanel` vs
+   `ClassificationRulesList` empty-state layout/border-style difference (Stage 5) was left for the fidelity
+   audit to resolve with the real design reference in hand. `--motion-base` in `tokens.css` remains defined but
+   unused (Stage 6) - low-value, deliberately not removed.
+6. **Tooling/process lessons that still apply**: always use `npm run typecheck`, never bare `npx tsc --noEmit`;
+   call `page.setViewportSize()` *after* `page.goto()`, never before (a real Playwright screenshot-timing
+   artifact, not a product bug, found in Session 11); run the full E2E suite in 5 sequential shards
+   (`npx playwright test --shard=N/5`) when verifying anything with wide blast radius (a shared token file, the
+   App Shell) - confirmed reliable across five consecutive sessions now; rendered-browser evidence (real
+   screenshots, real computed styles, real axe-core runs via CDN injection where `jest-axe`'s jsdom can't
+   reach) beats source-reading or token-math alone for any accessibility/visual claim.
