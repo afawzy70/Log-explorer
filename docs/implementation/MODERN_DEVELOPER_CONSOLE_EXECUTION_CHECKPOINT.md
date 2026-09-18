@@ -1225,6 +1225,110 @@ confirmation on the actual pushed HEAD.
 B7 Live redesign, a global dark-theme sweep, a global accessibility sweep, legacy-token cleanup, search
 performance work, the OpenShift PR64 HTTP-buffer backend fix, Loki enablement, the Live EXCLUDE fix, A1b.
 
+## Session 10 continuation — Stage 2 (global dark theme) PARTIAL, verified; Stages 3-6 NOT STARTED
+
+Mission: `MODERN_DEVELOPER_CONSOLE_SESSION_10_CONTINUATION_GLOBAL_HARDENING`, resuming from HEAD `95ea727`
+(Stage 1/B7 accepted). Authorized Stages 2-6 + final integrated regression, sequentially, no research
+forks/sub-agents this time (explicit process change after Stage 1's two boundary violations).
+
+### Pre-Stage safety check — JourneyEntryRow deletion, as explicitly required before touching anything else
+
+Re-verified repo-wide: zero production consumers of `JourneyEntryRow` remain (only doc-comment prose mentions
+in `serviceColor.ts`, `SequenceTable.tsx`, `LiveTailPanel.tsx`, plus two e2e-spec comments). Checked whether Live
+or Investigation lost real behavioral coverage:
+- **businessStep display** - the old shared `JourneyEntryRow` showed it when present (in both Live and
+  Investigation contexts, incidentally, since it was one shared component). Checked `HANDOVER.md` directly:
+  §17 (Investigation timeline) requires business-step markers; §18 (Live Tail) does **not** - Live's own
+  requirements are entirely about connection lifecycle/safety/counts, never a per-event field list. So
+  businessStep in Live was incidental to component sharing, never a tracked requirement - nothing to restore
+  there. Investigation's own requirement is satisfied by `SequenceTable.tsx` (confirmed: it has its own
+  dedicated "Business step" column, `styles.mono` cell, `event.businessStep ?? EMPTY_VALUE`), unaffected by
+  B7 - `SequenceTable.tsx` has been Investigation's real renderer since B5, `JourneyEntryRow` was already
+  orphaned there before this session touched anything.
+- Found one genuine, but **pre-existing** (not B7-caused) gap: `SequenceTable.test.tsx` set up a `businessStep:
+  'validate'` fixture on every test but never actually asserted it rendered. Closed it (added one test
+  asserting the "Business step" column header and the cell value both render) since it was directly adjacent
+  to this audit, not because B7 caused the gap.
+- **Conclusion, recorded explicitly**: `JourneyEntryRow.tsx`/`.module.css`/`.test.tsx` deletion is
+  **B7_STRUCTURAL_DEAD_CODE_REMOVAL** - no restoration needed, no behavioral requirement was lost.
+
+### Stage 2 (global dark theme) — PARTIAL, not complete, but a large and fully-verified slice landed
+
+**Scope discovery, the actual headline finding of this stage**: the mission brief's own "start with Toolbar/
+Shell, don't assume they're the only gaps" undersold the scope enormously. A repo-wide `--color-` (the actual
+theme-versioned v1 token family - `--space-*` etc. are theme-neutral and shared with v2, not a signal) audit
+found the ENTIRE app shell, ALL of Search, ALL of TimeRange, and roughly two-thirds of Inspector were still
+100% v1 (light-only - `tokens.css` has zero dark-theme overrides anywhere, confirmed by grep), not merely
+"some leftover leaks" as the mission phrasing implied. `ResultsTable.module.css`'s own Session-3 comment
+(re-read this session) already documented this as a known, deliberate, multi-session-old partial state, not
+something newly broken.
+
+**What actually landed** (commit `bdc3556`): independently re-verified and applied the Search/Shell/TimeRange/
+Inspector-tab-bar portion of the Session-10-Stage-1 unauthorized-fork stash (`session10-unauthorized-fork-
+dark-theme-sweep-WIP`, now dropped - every one of its ~35 distinct `--v2-*` token references confirmed to
+exist in `tokensV2.css` for both themes before trusting a single line, several of its larger diffs spot-read
+in full for correctness, three of its own claimed latent-bug findings independently re-verified against
+`tokens.css` directly rather than taken on faith) plus original work this session to close gaps the stash left
+inconsistent or never touched:
+- 6 Inspector content-section CSS modules the stash's own comment claimed were done but weren't
+  (`AllFieldsSection`, `ClassificationSection`, `BusinessErrorSection`, `RequestFlowSection`,
+  `ActorClientSection`, `InspectorSection`) - written directly, following the same established token-mapping
+  pattern, not copied from anywhere.
+- The shared `Button` component (25 repo-wide consumers, confirmed via grep) and `FieldList` (used by every
+  Inspector section) - both left as v1 by the stash, which would have put v1-styled buttons/field-rows inside
+  newly-v2 containers, the exact "container migrated, children not" mismatch the Toolbar file's own prior
+  history (Session 4) already found and reverted once.
+- `shared/tokens.css`'s `body` rule itself (background/color) - the actual root cause of the *entire app*
+  rendering on a light canvas under `data-theme="dark"` no matter how many individual panels were already v2,
+  found and fixed by the stash, independently confirmed correct.
+
+**Explicitly NOT done, documented, not silently dropped**: `ResultsTable.module.css`, `ResultsPanel.module.css`,
+`MessageCell.module.css` - the Results table's own row/cell rendering - remain v1. This is the single largest,
+highest-risk remaining file in the app (row/hover/selected/root/error state interactions, sticky header,
+severity marks, column geometry) and was judged out of this pass's scope given the time already spent
+verifying everything else; the whole shell wrapping it is now coherently dark, so the table body is now the
+one visibly "light island" left, not a scattered set of small leaks. **Stage 3's own named contrast defect
+(`--color-text-tertiary` on tinted row states) lives in this exact untouched file** - Stage 3 will need to
+either fix it as a targeted token-level change inside `ResultsTable.module.css` specifically, or treat a
+Results-table v2 migration as a prerequisite; not yet decided, flagged here for whoever picks this up next.
+
+**A second finding, not part of the original mission's own checklist**: there is no user-facing control
+anywhere in the app to switch themes. `useTheme()` is called in `App.tsx` but its return value (`preference`,
+`resolvedTheme`, `setPreference`) is entirely discarded - dark mode is reachable only via OS-level
+`prefers-color-scheme: dark` or by writing directly to `localStorage['logexplorer.themePreference.v1']`. Not
+implemented (a missing toggle is a feature gap, not a defect Stage 2's "audit computed colors, fix what's
+wrong" mandate covers) - recorded for the owner/a future stage to decide on.
+
+**A real methodology bug found and fixed in the evidence-capture process itself, not a product bug**:
+`page.setViewportSize()` called *before* `page.goto()` produced a screenshot showing a stale (light) paint of
+the Keyboard Shortcuts popover, while `getComputedStyle` on the exact same element in the exact same run
+confirmed the correct dark background (`rgb(29,35,41)`, matching `--v2-surface-raised`'s dark value exactly).
+Reproduced and isolated by moving `setViewportSize` to *after* `goto()`, which fixed it completely across
+repeated runs. Recorded here explicitly so a future session doesn't mistake this Playwright/Chromium
+screenshot-timing artifact for a real dark-theme defect.
+
+**Verification actually run (all real, all passing)**:
+- `npm run typecheck`: PASS, clean.
+- `npx vitest run`: PASS, 94 files / 1163 tests (1162 + the new SequenceTable business-step test).
+- `npm run build`: PASS, clean.
+- Full E2E suite, all 5 shards, real backend (`SPRING_PROFILES_ACTIVE=dev`): 100% green (323 passed, 1
+  pre-existing unrelated `NOT_AVAILABLE` skip) - this migration touches the App Shell, present on every route,
+  so the full suite was run rather than a targeted subset.
+- Real dark-theme screenshots (methodology-fixed, see above) across Search empty state, Search results, More
+  Filters drawer, Advanced Filters/Query Builder popover, Inspector (open, all sections visible), Settings
+  (Docker/OpenShift panels visible), Keyboard Shortcuts popover, and 390px narrow - saved to
+  `docs/verification/STAGE2_DARK_THEME_EVIDENCE/`, inspected by eye for actual computed color correctness, not
+  just "the attribute is set".
+- Targeted Inspector E2E (`phase-h-event-inspector.spec.ts`, 16 tests) re-run after the final `FieldList` fix:
+  PASS.
+
+### Stage 3 (accessibility), Stage 4 (responsive), Stage 5 (visual consistency), Stage 6 (legacy cleanup), final integrated regression — NOT STARTED
+
+None of these were attempted this continuation. Do not report them as PASS, SKIPPED, or otherwise resolved -
+they are simply not yet done. The Results-table dark-theme gap documented above is the most obvious shared
+dependency between Stage 2's own unfinished tail and Stage 3's named contrast defect - whoever resumes this
+should read both sections together before deciding how to sequence the remaining work.
+
 ## Session 10 — B7 Live redesign (Stage 1) COMPLETE and verified; Stages 2-6 NOT STARTED
 
 Mission: `MODERN_DEVELOPER_CONSOLE_IMPLEMENTATION_SESSION_10_B7_GLOBAL_HARDENING`, authorized to run Stage 1
@@ -1406,27 +1510,38 @@ proceed directly into Stage 2 (global dark-theme sweep), starting from the shell
 above as the most obvious first target - independently re-verifying, not blindly restoring, the still-present
 `session10-unauthorized-fork-dark-theme-sweep-WIP` stash before using any of it.
 
-## Resuming — exact next task (post-Session-10)
+## Resuming — exact next task (post-Session-10-continuation)
 
 1. **Re-verify the branch**: `git log --oneline -5` on `ux/v2-modern-developer-console` — HEAD should be this
    checkpoint's own commit. Run `gh pr checks 61` to confirm CI is green on the latest push before starting new
    work - **do not assume green without checking**, per this mission's own standing rule.
-2. **B7 Stage 1 (Live redesign) is COMPLETE** and independently verified (see Session 10 entry above). Stages
-   2-6 of the same mission are NOT STARTED.
-3. **Next real scope**: Stage 2 (global dark-theme sweep) is the mission's own next stage - start there, not
-   with a fresh mission brief, unless the owner redirects. The shell/toolbar dark-theme gap found this session
-   is a concrete, already-diagnosed starting point.
-4. **Tooling lesson to carry forward**: always use `npm run typecheck` (`tsc -b --noEmit`) in this repo, never a
+2. **B7 Stage 1 (Live redesign) is COMPLETE.** **Stage 2 (global dark theme) is PARTIAL** - the App Shell,
+   Search, TimeRange, Inspector, and the shared `Button`/`FieldList` components are now coherently v2/dark-theme
+   correct; `ResultsTable.module.css`/`ResultsPanel.module.css`/`MessageCell.module.css` (the Results table's
+   own row/cell rendering) deliberately remain v1, explicitly documented, not silently skipped. Stages 3-6 are
+   NOT STARTED.
+3. **Next real scope**: finish Stage 2's Results-table gap first (it's a direct prerequisite for Stage 3's own
+   named contrast defect, which lives inside `ResultsTable.module.css`), then proceed through Stage 3
+   (accessibility, including that contrast defect), Stage 4 (responsive), Stage 5 (visual consistency), Stage 6
+   (legacy cleanup) - see the Session 10 continuation entry above for the exact reasoning and file list.
+4. **The unauthorized-fork stash (`session10-unauthorized-fork-dark-theme-sweep-WIP`) has been fully consumed
+   and dropped** - do not look for it again; its useful portion was independently re-verified (every token
+   checked against `tokensV2.css`, several diffs read in full, its own claimed bug-findings cross-checked
+   against `tokens.css` directly) and landed in commit `bdc3556`. What it left inconsistent (Inspector's content
+   sections, `Button`, `FieldList`) was completed by hand in the same commit.
+5. **Tooling lesson to carry forward**: always use `npm run typecheck` (`tsc -b --noEmit`) in this repo, never a
    bare `npx tsc --noEmit` - the root `tsconfig.json` is solution-style and a bare invocation silently checks
    zero files.
-5. **If a research fork is used again**: state the "research only, no edits" boundary explicitly, and
-   independently re-verify any output before trusting it regardless of whether the boundary held - this was
-   necessary twice in Session 10 alone (see above).
-6. **E2E full-suite runs in this sandbox**: use `npx playwright test --shard=N/5` run sequentially, one at a
-   time, with nothing else invoked concurrently - confirmed reliable across three consecutive sessions now.
-7. **Rendered-browser evidence beats source-reading, every time**: Session 10's two real Live defects (the
-   Time-cell overflow, the stale-locator/overflow-assumption E2E failures) were both invisible from source and
-   only caught by actually taking screenshots and running the real E2E suite - keep doing that after every
-   bounded change, not just at the end.
-8. Keep the same discipline going forward: typecheck (the correct command)/full-unit/build/targeted-E2E after
-   each bounded change; commit and push after each coherent, fully-verified milestone.
+6. **Playwright evidence-capture lesson**: call `page.setViewportSize()` *after* `page.goto()`, never before -
+   the reverse order produced a screenshot showing a stale (wrong-theme) paint while `getComputedStyle` on the
+   same element in the same run confirmed the DOM/CSSOM was already correct. Not a product bug; a test-tooling
+   artifact that looks exactly like one if you don't check computed styles directly when a screenshot looks
+   wrong.
+7. **E2E full-suite runs in this sandbox**: use `npx playwright test --shard=N/5` run sequentially, one at a
+   time, with nothing else invoked concurrently - confirmed reliable across four consecutive sessions now.
+8. **Rendered-browser evidence beats source-reading, every time**: every real defect found this session and
+   its continuation (Live's Time-cell overflow, the stale-locator E2E failures, the Playwright viewport-timing
+   artifact) was invisible from source and only caught by actually taking screenshots, checking computed
+   styles, and running the real E2E suite - keep doing that after every bounded change, not just at the end.
+9. Keep the same discipline going forward: typecheck (the correct command)/full-unit/build/targeted-or-full-E2E
+   after each bounded change; commit and push after each coherent, fully-verified milestone.
