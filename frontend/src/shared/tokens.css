@@ -114,10 +114,25 @@ body,
   height: 100%;
 }
 
+/*
+ * B7 (Session 10) - the page canvas itself stayed on v1 `--color-bg-canvas`/
+ * `--color-text` even after `useTheme` began setting `data-theme` on `<html>`
+ * (v1 has zero dark-theme overrides anywhere, confirmed by grep), so the
+ * entire app rendered on a light canvas under `data-theme="dark"` regardless
+ * of how many individual panels were themselves already recomposed - measured
+ * directly: `document.body`'s computed background stayed `rgb(247, 248, 250)`
+ * (the light `--color-bg-canvas` value) with `data-theme="dark"` confirmed
+ * set on `<html>` and `--v2-bg-app` correctly resolving to its dark value.
+ * `--v2-bg-app`/`--v2-ink-1` are the same base pair every v2 panel already
+ * paints its own background with (e.g. `LiveTailPanel.module.css`'s
+ * `.wrapper`), so this is the one token swap that makes the underlying
+ * canvas consistent with every panel already sitting on top of it, not a
+ * new visual language for the page root.
+ */
 body {
   margin: 0;
-  background: var(--color-bg-canvas);
-  color: var(--color-text);
+  background: var(--v2-bg-app);
+  color: var(--v2-ink-1);
   font-family: var(--font-sans);
   font-size: var(--font-size-base);
   line-height: var(--line-height-base);

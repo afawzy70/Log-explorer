@@ -3,6 +3,11 @@
  * triggers (Columns, Sort). `position: relative` on `.details` is what
  * lets `.body` (the expanded content) sit as an absolutely-positioned
  * panel under the trigger instead of pushing the row's own height.
+ *
+ * B7 (Session 10) - full v2 tokens, part of the ScopeStrip closure. Fixed a latent bug found while converting:
+ * `.summary:hover`/`:focus-visible` referenced `--color-text-primary`, a token that has never existed in
+ * `tokens.css` (the real name is `--color-text`) - silently fell back to `inherit`. Now correctly resolves to
+ * `--v2-ink-1`.
  */
 .details {
   position: relative;
@@ -16,10 +21,10 @@
   list-style: none;
   cursor: pointer;
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
+  border-radius: var(--v2-r-md);
   font-size: var(--font-size-sm);
   font-weight: 500;
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
   white-space: nowrap;
 }
 
@@ -29,8 +34,8 @@
 
 .summary:hover,
 .summary:focus-visible {
-  background: var(--color-bg-hover);
-  color: var(--color-text-primary);
+  background: var(--v2-hover);
+  color: var(--v2-ink-1);
 }
 
 /*
@@ -63,10 +68,11 @@
   width: 420px;
   max-width: calc(100vw - var(--space-6));
   padding: var(--space-3);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-raised);
-  box-shadow: var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.12));
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
+  box-shadow: var(--v2-shadow-pop);
   font-size: var(--font-size-sm);
 }
 
@@ -78,7 +84,7 @@
 
 .rowLabel {
   flex: 0 0 160px;
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
   font-size: var(--font-size-xs);
 }
 
@@ -94,8 +100,8 @@
 
 .rawBadge {
   margin-left: var(--space-2);
-  background: var(--color-accent-bg);
-  color: var(--color-accent);
+  background: var(--v2-accent-tint);
+  color: var(--v2-accent-ink);
   border-radius: 999px;
   font-size: var(--font-size-xs);
   font-weight: 600;
@@ -108,5 +114,5 @@
 }
 
 .muted {
-  color: var(--color-text-tertiary);
+  color: var(--v2-ink-3);
 }

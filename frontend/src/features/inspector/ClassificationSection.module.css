@@ -7,29 +7,30 @@
   gap: var(--space-1);
 }
 
+/* B7 (Session 10) - full v2 tokens, part of the Inspector-body closure. */
 /* Text badge - the tag text itself carries the meaning, never color alone. */
 .tag {
   font-size: var(--font-size-xs);
   font-weight: 600;
   letter-spacing: 0.03em;
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-sm);
   padding: 0 var(--space-1);
-  color: var(--color-text-secondary);
-  background: var(--color-bg-hover);
+  color: var(--v2-ink-2);
+  background: var(--v2-surface-sunken);
 }
 
 .rule + .rule {
   margin-top: var(--space-3);
   padding-top: var(--space-3);
-  border-top: var(--border-width) solid var(--color-border);
+  border-top: var(--v2-bw) solid var(--v2-line);
 }
 
 .ruleName {
   margin: 0 0 var(--space-2);
   font-size: var(--font-size-sm);
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--v2-ink-1);
 }
 
 /* The rule's own tags beside its name, in the same colours the results table uses. */

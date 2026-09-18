@@ -1,9 +1,9 @@
 /*
- * B2 (Session 4) - kept on v1 tokens deliberately (the same "full v2 or
- * full v1, never mixed" rule already applied to WorkspaceTrail/Toolbar/
- * SeverityFilter this session): `ActiveFilters`' own chips are still v1,
- * and a partial v2 restyle here would produce the same patchy dark-mode
- * mismatch already found and reverted earlier in this session.
+ * B7 (Session 10) - full v2 tokens. Previously deliberately kept on v1 (Session 4's own comment, kept in
+ * spirit below): `ActiveFilters`' chips were still v1, and a partial v2 restyle here alone produced the same
+ * patchy dark-mode mismatch already found and reverted for the Toolbar container and the Shell header's
+ * workspace trail. `ActiveFilters`, `TableSettingsControl`, `QueryPlanDisclosure`, `SortControl` (via `Button`)
+ * all moved to v2 together with this file in the same commit, closing that whole family out at once.
  */
 .strip {
   display: flex;
@@ -42,6 +42,6 @@
 .readout {
   flex: 1 1 12rem;
   min-width: 0;
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
   font-size: var(--font-size-sm);
 }

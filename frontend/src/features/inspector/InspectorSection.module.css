@@ -1,6 +1,7 @@
+/* B7 (Session 10) - full v2 tokens, part of the Inspector-body closure (EventInspector.module.css/InspectorTabs.module.css's own comment). */
 .section {
   padding: var(--space-4);
-  border-bottom: var(--border-width) solid var(--color-border);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
 }
 
 .heading {
@@ -9,12 +10,12 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
 }
 
 .emptyNote {
   margin: 0;
-  color: var(--color-text-tertiary);
+  color: var(--v2-ink-3);
   font-size: var(--font-size-sm);
 }
 
@@ -38,7 +39,7 @@
 /* A disclosure triangle that rotates - the only affordance saying this section opens. */
 .summary::before {
   content: '▸';
-  color: var(--color-text-tertiary);
+  color: var(--v2-ink-3);
   font-size: var(--font-size-xs);
 }
 
@@ -47,9 +48,9 @@ details[open] > .summary::before {
 }
 
 .summary:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
+  outline: 2px solid var(--v2-focus);
   outline-offset: 2px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--v2-r-sm);
 }
 
 .summary .heading {
@@ -60,7 +61,7 @@ details[open] > .summary::before {
 
 .summaryHint {
   min-width: 0;
-  color: var(--color-text-tertiary);
+  color: var(--v2-ink-3);
   font-size: var(--font-size-xs);
 }
 

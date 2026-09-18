@@ -1,3 +1,12 @@
+/*
+ * B7 (Session 10) - full v2 tokens, part of the Toolbar-family closure. Two latent bugs found and fixed while
+ * converting: `.confirmBanner`'s border and `.generatedPreview`'s background both referenced v1 custom
+ * properties that never existed in `tokens.css` (`--color-warning`, `--color-bg-sunken`) - both were only ever
+ * silently rendering their own CSS `var()` fallback value (`--color-border`, `--color-bg` respectively), never
+ * the intended warning/sunken treatment. Now `.confirmBanner` gets a real warning-tinted banner
+ * (`--v2-warning-tint`/`--v2-warning`) and `.generatedPreview` gets the correct sunken surface
+ * (`--v2-surface-sunken`).
+ */
 .wrapper {
   position: relative;
   display: inline-block;
@@ -7,20 +16,21 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  border: var(--border-width) solid var(--color-border);
-  background: var(--color-bg-raised);
-  border-radius: var(--radius-md);
+  border: var(--v2-bw) solid var(--v2-line);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
+  border-radius: var(--v2-r-md);
   padding: var(--space-2) var(--space-3);
   font-size: var(--font-size-sm);
   cursor: pointer;
 }
 
 .trigger:hover {
-  background: var(--color-bg-hover);
+  background: var(--v2-hover);
 }
 
 .badge {
-  color: var(--color-accent);
+  color: var(--v2-accent-ink);
   font-size: var(--font-size-xs);
 }
 
@@ -41,10 +51,11 @@
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 40;
-  background: var(--color-bg-raised);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-lg);
+  box-shadow: var(--v2-shadow-sheet);
   padding: var(--space-4);
   width: 620px;
   max-width: calc(100vw - var(--space-6));
@@ -61,7 +72,7 @@
 .modeTabs {
   display: flex;
   gap: var(--space-1);
-  border-bottom: var(--border-width) solid var(--color-border);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
   margin-bottom: var(--space-3);
 }
 
@@ -69,6 +80,7 @@
 .modeTabActive {
   border: none;
   background: none;
+  color: inherit;
   padding: var(--space-2) var(--space-3);
   font-size: var(--font-size-sm);
   cursor: pointer;
@@ -76,14 +88,14 @@
 }
 
 .modeTabActive {
-  border-bottom-color: var(--color-accent);
+  border-bottom-color: var(--v2-accent);
   font-weight: 600;
-  color: var(--color-accent);
+  color: var(--v2-accent-ink);
 }
 
 .group {
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-md);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
   padding: var(--space-3);
   margin: 0 0 var(--space-3);
 }
@@ -95,23 +107,24 @@
 
 .combinatorToggle {
   display: inline-flex;
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-sm);
   overflow: hidden;
 }
 
 .combinatorButton,
 .combinatorActive {
   border: none;
-  background: var(--color-bg-raised);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
   padding: var(--space-1) var(--space-2);
   font-size: var(--font-size-xs);
   cursor: pointer;
 }
 
 .combinatorActive {
-  background: var(--color-accent-bg);
-  color: var(--color-accent);
+  background: var(--v2-accent-tint);
+  color: var(--v2-accent-ink);
   font-weight: 600;
 }
 
@@ -128,8 +141,10 @@
 .fieldSelect,
 .operatorSelect,
 .valueInput {
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-sm);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
   padding: var(--space-2);
   font-size: var(--font-size-sm);
 }
@@ -148,7 +163,7 @@
 }
 
 .nestedGroup {
-  border-left: 2px solid var(--color-accent-bg);
+  border-left: 2px solid var(--v2-accent-tint);
   padding-left: var(--space-3);
 }
 
@@ -168,15 +183,15 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  background: var(--color-bg-sunken, var(--color-bg));
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
+  background: var(--v2-surface-sunken);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-sm);
   padding: var(--space-2);
 }
 
 .generatedLabel {
   font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
 }
 
 .generatedCode {
@@ -194,28 +209,32 @@
 
 .textLabel {
   font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
 }
 
 .textarea {
   font-family: var(--font-mono, monospace);
   font-size: var(--font-size-sm);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-sm);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
   padding: var(--space-2);
   resize: vertical;
 }
 
 .expertNote {
   font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
   margin: 0;
 }
 
 .confirmBanner {
-  border: var(--border-width) solid var(--color-warning, var(--color-border));
-  border-radius: var(--radius-sm);
+  background: var(--v2-warning-tint);
+  border: var(--v2-bw) solid var(--v2-warning);
+  border-radius: var(--v2-r-sm);
   padding: var(--space-2);
+  color: var(--v2-ink-1);
 }
 
 .confirmBanner p {
@@ -234,7 +253,7 @@
   display: flex;
   justify-content: space-between;
   gap: var(--space-2);
-  border-top: var(--border-width) solid var(--color-border);
+  border-top: var(--v2-bw) solid var(--v2-line);
   padding-top: var(--space-3);
 }
 

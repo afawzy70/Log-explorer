@@ -1,19 +1,21 @@
+/* B7 (Session 10) - full v2 tokens. Self-contained trigger+popover, single consumer (ResultsPanel's "Columns" control). */
 .wrapper {
   position: relative;
   display: inline-block;
 }
 
 .trigger {
-  border: var(--border-width) solid var(--color-border);
-  background: var(--color-bg-raised);
-  border-radius: var(--radius-md);
+  border: var(--v2-bw) solid var(--v2-line);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
+  border-radius: var(--v2-r-md);
   padding: var(--space-2) var(--space-3);
   font-size: var(--font-size-sm);
   cursor: pointer;
 }
 
 .trigger:hover {
-  background: var(--color-bg-hover);
+  background: var(--v2-hover);
 }
 
 .panel {
@@ -21,10 +23,11 @@
   top: calc(100% + var(--space-2));
   right: 0;
   z-index: 20;
-  background: var(--color-bg-raised);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-lg);
+  box-shadow: var(--v2-shadow-pop);
   padding: var(--space-4);
   width: 340px;
   max-width: calc(100vw - var(--space-6));
@@ -41,7 +44,7 @@
 .sectionLabel {
   font-size: var(--font-size-xs);
   font-weight: 600;
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
   text-transform: uppercase;
   letter-spacing: 0.02em;
   padding: 0;
@@ -56,34 +59,35 @@
 
 .densityToggle {
   display: inline-flex;
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-sm);
   overflow: hidden;
 }
 
 .densityButton,
 .densityActive {
   border: none;
-  background: var(--color-bg-raised);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
   padding: var(--space-2) var(--space-3);
   font-size: var(--font-size-sm);
   cursor: pointer;
 }
 
 .densityActive {
-  background: var(--color-accent-bg);
-  color: var(--color-accent);
+  background: var(--v2-accent-tint);
+  color: var(--v2-accent-ink);
   font-weight: 600;
 }
 
 .columnsSection {
-  border-top: var(--border-width) solid var(--color-border);
+  border-top: var(--v2-bw) solid var(--v2-line);
   padding-top: var(--space-3);
 }
 
 .hint {
   font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
   margin: 0 0 var(--space-2);
 }
 
@@ -100,7 +104,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  border-radius: var(--radius-sm);
+  border-radius: var(--v2-r-sm);
   border-top: 2px solid transparent;
   border-bottom: 2px solid transparent;
 }
@@ -111,13 +115,13 @@
 }
 
 .columnRowDragOver {
-  border-top-color: var(--color-accent);
+  border-top-color: var(--v2-accent);
 }
 
 .dragHandle {
   flex-shrink: 0;
   cursor: grab;
-  color: var(--color-text-tertiary);
+  color: var(--v2-ink-3);
   font-size: var(--font-size-md, 1rem);
   line-height: 1;
   user-select: none;
@@ -139,9 +143,10 @@
 }
 
 .moveButtons button {
-  border: var(--border-width) solid var(--color-border);
-  background: var(--color-bg-raised);
-  border-radius: var(--radius-sm);
+  border: var(--v2-bw) solid var(--v2-line);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
+  border-radius: var(--v2-r-sm);
   width: 24px;
   height: 24px;
   line-height: 1;
@@ -157,6 +162,6 @@
   margin-top: var(--space-4);
   display: flex;
   justify-content: space-between;
-  border-top: var(--border-width) solid var(--color-border);
+  border-top: var(--v2-bw) solid var(--v2-line);
   padding-top: var(--space-3);
 }

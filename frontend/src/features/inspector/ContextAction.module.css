@@ -1,3 +1,8 @@
+/*
+ * B7 (Session 10) - full v2 tokens. All four real consumers (`SequenceTable`, `JourneyEntryRow`, `ActionsCell`,
+ * `InspectorHeader`) are already v2 surfaces, confirmed via a repo-wide grep before this change - this was the
+ * one remaining v1 leak among them.
+ */
 .wrapper {
   position: relative;
   display: inline-block;
@@ -10,10 +15,11 @@
   left: 0;
   width: 280px;
   padding: var(--space-3);
-  background: var(--color-bg-raised);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  box-shadow: var(--v2-shadow-pop);
 }
 
 .previewText {
@@ -25,7 +31,7 @@
 .previewHint {
   margin: 0 0 var(--space-3) 0;
   font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
 }
 
 .actions {

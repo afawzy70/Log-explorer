@@ -1,3 +1,4 @@
+/* B7 (Session 10) - full v2 tokens, part of the Toolbar-family closure. */
 .wrapper {
   display: flex;
   align-items: center;
@@ -6,14 +7,15 @@
 
 .label {
   font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
   white-space: nowrap;
 }
 
 .select {
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-raised);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
   padding: var(--space-2) var(--space-3);
   font-size: var(--font-size-sm);
   cursor: pointer;
@@ -29,11 +31,11 @@
 }
 
 .error {
-  color: var(--color-severity-error);
+  color: var(--v2-danger);
   font-size: var(--font-size-sm);
 }
 
 .empty {
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
   font-size: var(--font-size-sm);
 }

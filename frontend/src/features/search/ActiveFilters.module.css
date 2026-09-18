@@ -1,3 +1,4 @@
+/* B7 (Session 10) - full v2 tokens, part of the whole Toolbar/ScopeStrip closure (ScopeStrip.module.css's own comment). */
 .row {
   display: flex;
   flex-wrap: wrap;
@@ -9,22 +10,22 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  background: var(--color-bg-hover);
+  background: var(--v2-hover);
+  color: var(--v2-ink-2);
   border-radius: 999px;
   padding: var(--space-1) var(--space-3);
   font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
 }
 
 .chipLabel {
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--v2-ink-1);
 }
 
 .protected {
-  color: var(--color-protected);
-  background: var(--color-protected-bg);
-  border-radius: var(--radius-sm);
+  color: var(--v2-masked);
+  background: var(--v2-masked-tint);
+  border-radius: var(--v2-r-sm);
   padding: 0 var(--space-1);
 }
 
@@ -39,7 +40,7 @@
   border: none;
   border-radius: 999px;
   background: transparent;
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
   font-size: 10px;
   line-height: 1;
   cursor: pointer;
@@ -47,14 +48,14 @@
 
 .chipRemove:hover,
 .chipRemove:focus-visible {
-  background: var(--color-bg-hover);
-  color: var(--color-text);
+  background: var(--v2-hover);
+  color: var(--v2-ink-1);
 }
 
 .clearAll {
   border: none;
   background: transparent;
-  color: var(--color-accent);
+  color: var(--v2-accent-ink);
   font-size: var(--font-size-xs);
   font-weight: 600;
   cursor: pointer;

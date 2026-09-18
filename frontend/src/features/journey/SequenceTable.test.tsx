@@ -75,6 +75,22 @@ describe('SequenceTable', () => {
     expect(headers[headers.length - 1]).toMatch(/actions/i);
   });
 
+  it('Session 10 continuation - JourneyEntryRow deletion pre-stage check: HANDOVER.md §17 requires business-step markers in the Investigation timeline, and SequenceTable is what actually renders them since B5 - this was previously untested', () => {
+    render(
+      <SequenceTable
+        events={[event({ businessStep: 'validate' })]}
+        startMs={BASE_MS}
+        rootIdentity={null}
+        gaps={[]}
+        onShowContext={vi.fn()}
+        identifierColumn={{ header: 'Span ID', render: () => '—' }}
+        ariaLabel="Trace events"
+      />,
+    );
+    expect(screen.getByRole('columnheader', { name: 'Business step' })).toBeInTheDocument();
+    expect(screen.getByText('validate')).toBeInTheDocument();
+  });
+
   it('renders the offset relative to startMs, signed and formatted', () => {
     render(
       <SequenceTable

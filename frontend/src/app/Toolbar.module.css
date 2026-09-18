@@ -1,15 +1,11 @@
 /*
- * B2 (Session 4) - `min-height` moved to the design's own 44px query-bar target
- * (`prototype/styles/app.css`'s `.querybar`), a pure layout change that's theme-neutral either way.
- *
- * `background`/`border-bottom` deliberately stayed on v1 tokens, NOT switched to the design's v2
- * `--surface-bar`/`--line`: tried the v2 pair first and measured a real regression in dark mode, not a
- * cosmetic nitpick - it produced a dark bar with the still-v1 (unrestyled) child controls
- * (SourceSelect/ComposeProjectSelect/etc., each its own COMPONENT_INVENTORY.md RESTYLE row, real scope of
- * its own) staying stark white on top, a patchier and more confusing result than the current uniformly-
- * light-in-both-themes bar. Same reasoning already applied to the Shell header's own workspace trail this
- * session: v2 tokens on a container whose children aren't restyled yet make the mismatch WORSE, not just
- * incomplete - only worth doing once the children are restyled together, as one coherent unit.
+ * B7 (Session 10) - full v2 tokens. Session 4's own comment on this file (kept below in spirit) found a real
+ * regression trying to restyle this bar's chrome alone while its children (SourceSelect, ComposeProjectSelect,
+ * ServiceMultiSelect, SeverityFilter, UniversalSearch, AdvancedFilters, QueryBuilder, TimeRangeControl,
+ * CustomRangePopover, ActiveFilters, Button) stayed v1 - a dark bar with stark-white v1 controls on top,
+ * "patchier and more confusing" than staying uniformly light. This pass converts the toolbar AND every one of
+ * those children (plus the shared `Button` component they all render through) together, in one commit - the
+ * condition that blocked the earlier attempt no longer holds.
  */
 .toolbar {
   display: flex;
@@ -18,14 +14,14 @@
   gap: var(--space-2);
   min-height: var(--v2-h-querybar);
   padding: 7px var(--space-4);
-  background: var(--color-bg-raised);
-  border-bottom: var(--border-width) solid var(--color-border);
+  background: var(--v2-surface-bar);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
 }
 
 /* OS-1F §8 - truthful, visible reason Search/Live are disabled (never
    color alone; the disabled buttons themselves also carry a `title`). */
 .scopeRequiredHint {
   font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
   white-space: nowrap;
 }

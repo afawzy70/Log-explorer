@@ -10,7 +10,7 @@
 }
 
 .lazyFallback {
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
   padding: var(--space-6) 0;
   text-align: center;
 }
@@ -24,6 +24,6 @@
   display: flex;
   justify-content: flex-end;
   padding: 4px var(--space-4);
-  background: var(--color-bg-raised);
-  border-bottom: var(--border-width) solid var(--color-border);
+  background: var(--v2-surface-bar);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
 }

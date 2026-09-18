@@ -1,9 +1,17 @@
+/*
+ * B7 (Session 10) - full v2 tokens. `Button` is the most widely shared component in the app (25 consumers
+ * repo-wide, confirmed via grep); every one of them is now either already-v2 (Settings/Classification/Field
+ * Mapping/Live/Investigation) or migrated to v2 together with this file in the same commit (the App shell,
+ * Search, TimeRange, ScopeStrip/TableSettingsControl, Inspector's ContextAction/RequestFlowSection) - the one
+ * exception, `SortControl.module.css`, has no color tokens of its own (confirmed) and simply inherits
+ * whatever this file resolves to, so it needs no change. No still-v1 consumer is left behind.
+ */
 .button {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  border-radius: var(--radius-md);
-  border: var(--border-width) solid transparent;
+  border-radius: var(--v2-r-md);
+  border: var(--v2-bw) solid transparent;
   padding: var(--space-2) var(--space-3);
   font-size: var(--font-size-sm);
   font-weight: 500;
@@ -19,56 +27,53 @@
 }
 
 .primary {
-  background: var(--color-accent);
-  color: var(--color-text-inverse);
+  background: var(--v2-accent);
+  color: var(--v2-ink-inverse);
 }
 
 .primary:hover:not(:disabled) {
-  background: var(--color-accent-hover);
+  background: var(--v2-accent-hover);
 }
 
 .secondary {
-  background: var(--color-bg-raised);
-  border-color: var(--color-border);
-  color: var(--color-text);
+  background: var(--v2-surface-raised);
+  border-color: var(--v2-line);
+  color: var(--v2-ink-1);
 }
 
 .secondary:hover:not(:disabled) {
-  background: var(--color-bg-hover);
+  background: var(--v2-hover);
 }
 
 .ghost {
   background: transparent;
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
 }
 
 .ghost:hover:not(:disabled) {
-  background: var(--color-bg-hover);
-  color: var(--color-text);
+  background: var(--v2-hover);
+  color: var(--v2-ink-1);
 }
 
 .ghost[aria-pressed='true'],
 .secondary[aria-pressed='true'] {
-  background: var(--color-accent-bg);
-  border-color: var(--color-accent);
-  color: var(--color-accent);
+  background: var(--v2-accent-tint);
+  border-color: var(--v2-accent);
+  color: var(--v2-accent-ink);
 }
 
 /*
  * B6.2 (Session 7) - first "danger" variant on this shared component, added
  * for OpenShift Settings' Disconnect action (COMPONENT_INVENTORY.md:
- * "Disconnect as a danger button"). Uses v2 danger tokens (both light and
- * dark values already defined in tokensV2.css) rather than a v1 token, since
- * v1 has no dedicated danger-button color - safe in any v1 (light-only)
- * context too, same precedent as Icon.tsx already using v2 sizing tokens
- * from a shared, theme-agnostic component.
+ * "Disconnect as a danger button"). Already v2-only (no v1 fallback needed
+ * now that the whole component is v2).
  */
 .danger {
   background: transparent;
-  border-color: var(--v2-danger-line, var(--color-danger));
-  color: var(--v2-danger, var(--color-danger));
+  border-color: var(--v2-danger-line);
+  color: var(--v2-danger);
 }
 
 .danger:hover:not(:disabled) {
-  background: var(--v2-danger-tint, var(--color-bg-hover));
+  background: var(--v2-danger-tint);
 }

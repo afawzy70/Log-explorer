@@ -1,11 +1,8 @@
 /*
- * B2 (Session 4) - the field trigger + popover wrapper (matching TableSettingsControl.tsx's own
- * established pattern). Kept on v1 tokens for the trigger CHROME (border/background), same reasoning as
- * Toolbar.module.css's own comment: this sits directly beside SourceSelect/ComposeProjectSelect/etc., which
- * aren't restyled yet - v2 chrome here alone would be the same kind of patchy mismatch already found and
- * reverted for the toolbar container and the Shell header's workspace trail. The severity MARKS inside
- * (`.marks`) are the one deliberate exception: small enough, and specifically v2-designed shapes, to use
- * `SeverityMark`'s own v2 tokens without creating that mismatch.
+ * B7 (Session 10) - full v2 tokens, as part of the whole Toolbar-family closure (Toolbar.module.css's own
+ * comment). Session 4's comment below (kept in spirit) previously deferred exactly this for the same
+ * "patchy mismatch beside still-v1 siblings" reason - every sibling in that closure moved to v2 together in
+ * this same commit, so the blocker no longer applies.
  */
 .wrapper {
   position: relative;
@@ -16,17 +13,17 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  border: var(--border-width) solid var(--color-border);
-  background: var(--color-bg-raised);
-  border-radius: var(--radius-md);
+  border: var(--v2-bw) solid var(--v2-line);
+  background: var(--v2-surface-raised);
+  border-radius: var(--v2-r-md);
   padding: var(--space-2) var(--space-3);
   font-size: var(--font-size-sm);
-  color: var(--color-text);
+  color: var(--v2-ink-1);
   cursor: pointer;
 }
 
 .trigger:hover {
-  background: var(--color-bg-hover);
+  background: var(--v2-hover);
 }
 
 .marks {
@@ -44,10 +41,11 @@
   top: calc(100% + var(--space-2));
   left: 0;
   z-index: 20;
-  background: var(--color-bg-raised);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-lg);
+  box-shadow: var(--v2-shadow-pop);
   padding: var(--space-3);
   min-width: 280px;
 }
@@ -66,25 +64,26 @@
 }
 
 .quickAction {
-  border: var(--border-width) solid var(--color-border);
-  background: var(--color-bg-raised);
-  border-radius: var(--radius-md);
+  border: var(--v2-bw) solid var(--v2-line);
+  background: var(--v2-surface-raised);
+  border-radius: var(--v2-r-md);
   padding: var(--space-1) var(--space-2);
   font-size: var(--font-size-xs);
   cursor: pointer;
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
 }
 
 .quickAction:hover {
-  background: var(--color-bg-hover);
+  background: var(--v2-hover);
 }
 
 .chip {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  border: var(--border-width) solid var(--color-border);
-  background: var(--color-bg-raised);
+  border: var(--v2-bw) solid var(--v2-line);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
   border-radius: 999px;
   padding: var(--space-1) var(--space-2);
   font-size: var(--font-size-xs);
