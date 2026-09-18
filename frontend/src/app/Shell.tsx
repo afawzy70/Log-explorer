@@ -1,5 +1,5 @@
 import { SourceHealthBadge } from './SourceHealthBadge';
-import { WORKLOAD_KIND_LABELS } from '../features/settings/OpenShiftSettingsPanel';
+import { WORKLOAD_KIND_LABELS } from '../features/search/openshift/workloadKindLabels';
 import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
 import { EnvironmentBadge } from './EnvironmentBadge';
 import { Icon } from '../shared/ui/Icon';

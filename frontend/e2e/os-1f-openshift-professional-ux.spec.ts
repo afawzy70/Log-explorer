@@ -150,8 +150,14 @@ async function openPanel(page: Page) {
   await expect(page.getByTestId('openshift-settings-panel')).toBeVisible();
 }
 
+/** SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - scope is now selected from Search, not Settings. */
+async function openSearchAsOpenShift(page: Page) {
+  await page.goto('/');
+  await page.getByRole('combobox', { name: /^source$/i }).selectOption('openshift');
+}
+
 test.describe('OS-1F - OpenShift connected Settings, scope hierarchy and ScopeTrail (MOCKED, not a real cluster)', () => {
-  test('B/C: connected Settings shows Server/User/TLS and the Project discovery list, never a token', async ({
+  test('B: connected Settings shows Server/User/TLS, a read-only current scope, and never a token', async ({
     page,
   }) => {
     await setViewport(page, 1440, 900);
@@ -162,52 +168,56 @@ test.describe('OS-1F - OpenShift connected Settings, scope hierarchy and ScopeTr
     await expect(page.getByText('api.example.com:6443')).toBeVisible();
     await expect(page.getByText('developer')).toBeVisible();
     await expect(page.getByText(/^verified/i)).toBeVisible();
-    await expect(page.getByLabel(/^project$/i)).toBeVisible();
-    await expect(page.getByRole('option', { name: 'payments-dev' })).toHaveCount(1);
+    // SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - read-only, not a select: Project/Workload/Pod/Container are
+    // now chosen from Search (`OpenShiftScopeSelect.tsx`), never here.
+    await expect(page.getByText('None selected')).toBeVisible();
+    await expect(page.getByText(/selected from search, not here/i)).toBeVisible();
+    await expect(page.getByLabel(/^project$/i)).toHaveCount(0);
     // The one truth this whole panel exists to never leak, even mocked.
     await expect(page.locator('body')).not.toContainText('sha256~');
     await captureScreenshot(page, PHASE, 'B-connected-settings');
   });
 
-  test('D/E/F: selecting Project -> Workload -> Pod -> Container narrows scope one level at a time', async ({
+  test('D/E/F: selecting Project -> Workload -> Pod -> Container from Search narrows scope one level at a time', async ({
     page,
   }) => {
     await setViewport(page, 1440, 900);
     await mockConnectedOpenShift(page);
-    await openPanel(page);
+    await openSearchAsOpenShift(page);
 
-    await page.getByLabel(/^project$/i).selectOption('payments-dev');
-    await expect(page.getByLabel(/^workload$/i)).toBeVisible();
+    await expect(page.getByRole('combobox', { name: /^project$/i })).toBeVisible();
+    await page.getByRole('combobox', { name: /^project$/i }).selectOption('payments-dev');
+    await expect(page.getByRole('combobox', { name: /^workload$/i })).toBeVisible();
     await captureScreenshot(page, PHASE, 'D-workload-selector');
 
-    await page.getByLabel(/^workload$/i).selectOption({ label: 'payment-api (Deployment)' });
-    await expect(page.getByLabel(/^pod$/i).getByRole('option', { name: /payment-api-abc123/i })).toBeAttached();
+    await page.getByRole('combobox', { name: /^workload$/i }).selectOption({ label: 'payment-api (Deployment)' });
+    await expect(
+      page.getByRole('combobox', { name: /^pod$/i }).getByRole('option', { name: /payment-api-abc123/i }),
+    ).toBeAttached();
     await captureScreenshot(page, PHASE, 'E-pod-selector');
 
-    await page.getByLabel(/^pod$/i).selectOption('payment-api-abc123');
-    await expect(page.getByLabel(/^container$/i)).toBeVisible();
-    await expect(page.getByLabel(/^container$/i).getByRole('option', { name: 'app', exact: true })).toBeAttached();
+    await page.getByRole('combobox', { name: /^pod$/i }).selectOption('payment-api-abc123');
+    await expect(page.getByRole('combobox', { name: /^container$/i })).toBeVisible();
+    await expect(
+      page.getByRole('combobox', { name: /^container$/i }).getByRole('option', { name: 'app', exact: true }),
+    ).toBeAttached();
     await captureScreenshot(page, PHASE, 'F-container-selector');
 
-    await page.getByLabel(/^container$/i).selectOption('app');
-    await expect(page.getByLabel(/^container$/i)).toHaveValue('app');
+    await page.getByRole('combobox', { name: /^container$/i }).selectOption('app');
+    await expect(page.getByRole('combobox', { name: /^container$/i })).toHaveValue('app');
   });
 
-  test('G: the header ScopeTrail reads the full effective hierarchy, truthfully, and stays visible with Settings closed', async ({
+  test('G: the header ScopeTrail reads the full effective hierarchy, truthfully, from a scope set entirely in Search', async ({
     page,
   }) => {
     await setViewport(page, 1440, 900);
     await mockConnectedOpenShift(page);
-    await openPanel(page);
+    await openSearchAsOpenShift(page);
 
-    await page.getByLabel(/^project$/i).selectOption('payments-dev');
-    await page.getByLabel(/^workload$/i).selectOption({ label: 'payment-api (Deployment)' });
-    await page.getByLabel(/^pod$/i).selectOption('payment-api-abc123');
-    await page.getByLabel(/^container$/i).selectOption('app');
-
-    // Close Settings - the trail must survive, not depend on Settings being open.
-    await page.getByRole('button', { name: /back to search results/i }).click();
-    await expect(page.getByTestId('settings-workspace')).toHaveCount(0);
+    await page.getByRole('combobox', { name: /^project$/i }).selectOption('payments-dev');
+    await page.getByRole('combobox', { name: /^workload$/i }).selectOption({ label: 'payment-api (Deployment)' });
+    await page.getByRole('combobox', { name: /^pod$/i }).selectOption('payment-api-abc123');
+    await page.getByRole('combobox', { name: /^container$/i }).selectOption('app');
 
     const trail = page.getByTestId('scope-trail');
     await expect(trail).toContainText('OpenShift');
@@ -216,23 +226,29 @@ test.describe('OS-1F - OpenShift connected Settings, scope hierarchy and ScopeTr
     await expect(trail).toContainText('payment-api-abc123');
     await expect(trail).toContainText('app');
     await captureScreenshot(page, PHASE, 'G-scope-trail');
+
+    // SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - the trail (and the scope it reflects) survives opening and
+    // closing Settings, since Settings never owns this state - it only mirrors it read-only.
+    await openSettingsSection(page, 'OpenShift');
+    await expect(page.getByTestId('openshift-settings-panel').getByText('payments-dev')).toBeVisible();
+    await page.getByRole('button', { name: /back to search results/i }).click();
+    await expect(page.getByTestId('settings-workspace')).toHaveCount(0);
+    await expect(trail).toContainText('payments-dev');
   });
 
-  test('H: Search and Live are disabled with a truthful reason until a Project is selected, then enabled', async ({
+  test('H: Search and Live are disabled with a truthful reason until a Project is selected from Search itself, then enabled', async ({
     page,
   }) => {
     await setViewport(page, 1440, 900);
     await mockConnectedOpenShift(page);
-    await page.goto('/');
-    await page.getByRole('combobox', { name: /^source$/i }).selectOption('openshift');
+    await openSearchAsOpenShift(page);
 
     await expect(page.getByRole('button', { name: /^search$/i })).toBeDisabled();
     await expect(page.getByText(/select a project to search openshift/i)).toBeVisible();
     await captureScreenshot(page, PHASE, 'H-search-blocked-no-scope');
 
-    await openSettingsSection(page, 'OpenShift');
-    await page.getByLabel(/^project$/i).selectOption('payments-dev');
-    await page.getByRole('button', { name: /back to search results/i }).click();
+    // SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - never returns to Settings to change scope.
+    await page.getByRole('combobox', { name: /^project$/i }).selectOption('payments-dev');
 
     await expect(page.getByRole('button', { name: /^search$/i })).toBeEnabled();
     await expect(page.getByText(/select a project to search openshift/i)).not.toBeVisible();
@@ -240,12 +256,13 @@ test.describe('OS-1F - OpenShift connected Settings, scope hierarchy and ScopeTr
   });
 
   for (const width of [1024, 768, 390]) {
-    test(`S: usable at ${width}px - ScopeTrail and Settings never overflow the page`, async ({ page }) => {
+    test(`S: usable at ${width}px - the Search scope controls and ScopeTrail never overflow the page`, async ({
+      page,
+    }) => {
       await setViewport(page, width, 900);
       await mockConnectedOpenShift(page);
-      await openPanel(page);
-      await page.getByLabel(/^project$/i).selectOption('payments-dev');
-      await page.getByRole('button', { name: /back to search results/i }).click();
+      await openSearchAsOpenShift(page);
+      await page.getByRole('combobox', { name: /^project$/i }).selectOption('payments-dev');
 
       await assertNoHorizontalOverflow(page);
       await captureScreenshot(page, PHASE, `S-responsive-${width}px`);

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
@@ -8,6 +8,10 @@ import { emptyAdvancedFilterValues } from '../features/search/advancedFilterFiel
 import { emptyQueryAuthoringState } from '../features/search/QueryBuilder';
 import { DEFAULT_SEVERITY_LEVELS } from '../features/search/severityLevels';
 import { DEFAULT_PRESET_ID } from '../shared/time/presets';
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+}
 
 function baseState(overrides: Partial<SearchState> = {}): SearchState {
   const caps = {
@@ -262,6 +266,48 @@ describe('Toolbar - OpenShift Project/Namespace required for Search/Live (OS-1F 
       ...overrides,
     });
   }
+
+  // SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - owner requirements register §28: OpenShift Workload is the
+  // UX-equivalent scope level to Docker Service, rendered in the exact toolbar position Docker's Service
+  // selector would occupy - never both, never Docker's own selector implying a capability OpenShift doesn't
+  // have (`serviceDiscovery=false`).
+  describe('SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - scope control family per source', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('shows the OpenShift Project scope control, never Docker\'s Service selector, when OpenShift is the selected source', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() =>
+          Promise.resolve(
+            jsonResponse({
+              state: 'CONNECTED',
+              connectionName: null,
+              server: 'api.example.com:6443',
+              username: 'developer',
+              projectCount: 1,
+              projects: ['payments'],
+              selectedProject: null,
+              tlsVerified: true,
+              usingPrivateCa: false,
+              proxy: null,
+              projectApi: 'PROJECTS',
+            }),
+          ),
+        ),
+      );
+      render(<Toolbar state={openShiftState()} openShiftScope={null} />);
+
+      expect(await screen.findByRole('combobox', { name: /^project$/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /all services/i })).not.toBeInTheDocument();
+    });
+
+    it("shows Docker's Service selector, never an OpenShift Project control, when a Docker-shaped source is selected", () => {
+      render(<Toolbar state={baseState()} />);
+
+      expect(screen.getByRole('button', { name: /all services/i })).toBeInTheDocument();
+      expect(screen.queryByRole('combobox', { name: /^project$/i })).not.toBeInTheDocument();
+    });
+  });
 
   it('disables Search and Live, with a visible reason, when connected but no Project/Namespace is selected', () => {
     render(

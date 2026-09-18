@@ -5,45 +5,19 @@ import {
   connectOpenShift,
   disconnectOpenShift,
   fetchOpenShiftConnection,
-  fetchOpenShiftContainers,
   fetchOpenShiftIntakeAllowed,
-  fetchOpenShiftPods,
   fetchOpenShiftProxySettings,
-  fetchOpenShiftWorkloads,
   openShiftFailureReason,
-  selectOpenShiftContainer,
-  selectOpenShiftPod,
-  selectOpenShiftProject,
-  selectOpenShiftWorkload,
   updateOpenShiftProxySettings,
 } from '../../shared/api/client';
 import type {
   OpenShiftConnectionSummary,
   OpenShiftFailureReason,
-  OpenShiftPodDiscovery,
-  OpenShiftWorkloadDiscovery,
-  OpenShiftWorkloadKind,
+  OpenShiftScopeSummary,
   ProxyMode,
 } from '../../shared/api/types';
+import { WORKLOAD_KIND_LABELS } from '../search/openshift/workloadKindLabels';
 import styles from './OpenShiftSettingsPanel.module.css';
-
-/**
- * A workload kind's own name, for the select control (OS-1B §6/§21).
- * Jobs/CronJobs are deferred, not offered. Exported so `Shell`'s
- * `ScopeTrail` (OS-1F) can render the identical label for the same
- * kind, rather than maintaining a second, driftable copy.
- */
-export const WORKLOAD_KIND_LABELS: Record<OpenShiftWorkloadKind, string> = {
-  DEPLOYMENT: 'Deployment',
-  DEPLOYMENT_CONFIG: 'DeploymentConfig',
-  STATEFUL_SET: 'StatefulSet',
-  DAEMON_SET: 'DaemonSet',
-};
-
-/** Encodes a workload selection into the `<select>` control's single value. */
-function workloadOptionValue(kind: OpenShiftWorkloadKind, name: string): string {
-  return `${kind}::${name}`;
-}
 
 /**
  * OpenShift connection settings (OS-1A §18).
@@ -85,27 +59,33 @@ function workloadOptionValue(kind: OpenShiftWorkloadKind, name: string): string 
  * never be shown as "no accessible projects", which is a different truth
  * entirely (§15).
  *
- * <h2>OS-1F - {@code onScopeChanged}</h2>
+ * <h2>SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - connection only, no scope editing</h2>
  *
- * <p>Called after every connect/disconnect/project/workload/pod/container
- * mutation that actually succeeded, so a caller (`Shell`'s
- * `useOpenShiftScopeSummary`) can re-read the truth from {@code GET
- * /scope} and keep the header `ScopeTrail` in sync - this panel never
- * pushes its own local state upward, it only signals "something changed,
- * go re-read the source of truth."
+ * <p>This panel used to also own Project/Workload/Pod/Container SELECTION
+ * (OS-1B/OS-1F) - it now shows that scope read-only (the {@code scope}
+ * prop, the same lifted {@code useOpenShiftScopeSummary} instance
+ * `Shell`'s `ScopeTrail` reads) and links back to Search, where scope is
+ * now actually chosen (`OpenShiftScopeSelect.tsx`). This keeps exactly ONE
+ * authoritative, editable scope state - the backend session - with
+ * exactly one editable UI surface (Search) and one informational,
+ * always-in-sync mirror (here), never two competing selectors that could
+ * drift apart. {@code onScopeChanged} is still called after every
+ * connect/disconnect (the one mutation this panel still performs), so the
+ * lifted summary Search reads stays current.
  */
-export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: () => void } = {}) {
+export function OpenShiftSettingsPanel({
+  scope,
+  onScopeChanged,
+}: {
+  scope?: OpenShiftScopeSummary | null;
+  onScopeChanged?: () => void;
+} = {}) {
   const headingId = useId();
   const commandId = useId();
   const nameId = useId();
-  const projectId = useId();
   const proxyGroupId = useId();
   const proxyHostId = useId();
   const proxyPortId = useId();
-
-  const workloadId = useId();
-  const podId = useId();
-  const containerId = useId();
 
   const [summary, setSummary] = useState<OpenShiftConnectionSummary | null>(null);
   const [intakeAllowed, setIntakeAllowed] = useState(true);
@@ -121,20 +101,6 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
   // own "Connecting…" label.
   const [connecting, setConnecting] = useState(false);
   const [failure, setFailure] = useState<{ message: string; reason: OpenShiftFailureReason | null } | null>(null);
-
-  // OS-1B - workload/pod/container scope, one level at a time. Each level
-  // is `undefined` until its own discovery call resolves ("loading" vs
-  // "genuinely empty" must stay distinguishable - §24), and `null`
-  // selections mean "All" at that level (§22), never "unknown".
-  const [workloadDiscovery, setWorkloadDiscovery] = useState<OpenShiftWorkloadDiscovery | undefined>(undefined);
-  const [selectedWorkload, setSelectedWorkload] = useState<{ kind: OpenShiftWorkloadKind; name: string } | null>(
-    null,
-  );
-  const [pods, setPods] = useState<OpenShiftPodDiscovery | undefined>(undefined);
-  const [selectedPod, setSelectedPod] = useState<string | null>(null);
-  const [containers, setContainers] = useState<string[] | undefined>(undefined);
-  const [selectedContainer, setSelectedContainer] = useState<string | null>(null);
-  const [scopeError, setScopeError] = useState<string | null>(null);
 
   // Pre-closure functional recovery 2 (§B2/§B3) - proxy mode is
   // independent of connect/disconnect: readable and editable in either
@@ -157,31 +123,9 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
   const [customHostInput, setCustomHostInput] = useState('');
   const [customPortInput, setCustomPortInput] = useState('');
 
-  function resetScope() {
-    setWorkloadDiscovery(undefined);
-    setSelectedWorkload(null);
-    setPods(undefined);
-    setSelectedPod(null);
-    setContainers(undefined);
-    setSelectedContainer(null);
-    setScopeError(null);
-  }
-
   useEffect(() => {
     setFailure(null);
-    resetScope();
-    void fetchOpenShiftConnection().then((s) => {
-      setSummary(s);
-      // OS-1B - the panel does not attempt to restore a prior workload/pod/
-      // container selection into these controls on reopen; only the
-      // top-level project selection is a durable summary field today. The
-      // backend's own session-side selection is untouched either way -
-      // this is a display-only starting point, documented in the OS-1B
-      // verification report as a deliberate v1 simplification.
-      if (s.state === 'CONNECTED' && s.selectedProject) {
-        void loadWorkloads();
-      }
-    }).catch(() => setSummary(null));
+    void fetchOpenShiftConnection().then(setSummary).catch(() => setSummary(null));
     void fetchOpenShiftIntakeAllowed().then(setIntakeAllowed).catch(() => setIntakeAllowed(true));
     setProxyError(null);
     void fetchOpenShiftProxySettings().then((p) => {
@@ -260,94 +204,6 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
       setProxyError(error instanceof Error ? error.message : 'Could not update the proxy setting.');
     } finally {
       setProxyBusy(false);
-    }
-  }
-
-  async function loadWorkloads() {
-    try {
-      const discovery = await fetchOpenShiftWorkloads();
-      setWorkloadDiscovery(discovery);
-      // No workload is selected yet at this point (a fresh project
-      // selection always starts at "All workloads" - OS-1B §14), so the
-      // pod level can resolve immediately for the whole project.
-      void loadPods();
-    } catch {
-      setScopeError('Could not discover workloads for this project.');
-    }
-  }
-
-  async function loadPods() {
-    try {
-      const result = await fetchOpenShiftPods();
-      setPods(result);
-    } catch {
-      setScopeError('Could not discover pods for this scope.');
-    }
-  }
-
-  async function loadContainers() {
-    try {
-      const result = await fetchOpenShiftContainers();
-      setContainers(result);
-    } catch {
-      setScopeError('Could not discover containers for this pod.');
-    }
-  }
-
-  async function onSelectWorkload(value: string) {
-    setScopeError(null);
-    setContainers(undefined);
-    setSelectedContainer(null);
-    setPods(undefined);
-    setSelectedPod(null);
-    if (!value) {
-      setSelectedWorkload(null);
-      try {
-        await selectOpenShiftWorkload(null);
-        onScopeChanged?.();
-      } catch {
-        setScopeError('Could not clear the workload selection.');
-      }
-      void loadPods();
-      return;
-    }
-    const [kind, name] = value.split('::') as [OpenShiftWorkloadKind, string];
-    try {
-      await selectOpenShiftWorkload({ kind, name });
-      setSelectedWorkload({ kind, name });
-      onScopeChanged?.();
-      void loadPods();
-    } catch {
-      setScopeError('That workload is no longer available. Refresh and try again.');
-    }
-  }
-
-  async function onSelectPod(podName: string) {
-    setScopeError(null);
-    setContainers(undefined);
-    setSelectedContainer(null);
-    const value = podName || null;
-    try {
-      await selectOpenShiftPod(value);
-      setSelectedPod(value);
-      onScopeChanged?.();
-      if (value) {
-        void loadContainers();
-      }
-    } catch {
-      setScopeError('That pod is no longer available. Refresh and try again.');
-    }
-  }
-
-  async function onSelectContainer(containerName: string) {
-    setScopeError(null);
-    const value = containerName || null;
-    try {
-      await selectOpenShiftContainer(value);
-      setSelectedContainer(value);
-      onScopeChanged?.();
-    } catch {
-      setScopeError('That container is no longer available on this pod.');
     }
   }
 
@@ -465,52 +321,42 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
                 for access to one.
               </p>
             ) : (
-              <div className={styles.field}>
-                <label className={styles.label} htmlFor={projectId}>
-                  {scopeLabelSingular}
-                </label>
-                <select
-                  id={projectId}
-                  className={styles.select}
-                  value={summary?.selectedProject ?? ''}
-                  disabled={busy}
-                  onChange={async (e) => {
-                    const project = e.target.value || null;
-                    resetScope();
-                    await run(() => selectOpenShiftProject(project));
-                    if (project) {
-                      void loadWorkloads();
-                    }
-                  }}
-                >
-                  <option value="">All {scopeLabelPlural.toLowerCase()} (none selected)</option>
-                  {summary?.projects.map((project) => (
-                    <option key={project} value={project}>
-                      {project}
-                    </option>
-                  ))}
-                </select>
+              // SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - read-only, sourced from the same lifted `scope`
+              // summary Search itself reads (never a second authority) - Project/Workload/Pod/Container are
+              // now selected from the Search toolbar (`OpenShiftScopeSelect.tsx`), not here.
+              <div className={styles.scope}>
+                <dl className={styles.summaryList}>
+                  <div className={styles.summaryRow}>
+                    <dt>{scopeLabelSingular}</dt>
+                    <dd>{scope?.selectedProject ?? 'None selected'}</dd>
+                  </div>
+                  {scope?.selectedProject ? (
+                    <>
+                      <div className={styles.summaryRow}>
+                        <dt>Workload</dt>
+                        <dd>
+                          {scope.selectedWorkloadName && scope.selectedWorkloadKind
+                            ? `${scope.selectedWorkloadName} (${WORKLOAD_KIND_LABELS[scope.selectedWorkloadKind]})`
+                            : 'All workloads'}
+                        </dd>
+                      </div>
+                      <div className={styles.summaryRow}>
+                        <dt>Pod</dt>
+                        <dd>{scope.selectedPod ?? 'All matching pods'}</dd>
+                      </div>
+                      <div className={styles.summaryRow}>
+                        <dt>Container</dt>
+                        <dd>{scope.selectedContainer ?? 'All applicable containers'}</dd>
+                      </div>
+                    </>
+                  ) : null}
+                </dl>
+                <p className={styles.hint}>
+                  {scopeLabelSingular}, Workload, Pod and Container are selected from Search, not here - open Search
+                  and choose OpenShift as the source to change them.
+                </p>
               </div>
             )}
-
-            {summary?.selectedProject ? (
-              <OpenShiftScopeControls
-                workloadId={workloadId}
-                podId={podId}
-                containerId={containerId}
-                busy={busy}
-                workloadDiscovery={workloadDiscovery}
-                selectedWorkload={selectedWorkload}
-                pods={pods}
-                selectedPod={selectedPod}
-                containers={containers}
-                selectedContainer={selectedContainer}
-                scopeError={scopeError}
-                onSelectWorkload={onSelectWorkload}
-                onSelectPod={onSelectPod}
-                onSelectContainer={onSelectContainer}
-              />
-            ) : null}
 
             <OpenShiftProxyFieldset
               groupId={proxyGroupId}
@@ -751,166 +597,6 @@ function OpenShiftProxyFieldset({
         </p>
       ) : null}
     </fieldset>
-  );
-}
-
-interface OpenShiftScopeControlsProps {
-  workloadId: string;
-  podId: string;
-  containerId: string;
-  busy: boolean;
-  workloadDiscovery: OpenShiftWorkloadDiscovery | undefined;
-  selectedWorkload: { kind: OpenShiftWorkloadKind; name: string } | null;
-  pods: OpenShiftPodDiscovery | undefined;
-  selectedPod: string | null;
-  containers: string[] | undefined;
-  selectedContainer: string | null;
-  scopeError: string | null;
-  onSelectWorkload: (value: string) => void;
-  onSelectPod: (value: string) => void;
-  onSelectContainer: (value: string) => void;
-}
-
-/**
- * OS-1B §4/§21 - the workload → pod → container hierarchy beneath a
- * selected project. A small, focused component rather than folding this
- * into the panel's own JSX, so each level's loading/empty/forbidden/error
- * states (§24) stay readable on their own.
- */
-function OpenShiftScopeControls({
-  workloadId,
-  podId,
-  containerId,
-  busy,
-  workloadDiscovery,
-  selectedWorkload,
-  pods,
-  selectedPod,
-  containers,
-  selectedContainer,
-  scopeError,
-  onSelectWorkload,
-  onSelectPod,
-  onSelectContainer,
-}: OpenShiftScopeControlsProps) {
-  const problemKinds = (workloadDiscovery?.kindOutcomes ?? []).filter(
-    (o) => o.status === 'FORBIDDEN' || o.status === 'ERROR',
-  );
-
-  return (
-    <div className={styles.scope}>
-      {scopeError ? (
-        <p className={styles.error} role="alert">
-          {scopeError}
-        </p>
-      ) : null}
-
-      <div className={styles.field}>
-        <label className={styles.label} htmlFor={workloadId}>
-          Workload
-        </label>
-        {workloadDiscovery === undefined ? (
-          <p className={styles.hint} aria-live="polite">
-            Discovering workloads…
-          </p>
-        ) : workloadDiscovery.status === 'FORBIDDEN' ? (
-          <p className={styles.error} role="alert">
-            Signed in, but this account is not permitted to list workloads in this project.
-          </p>
-        ) : (
-          <>
-            <select
-              id={workloadId}
-              className={styles.select}
-              disabled={busy}
-              value={selectedWorkload ? workloadOptionValue(selectedWorkload.kind, selectedWorkload.name) : ''}
-              onChange={(e) => onSelectWorkload(e.target.value)}
-            >
-              <option value="">All workloads</option>
-              {workloadDiscovery.workloads.map((w) => (
-                <option key={workloadOptionValue(w.kind, w.name)} value={workloadOptionValue(w.kind, w.name)}>
-                  {w.name} ({WORKLOAD_KIND_LABELS[w.kind]})
-                </option>
-              ))}
-            </select>
-            {workloadDiscovery.workloads.length === 0 ? (
-              <p className={styles.hint}>No workloads in this project.</p>
-            ) : null}
-            {problemKinds.length > 0 ? (
-              <p className={styles.hint}>
-                Some workload types could not be listed:{' '}
-                {problemKinds
-                  .map((o) => `${WORKLOAD_KIND_LABELS[o.kind]} (${o.status === 'FORBIDDEN' ? 'forbidden' : 'error'})`)
-                  .join(', ')}
-                .
-              </p>
-            ) : null}
-          </>
-        )}
-      </div>
-
-      <div className={styles.field}>
-        <label className={styles.label} htmlFor={podId}>
-          Pod
-        </label>
-        {pods === undefined ? (
-          <p className={styles.hint} aria-live="polite">
-            Discovering pods…
-          </p>
-        ) : (
-          <>
-            <select
-              id={podId}
-              className={styles.select}
-              disabled={busy}
-              value={selectedPod ?? ''}
-              onChange={(e) => onSelectPod(e.target.value)}
-            >
-              <option value="">All matching pods</option>
-              {pods.pods.map((pod) => (
-                <option key={pod.name} value={pod.name}>
-                  {pod.name} ({pod.phase}, {pod.readySummary})
-                </option>
-              ))}
-            </select>
-            {pods.pods.length === 0 ? <p className={styles.hint}>No pods currently match this scope.</p> : null}
-            {pods.status === 'PARTIAL' ? (
-              <p className={styles.hint}>
-                This list may be incomplete - not every workload type could be checked, so some pods may be missing.
-              </p>
-            ) : null}
-          </>
-        )}
-      </div>
-
-      <div className={styles.field}>
-        <label className={styles.label} htmlFor={containerId}>
-          Container
-        </label>
-        {selectedPod === null ? (
-          <p className={styles.hint}>Select a specific pod to choose a container.</p>
-        ) : containers === undefined ? (
-          <p className={styles.hint} aria-live="polite">
-            Discovering containers…
-          </p>
-        ) : (
-          <select
-            id={containerId}
-            className={styles.select}
-            disabled={busy}
-            value={selectedContainer ?? ''}
-            onChange={(e) => onSelectContainer(e.target.value)}
-          >
-            <option value="">All applicable containers</option>
-            {containers.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-    </div>
   );
 }
 

@@ -214,6 +214,7 @@ function AppContent() {
             <Toolbar
               state={state}
               openShiftScope={openShiftScopeState.scope}
+              onOpenShiftScopeChanged={openShiftScopeState.refresh}
               onStartLive={
                 state.selectedSourceId
                   ? () => live.start(state.selectedSourceId!, state.selectedServices, state.selectedComposeProject ?? undefined)
@@ -236,6 +237,7 @@ function AppContent() {
             <Suspense fallback={<SectionLoadingFallback label="Loading settings…" />}>
               <SettingsWorkspace
                 state={state}
+                openShiftScope={openShiftScopeState.scope}
                 onOpenShiftScopeChanged={openShiftScopeState.refresh}
                 onClose={state.closeSettingsWorkspace}
               />

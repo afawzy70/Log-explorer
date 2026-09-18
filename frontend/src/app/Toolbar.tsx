@@ -2,6 +2,7 @@ import { Button } from '../shared/ui/Button';
 import { SourceSelect } from '../features/search/SourceSelect';
 import { ComposeProjectSelect } from '../features/search/ComposeProjectSelect';
 import { ServiceMultiSelect } from '../features/search/ServiceMultiSelect';
+import { OpenShiftScopeSelect } from '../features/search/openshift/OpenShiftScopeSelect';
 import { TimeRangeControl } from '../features/timerange/TimeRangeControl';
 import { SeverityFilter } from '../features/search/SeverityFilter';
 import { UniversalSearch } from '../features/search/UniversalSearch';
@@ -26,6 +27,14 @@ export interface ToolbarProps {
    * only explained after the fact.
    */
   openShiftScope?: OpenShiftScopeSummary | null;
+  /**
+   * SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - re-reads the authoritative
+   * OpenShift scope (`App.tsx`'s `openShiftScopeState.refresh`) after a
+   * Project/Workload/Pod/Container selection made from THIS toolbar's own
+   * `OpenShiftScopeSelect`. Undefined only in tests/stories that render
+   * `Toolbar` without ever selecting OpenShift as the source.
+   */
+  onOpenShiftScopeChanged?: () => void;
 }
 
 /**
@@ -42,10 +51,21 @@ export interface ToolbarProps {
  * `AdvancedFilters`' own drawer, under More filters, so Search stays the
  * single strongest primary action in this row.
  */
-export function Toolbar({ state, onStartLive, openShiftScope }: ToolbarProps) {
+export function Toolbar({ state, onStartLive, openShiftScope, onOpenShiftScopeChanged }: ToolbarProps) {
   const liveTailSupported = state.selectedSource?.capabilities.liveTail ?? false;
   const rawLogQlSupported = state.selectedSource?.capabilities.rawLogQL ?? false;
   const composeProjectScopingSupported = state.selectedSource?.capabilities.composeProjectScoping ?? false;
+  // SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - capability-driven, not a source-id check: OpenShift already
+  // declares `serviceDiscovery=false` (`OpenShiftLogSource.java`), so Docker's Service selector - which implies
+  // a capability OpenShift genuinely doesn't have - is gated the same way `ComposeProjectSelect` already is.
+  const serviceDiscoverySupported = state.selectedSource?.capabilities.serviceDiscovery ?? false;
+  // SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - OpenShift Workload is the UX-equivalent of Docker Service
+  // (owner requirements register §28); this toolbar renders one scope-selection family or the other for a
+  // given source, never both, and never Docker's Service selector as if it were OpenShift's scope control
+  // (there is no `serviceDiscovery`-style capability flag for "has OpenShift-shaped scope" today, so this
+  // mirrors the existing `sourceId === 'openshift'` routing already used to pick between
+  // `DockerSettingsPanel`/`OpenShiftSettingsPanel` in Settings, rather than inventing a new one).
+  const isOpenShift = state.selectedSourceId === 'openshift';
   // OS-1F §8 - only a genuinely CONNECTED OpenShift session with no
   // Project/Namespace yet selected blocks Search/Live; `openShiftScope`
   // is `null` both when OpenShift isn't selected and before the first
@@ -74,13 +94,17 @@ export function Toolbar({ state, onStartLive, openShiftScope }: ToolbarProps) {
           onChange={state.setSelectedComposeProject}
         />
       ) : null}
-      <ServiceMultiSelect
-        services={state.services}
-        selected={state.selectedServices}
-        onChange={state.setSelectedServices}
-        mode={state.serviceFilterMode}
-        onModeChange={state.setServiceFilterMode}
-      />
+      {isOpenShift ? (
+        <OpenShiftScopeSelect scope={openShiftScope ?? null} onScopeChanged={onOpenShiftScopeChanged ?? (() => {})} />
+      ) : serviceDiscoverySupported ? (
+        <ServiceMultiSelect
+          services={state.services}
+          selected={state.selectedServices}
+          onChange={state.setSelectedServices}
+          mode={state.serviceFilterMode}
+          onModeChange={state.setServiceFilterMode}
+        />
+      ) : null}
       <TimeRangeControl value={state.timeRange} onChange={state.setTimeRange} />
       <SeverityFilter selected={state.selectedLevels} onChange={state.setSelectedLevels} />
       <UniversalSearch

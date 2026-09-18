@@ -6,10 +6,13 @@ import { PrivacyMaskingSettingsPanel } from './PrivacyMaskingSettingsPanel';
 import { KeyboardShortcutsHelp } from '../../app/KeyboardShortcutsHelp';
 import { SettingsNav } from './SettingsNav';
 import type { SearchState } from '../../app/useSearchState';
+import type { OpenShiftScopeSummary } from '../../shared/api/types';
 import styles from './SettingsWorkspace.module.css';
 
 export interface SettingsWorkspaceProps {
   state: SearchState;
+  /** SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - the same lifted scope summary Search reads, passed through so `OpenShiftSettingsPanel` can show it read-only. */
+  openShiftScope: OpenShiftScopeSummary | null;
   onOpenShiftScopeChanged: () => void;
   onClose: () => void;
 }
@@ -36,7 +39,7 @@ export interface SettingsWorkspaceProps {
  * (`state.openMappingWorkspace`/`state.openClassificationWorkspace`, already mutually exclusive with this
  * one - see `useSearchState.ts`) - B6.2 does not touch either of those workspaces' own content.
  */
-export function SettingsWorkspace({ state, onOpenShiftScopeChanged, onClose }: SettingsWorkspaceProps) {
+export function SettingsWorkspace({ state, openShiftScope, onOpenShiftScopeChanged, onClose }: SettingsWorkspaceProps) {
   // DRIFT-016 remediation - "active" section for the shared nav's own highlight, tracked from whichever
   // section last received a scroll-into-view (defaults to the first, "sources"). Purely a visual affordance;
   // every section is always in the DOM and reachable regardless of this value.
@@ -70,7 +73,7 @@ export function SettingsWorkspace({ state, onOpenShiftScopeChanged, onClose }: S
               <DockerSettingsPanel />
             </div>
             <div className={styles.sectionRow}>
-              <OpenShiftSettingsPanel onScopeChanged={onOpenShiftScopeChanged} />
+              <OpenShiftSettingsPanel scope={openShiftScope} onScopeChanged={onOpenShiftScopeChanged} />
             </div>
           </section>
 

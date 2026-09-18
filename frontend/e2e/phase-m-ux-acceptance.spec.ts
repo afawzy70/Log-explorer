@@ -328,7 +328,13 @@ test.describe('Task 6 - Failure states', () => {
     // the service multi-select must not silently claim "0 services" as if
     // it asked and got none; the honest behavior is to not offer the
     // control's discovery-backed state at all for a source that can't.
-    await expect(page.getByRole('button', { name: /all services/i })).toBeVisible();
+    //
+    // SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - this assertion previously checked the opposite of what this
+    // test's own name/comment describe (a pre-existing mismatch: `ServiceMultiSelect` rendered unconditionally
+    // for every source until this mission gated it by the `serviceDiscovery` capability). OpenShift's own
+    // scope-equivalent control (Project/Workload/Pod/Container) replaces it in the same toolbar position -
+    // Docker's Service selector is genuinely omitted, not shown with a fabricated "0 services" state.
+    await expect(page.getByRole('button', { name: /all services/i })).not.toBeVisible();
   });
 
   test('no results - a real, narrow query against real fixture data', async ({ page }) => {

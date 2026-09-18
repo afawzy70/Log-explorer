@@ -193,13 +193,79 @@ describe('OpenShiftSettingsPanel', () => {
     expect(screen.queryByRole('button', { name: /^disconnect$/i })).not.toBeInTheDocument();
   });
 
-  it('offers project selection once connected', async () => {
+  // SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - Project/Workload/Pod/Container are no longer selected here;
+  // this panel shows the current scope read-only (sourced from the `scope` prop, the same lifted summary
+  // Search's own `OpenShiftScopeSelect` reads and writes) and links back to Search to change it.
+  it('shows the current scope read-only, with no editable Project/Workload/Pod/Container control', async () => {
     stubFetch((url) => (url.includes('intake-allowed') ? jsonResponse(true) : jsonResponse(CONNECTED)));
-    await openPanel();
+    const user = userEvent.setup();
+    render(
+      <OpenShiftSettingsPanel
+        scope={{
+          selectedProject: 'payments',
+          discoveryApi: 'PROJECTS',
+          selectedWorkloadKind: 'DEPLOYMENT',
+          selectedWorkloadName: 'payment-api',
+          selectedPod: 'payment-api-abc',
+          selectedContainer: 'application',
+        }}
+      />,
+    );
+    await screen.findByRole('heading', { name: /^openshift$/i });
+    void user;
 
-    const select = await screen.findByLabelText(/^project$/i);
-    expect(select).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'payments' })).toBeInTheDocument();
+    expect(await screen.findByText('payments')).toBeInTheDocument();
+    expect(screen.getByText('payment-api (Deployment)')).toBeInTheDocument();
+    expect(screen.getByText('payment-api-abc')).toBeInTheDocument();
+    expect(screen.getByText('application')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /^project$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /^workload$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /^pod$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /^container$/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/selected from search, not here/i)).toBeInTheDocument();
+  });
+
+  it('shows "None selected" and "All workloads/pods/containers" truthfully when nothing more specific is chosen', async () => {
+    stubFetch((url) => (url.includes('intake-allowed') ? jsonResponse(true) : jsonResponse(CONNECTED)));
+    render(
+      <OpenShiftSettingsPanel
+        scope={{
+          selectedProject: null,
+          discoveryApi: 'PROJECTS',
+          selectedWorkloadKind: null,
+          selectedWorkloadName: null,
+          selectedPod: null,
+          selectedContainer: null,
+        }}
+      />,
+    );
+    await screen.findByRole('heading', { name: /^openshift$/i });
+
+    expect(await screen.findByText('None selected')).toBeInTheDocument();
+    // No project selected yet, so Workload/Pod/Container rows don't render at all (nothing to describe).
+    expect(screen.queryByText('All workloads')).not.toBeInTheDocument();
+  });
+
+  it('labels the current scope "Namespace" when discovery used the namespaces fallback, never "Project"', async () => {
+    stubFetch((url) =>
+      url.includes('intake-allowed') ? jsonResponse(true) : jsonResponse({ ...CONNECTED, projectApi: 'NAMESPACES' }),
+    );
+    render(
+      <OpenShiftSettingsPanel
+        scope={{
+          selectedProject: 'payments-ns',
+          discoveryApi: 'NAMESPACES',
+          selectedWorkloadKind: null,
+          selectedWorkloadName: null,
+          selectedPod: null,
+          selectedContainer: null,
+        }}
+      />,
+    );
+    await screen.findByRole('heading', { name: /^openshift$/i });
+
+    expect(await screen.findByText('Namespace')).toBeInTheDocument();
+    expect(await screen.findByText('payments-ns')).toBeInTheDocument();
   });
 
   it('says so plainly when the account genuinely has no projects', async () => {
@@ -213,7 +279,7 @@ describe('OpenShiftSettingsPanel', () => {
     expect(await screen.findByText(/has no projects/i)).toBeInTheDocument();
   });
 
-  it('labels the list truthfully when the namespaces fallback answered', async () => {
+  it('labels the summary row truthfully as "Namespaces" when the namespaces fallback answered, never "Projects"', async () => {
     stubFetch((url) =>
       url.includes('intake-allowed') ? jsonResponse(true) : jsonResponse({ ...CONNECTED, projectApi: 'NAMESPACES' }),
     );
@@ -221,18 +287,6 @@ describe('OpenShiftSettingsPanel', () => {
 
     // Must not silently call namespaces "Projects" (OS-1A §16).
     expect(await screen.findByText('Namespaces')).toBeInTheDocument();
-    // OS-1A review recovery #2 §5 - the selection control itself must
-    // agree with the summary, not just the summary row.
-    expect(screen.getByLabelText(/^namespace$/i)).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /all namespaces \(none selected\)/i })).toBeInTheDocument();
-  });
-
-  it('labels the selection control as "Project" when discovery used the native Projects API', async () => {
-    stubFetch((url) => (url.includes('intake-allowed') ? jsonResponse(true) : jsonResponse(CONNECTED)));
-    await openPanel();
-
-    expect(await screen.findByLabelText(/^project$/i)).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /all projects \(none selected\)/i })).toBeInTheDocument();
   });
 
   it('says "no namespaces" rather than "no projects" when the account has zero namespaces via the fallback', async () => {
@@ -256,201 +310,6 @@ describe('OpenShiftSettingsPanel', () => {
   });
 });
 
-/**
- * OS-1B §4/§21/§24 - the workload/pod/container hierarchy beneath a
- * selected project, and its distinct loading/empty/forbidden states.
- */
-describe('OpenShiftSettingsPanel - OS-1B scope controls', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-  });
-
-  afterEach(() => vi.unstubAllGlobals());
-
-  const CONNECTED_WITH_PROJECT = { ...CONNECTED, selectedProject: 'payments' };
-
-  const WORKLOAD_DISCOVERY = {
-    status: 'SUCCESS',
-    workloads: [{ kind: 'DEPLOYMENT', name: 'payment-api', desiredReplicas: 2, readyReplicas: 2 }],
-    kindOutcomes: [
-      { kind: 'DEPLOYMENT', status: 'AVAILABLE' },
-      { kind: 'DEPLOYMENT_CONFIG', status: 'UNAVAILABLE_RESOURCE_TYPE' },
-      { kind: 'STATEFUL_SET', status: 'AVAILABLE' },
-      { kind: 'DAEMON_SET', status: 'AVAILABLE' },
-    ],
-  };
-
-  const PODS = {
-    status: 'COMPLETE',
-    pods: [
-      {
-        name: 'payment-api-abc',
-        phase: 'Running',
-        readySummary: '1/1',
-        restartCount: 0,
-        containerNames: ['application'],
-        workloadKind: null,
-        workloadName: null,
-      },
-    ],
-  };
-
-  const EMPTY_PODS = { status: 'COMPLETE', pods: [] };
-
-  async function openPanelConnectedToAProject() {
-    const user = userEvent.setup();
-    render(<OpenShiftSettingsPanel />);
-    await screen.findByRole('heading', { name: /^openshift$/i });
-    return user;
-  }
-
-  it('discovers and lists workloads for the selected project, and does not spam the UI about an absent DeploymentConfig API', async () => {
-    stubFetch((url) => {
-      if (url.includes('intake-allowed')) return jsonResponse(true);
-      if (url.endsWith('/workloads')) return jsonResponse(WORKLOAD_DISCOVERY);
-      if (url.endsWith('/pods')) return jsonResponse(PODS);
-      return jsonResponse(CONNECTED_WITH_PROJECT);
-    });
-
-    await openPanelConnectedToAProject();
-
-    expect(await screen.findByRole('option', { name: 'payment-api (Deployment)' })).toBeInTheDocument();
-    // The absent DeploymentConfig API is UNAVAILABLE_RESOURCE_TYPE, not
-    // FORBIDDEN/ERROR - the common, expected case must not be surfaced as
-    // technical noise (OS-1B §8).
-    expect(screen.queryByText(/DeploymentConfig/i)).not.toBeInTheDocument();
-    expect(await screen.findByRole('option', { name: /payment-api-abc/i })).toBeInTheDocument();
-  });
-
-  it('says "No workloads in this project" rather than a blank control when discovery is genuinely empty', async () => {
-    stubFetch((url) => {
-      if (url.includes('intake-allowed')) return jsonResponse(true);
-      if (url.endsWith('/workloads')) return jsonResponse({ status: 'SUCCESS', workloads: [], kindOutcomes: [] });
-      if (url.endsWith('/pods')) return jsonResponse(EMPTY_PODS);
-      return jsonResponse(CONNECTED_WITH_PROJECT);
-    });
-
-    await openPanelConnectedToAProject();
-
-    expect(await screen.findByText(/no workloads in this project/i)).toBeInTheDocument();
-  });
-
-  it('reports a forbidden workload listing distinctly, never as "no workloads"', async () => {
-    stubFetch((url) => {
-      if (url.includes('intake-allowed')) return jsonResponse(true);
-      if (url.endsWith('/workloads')) return jsonResponse({ status: 'FORBIDDEN', workloads: [], kindOutcomes: [] });
-      // Pod listing is a separate RBAC permission from workload listing -
-      // discovery still attempts it independently (OS-1B §17).
-      if (url.endsWith('/pods')) return jsonResponse(EMPTY_PODS);
-      return jsonResponse(CONNECTED_WITH_PROJECT);
-    });
-
-    await openPanelConnectedToAProject();
-
-    expect(await screen.findByText(/not permitted to list workloads/i)).toBeInTheDocument();
-    expect(screen.queryByText(/no workloads in this project/i)).not.toBeInTheDocument();
-  });
-
-  it('selecting a workload re-resolves pods scoped to it', async () => {
-    const scopedPods = [
-      {
-        name: 'payment-api-def',
-        phase: 'Running',
-        readySummary: '1/1',
-        restartCount: 0,
-        containerNames: ['application'],
-        workloadKind: 'DEPLOYMENT',
-        workloadName: 'payment-api',
-      },
-    ];
-    let podsCall = 0;
-    stubFetch((url, init) => {
-      if (url.includes('intake-allowed')) return jsonResponse(true);
-      if (url.endsWith('/workloads')) return jsonResponse(WORKLOAD_DISCOVERY);
-      if (url.endsWith('/workload') && init?.method === 'PUT') {
-        return jsonResponse({
-          selectedProject: 'payments',
-          discoveryApi: 'PROJECTS',
-          selectedWorkloadKind: 'DEPLOYMENT',
-          selectedWorkloadName: 'payment-api',
-          selectedPod: null,
-          selectedContainer: null,
-        });
-      }
-      if (url.endsWith('/pods')) {
-        podsCall += 1;
-        return jsonResponse(podsCall === 1 ? PODS : { status: 'COMPLETE', pods: scopedPods });
-      }
-      return jsonResponse(CONNECTED_WITH_PROJECT);
-    });
-
-    const user = await openPanelConnectedToAProject();
-    await screen.findByRole('option', { name: 'payment-api (Deployment)' });
-    await screen.findByRole('option', { name: /payment-api-abc/i });
-
-    await user.selectOptions(screen.getByLabelText(/^workload$/i), 'DEPLOYMENT::payment-api');
-
-    expect(await screen.findByRole('option', { name: /payment-api-def/i })).toBeInTheDocument();
-  });
-
-  it('selecting a pod discovers its containers', async () => {
-    stubFetch((url, init) => {
-      if (url.includes('intake-allowed')) return jsonResponse(true);
-      if (url.endsWith('/workloads')) return jsonResponse(WORKLOAD_DISCOVERY);
-      if (url.endsWith('/pods')) return jsonResponse(PODS);
-      if (url.endsWith('/pod') && init?.method === 'PUT') {
-        return jsonResponse({
-          selectedProject: 'payments',
-          discoveryApi: 'PROJECTS',
-          selectedWorkloadKind: null,
-          selectedWorkloadName: null,
-          selectedPod: 'payment-api-abc',
-          selectedContainer: null,
-        });
-      }
-      if (url.endsWith('/containers')) return jsonResponse(['application']);
-      return jsonResponse(CONNECTED_WITH_PROJECT);
-    });
-
-    const user = await openPanelConnectedToAProject();
-    await screen.findByRole('option', { name: /payment-api-abc/i });
-    expect(screen.getByText(/select a specific pod/i)).toBeInTheDocument();
-
-    await user.selectOptions(screen.getByLabelText(/^pod$/i), 'payment-api-abc');
-
-    expect(await screen.findByRole('option', { name: 'application' })).toBeInTheDocument();
-  });
-
-  it('shows a truthful incompleteness note when the pod list is PARTIAL, and never implies full coverage', async () => {
-    stubFetch((url) => {
-      if (url.includes('intake-allowed')) return jsonResponse(true);
-      if (url.endsWith('/workloads')) return jsonResponse(WORKLOAD_DISCOVERY);
-      if (url.endsWith('/pods')) return jsonResponse({ status: 'PARTIAL', pods: PODS.pods });
-      return jsonResponse(CONNECTED_WITH_PROJECT);
-    });
-
-    await openPanelConnectedToAProject();
-
-    expect(await screen.findByText(/this list may be incomplete/i)).toBeInTheDocument();
-    // The pods that WERE proven still render normally - PARTIAL is an honest caveat, not a reason to hide the list.
-    expect(screen.getByRole('option', { name: /payment-api-abc/i })).toBeInTheDocument();
-  });
-
-  it('shows no incompleteness note for an ordinary COMPLETE pod result', async () => {
-    stubFetch((url) => {
-      if (url.includes('intake-allowed')) return jsonResponse(true);
-      if (url.endsWith('/workloads')) return jsonResponse(WORKLOAD_DISCOVERY);
-      if (url.endsWith('/pods')) return jsonResponse(PODS);
-      return jsonResponse(CONNECTED_WITH_PROJECT);
-    });
-
-    await openPanelConnectedToAProject();
-    await screen.findByRole('option', { name: /payment-api-abc/i });
-
-    expect(screen.queryByText(/this list may be incomplete/i)).not.toBeInTheDocument();
-  });
-});
 
 describe('OpenShiftSettingsPanel - OS-1F connecting state & scope-change notifications', () => {
   beforeEach(() => {
@@ -529,27 +388,9 @@ describe('OpenShiftSettingsPanel - OS-1F connecting state & scope-change notific
     expect(onScopeChanged).toHaveBeenCalled();
   });
 
-  it('calls onScopeChanged after selecting a project', async () => {
-    const CONNECTED_TWO_PROJECTS = { ...CONNECTED, projects: ['accounts', 'payments'] };
-    stubFetch((url, init) => {
-      if (url.includes('intake-allowed')) return jsonResponse(true);
-      if (url.endsWith('/project') && init?.method === 'PUT') {
-        return jsonResponse({ ...CONNECTED_TWO_PROJECTS, selectedProject: 'payments' });
-      }
-      if (url.endsWith('/workloads')) return jsonResponse({ status: 'SUCCESS', workloads: [], kindOutcomes: [] });
-      if (url.endsWith('/pods')) return jsonResponse({ status: 'COMPLETE', pods: [] });
-      return jsonResponse(CONNECTED_TWO_PROJECTS);
-    });
-    const onScopeChanged = vi.fn();
-    const user = userEvent.setup();
-    render(<OpenShiftSettingsPanel onScopeChanged={onScopeChanged} />);
-    await screen.findByRole('heading', { name: /^openshift$/i });
-
-    const select = await screen.findByLabelText(/^project$/i);
-    await user.selectOptions(select, 'payments');
-
-    await waitFor(() => expect(onScopeChanged).toHaveBeenCalled());
-  });
+  // Project/Workload/Pod/Container selection (and its own onScopeChanged calls) moved to Search's
+  // `OpenShiftScopeSelect.tsx` - see OpenShiftScopeSelect.test.tsx. This panel still calls it after
+  // connect/disconnect (tested above), the one mutation it still performs.
 });
 
 /**
