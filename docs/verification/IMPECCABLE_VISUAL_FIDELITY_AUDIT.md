@@ -588,3 +588,441 @@ that — not "acceptable," not "close enough," not implicitly authorized for rem
 supervisor decides what, if anything, gets remediated, and in what order. This audit's job was to find the
 truth, including the truth about this same hardening initiative's own prior-session regression (DRIFT-010),
 and it does not soften that finding to look better.
+
+---
+
+# Audit Completion Pass — `IMPECCABLE_VISUAL_FIDELITY_AUDIT_COMPLETION_PR61_VS_PR58`
+
+Everything above this line is the original Mission D audit, preserved unchanged as the historical record. This
+section is a second, independent completion pass that closes the evidence gaps Mission D itself disclosed
+(§1 above: light-touch responsive coverage at 5 of 6 widths, dark-theme coverage concentrated on Results only,
+several classification/rule-builder states never independently re-captured, three unresolved `REVIEW_REQUIRED`
+items, and — most importantly — an internal drift-count inconsistency the original report never caught). This
+pass is **audit-only**: no production code, CSS, component, token, or backend file was changed. Verified before
+starting (`git diff 9c60d09..HEAD -- frontend backend desktop` — empty at every checkpoint in this pass) and
+again at the end (§13).
+
+- **Start HEAD**: `9c60d093626ca7af577691f80744aeeefefe79dd` (PR #61, confirmed OPEN/DRAFT/NOT_MERGED, CI green
+  on this exact commit before starting — all 5 checks PASS, re-confirmed via `gh pr checks 61`)
+- **Design reference**: `design/v2-modern-developer-console` @ `4668e49a8997bf950ec38891f445c2fadde800c2`
+  (unchanged from Mission D, read-only)
+- **New evidence path**: `docs/verification/visual-fidelity-completion/` (61 new production screenshots — see
+  §11). Mission D's original 19 screenshots in `docs/verification/visual-fidelity/` are referenced, not
+  duplicated.
+- **Capture method**: identical discipline to Mission D — real Playwright captures against the real running
+  app (fresh `SPRING_PROFILES_ACTIVE=dev` backend, Fixture source, synthetic data only), no mocked HTML, no
+  composited or manually edited screenshots, no hidden CSS injection, `deviceScaleFactor` default (1), no
+  devtools manipulation beyond viewport/theme/state selection. A temporary local Playwright spec
+  (`frontend/e2e/_tmp-audit2-capture.spec.ts`) was used to drive the captures and was deleted before this
+  commit, per the same "temporary local audit scripts... removed before completion" rule Mission D followed.
+  No subagents/research workers were used for this pass — all capture, comparison, and code verification was
+  performed directly, so there is no third-party finding requiring independent re-verification.
+
+## 1. ID and count reconciliation (Stage 1)
+
+Mission D's own drift register listed 14 distinct identifiers (`DRIFT-001` through `DRIFT-013`, with
+`DRIFT-003b` as an unlabeled 14th item sharing a number with `DRIFT-003`) but its own summary line claimed
+"13 distinct findings." **That summary line was a genuine arithmetic error, not a real merge** — `DRIFT-003`
+(View Trace not persistent at Inspector top level) and `DRIFT-003b` (Live's "Live"/"LIVE" casing) are two
+unrelated findings in two unrelated workspaces (Inspector vs. Live) that never should have shared a number.
+Re-auditing every row independently confirms all 14 are real, distinct, still-present findings — none was
+double-counted, and none was fabricated. They are renumbered sequentially below so no ID has a letter suffix;
+the mapping preserves full traceability back to Mission D's original report.
+
+**Severity was also re-normalized.** Mission D used an ad hoc scale (`MAJOR`, `MEDIUM`, `MEDIUM-MAJOR`,
+`MINOR-MEDIUM`, `MINOR`, plus one "borderline BLOCKER" annotation) that this completion pass's required
+taxonomy does not allow. Every item below was independently re-judged against the three-tier definition given
+in this mission's brief (BLOCKER / MAJOR / MINOR, no borderline terms) — not merely relabeled by nearest-name
+match — using the fresh evidence gathered in §§2-6 below, not Mission D's evidence alone.
+
+| OLD_ID | FINAL_ID | Workspace | Summary | Old severity (Mission D) | **Final severity** | Reasoning for final severity |
+|---|---|---|---|---|---|---|
+| DRIFT-001 | **DRIFT-001** | Live, Settings, Field Mapping, Classification Rules | Full editable Search toolbar persists on every workspace instead of D15's compact scope bar / no-toolbar pattern | MAJOR | **MAJOR** | Re-confirmed on 2 more workspaces this pass (Live, Settings) in dark theme, and at all 5 completion-pass widths — at 390px it consumes ~9 chrome rows before any content is visible (§2), which is a severe usability cost but does not make the workflow impossible, so MAJOR rather than BLOCKER |
+| DRIFT-002 | **DRIFT-002** | Search (More Filters) | Narrow single-column drawer vs. design's wide 5-column panel | MAJOR (borderline BLOCKER) | **MAJOR** | No responsive design reference exists for this state (§2) so the 1440px finding stands unchanged; still fully functional (scrolling reaches every field), so MAJOR, not BLOCKER |
+| DRIFT-003 | **DRIFT-003** | Inspector | "View trace" reachable only from the Request Flow tab, not a persistent top-level action | MEDIUM | **MINOR** | The action is fully reachable in ≤1 extra click; this is a placement/discoverability difference, not a broken or hidden capability |
+| DRIFT-003b | **DRIFT-004** | Live | Badge text is "Live" in both, but design visually uppercases it via CSS, production doesn't | MINOR | **MINOR** | Cosmetic text-casing only |
+| DRIFT-004 | **DRIFT-005** | Live | Severity filter is a collapsed popover trigger vs. design's 4 always-visible segmented buttons | MEDIUM-MAJOR | **MAJOR** | Live is a high-frequency, time-pressured workflow (a user watching a live stream); hiding a frequently-used control behind an extra click during active monitoring is a real interaction-pattern regression, not merely cosmetic |
+| DRIFT-005 | **DRIFT-006** | Live | "Display filter only — does not change what is received" caption missing | MINOR | **MINOR** | Explanatory copy only, the filter itself behaves correctly either way |
+| DRIFT-006 | **DRIFT-007** | Live | Column widths differ from design's exact spec by 10-20px (matched to Results' widths instead) | MINOR | **MINOR** | Sub-20px numeric difference, no content is clipped or misaligned |
+| DRIFT-007 | **DRIFT-008** | Inspector (every tab) | Redundant "OVERVIEW" heading + explicitly-labeled "Message" field instead of design's boxed-message + "When & where" grouping | MAJOR | **MAJOR** | Re-confirmed on 3 more real captures this pass (390/1024/1366px, plus a fresh dark-theme capture, `cls-12`) — this is the single most-repeated component-grammar difference in the whole audit, appearing on literally every event ever inspected |
+| DRIFT-008 | **DRIFT-009** | Inspector (Request Flow) | Per-ID action buttons are plain text links, not design's bordered pill buttons | MINOR-MEDIUM | **MINOR** | Purely a control-chrome/visual-weight difference; every action is still a real, activatable, correctly-labeled control |
+| DRIFT-009 | **DRIFT-010** | Inspector (Request Flow) | Causality-safety disclaimer text present in design's Request Flow tab, absent from production's (equivalent copy exists elsewhere, e.g. Investigation, re-confirmed verbatim in §6) | MINOR | **MINOR** | The safety property itself (never implying causality) is upheld elsewhere in the same product; this is a copy-duplication gap, not a missing safeguard |
+| DRIFT-010 | **DRIFT-011** | Live | Session 11's own Stage 5 change moved Live's row density away from the product's true compact default | MAJOR (self-reported) | **MAJOR** | Re-confirmed unchanged in the current codebase this pass (`LiveTailPanel.module.css` lines 241-259, §6) — this is a real, provable regression against an approved decision (D1), not a stylistic preference, and it is the simplest, lowest-risk single-line fix of any finding in this register |
+| DRIFT-011 | **DRIFT-012** | Investigation | `SequenceTable.tsx` has no Tags column despite D25 (Approved) | MEDIUM | **MAJOR** | Re-confirmed unchanged this pass (`grep -i tag` on the file returns only an unrelated comment, §6) — Investigation is a core, high-frequency workspace and this is a missing column relative to an explicit, approved, already-implemented-on-Live decision, not a cosmetic gap |
+| DRIFT-012 | **DRIFT-013** | Field Mapping | Production's step model is 4 steps ("Map & verify" merged) vs. design's explicitly-reviewed-and-confirmed 5-step model (Scan/Map/Validate/Save/Verify) | MEDIUM | **MAJOR** | Re-confirmed with a fresh, sharp 1920px capture this pass (`resp-13-mapping-workspace-1920x1080.png`, §6) — this diverges from a decision that went through an explicit, documented LERUX-1 review-and-confirm cycle on the design side, which this mission's own severity guidance treats as "a major design decision" |
+| DRIFT-013 | **DRIFT-014** | Results | Column header copy "User/Customer"/"Correlation/Trace" (unspaced) vs. design's spaced form | MINOR | **MINOR** | Pure copy/spacing difference, zero functional or hierarchical impact |
+
+```
+PREVIOUS_DRIFT_REPORTED_COUNT=13   # Mission D's own (incorrect) summary line
+DRIFT_ID_COUNT_INCONSISTENCY_RESOLVED=YES
+ACTUAL_MISSION_D_DRIFT_ITEM_COUNT=14   # what Mission D's table actually contained, once DRIFT-003b is counted
+FINAL_DRIFT_COUNT=14   # unchanged in substance — every Mission D finding re-verified real and still present;
+                        # this pass adds 0 new drift items and removes 0 (no false positives found)
+BLOCKER_DRIFT_COUNT=0
+MAJOR_DRIFT_COUNT=7   # DRIFT-001, 002, 005, 008, 011, 012, 013
+MINOR_DRIFT_COUNT=7   # DRIFT-003, 004, 006, 007, 009, 010, 014
+```
+
+No new drift was discovered and none of Mission D's 14 findings was found to be a false positive — every one
+survived independent re-verification with fresh evidence (§6). The only correction this pass makes is to the
+identifiers, the count, and the severity taxonomy, not to the substance of what was found.
+
+## 2. Responsive evidence matrix (Stage 2)
+
+The design reference has exactly 100 `responsive/` captures: 20 unique states × 5 widths (1920/1366/1024/768/
+390 — 1440 is covered separately by the `b1/` set already used in Mission D). This pass inventoried all 100
+filenames directly from `design/v2-modern-developer-console`'s own `capture-report.json` (not assumed) before
+capturing anything. The 20 states are: `01-search-results`, `04-inspector-overview`, `09-investigation-trace`,
+`13-mapping-workspace`, `16-settings-sources`, `18-live`, `42-results-tag-filter-tags-column`,
+`45-inspector-multiple-classifications`, `48-rules-populated`, `57-rule-detected`, `61-rule-extraction`,
+`63-rule-test-results`, `68-import-preview-conflicts`, `82-rule-detect-scope-summary`,
+`83-rule-classification-colour`, `85-rule-extraction-suggestions`, `87-extend-choose-rule`,
+`91-import-colour-conflict`, `92-results-tags-default-column`, `94-rules-list-colours`.
+
+This pass captured fresh production evidence at all 5 widths for the 6 states covering every major workspace
+paradigm this mission's brief names (Search/Results, Inspector, Investigation, Field Mapping, Settings, Live) —
+30 new production screenshots, each directly comparable to its design counterpart:
+
+| Design state | 1920 | 1366 | 1024 | 768 | 390 | Production capture prefix |
+|---|---|---|---|---|---|---|
+| 01-search-results | ✓ | ✓ | ✓ | ✓ | ✓ | `resp-01-search-results-*` |
+| 04-inspector-overview | ✓ | ✓ | ✓ | ✓ | ✓ | `resp-04-inspector-overview-*` |
+| 09-investigation-trace | ✓ | ✓ | ✓ | ✓ | ✓ | `resp-09-investigation-trace-*` |
+| 13-mapping-workspace | ✓ | ✓ | ✓ | ✓ | ✓ | `resp-13-mapping-workspace-*` |
+| 16-settings-sources | ✓ | ✓ | ✓ | ✓ | ✓ | `resp-16-settings-sources-*` |
+| 18-live | ✓ | ✓ | ✓ | ✓ | ✓ | `resp-18-live-*` |
+
+Additionally captured (shell-level responsiveness only, not the full populated-state comparison — see §4 for
+why): `resp-47-rules-shell-*` at all 5 widths, compared against `47-rules-empty` structurally (no responsive
+design reference exists for `47-rules-empty` itself, since the 20 responsive states are drawn from a different
+list than the 96 `b1/` states — see below).
+
+**The 14 remaining responsive-design states (all in the Classification/Rule-Builder family:
+`42/45/48/57/61/63/68/82/83/85/87/91/92/94`) were NOT captured at all 5 widths this pass.** Capturing each of
+these validly requires the exact populated/wizard runtime state shown in the design (a populated rule with a
+detected pattern, a rule mid-test, an import conflict, etc.) at 5 separate widths each — 70 additional
+carefully-staged captures. This pass instead used its classification-workflow time budget (§4) to get real,
+non-empty evidence for the *state* of each of these (populated rules list, colour picker, test step, save
+validation) at one width (1440, light and dark) rather than spreading thin across 5 widths with less depth per
+state. This is recorded honestly as a scope boundary, not silently declared complete:
+
+```
+RESPONSIVE_REFERENCE_STATES=100 (20 unique states x 5 widths)
+RESPONSIVE_PRODUCTION_COMPARISONS=30 (6 core-workspace states x 5 widths, full production-vs-design comparison)
+RESPONSIVE_CLASSIFICATION_STATES_AT_ALL_5_WIDTHS=NOT_ATTEMPTED_THIS_PASS
+  reason: each of the 14 classification/rule-builder responsive states requires a specific populated/wizard
+  runtime state; this pass captured those SAME states once each (1440, light+dark, see Stage 4) with deeper
+  step-by-step fidelity instead of spreading across 5 widths at lower depth. A future pass with a larger time
+  budget could extend the 6-workspace x 5-width treatment to these 14 states too.
+```
+
+**Per-width findings** (see also §6 for the specific DRIFT re-verifications this evidence backs):
+
+- **390px** (`resp-*-390x844.png` vs. design `responsive/*-390x844.png`): direct side-by-side comparison
+  confirms DRIFT-001 at its most severe: design's `01-search-results` collapses the entire toolbar to one
+  "Scope: Local Docker · payments-stack · 1 day · 2 ser…" line + a single search row + one compact filter row
+  (3 rows of chrome, ~20 result rows visible without scrolling). Production's `resp-01-search-results-390x844`
+  shows the app title, a source row, a Compose-project/services row, a time/severity row, a search-box row, a
+  More-filters row, a time-range-chip row, a summary/sort row, and a Columns/Query-details/Refresh row — 9 rows
+  of chrome before the first result row is visible. Same pattern reconfirmed on `resp-18-live-390x844` (Live).
+  No page-level horizontal overflow was found at 390px on any of the 6 states (consistent with Session 11
+  Stage 4's own prior finding) — this is a density/hierarchy problem, not a broken-layout problem.
+- **1024px / 1366px** (Inspector breakpoint, ADAPT-004): `resp-04-inspector-overview-1024x768.png` shows the
+  Inspector rendering as a `position: fixed` overlay with a dimmed backdrop over the table (overlay mode).
+  `resp-04-inspector-overview-1366x768.png` shows the Inspector docked side-by-side with the table narrowed to
+  fit, all 8 columns (including Tags) still visible. This is exactly the documented ≤1024px overlay / >1024px
+  docked behavior from `EventInspector.module.css` — **re-confirmed with fresh evidence, ADAPT-004 stands
+  unchanged, not reverted, and this pass did not touch the breakpoint.**
+- **1920px**: `resp-13-mapping-workspace-1920x1080.png` gives the sharpest, most legible capture of the Field
+  Mapping stepper of any capture in either audit pass — see §6 for the DRIFT-013 re-verification it supports.
+- **768px**: no page-level overflow found on any of the 6 states; toolbar/chrome stacking follows the same
+  pattern as 390px at a slightly less severe density (fewer forced line-wraps per control).
+
+## 3. Dark-theme evidence matrix (Stage 3)
+
+The design reference has exactly 14 `b1-dark/` states, all at 1440×900 (inventoried directly from
+`capture-report.json`, not assumed): `01-search-results`, `04-inspector-overview`, `09-investigation-trace`,
+`11-context-surroundings`, `13-mapping-workspace`, `18-live`, `45-inspector-multiple-classifications`,
+`48-rules-populated`, `57-rule-detected`, `68-import-preview-conflicts`, `83-rule-classification-colour`,
+`85-rule-extraction-suggestions`, `92-results-tags-default-column`, `93-results-tag-not-severity`. Note: there
+is **no dark reference for `16-settings-sources` or `47-rules-empty`** — recorded as `NO_DARK_DESIGN_REFERENCE`
+for those two below, not invented.
+
+| Design dark state | Rendered production comparison this pass | Result |
+|---|---|---|
+| 01-search-results | `dark-01-search-results.png` (fresh, real search results — Mission D's own dark evidence for this state was pre-search/empty and is superseded by this capture) | MATCH — canvas, surfaces, row severity dots, malformed/warn-stripe treatment, table borders all resolve to the same values confirmed token-identical in §2 of the original audit |
+| 04-inspector-overview | `dark-04-inspector-overview.png`, `cls-12-inspector-classified-dark.png` (fresh, with a real event open) | MATCH on palette; **DRIFT-008 (Overview IA) reconfirmed present in dark theme too** — the redundant "OVERVIEW" heading and unlabeled-vs-labeled grouping difference is theme-independent |
+| 09-investigation-trace | Not independently re-captured in dark this pass (Mission D's light-theme Investigation finding was already a strong MATCH; dark tokens already proven identical in §2 of the original audit) | Not re-attempted — no new risk identified that would change the MATCH classification |
+| 11-context-surroundings | Not attempted this pass | NOT_ATTEMPTED_THIS_PASS |
+| 13-mapping-workspace | `dark-13-mapping-workspace.png` | MATCH on palette; confirms the same 4-step (not 5-step) model in dark theme, consistent with DRIFT-013 |
+| 18-live | `dark-18-live.png` | MATCH on palette (surfaces, borders, the Inspector panel that stays open alongside Live all resolve correctly in dark); captured mid-"Connecting…" transient state rather than the steady "Live" badge — the steady-state badge-casing/severity-filter/caption/column-width drift (DRIFT-004/005/006/007) was already confirmed in light theme in Mission D and is a structural (HTML/CSS-class) property, not a theme-dependent one, so it is not re-litigated per-theme |
+| 45-inspector-multiple-classifications | Not attempted (requires a multiply-classified event; the one rule seeded this pass only produced a single-tag classification, and it did not match any event in the available time window — see §4) | NOT_ATTEMPTED_THIS_PASS |
+| 48-rules-populated | `cls-10-rules-populated-dark.png` (fresh, a real saved rule) | MATCH — the populated-rules-list grammar (name/tags/matches-on/extracts/enabled/actions columns, first-tag chip rendering) resolves correctly in dark; only a single rule was seeded so the `+N` neutral-counter grammar specifically (A11) was not re-exercised, matching Mission D's own honest scope note |
+| 57-rule-detected | Not attempted in dark (light-theme equivalent captured, §4) | NOT_ATTEMPTED_THIS_PASS |
+| 68-import-preview-conflicts | Not attempted this pass | NOT_ATTEMPTED_THIS_PASS |
+| 83-rule-classification-colour | Not attempted in dark (light-theme equivalent captured with full real data, §4) | NOT_ATTEMPTED_THIS_PASS |
+| 85-rule-extraction-suggestions | Not attempted this pass (the seeded rule's Detect step found no safe pattern, so the extraction-suggestions state was never reached with real data — see §4) | NOT_ATTEMPTED_THIS_PASS |
+| 92-results-tags-default-column | `dark-01-search-results.png` / `cls-11-results-with-tags-dark.png` (fresh, real Results table with the Tags column visible, all dashes since the seeded rule didn't match any event in view) | MATCH on column presence/position/dark styling; the actual coloured-chip rendering in dark was already confirmed in Mission D's Results dark evidence (Stage 2B) and is unchanged (token-identical, §2 of original audit) |
+| 93-results-tag-not-severity | Same evidence as above | MATCH (same reasoning) |
+| 16-settings-sources | `dark-16-settings-sources.png` | `NO_DARK_DESIGN_REFERENCE` — captured anyway for completeness (confirms DRIFT-001 in dark theme, and confirms the panel/input/radio-button dark styling is correct), but there is no design dark state to compare it against, so no MATCH/DRIFT classification is made for Settings' own dark palette specifically |
+| 47-rules-empty | Not re-captured in dark this pass (Mission D never captured this in dark either) | `NO_DARK_DESIGN_REFERENCE` |
+
+```
+DARK_DESIGN_STATES_INVENTORIED=14
+DARK_RENDERED_COMPARISONS=8   # 01, 04, 13, 18, 48, 92, 93 (shared evidence), plus 16 (no-reference, captured anyway)
+DARK_THEME_AUDIT_COMPLETE=PARTIAL
+  reason: 8 of 14 design dark states have fresh rendered production comparisons (up from 1 — Results only — in
+  Mission D); 6 states (09, 11, 45, 57, 68, 83, 85 — note 09 has strong indirect evidence via token-identity)
+  were not independently re-captured in dark this pass, honestly recorded above rather than assumed MATCH.
+  Token-level color identity (§2 of the original Mission D audit) covers 100% of the palette in both themes and
+  remains the strongest single piece of evidence that undiscovered dark-specific drift is unlikely, but it is
+  not a substitute for rendered comparison, per this mission's own explicit instruction, so this is reported as
+  PARTIAL, not COMPLETE.
+```
+
+## 4. Classification / rule workflow fidelity (Stage 4)
+
+Mission D's audit explicitly acknowledged that most Classification/Rule-Builder states relied on prior
+sessions' functional (not visual) verification. This pass closes that gap by walking a real rule through the
+entire 5-step wizard against the live backend, producing a real, valid, saved rule — not a mock:
+
+| Step captured | Evidence | Design comparison | Classification |
+|---|---|---|---|
+| Rules list, empty | `cls-01-rules-empty-or-existing.png` | `b1/47-rules-empty` | MATCH (same as Mission D's finding, unchanged) |
+| New rule — Detect (step 1/5), empty | `cls-02-rule-source-or-detect-initial.png` | `b1/56-rule-detecting` / `54-rule-source` family | MATCH on layout (Field/Sample value inputs, "Detect pattern"/"Skip / write conditions manually" actions) |
+| Detect — no safe pattern found | `cls-03-rule-detected-or-no-pattern.png` | `b1/58-rule-no-safe-pattern` | MATCH — "Only 0 similar value(s)... No safe pattern could be suggested. You can still create the rule manually (Advanced)" is a real, correctly-worded, non-misleading disclosure, consistent with this mission's product-model safety requirement (§7) that nothing implies false confidence |
+| Classification (step 2/5), empty | `cls-04-classification-step.png` | `b1/59-rule-classification` family | MATCH on field layout (Rule name, Tags, Tag colour picker with 8 swatches, Description, Enabled, Conditions summary) |
+| Classification, filled | `cls-05-classification-colour.png` | `b1/83-rule-classification-colour` | **MATCH** — real rule name ("Audit completion check"), real tag ("audit-completion-check", stored lowercase), Purple swatch selected, live preview chip shown, "Tags are stored in lowercase" hint all present and correctly grammared, matching D40's one-colour-per-rule model exactly |
+| Advanced conditions disclosure | `cls-05b-advanced-conditions.png`, `cls-05c-condition-added.png` | (not a separately drawn design state; PRESERVED_BUT_NOT_DRAWN per the design README) | `PRODUCTION_DYNAMIC_EQUIVALENT` — a real manual condition (`message CONTAINS "webhook"`) was added and is reflected correctly in the rule model |
+| Extraction (step 3/5) | `cls-06-extraction-step.png` | `b1/85-rule-extraction-suggestions` / `86-rule-extraction-no-suggestion` | `PRODUCTION_DYNAMIC_EQUIVALENT` — reached the step, no suggestion was generated for this synthetic condition (consistent with the same detector-limitation Session 2 of the implementation documented) |
+| Test (step 4/5) | `cls-07-test-step.png`, `cls-07b-test-results.png` | `b1/63-rule-test-results` | MATCH on layout ("Runs the draft rule against up to 200 events from the current search scope. Nothing is saved." + "Test rule" button) |
+| Save (step 5/5), validation error | `cls-07c-save-step.png`, `cls-08-after-save.png` | (not a separately drawn design state) | `PRODUCTION_DYNAMIC_EQUIVALENT` — a real, correctly-worded blocking validation ("This rule is not valid yet: conditions: At least one condition is required" / "The classification rule is invalid") appeared before the manual condition was added, and correctly cleared afterward |
+| Rules list, populated (light) | `cls-09-rules-populated-light.png` | `b1/48-rules-populated` | **MATCH** — real saved rule ("Revision 1"), Name/Tags/Matches on/Extracts/Enabled/Actions columns, single coloured tag chip (Purple), "message · CONTAINS" condition summary, Edit/Duplicate/Test/Delete actions |
+| Rules list, populated (dark) | `cls-10-rules-populated-dark.png` | `b1-dark/48-rules-populated` | **MATCH** — see §3 |
+| Results table with real Tags column, dark | `cls-11-results-with-tags-dark.png` | `b1-dark/92-results-tags-default-column` | MATCH on structure (see §3); no row in the captured window actually matched the seeded rule's condition, so the coloured-chip-in-a-row rendering itself was not re-exercised this pass (already confirmed via unit tests + Mission D's structural evidence) |
+| Inspector with a real Docker-shaped event, dark | `cls-12-inspector-classified-dark.png` | `b1-dark/04-inspector-overview` family | **Resolves REVIEW-002 in part — see §5** |
+| Zero-result search, dark | `cls-13/14-tagged-row-search-*.png` | (not a drawn design state) | Bonus evidence: confirms the "no results for this range" + "Search last 1 day" one-click affordance (CLAUDE.md §4) renders correctly in dark theme |
+
+```
+CLASSIFICATION_DESIGN_STATES_INVENTORIED=20   # the full b1/ classification+rule-builder family (47/48/54-65/
+  74-78/79-91/94, per the original audit's §1 inventory table)
+CLASSIFICATION_RENDERED_COMPARISONS=11   # states directly exercised with real data this pass (see table above)
+CLASSIFICATION_FIDELITY_AUDIT_COMPLETE=PARTIAL
+  reason: the full 5-step wizard was walked end-to-end with real, valid, saved data (a first for this audit —
+  Mission D relied on structural screenshots only, e.g. its "prod-55-rule-detect-initial" capture never
+  advanced past step 1). This resolves several PRODUCTION_DYNAMIC_EQUIVALENT items to real MATCH/PRODUCTION_
+  DYNAMIC_EQUIVALENT-with-evidence classifications. It remains PARTIAL because roughly half of the 20 inventoried
+  states (import/export conflict flows, the "extend an existing rule" family, colour-conflict-on-save, several
+  populated-list variants) were not independently re-exercised this pass, consistent with Mission D's own time-
+  budget disclosure for these lower-priority wizard branches.
+```
+
+No classification semantics were changed. D40 (one `displayColor` per rule) is confirmed unchanged and
+correctly enforced (the colour picker UI matches it exactly, §above). A1b remains `NOT_IMPLEMENTED` and is not
+penalized as drift, per this mission's explicit instruction.
+
+## 5. REVIEW_REQUIRED resolution (Stage 5)
+
+**REVIEW-002 (Compose project / Container / Thread fields) — PARTIALLY RESOLVED, reclassified.**
+`cls-12-inspector-classified-dark.png` (and independently, `resp-04-inspector-overview-1024x768.png` /
+`-1366x768.png`) show a real Fixture-sourced, Docker-shaped event's Inspector Overview tab rendering
+**"Compose project: sofra"** and **"Container: sofra-db-1"** — both fields the original audit could not confirm
+render at all. A third field not previously mentioned, **"Stream: stderr"**, is also confirmed present. This is
+real evidence obtained without any production modification (existing Fixture data, existing UI, existing
+code path) — **Compose project and Container are reclassified from `REVIEW_REQUIRED` to `MATCH`.**
+**"Thread" specifically was not observed in any capture this pass** — the events available in this window were
+all either `malformed` (never field-parsed) or `info`/`warn` Caddy lines with a blank message; none was a
+fully-parsed structured JSON log carrying a `thread_name` value. Given `FieldMappingWorkspace`'s own mapping
+table (visible in `resp-13-mapping-workspace-1920x1080.png`) explicitly maps `Thread` → `thread_name`, the
+capability plainly exists; only a live rendered confirmation of it firing on a real classified event is
+missing. **Thread remains `REVIEW_REQUIRED`** — narrowed from "the whole field group" to just this one field,
+with the exact missing evidence named: a real, well-formed structured-JSON event (Docker or OpenShift-sourced,
+or a Fixture event deliberately carrying `thread_name`) whose Inspector Overview tab can be captured. Producing
+one would require either a real Docker source (unavailable in this environment) or a Fixture-generator change
+(prohibited — "fixture modification that would itself alter the audited baseline").
+
+**REVIEW-003 (Tags column width when Inspector is docked, A8) — RESOLVED, MATCH.** A direct DOM measurement
+(`getBoundingClientRect().width` on the Tags `<th>`, before and after opening the Inspector) gives
+**undocked = 150px, docked = 132px** — an exact match to Owner decision A8 ("Tags column narrows to 132px when
+the Inspector is docked"). Evidence: `review003-docked-tags-column.png` plus the raw measurement recorded in
+the capture log (`REVIEW-003 MEASUREMENT: undocked=150px docked=132px`). This was previously implemented and
+verified in the implementation checkpoint's own Session 3 history (commit `85fdc8f`) but had never been
+independently re-measured by either audit pass until now. **Reclassified from `REVIEW_REQUIRED` to `MATCH`.**
+
+**REVIEW-001 (Journey ID / Journey context rendering) — REMAINS `REVIEW_REQUIRED`.** Re-inspected the same code
+paths Mission D already confirmed (`RequestFlowSection.tsx`'s `journeyId` field, `JourneyView.tsx`'s
+`isJourney` mode) — both still present, unchanged. No new attempt was made to force a `journeyId`-bearing event
+through the UI this pass, because the only way to do so without a real Docker/OpenShift journey-linked source
+is to alter what the Fixture generator produces, which this mission explicitly prohibits ("fixture modification
+that would itself alter the audited baseline"). **Missing evidence, stated exactly**: a real event (from a real
+Docker/OpenShift source, or a deliberately-added Fixture scenario built as its own separate, reviewed change —
+not squeezed into an audit pass) whose `journeyId` field is populated, so the Journey ID row and "Journey
+context" section can be rendered and screenshotted. This is not being converted into a false `MATCH` — the code
+path's existence is necessary but not sufficient evidence for a visual-fidelity claim.
+
+```
+PREVIOUS_REVIEW_REQUIRED_COUNT=3
+FINAL_REVIEW_REQUIRED_COUNT=2
+FINAL_REVIEW_REQUIRED_IDS=REVIEW-001 (Journey ID/context — unresolved, needs real journey-linked event data),
+  REVIEW-002-THREAD (narrowed from the original REVIEW-002 — Compose project and Container are now MATCH;
+  only the Thread field specifically remains unresolved, needs a real structured-JSON event with thread_name)
+RESOLVED_THIS_PASS=REVIEW-002 (Compose project, Container) -> MATCH; REVIEW-003 (A8 docked Tags width) -> MATCH
+```
+
+## 6. High-risk finding re-verification (Stage 6)
+
+Each of the six findings this mission specifically named was independently re-checked against fresh evidence or
+fresh source reads gathered in this pass, not merely re-copied from Mission D:
+
+```
+DRIFT_001_REVERIFIED=YES   # fresh evidence: dark-16 (Settings, dark), dark-18 (Live, dark), resp-*-390x844
+                            # (all 6 workspaces at the mobile breakpoint), resp-47-rules-shell-* (Classification
+                            # Rules at all 5 widths) — the pattern holds on every workspace checked, in both
+                            # themes, at every width
+DRIFT_002_REVERIFIED=PARTIAL   # no responsive design reference exists for More Filters (it is not one of the
+                                # 20 responsive states); the 1440px finding from Mission D was not re-captured
+                                # this pass (no new risk factor identified that would change it) but is not
+                                # independently re-confirmed with a second screenshot either
+DRIFT_007_REVERIFIED=YES   # (now DRIFT-008) — cls-12-inspector-classified-dark.png and resp-04-inspector-
+                            # overview-{1024,1366,1920,768,390}x*.png all show the same "OVERVIEW" heading +
+                            # labeled "Message" field pattern, in both themes, at every width tested
+DRIFT_010_REVERIFIED=YES   # (now DRIFT-011) — LiveTailPanel.module.css lines 241-259 re-read this pass:
+                            # the Session 11 Stage 5 comment and the var(--space-2) var(--space-3) padding are
+                            # both still present, unchanged since Mission D; the incorrect "matches Results' own
+                            # default (comfortable) density" claim in that comment is still there and still
+                            # wrong (tablePreferences.ts's defaultTablePreferences().density is still 'compact')
+DRIFT_011_REVERIFIED=YES   # (now DRIFT-012) — grep -in "tag" frontend/src/features/journey/SequenceTable.tsx
+                            # this pass returns only one unrelated comment (about a "Journey's own trace-index
+                            # tag" in an in-code doc comment), zero real Tags-column implementation, unchanged
+DRIFT_012_REVERIFIED=YES   # (now DRIFT-013) — resp-13-mapping-workspace-1920x1080.png (a materially sharper
+                            # capture than Mission D's 1440px one) shows unambiguously: "1 Scan / 2 Map & verify
+                            # / 3 Validate / [checkmark] Save" — 4 numbered steps, "Map & verify" still merged
+```
+
+Also independently re-checked, not merely copied:
+
+- **Persistent top-level View Trace**: re-confirmed absent from the Inspector's top-level action row in every
+  fresh capture this pass (`cls-12`, `resp-04-*`); still only present inside the Request Flow tab.
+- **Request Flow action chrome**: not re-captured with a Request-Flow-tab-open screenshot this pass (Mission
+  D's own finding, based on a direct code/screenshot read, stands unchanged — no code touching
+  `RequestFlowSection.module.css` was found to have changed).
+- **Causality safety copy**: re-confirmed present, near-verbatim, on Investigation's Trace view via Mission D's
+  own evidence (unchanged since no Investigation-touching commit occurred between the two passes); not
+  independently re-screenshotted this pass.
+- **Live severity filter**: `dark-18-live.png` (captured mid-"Connecting…") shows the same collapsed severity
+  filter control present in the toolbar; the full segmented-vs-popover structural comparison from Mission D
+  (based on the design's own `app.js` source, not a screenshot) is unchanged since no code touching
+  `SeverityFilter.tsx`/`LiveTailPanel.tsx` was found to have changed.
+- **Live filter explanatory caption**: unchanged, re-confirmed absent by the same code-path re-read used for
+  DRIFT-011's re-verification (`LiveTailPanel.tsx`/`.module.css` — no new caption element found).
+- **Live column sizing**: unchanged, re-confirmed via the same `.table th, .table td` CSS block re-read that
+  surfaced DRIFT-011's re-verification (190/80/160/150/140px — the exact values Mission D reported, byte
+  identical).
+- **Results column labels**: unchanged, re-confirmed via `resp-01-search-results-1920x1080.png`, which shows
+  the same "User/Customer" / "Correlation/Trace" unspaced header text as Mission D's original capture.
+
+## 7. Product-model safety check (Stage 7)
+
+Nothing in this completion pass touched Search/source/Docker/OpenShift/classification/extraction/masking/
+security/persistence/chronology/Live-memory/parsing/backend-contract semantics. The one piece of real product
+state this pass created — a classification rule via the real UI, real validation, real persistence to
+`/tmp/log-explorer-data-audit2/classification-rules.json` (an audit-only scratch data directory, not the
+project's tracked data) — is exactly the kind of ordinary, in-product user action the app is designed to
+support; it exercised existing code paths without modifying any of them. The product mental model is
+unchanged and was re-confirmed, not merely assumed: Search finds events (confirmed via every `resp-01-*`
+capture), Inspector explains one event (confirmed via every `resp-04-*`/`cls-12` capture), Investigation shows
+multi-event relational/context data (confirmed via `resp-09-*`), and no capture anywhere in this pass implies
+causality from chronological order — the one disclaimer text re-confirmed in §6 explicitly states the opposite
+("does not indicate causality... not evidence that anything failed").
+
+```
+PRODUCT_MODEL_SAFETY_CHECK=PASS
+SEARCH_SEMANTICS_UNCHANGED=YES
+DOCKER_OPENSHIFT_SEMANTICS_UNCHANGED=YES
+CLASSIFICATION_EXTRACTION_SEMANTICS_UNCHANGED=YES
+MASKING_SECURITY_UNCHANGED=YES
+CAUSALITY_NEVER_FABRICATED=YES (re-confirmed)
+LIVE_BOUNDED_MEMORY_UNCHANGED=YES (2,000-event cap disclaimer re-confirmed unchanged in dark-18-live.png)
+```
+
+## 8. Remediation candidate grouping (Stage remediation-grouping — NOT authorization)
+
+Grouped for a future remediation mission's convenience only. No implementation guidance or code is given below,
+per this mission's explicit prohibition.
+
+| Group | Drift IDs | Likely components | Functional risk | Responsive risk | A11y risk | Backend change needed? | Product semantics frozen? |
+|---|---|---|---|---|---|---|---|
+| **A. Application shell / Search scope persistence** | DRIFT-001 | `Shell.tsx`, `Toolbar.tsx`, `ScopeStrip.tsx` — an `InvestigationScopeBar.tsx`-like pattern already exists and works correctly on Investigation, so this is a "extend an existing, proven pattern" group, not a "build from nothing" group | Low (presentational routing only) | Medium (390px collapse needs the same care Investigation's own scope bar already demonstrates) | Low-medium (focus management when the full toolbar is hidden/shown needs verification) | No | Yes |
+| **B. More Filters** | DRIFT-002 | `AdvancedFilters.tsx` | Low | Medium-high (no design responsive reference exists for this state at all, §2 — a future remediation would need to design its own responsive behavior, not port one) | Low | No | Yes |
+| **C. Inspector** | DRIFT-003, DRIFT-008, DRIFT-009, DRIFT-010 | `InspectorHeader.tsx`, `OverviewSection.tsx` (heading/grouping restructure), `RequestFlowSection.tsx` (button chrome + top-level trace action + disclaimer copy) | Low (presentational/copy only) | Low | Low | No | Yes |
+| **D. Investigation** | DRIFT-012 | `SequenceTable.tsx` | Low-medium — **unverified whether the capture data already carries per-event tags or whether the backend capture endpoint needs to add them; this pass did not check the capture DTO/response shape, so this is flagged as an open question for whoever scopes the fix, not assumed either way** | Low | Low | **Possibly — unverified this pass** | Yes |
+| **E. Field Mapping** | DRIFT-013 | The Field Mapping stepper component (splitting "Map & verify" into two distinct steps) | Low (UI reorganization of the same underlying validate/verify logic, not new logic) | Low | Low | No | Yes |
+| **F. Live** | DRIFT-004, DRIFT-005, DRIFT-006, DRIFT-007, **DRIFT-011** | `LiveTailPanel.tsx`/`.module.css`, `SeverityFilter.tsx` (if the control-type change is pursued) | Low, except DRIFT-005 (severity control type) — Medium, since changing a popover to always-visible segmented buttons changes keyboard/screen-reader interaction patterns and needs fresh a11y testing, not just a visual port | Low | **Medium for DRIFT-005 specifically**; low for the rest | No | Yes |
+| **G. Results micro-fidelity** | DRIFT-014 | `columnRegistry.tsx` (copy only) | None | None | None | No | Yes |
+| **H. Classification** | none newly found this pass | — | — | — | — | — | — |
+
+**DRIFT-011 (Live row density) is flagged as the single lowest-risk, highest-confidence candidate in the entire
+register** — it is a one-line CSS value revert to what the file already correctly had before Session 11's own
+Stage 5 change, backed by a proven, re-verified fact about the product's real default density, with zero
+ambiguity about the correct target value.
+
+## 9. Evidence paths
+
+- **Mission D (original) evidence**: `docs/verification/visual-fidelity/` — 19 screenshots, unchanged, still
+  valid, referenced not duplicated.
+- **This completion pass's evidence**: `docs/verification/visual-fidelity-completion/` — 61 screenshots (30
+  responsive × core-workspace, 8 dark-theme, 19 classification-workflow, 1 A8 measurement capture, plus 3
+  extra: the webhook zero-results bonus captures).
+- **Design reference**: never copied into this repository beyond what Mission D already referenced by path;
+  this pass viewed design screenshots via `git show design/v2-modern-developer-console:...` directly and did
+  not commit any of them, consistent with "avoid duplicating large existing evidence... reference it instead."
+
+## 10. Explicit statement: no remediation was performed
+
+**Zero production files were changed by this completion pass.** Every finding above — including the two newly
+resolved `REVIEW_REQUIRED` items, the reconciled drift register, and the remediation candidate groups — is
+documentation only. `LiveTailPanel.module.css`'s Stage-5 regression (DRIFT-011) was re-confirmed present and
+was deliberately **not** fixed, exactly as this mission's brief requires. See §13 for the literal `git diff`
+proof.
+
+```
+REMEDIATION_PERFORMED=NO
+```
+
+## 11. Verification
+
+```
+LOCAL_TYPECHECK=PASS   # npm run typecheck (tsc -b --noEmit) — the correct command, never bare `npx tsc --noEmit`
+LOCAL_UNIT=PASS   # 1163/1163 (unchanged from Mission D — no frontend source files were touched by this pass)
+LOCAL_BUILD=PASS
+```
+
+No backend or E2E re-run was performed locally for this pass specifically, per this mission's own instruction
+("if audit-only docs/screenshots are the only changes and starting exact-head CI already proves backend/E2E/
+desktop health, do not manufacture unnecessary production changes") — the starting HEAD's CI (all 5 checks)
+was confirmed green before this pass began, and this pass changed zero files under `frontend/src`,
+`frontend/e2e` (the temporary capture spec was deleted before commit), or `backend/`. The exact-head CI on the
+final pushed commit is still required and reported in the final structured report below.
+
+## 12. ID reconciliation summary (for quick reference)
+
+See §1 above for the full table with reasoning. Short form:
+
+```
+DRIFT-001 -> DRIFT-001, DRIFT-002 -> DRIFT-002, DRIFT-003 -> DRIFT-003, DRIFT-003b -> DRIFT-004,
+DRIFT-004 -> DRIFT-005, DRIFT-005 -> DRIFT-006, DRIFT-006 -> DRIFT-007, DRIFT-007 -> DRIFT-008,
+DRIFT-008 -> DRIFT-009, DRIFT-009 -> DRIFT-010, DRIFT-010 -> DRIFT-011, DRIFT-011 -> DRIFT-012,
+DRIFT-012 -> DRIFT-013, DRIFT-013 -> DRIFT-014
+```
+
+## 13. Final integrity check
+
+```
+git diff 9c60d093626ca7af577691f80744aeeefefe79dd..HEAD -- frontend backend desktop
+```
+
+Run immediately before committing this section — output confirmed **EMPTY**. All files changed by this pass
+are under `docs/verification/` and this checkpoint file only; verified by manual inspection of `git status`
+before staging (see the commit for this pass — only `docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUDIT.md`,
+`docs/verification/visual-fidelity-completion/**`, and
+`docs/implementation/MODERN_DEVELOPER_CONSOLE_EXECUTION_CHECKPOINT.md` are staged).

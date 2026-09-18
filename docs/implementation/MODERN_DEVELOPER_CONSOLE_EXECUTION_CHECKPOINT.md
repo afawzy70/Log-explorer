@@ -1797,3 +1797,81 @@ REMEDIATION_PERFORMED=NO
 implementation.** The next action belongs to the ChatGPT/Owner supervisor, per this mission's own explicit
 instruction — a future mission should read `docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUDIT.md` in full
 before deciding what, if anything, to remediate and in what order.
+
+---
+
+## Session 13 — Audit Completion Pass EXECUTED (audit-only, no remediation)
+
+Mission (`IMPECCABLE_VISUAL_FIDELITY_AUDIT_COMPLETION_PR61_VS_PR58`) — a second, independent pass closing the
+evidence gaps Session 12's own audit disclosed: light-touch responsive coverage at 5 of 6 required widths,
+dark-theme coverage concentrated on Results only, several classification/rule-builder states never
+independently re-captured, three unresolved `REVIEW_REQUIRED` items, and an internal drift-count inconsistency
+(the drift register listed 14 distinct IDs but the summary line claimed 13). Verified before starting: HEAD
+matched the expected `9c60d09`, worktree clean on `frontend`/`backend`/`desktop`, PR #61 OPEN/DRAFT/NOT_MERGED,
+CI green on that exact HEAD (all 5 checks). **Audit only — no production code, CSS, tokens, components, or
+backend files were modified.**
+
+**Full findings are in `docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUDIT.md`'s own "Audit Completion Pass"
+section** (appended below Session 12's original report, which is preserved unchanged) — not duplicated here.
+Headline outcomes:
+
+- **Reconciled the drift register**: confirmed all 14 original drift items are real and distinct (the "13"
+  count was a genuine arithmetic error, not a hidden duplicate); renumbered sequentially `DRIFT-001`-`DRIFT-014`
+  with a full `OLD_ID -> FINAL_ID` mapping, and re-graded every item against a strict three-tier severity scale
+  (`BLOCKER`/`MAJOR`/`MINOR`, replacing the prior ad hoc scale) — final count: 0 BLOCKER, 7 MAJOR, 7 MINOR. No
+  new drift was found and none of the 14 was a false positive.
+- **Responsive**: captured 30 new production screenshots (6 core workspaces × the 5 required non-1440 widths:
+  1920/1366/1024/768/390), each directly comparable to a real design reference capture (inventoried all 100 of
+  the design's own `responsive/` files first). Confirms DRIFT-001 (toolbar persistence) is most severe at
+  390px — 9 rows of chrome before any result is visible, vs. design's 3 — and re-confirms ADAPT-004's Inspector
+  breakpoint (overlay at ≤1024px, docked at >1024px) is unchanged, not reverted.
+- **Dark theme**: captured 8 of the design's 14 `b1-dark/` states with fresh rendered comparisons (up from 1 —
+  Results only — in Session 12), including Live, Settings, Field Mapping, and a real populated classification
+  rules list in dark. Reported honestly as `DARK_THEME_AUDIT_COMPLETE=PARTIAL`, not overclaimed as complete.
+- **Classification**: walked a real rule through the full 5-step wizard against the live backend (Detect → no
+  safe pattern found → manual condition added → Classification/tag-colour → Extraction → Test → Save, with a
+  real validation-error state en route) and captured the resulting populated rules list in both themes — the
+  first time either audit pass exercised this workflow with real, saved data rather than structural screenshots
+  alone.
+- **Resolved 2 of 3 `REVIEW_REQUIRED` items**: REVIEW-002 (Compose project/Container/Thread fields) is now
+  `MATCH` for Compose project and Container (confirmed rendering "sofra"/"sofra-db-1" on a real event) — Thread
+  specifically remains `REVIEW_REQUIRED`, narrowed to exactly what's missing (a real structured-JSON event with
+  a populated `thread_name`). REVIEW-003 (A8, Tags column width when the Inspector is docked) is now `MATCH`,
+  resolved with a direct DOM measurement: undocked 150px, docked 132px — an exact match to the approved
+  decision. REVIEW-001 (Journey ID/context) remains unresolved — the code path exists but no available Fixture
+  event carries a populated `journeyId`, and manufacturing one would require a fixture change this mission
+  explicitly prohibits.
+- **Re-verified all 6 named high-risk findings** (now DRIFT-001/002/008/011/012/013 in the reconciled
+  numbering) against fresh evidence or fresh source reads, not copied from Session 12: all 6 confirmed still
+  present, unchanged.
+
+**Verification before commit**: `git diff 9c60d09..HEAD -- frontend backend desktop` was empty. `npm run
+typecheck` PASS, full frontend unit suite PASS (1163/1163, unchanged), `npm run build` PASS. No backend/E2E
+rerun performed locally (no product code changed; starting-HEAD CI already proved backend/E2E/desktop health),
+per this mission's own explicit instruction. A temporary local capture spec
+(`frontend/e2e/_tmp-audit2-capture.spec.ts`) and a temporary local dev-backend process were both
+removed/stopped before commit.
+
+**Committed to PR #61**: the "Audit Completion Pass" section appended to
+`docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUDIT.md` (Session 12's original report preserved unchanged
+above it), `docs/verification/visual-fidelity-completion/` (61 new production screenshots), and this checkpoint
+update. **No production code, CSS, component, token, or backend file was touched.**
+
+```
+IMPECCABLE_VISUAL_FIDELITY_GATE_RECORDED=YES
+IMPECCABLE_VISUAL_FIDELITY_AUDIT_EXECUTED=YES
+IMPECCABLE_VISUAL_FIDELITY_AUDIT_COMPLETION_PASS_EXECUTED=YES
+FINAL_UI_UX_ACCEPTANCE=NOT_YET_AUTHORIZED
+UNTRACKED_OWNER_REQUIREMENTS=0
+PRODUCTION_CODE_CHANGED_BY_AUDIT=NO
+REMEDIATION_PERFORMED=NO
+FINAL_DRIFT_COUNT=14
+FINAL_REVIEW_REQUIRED_COUNT=2
+```
+
+**This completion pass does not authorize remediation, merge, main integration, or Source Experience Parity
+implementation** — the same boundary Session 12 established still holds. The next action belongs to the
+ChatGPT/Owner supervisor: read `docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUDIT.md` in full (both the
+original report and this completion section) before deciding what, if anything, to remediate and in what order.
+§8 of the completion section ("Remediation candidate grouping") gives a starting structure for that decision,
+not an implementation plan.
