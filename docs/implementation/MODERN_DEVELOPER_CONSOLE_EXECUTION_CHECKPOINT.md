@@ -2062,3 +2062,51 @@ UI/UX acceptance, and NOT merge authorization.** The next action belongs to the 
 `docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUDIT.md` in full (all four sections) and decide what, if
 anything, to remediate from the frozen 16-item drift register, in what order, and whether to authorize final
 UI/UX acceptance. This session does not make that decision.
+
+## Session 16 — Visual Drift Remediation EXECUTED, all 16 frozen drift items closed
+
+`MISSION=IMPECCABLE_VISUAL_DRIFT_REMEDIATION_PR61` — explicit owner authorization to now remediate (not just
+document) DRIFT-001 through DRIFT-016, organized into internally-gated Groups A-G, executed autonomously
+across groups with a verification gate after each and a full regression gate at the end.
+
+- **Groups F, C, E, D, G, B, A executed in that order**, each committed separately
+  (`6fbf2da`, `b76b11d`, `2fab71c`, `c220e17`, `f7dcddc`, `b0e1ee9`, then `128ede1`/`a525412`/`d3ba859` for
+  Group A's own three parts covering DRIFT-001's core, DRIFT-016, and DRIFT-015 respectively) — see
+  `docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUDIT.md`'s own "VISUAL DRIFT REMEDIATION VERIFICATION"
+  section for the full per-group, per-drift table and evidence.
+- **Two real regressions found and fixed by full-suite discipline, not narrow targeted testing alone**: three
+  leftover DRIFT-008 heading-text assertions missed by Group C's own commit (only surfaced by a full 5-shard
+  E2E run during Group A), and a Live `keptNote` text overflow at 390px/200%-zoom (shortened the note and added
+  a defensive `white-space: normal` at narrow widths). A third, DRIFT-016-specific regression class (Settings
+  nav items sharing an accessible-name substring with pre-existing buttons) was found and fixed the same way —
+  see the audit document's own regression write-up.
+- **Full regression gate, run after all groups**: `npm run typecheck` PASS, full frontend unit suite PASS
+  (1163/1163), `npm run build` PASS, **full backend test suite PASS (`mvn test`, 1424/1424 — not run at all in
+  any prior session of this remediation)**, full E2E suite PASS (323/324, 1 pre-existing `NOT_AVAILABLE`
+  real-cluster skip, unrelated to this work) run in 4 shards plus two earlier targeted batches (181 tests)
+  during Group A's own verification.
+- **Preserved, not touched**: ADAPT-001 through ADAPT-004, REVIEW-001/REVIEW-002-THREAD, D40, A1b
+  (`NOT_IMPLEMENTED`), Source Experience Parity (preserved, not implemented), Loki enablement, `sofra-caddy-1`
+  (confirmed still running and unmodified), TLS/auth verification.
+- **`docs/governance/OWNER_REQUIREMENTS_REGISTER.md` §29** gets an addendum (its own historical status block
+  left unedited) recording that the gate it describes was subsequently exercised and the 16 drift items it
+  anticipated were remediated — `UNTRACKED_OWNER_REQUIREMENTS=0` throughout.
+
+```
+MISSION=IMPECCABLE_VISUAL_DRIFT_REMEDIATION_PR61
+GROUPS_COMPLETE=A,B,C,D,E,F,G (7 of 7)
+DRIFTS_CLOSED=16 (DRIFT-001 through DRIFT-016)
+DRIFTS_REMAINING=0
+FULL_REGRESSION_GATE=PASS
+VISUAL_DRIFT_REMEDIATION_COMPLETE=YES
+FINAL_UI_UX_ACCEPTANCE=NOT_YET_AUTHORIZED
+MERGE_AUTHORIZED=NO
+PR_61_STATE=OPEN, DRAFT, NOT_MERGED
+UNTRACKED_OWNER_REQUIREMENTS=0
+NEXT_ACTION=CHATGPT_OWNER_FINAL_UI_UX_REMEDIATION_REVIEW
+```
+
+**`VISUAL_DRIFT_REMEDIATION_COMPLETE=YES` means every drift item this document's audit froze is now closed in
+the rendered app, verified — it is explicitly NOT `FINAL_UI_UX_ACCEPTANCE` and NOT merge authorization.** That
+sign-off remains an explicit owner decision this remediation mission has no standing to grant on its own; PR
+#61 stays open, draft, and unmerged pending it, exactly as the mission required throughout.

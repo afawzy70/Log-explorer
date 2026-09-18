@@ -1744,3 +1744,87 @@ and unmodified.
 PRODUCTION_CODE_CHANGED_BY_THIS_PASS=NO
 REMEDIATION_PERFORMED=NO
 ```
+
+# VISUAL DRIFT REMEDIATION VERIFICATION
+
+`MISSION=IMPECCABLE_VISUAL_DRIFT_REMEDIATION_PR61`. This section documents the mission that actually
+remediated the 16 drift items this document froze above (0 BLOCKER, 9 MAJOR, 7 MINOR), organized into
+internally-gated Groups A-G. It preserves every prior section of this document unchanged; nothing above this
+heading was edited except where explicitly noted as an addendum in the owner requirements register.
+
+Explicitly preserved, unchanged, per the mission brief: ADAPT-001 through ADAPT-004 (not "fixed" — they are
+correct production adaptations, not drift), REVIEW-001/REVIEW-002-THREAD (no data manufactured to close them),
+D40 (one `displayColor` per rule), A1b (still `NOT_IMPLEMENTED`), Source Experience Parity (still preserved,
+still not implemented). Not touched or implemented: Source Experience Parity, D8, Loki enablement, a port-80
+preview deployment, `sofra-caddy-1` (confirmed untouched throughout), TLS/auth weakening. `npx tsc --noEmit`
+was never used as a verification command — only `npm run typecheck` (`tsc -b --noEmit`).
+
+## Group-by-group remediation
+
+| Group | Drift IDs | Commit | What changed |
+|---|---|---|---|
+| F | DRIFT-004/005/006/007/011 | `6fbf2da` | Live: uppercase badge, a new always-visible `LiveSeverityFilter` (replacing the reused collapsed `SeverityFilter` popover) with a "display filter only" note, restored column widths, restored row padding (`var(--space-1) var(--space-2)`) |
+| C | DRIFT-003/008/009/010 | `b76b11d` | Inspector: `View Trace` entry point on the header, `OverviewSection` split into a boxed message + "When & where" fields (removing the redundant "OVERVIEW" heading), Request Flow journey buttons get an icon + `secondary` variant, a causality-safety note above Request Flow identifiers |
+| E | DRIFT-013 | `2fab71c` | Field Mapping `ProcessStrip`: 5-step model (Scan → Map fields → Validate → Save → Verify), matching the design's own `b1/13-mapping-workspace-1440x900.png` exactly |
+| D | DRIFT-012 | `c220e17` | Investigation `SequenceTable` gains a Tags column, reusing Results' own `TagChip`/`TagCountBadge`/`tagColorsOf` verbatim — no backend change (`LogEvent.tags` already existed) |
+| G | DRIFT-014 | `f7dcddc` | Results header copy: `User/Customer` → `User / Customer`, `Correlation/Trace` → `Correlation / Trace` |
+| B | DRIFT-002 | `b0e1ee9` | More Filters: narrow drawer → full-width panel with a CSS-grid field layout and a full-width Advanced Query section; fixed a real bottom-edge overflow regression found via E2E (`max-height` → `bottom: 0`) |
+| A (1/3) | DRIFT-001 (core) | `128ede1` | App chrome: the Search toolbar is hidden (never rendered) for every settings-style takeover workspace; Live gets the reused, generic `InvestigationScopeBar` as its own compact bar instead of the full toolbar |
+| A (2/3) | DRIFT-016 | `a525412` | New shared `SettingsNav` (extracted from `SettingsWorkspace`'s inline nav) reused by `ClassificationRulesWorkspace` (covering its New/Extend Rule and Import sub-views, which all render through that one component); a breadcrumb ("Settings / Classification rules", extending to "/ Import" or the wizard's own title); `SettingsWorkspace`'s own classification CTA renamed "Manage classification rules" to stay distinct from the nav item of the same destination |
+| A (3/3) | DRIFT-015 | `d3ba859` | `RuleEditor`'s step indicator: horizontal top row → persistent vertical left sidebar (collapsing back to the original horizontal row under the existing 767px breakpoint, not forcing a desktop sidebar into a narrow viewport); a compact, non-sensitive scope note ("Sampling from `<source>` · `<window>`") since this takeover workspace has no Search toolbar to show it otherwise |
+
+All 16 drift items (DRIFT-001 through DRIFT-016) are remediated. `DRIFTS_CLOSED=16`, `DRIFTS_REMAINING=0`.
+
+## Real-rendered verification (not source-only)
+
+Each group's own commit was verified with real Playwright screenshots against the real dev server
+(`SPRING_PROFILES_ACTIVE=dev`, Fixture source) and the real backend before being folded into the regression
+gate below — e.g. Group B's `docs/verification/visual-fidelity-remediation/group-b-more-filters-*.png` at
+1920×1080/1440×900/390×844, and, for this Group A closure pass specifically, a live check of Settings →
+Classification rules → Field mapping navigation, the breadcrumb text at each sub-view, the rule wizard's
+vertical sidebar at 1440px and its collapse to a horizontal row at 390px, dark theme contrast, and
+`document.documentElement.scrollWidth - clientWidth === 0` at every width checked. No console errors were
+observed in any of these passes.
+
+## Full regression gate (after all groups)
+
+```
+FRONTEND_TYPECHECK=PASS        # npm run typecheck (tsc -b --noEmit)
+FRONTEND_UNIT=PASS             # 1163/1163
+FRONTEND_BUILD=PASS            # npm run build (tsc -b && vite build)
+BACKEND_TEST=PASS              # mvn test — 1424/1424
+FRONTEND_E2E=PASS              # 323/324 passed, 1 skipped
+```
+
+The single E2E skip is `pre-closure-functional-recovery-2.spec.ts`'s own pre-existing
+`real Test-Connection-through-a-broken-CUSTOM-proxy (browser → real cluster) - NOT_AVAILABLE` test, which needs
+a real OpenShift cluster and was already `NOT_AVAILABLE` before this mission — unrelated to this remediation,
+not newly introduced.
+
+Two real regressions were found and fixed by this gate, both from the same root cause — `SettingsNav`'s own
+"Field mapping"/"Classification rules" nav items now share an accessible-name substring with pre-existing
+buttons elsewhere in the DOM (Shell's persistent "Field mapping" trigger, and Settings' own classification CTA):
+
+- `App.classificationWorkspace.test.tsx` — two ambiguous `getByRole('button', ...)` queries, fixed by renaming
+  the Settings CTA to "Manage classification rules" (matching the existing "Field mapping" vs. "Log schema &
+  field mapping" disambiguation pattern already in place) and scoping the Shell click to `within(getByRole
+  ('banner'))`.
+- `e2e/classification-rules.spec.ts` — `openSettingsSection(page, 'Classification rules')` matched the nav
+  item first (a same-page scroll) instead of the CTA (a real navigation); fixed by targeting
+  `/^manage classification rules$/i` specifically at the four call sites that need to actually navigate away.
+
+## Final report
+
+```
+MISSION=IMPECCABLE_VISUAL_DRIFT_REMEDIATION_PR61
+STATUS=COMPLETE
+GROUPS_COMPLETE=A,B,C,D,E,F,G (7 of 7)
+DRIFTS_CLOSED=16 (DRIFT-001 through DRIFT-016)
+DRIFTS_REMAINING=0
+FULL_REGRESSION_GATE=PASS (typecheck, frontend unit 1163/1163, backend 1424/1424, frontend build, E2E 323/324 + 1 pre-existing NOT_AVAILABLE skip)
+VISUAL_DRIFT_REMEDIATION_COMPLETE=YES
+FINAL_UI_UX_ACCEPTANCE=NOT_YET_AUTHORIZED
+MERGE_AUTHORIZED=NO
+PR_61_STATE=OPEN, DRAFT, NOT_MERGED
+NEXT_ACTION=CHATGPT_OWNER_FINAL_UI_UX_REMEDIATION_REVIEW
+```
