@@ -1,0 +1,42 @@
+{
+  "format" : "log-explorer-classification-pack",
+  "schemaVersion" : 1,
+  "pack" : {
+    "name" : "Log Explorer classification rules",
+    "version" : "1",
+    "exportedAt" : "2026-09-18T14:39:01.317881975Z"
+  },
+  "rules" : [ {
+    "id" : "broad-rawline-e-match",
+    "name" : "Broad rawline e match",
+    "description" : "",
+    "tags" : [ "rawline-e-match" ],
+    "displayColor" : "AMBER",
+    "enabled" : true,
+    "priority" : 100,
+    "matchMode" : "ALL",
+    "conditions" : [ {
+      "field" : "rawLine",
+      "matcher" : "CONTAINS",
+      "value" : "e",
+      "ignoreCase" : true
+    } ],
+    "extractions" : [ ]
+  }, {
+    "id" : "broad-rawline-e-match-second",
+    "name" : "Broad rawline e match second",
+    "description" : "",
+    "tags" : [ "rawline-e-match-second" ],
+    "displayColor" : "CYAN",
+    "enabled" : true,
+    "priority" : 100,
+    "matchMode" : "ALL",
+    "conditions" : [ {
+      "field" : "rawLine",
+      "matcher" : "CONTAINS",
+      "value" : "e",
+      "ignoreCase" : true
+    } ],
+    "extractions" : [ ]
+  } ]
+}

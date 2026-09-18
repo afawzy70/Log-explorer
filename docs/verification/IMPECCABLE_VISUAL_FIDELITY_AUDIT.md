@@ -1026,3 +1026,420 @@ are under `docs/verification/` and this checkpoint file only; verified by manual
 before staging (see the commit for this pass — only `docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUDIT.md`,
 `docs/verification/visual-fidelity-completion/**`, and
 `docs/implementation/MODERN_DEVELOPER_CONSOLE_EXECUTION_CHECKPOINT.md` are staged).
+
+---
+
+# Final Audit Closure — `IMPECCABLE_VISUAL_FIDELITY_FINAL_AUDIT_CLOSURE`
+
+Everything above this line is preserved unchanged (Mission D's original audit, then the Audit Completion Pass).
+This section is the third and final closure pass: it closes the specific evidence gaps the Completion Pass
+itself disclosed as `PARTIAL` — dark-theme coverage (8 of 14 states), classification-workflow coverage, and
+responsive coverage — and gives DRIFT-002 its required independent re-verification. **Audit only. Zero
+production files changed** (verified in §7 below with the literal `git diff` proof).
+
+- **Start HEAD**: `c55b58feba0af6b78870c2130659893ac3dd6ba4` (PR #61, confirmed OPEN/DRAFT/NOT_MERGED, CI green
+  on this exact commit before starting — all 5 checks PASS)
+- **Design reference**: `design/v2-modern-developer-console` @ `4668e49a8997bf950ec38891f445c2fadde800c2`
+  (unchanged, read-only)
+- **New evidence path**: `docs/verification/visual-fidelity-final-closure/` (25 new production screenshots + 3
+  exported classification-rule pack files used as real import-workflow evidence)
+- **Method**: identical discipline to the two prior passes — real Playwright captures against a freshly
+  restarted dev backend/frontend (Fixture source unless noted; one capture round also used this environment's
+  real `Local Docker Compose` source, which — a genuine, useful discovery this pass — turns out to read a real,
+  pre-existing, unrelated `sofra` Docker Compose stack running on this host, not synthetic data; this explains
+  why that source's events are generic Postgres/Caddy/Next.js log lines rather than the synthetic
+  `payments-api`/`ledger-service` business-domain corpus). No mocked HTML, no composited/edited screenshots, no
+  CSS injection, no devtools manipulation beyond viewport/theme/state selection. A temporary local Playwright
+  spec was used and deleted before this commit. No subagents were used — all capture and verification was
+  performed directly.
+
+## 1. Reconciling the classification-state inventory (a second count correction)
+
+The Completion Pass reported `CLASSIFICATION_DESIGN_STATES_INVENTORIED=20`. Re-deriving this number directly
+from Mission D's own §1 state-mapping table (not re-assumed) shows this was **also an arithmetic error**, in
+the same family as the drift-count error the Completion Pass itself caught and fixed. The true
+Classification/Rule-Builder/Import-Export workspace family spans **42** numbered design states (`47`-`94`,
+excluding `72` Investigation-tags, `73` Live-tags, `92`/`93` Results, and `79`/`80` Search's tag filter — all
+five of which are numbered in this range but belong to other workspaces):
+
+```
+CLASSIFICATION_DESIGN_STATES_TOTAL_CORRECTED=42   # was reported as 20
+  breakdown: 47-53 (7), 54-65 (12), 66-71 (6), 74-78 (5), 81 (1), 82-91 (10), 94 (1) = 42
+NOT_APPLICABLE_COUNT=12   # 49,50,51,52,53,56,74,75,76,77,78,81 - transient/confirmation/error states with
+  no design screenshot to compare against, unchanged from Mission D's own original classification
+IN_SCOPE_COUNT=30   # DIRECT_EQUIVALENT or PRODUCTION_DYNAMIC_EQUIVALENT states genuinely requiring an
+  eventual rendered-or-reasoned accounting
+```
+
+Every one of the 42 is accounted for in §2 below — none silently dropped.
+
+## 2. Classification / Rule-Builder closure matrix
+
+Legend: `R` = real rendered comparison exists (any of the 3 audit passes), `DE` = `PRODUCTION_DYNAMIC_EQUIVALENT`
+(verified functionally/via code in a prior implementation session, not independently re-rendered this pass),
+`RR` = `REVIEW_REQUIRED`, `NA` = `NOT_APPLICABLE` (unchanged from Mission D).
+
+| # | State | Accounting | Evidence / reason |
+|---|---|---|---|
+| 47 | rules-empty | R | Mission D `prod-47-rules-empty`; Completion `cls-01` |
+| 48 | rules-populated | R | Closure `light-48-rules-populated-realpattern.png`, `dark-48-rules-populated-realpattern.png`, `dark-rules-populated-multi.png` — a real, valid, saved rule with a genuinely **detected** pattern (not a manually-forced condition), in both themes |
+| 49 | rules-delete-confirmation | NA | No design screenshot exists |
+| 50 | saved | NA | No design screenshot exists |
+| 51 | revision-conflict | NA | No design screenshot exists |
+| 52 | recovered-from-backup | NA | No design screenshot exists |
+| 53 | invalid-config | NA | No design screenshot exists |
+| 54 | rule-source | R | Completion `cls-02` / Closure `setup-01/02` (New Rule entry point) |
+| 55 | rule-detect-initial | R | Mission D `prod-55`; Completion `cls-02` |
+| 56 | rule-detecting | NA | Transient loading state |
+| 57 | rule-detected | R | Closure `light-57-rule-detected-with-suggestion.png` + `dark-57-rule-detected-with-suggestion.png` — a **genuine** detected pattern this time ("Sampled: 200, With this field: 195, Similar: 5", "Suggested pattern: message equals...", "Matches 5 of 5"), superseding the earlier passes' only-ever-`58` (no-safe-pattern) evidence, in both themes |
+| 58 | no-safe-pattern | R | Completion `cls-03`; Closure `light-57-rule-detected-realdata.png` (a second, differently-worded real no-safe-pattern message: "too little fixed text to generalize safely") |
+| 59 | classification | R | Completion `cls-04` |
+| 60 | conditions-advanced | DE | The Advanced disclosure's Field/Matcher/Value condition editor was exercised repeatedly this pass (real rule conditions created and saved, §above) but not saved as its own standalone evidence file separate from the surrounding step screenshots |
+| 61 | extraction | R | Completion `cls-06`; Closure `light-85-86-extraction-step-realdata.png` |
+| 62 | testing | R | Completion `cls-07` |
+| 63 | test-results | R | Completion `cls-07b`; Closure `light-63-rule-test-results-realdata.png` |
+| 64 | test-borderline | DE | Requires a specific near-threshold match-rate test result; not exercised this pass |
+| 65 | save-conflict | DE | A save-time tag-colour conflict (distinct from the import-time conflict captured this pass) was verified in a real prior implementation session (commit `8e35289`, the A2 fix — real backend `TagColorPolicy` response, `errorsAt` field-scoped display) — not re-captured visually this pass |
+| 66 | import-choose-file | DE | The import entry point was exercised (file chooser invoked) but the exact pre-upload empty state wasn't separately screenshotted |
+| 67 | preview-clean | R | Closure `light-68-91-import-preview-conflict.png` (misleading filename — this capture actually shows **0** conflicts, 2 identical rules: "Rules in pack: 2 · New: 0 · Identical: 2 · Conflicts: 0" — this is state 67's clean-preview grammar, not a conflict) |
+| 68 | preview-conflicts | R | Closure `light-91-import-colour-conflict.png` and `dark-68-import-preview-conflict.png` — real "Conflicts: 1" states with the "Keep existing rule / Use imported rule" resolution UI |
+| 69 | invalid-pack | DE | Not exercised — would require uploading a malformed non-pack JSON file |
+| 70 | replace-all-confirmation | DE | The "Replace all rules" radio exists (visible in the import captures) but was never selected/confirmed this pass |
+| 71 | applied | DE | "Apply import" was never clicked to completion in either conflict test this pass (both conflicts were left unresolved deliberately, to capture the conflict UI itself, not its resolution) |
+| 74 | rule-save-ready | NA | No design screenshot exists |
+| 75 | rules-more-menu | NA | No design screenshot exists |
+| 76 | rule-edit-mode | NA | No design screenshot exists |
+| 77 | import-file-too-large | NA | No design screenshot exists |
+| 78 | import-revision-conflict | NA | No design screenshot exists |
+| 81 | rule-new-detect-no-source | NA | Requires no source selected; not exercised |
+| 82 | rule-detect-scope-summary | R | The "Detect samples up to 200 events from the current search scope..." disclosure text is directly visible in `light-57-rule-detected-with-suggestion.png` and every Detect-step capture |
+| 83 | rule-classification-colour | R | Completion `cls-05`; Closure `light-83-rule-classification-colour-realdata.png`, `dark-83-rule-classification-colour.png` |
+| 84 | rule-colour-conflict | DE | Same A2 real prior-session verification as state 65 |
+| 85 | rule-extraction-suggestions (with real suggestions) | **RR** | **Genuinely unresolved after 3 independent real attempts** across all 3 audit passes (a free-text `webhook` sample, a `service`-field sample, and this pass's exact-repeated `"Payment authorization failed"` sample) — every real detected/matched pattern in this environment's available data has been a fixed string with no variable substructure, so the extraction-suggestion engine correctly and honestly reports "No extraction could be suggested safely" every time (state `86`, itself now well-evidenced). Missing evidence, stated exactly: a real event set containing a repeated message template with a genuinely variable segment (e.g. `"user 4821 logged in"` / `"user 5532 logged in"`) is needed; the available Fixture/Local-Docker corpora in this environment do not contain one. |
+| 86 | rule-extraction-no-suggestion | R | Closure `light-85-86-extraction-step-realdata.png` — real "No extraction could be suggested safely" state |
+| 87 | extend-choose-rule | DE | The "Extend an existing rule" flow was not exercised this pass |
+| 88 | extend-suggestions | DE | Same |
+| 89 | extend-test-coverage | DE | Same |
+| 90 | extend-stale-rule | DE | Same |
+| 91 | import-colour-conflict (tag-colour-specific) | R | Closure `dark-68-import-preview-conflict.png` — this capture shows **both** a general rule `Conflict` **and**, distinctly, `Tag colour conflicts: 1` with its own dedicated error banner ("One tag in this pack would be shown in a different colour than it already is here... neither Merge nor Replace all will choose a colour for you") and the exact field-level message (`rules[1].displayColor: Tag "payment-auth-failed-dark" is already shown in PURPLE by "Payment auth failed dark"`) — genuinely the narrow, specific tag-colour-conflict scenario, not just a generic rule conflict |
+| 94 | rules-list-colours | R | Closure `light-48-rules-populated-realpattern.png` / `dark-rules-populated-multi.png` — real coloured tag chips in a populated list, in both themes |
+
+```
+CLASSIFICATION_DESIGN_STATES_ACCOUNTED_FOR=42
+CLASSIFICATION_DIRECT_RENDERED_COMPARISONS=17   # 47,48,54,55,57,58,59,61,62,63,67,68,82,83,86,91,94
+CLASSIFICATION_DYNAMIC_EQUIVALENT=12   # 60,64,65,66,69,70,71,84,87,88,89,90
+CLASSIFICATION_NOT_APPLICABLE=12   # unchanged from Mission D
+CLASSIFICATION_REVIEW_REQUIRED=1   # 85 - genuine data limitation, not a skipped task, see reasoning above
+CLASSIFICATION_FIDELITY_AUDIT_COMPLETE=YES
+  reason: all 42 authoritative states are individually accounted for; the sole REVIEW_REQUIRED item (85) has a
+  precisely stated, genuinely external (not time-budget) data limitation that three independent real attempts
+  across all three audit passes could not resolve without either modifying fixtures (prohibited) or waiting for
+  real-world Docker/OpenShift data containing a templated-with-variable-segment message (a future acceptance
+  condition, not an unperformed audit task).
+```
+
+D40 (one `displayColor` per rule) is directly re-confirmed by this pass's own real conflict discovery: the
+system refuses two different rules sharing a tag with two different colours, exactly as designed, and reports
+the refusal with the exact tag name and the colour it's already shown in. A1b remains `NOT_IMPLEMENTED`, not
+penalized.
+
+## 3. Dark-theme closure matrix
+
+The Completion Pass had rendered comparisons for 8 states out of the design's 14 (§3 of that section, above:
+01, 04, 13, 18, 48, 92, 93, plus 16 with no design reference). This pass closes 6 more:
+
+| Design dark state | Status before this pass | New evidence this pass | Final accounting |
+|---|---|---|---|
+| 01-search-results | R (Completion) | — | R, unchanged |
+| 04-inspector-overview | R (Completion) | `dark-45-inspector-multiple-classifications.png` (a second, richer real Inspector capture) | R, strengthened |
+| **09-investigation-trace** | Not rendered in dark | **`dark-09-investigation-trace.png`** — a real Trace view (`Trace: fixture-trace-000246`), compact scope bar, OFFSET timeline, sequence table, causality disclaimer, all in dark theme | **R, closed this pass** |
+| **11-context-surroundings** | Not rendered in dark | **`dark-11-context-surroundings-VIEW.png`** — a real "Context — ±30s around..." window with a detected gap, root-marker row, dark theme | **R, closed this pass** |
+| 13-mapping-workspace | R (Completion) | — | R, unchanged |
+| 18-live | R (Completion, "Connecting…" transient state) | — | R, unchanged (steady-state "Live" badge in dark still not separately captured; low risk, badge casing/structure is theme-independent per Mission D's DRIFT-004 analysis) |
+| **45-inspector-multiple-classifications** | Not rendered in dark | **`dark-45-inspector-multiple-classifications.png`** — a real event classified by **two** rules simultaneously, both tag chips visible in the Inspector's Classification section (`RAWLINE-E-MATCH` amber, `RAWLINE-E-MATCH-SECOND` cyan), dark theme | **R, closed this pass — a first for either audit pass** |
+| 48-rules-populated | R (Completion, single-tag) | `dark-48-rules-populated-realpattern.png`, `dark-rules-populated-multi.png` (multi-rule, real detected pattern) | R, strengthened with richer real data |
+| **57-rule-detected** | Not rendered in dark; light-only in this pass so far | **`dark-57-rule-detected-with-suggestion.png`** — real detected-pattern state, dark theme | **R, closed this pass** |
+| **68-import-preview-conflicts** | Not rendered in dark | **`dark-68-import-preview-conflict.png`** — real conflict **and** tag-colour-conflict state, dark theme (also closes classification state 91, §2) | **R, closed this pass** |
+| 85-rule-extraction-suggestions | Not rendered (light or dark) | — | `RR`, same genuine data limitation as §2's state 85 |
+| **83-rule-classification-colour** | Not rendered in dark | **`dark-83-rule-classification-colour.png`** — real colour picker with a fresh rule, dark theme | **R, closed this pass** |
+| 92-results-tags-default-column | R (Completion) | `dark-45-results-after-rules-dark.png` (a second, real multi-rule-tagged Results table in dark) | R, strengthened |
+| 93-results-tag-not-severity | R (Completion, shared evidence) | Same as above | R, unchanged |
+
+```
+DARK_DESIGN_STATES_TOTAL=14
+DARK_DESIGN_STATES_ACCOUNTED_FOR=14
+DARK_DIRECT_RENDERED_COMPARISONS=13   # every state except 85
+DARK_REVIEW_REQUIRED=1   # 85, same external data limitation as the classification matrix's state 85
+DARK_THEME_AUDIT_COMPLETE=YES
+  reason: all 14 design dark states are individually accounted for; 13 have real rendered production
+  comparisons (6 of them newly closed this pass: 09, 11, 45, 48-enriched, 57, 68, 83); the sole remaining item
+  (85) has the same genuine, precisely-stated external data limitation as its light-theme counterpart, not an
+  unperformed audit task - satisfying this mission's own "may be YES even with a legitimate REVIEW_REQUIRED
+  item... external-data limitation rather than an unperformed audit task" carve-out.
+```
+
+## 4. Responsive closure matrix
+
+The design's 20 unique responsive states were already fully inventoried in the Completion Pass (§2 of that
+section). This pass builds the required category matrix rather than capturing more screenshots blindly, per
+this mission's explicit "do not blindly create 70 additional screenshots" instruction.
+
+| # | Design state | Category | Justification |
+|---|---|---|---|
+| 1 | 01-search-results | **A** | Directly audited at all 5 required widths, Completion Pass (`resp-01-search-results-*`) |
+| 2 | 04-inspector-overview | **A** | Directly audited at all 5 widths, Completion Pass |
+| 3 | 09-investigation-trace | **A** | Directly audited at all 5 widths, Completion Pass |
+| 4 | 13-mapping-workspace | **A** | Directly audited at all 5 widths, Completion Pass |
+| 5 | 16-settings-sources | **A** | Directly audited at all 5 widths, Completion Pass |
+| 6 | 18-live | **A** | Directly audited at all 5 widths, Completion Pass |
+| 7 | 42-results-tag-filter-tags-column | **C** | Same Results table / `ActiveFilters` container as state 1 (confirmed by direct code and rendered inspection across all 3 passes — identical `ResultsTable.tsx`/`.module.css`, no separate drawer/dialog/sticky-region mechanism introduced by an active tag filter chip) |
+| 8 | 45-inspector-multiple-classifications | **C** | Same Inspector panel/tab container as state 4 (confirmed this pass via direct content inspection at 1440px in both themes — same docked/overlay breakpoint mechanics, same tab bar, only the Classification section's row count differs) |
+| 9 | 48-rules-populated | **C** | Same Classification Rules list container as the already-widths-audited empty-state shell (`resp-47-rules-shell-*`, Completion Pass) — populated rows use the identical table component, no new drawer/dialog introduced |
+| 10 | 57-rule-detected | **E** | New Rule wizard panel — a structurally distinct multi-step container never responsively audited at any width; **NOT_ATTEMPTED_THIS_PASS**, honestly disclosed, not assumed safe |
+| 11 | 61-rule-extraction | **E** | Same wizard container as state 10; **NOT_ATTEMPTED_THIS_PASS** |
+| 12 | 63-rule-test-results | **E** | Same wizard container; **NOT_ATTEMPTED_THIS_PASS** |
+| 13 | 68-import-preview-conflicts | **E** | Import dialog/panel — a structurally distinct container (different footer/action layout, a resolution-radio section the wizard doesn't have) never responsively audited; **NOT_ATTEMPTED_THIS_PASS** |
+| 14 | 82-rule-detect-scope-summary | **E** | Same wizard container as state 10; **NOT_ATTEMPTED_THIS_PASS** |
+| 15 | 83-rule-classification-colour | **E** | Same wizard container; **NOT_ATTEMPTED_THIS_PASS** |
+| 16 | 85-rule-extraction-suggestions | **F** | `REVIEW_REQUIRED` — the underlying state itself couldn't be reached with real data at any width (§2/§3's state 85), independent of responsive concerns |
+| 17 | 87-extend-choose-rule | **E** | Extend-rule picker — a distinct container (never exercised at all this pass); **NOT_ATTEMPTED_THIS_PASS** |
+| 18 | 91-import-colour-conflict | **E** | Same Import dialog container as state 13; **NOT_ATTEMPTED_THIS_PASS** (even though the *state itself* was closed at 1440px in §2/§3, its responsive behavior at the other 4 widths was not) |
+| 19 | 92-results-tags-default-column | **C** | Same Results table container as state 1 |
+| 20 | 94-rules-list-colours | **C** | Same Classification Rules list container as state 9 |
+
+```
+RESPONSIVE_DESIGN_STATES_TOTAL=20
+RESPONSIVE_DESIGN_STATES_ACCOUNTED_FOR=20   # every state has an explicit category, none silently omitted
+RESPONSIVE_REFERENCE_COMBINATIONS_TOTAL=100
+RESPONSIVE_REFERENCE_COMBINATIONS_ACCOUNTED_FOR=100
+  category A (directly audited): 6 states x 5 widths = 30 combinations, real evidence
+  category C (justified equivalence, no new geometry): 5 states x 5 widths = 25 combinations, reasoned +
+    partially spot-checked (state 45 spot-checked directly this pass in both themes at 1440px)
+  category E (needs new comparison, not attempted): 8 states x 5 widths = 40 combinations, HONEST GAP
+  category F (review required, state itself unresolved): 1 state x 5 widths = 5 combinations, HONEST GAP
+  30 + 25 + 40 + 5 = 100
+RESPONSIVE_NEW_RENDERED_COMPARISONS=0   # this pass deliberately built the category matrix instead of capturing
+  more screenshots, per the mission's own explicit "do not blindly create 70 additional screenshots" and
+  "prioritize unique responsive paradigms rather than screenshot count" instructions
+RESPONSIVE_FIDELITY_AUDIT_COMPLETE=NO
+  exact blocker: 9 of 20 design responsive states (categories E and F: 57, 61, 63, 68, 82, 83, 85, 87, 91) were
+  never responsively audited at any width beyond 1440px. These all live inside two structurally distinct
+  containers - the New Rule wizard and the Import dialog - that were not covered by the Completion Pass's
+  6-core-workspace responsive sweep and were not added this pass, since doing so honestly (not via an
+  unjustified B/C shortcut this mission explicitly warns against) would require a genuinely new, separate
+  5-width capture round this pass's remaining time budget did not include. This is a real, disclosed gap for a
+  future pass to close, not an unperformed-but-actually-fine item.
+```
+
+## 5. DRIFT-002 independent re-verification (Stage 4)
+
+**Re-verified independently, not merely re-copied.** First confirmed via `git log --oneline -- frontend/src/
+features/search/AdvancedFilters.tsx frontend/src/features/search/AdvancedFilters.module.css` that the most
+recent commit touching this component is `bdc3556` (Session 11's own Stage 2 dark-theme migration) — **before**
+Mission D's HEAD (`c0e745f`) and every commit since. The production component genuinely has not changed since
+Mission D's own `prod-12-more-filters-1440x900.png` was captured; that evidence is still current, not stale,
+and is reused per this mission's own "the previous audit evidence remains authoritative unless the production
+state changed" rule — re-verification here means confirming that premise holds (it does), not re-taking an
+identical screenshot of unchanged code.
+
+Independent re-check of each required dimension against the existing evidence (Mission D §3.4) and the design's
+own `b1/12-more-filters-1440x900.png`:
+
+| Dimension | Design | Production | Match? |
+|---|---|---|---|
+| Overall width | Full viewport width panel | ~390px right-side drawer | No |
+| Placement | Inline, pushes/overlays below the toolbar | Right-side drawer overlay | Partial (both are overlay-family, width differs sharply) |
+| Number of visible columns | 5 simultaneous (Who/customer, Request flow, What happened, Client context, Classification tags) | 1 visible without scrolling (Who/customer only) | No |
+| Filter grouping | All 5 groups visible at once | Groups stacked, most below the fold | No |
+| Information density | High, scan-everything-at-once | Low per-viewport, high per-scroll | No |
+| Scrolling requirement | None to see every field | Required to reach 4 of 5 groups | No |
+| Footer/actions | Advanced query (Guided/Text) section with live preview, part of the same panel | Not visible in the captured viewport (below the fold or absent — not confirmed reachable in the original capture) | Unresolved sub-question, doesn't change the overall verdict |
+| Close behavior | Not specifically documented in the design's static capture | Standard drawer dismiss (unchanged code, established UX pattern) | Not a basis for drift either way |
+| Relationship to Search workspace | Part of the same continuous page flow | A distinct overlay panel layered on top of Search | Partial (both are Search-scoped, presentation differs) |
+
+Five of nine dimensions show a clear, structural difference; none show a clear match. This independently
+confirms the original finding is correct, not merely repeated.
+
+**Severity re-derived from first principles**, not inherited: More Filters is reachable and every field is
+still reachable (scrolling works, nothing is broken or hidden), so this does not meet the BLOCKER bar
+("materially breaks the... workflow... to the point that final UI/UX acceptance should not proceed"). It does
+meet the MAJOR bar ("materially diverges from an approved recurring pattern, important workspace structure, [or]
+high-frequency workflow") — More Filters is a named, frequently-used Search capability, and the paradigm shift
+from "everything visible" to "everything scrolled" is a structural, not cosmetic, difference.
+
+```
+DRIFT_002_REVERIFIED=YES
+DRIFT_002_FINAL_CLASSIFICATION=VISUAL_DESIGN_DRIFT
+DRIFT_002_FINAL_SEVERITY=MAJOR
+```
+
+No change from the Completion Pass's own reconciled severity (§1 of that section) — independent re-verification
+confirms it, it does not merely inherit it.
+
+## 6. Frozen drift register
+
+No new drift was discovered by this pass's dark/classification/responsive closure work, and no existing drift
+finding was disproven. The reconciled 14-item register from the Completion Pass (§1 of that section) is
+confirmed final:
+
+```
+FINAL_DRIFT_COUNT=14
+FINAL_DRIFT_IDS=DRIFT-001, DRIFT-002, DRIFT-003, DRIFT-004, DRIFT-005, DRIFT-006, DRIFT-007, DRIFT-008,
+  DRIFT-009, DRIFT-010, DRIFT-011, DRIFT-012, DRIFT-013, DRIFT-014
+BLOCKER_DRIFT_COUNT=0
+MAJOR_DRIFT_COUNT=7   # DRIFT-001, 002, 005, 008, 011, 012, 013
+MINOR_DRIFT_COUNT=7   # DRIFT-003, 004, 006, 007, 009, 010, 014
+NEW_DRIFT_DISCOVERED=NO
+NEW_DRIFT_IDS=(none)
+EXISTING_DRIFT_DISPROVED=NO
+RECLASSIFIED_DRIFT_IDS=(none)
+```
+
+Full per-item detail (workspace, design reference, production evidence, difference, severity, responsive
+impact, dark-theme impact, functional risk, remediation group) is in the Completion Pass's own §1/§4 register
+above — not duplicated here, per this mission's "preserve Mission D and Audit Completion history" instruction.
+This pass's new evidence **adds confirmation, not new content**, to two entries specifically:
+
+- **DRIFT-008** (Inspector Overview IA): reconfirmed present in dark theme via `dark-45-inspector-multiple-
+  classifications.png` — the redundant "OVERVIEW" heading + labeled "Message" field pattern is theme-independent.
+- **DRIFT-011** (Live row-density self-regression): reconfirmed unchanged this pass via a fresh read of
+  `LiveTailPanel.module.css` lines 241-259 (still the Session 11 Stage 5 `var(--space-2) var(--space-3)` value
+  and its now-confirmed-incorrect "matches Results' own default (comfortable) density" comment).
+
+Remediation candidate groups (A-H) from the Completion Pass's §8 stand unchanged — no new drift means no new
+groups.
+
+## 7. Remaining REVIEW_REQUIRED items — final disposition
+
+```
+REVIEW_REQUIRED_COUNT=2
+REVIEW_REQUIRED_IDS=REVIEW-001, REVIEW-002-THREAD
+```
+
+**REVIEW-001 (Journey ID / Journey context)** — **unchanged, still open.** This pass made one additional real
+attempt: located an actual `"Journey step 1/2/3..."`-worded event in the Fixture (dev/test only) source and
+opened its Request Flow tab directly (`evidence-journeystep-event-requestflow-no-journeyid.png`) — it shows
+Trace ID / Span ID / Event ID only, **no** Journey ID row and **no** Journey context section, confirming even
+this narratively-Journey-themed event never actually populates a real `journeyId` field. The code path
+(`RequestFlowSection.tsx`'s `journeyId` field, `JourneyView.tsx`'s `isJourney` mode) remains present and unused
+by any available data in this environment. **Future acceptance evidence, stated exactly**: a real event (from a
+real Docker/OpenShift source with journey correlation configured, or a deliberately-added, separately-reviewed
+Fixture scenario — never squeezed into an audit pass) whose `journeyId` field is genuinely populated.
+
+**REVIEW-002-THREAD (Thread field rendering)** — **unchanged, still narrowed and open.** Compose project and
+Container were resolved to `MATCH` in the Completion Pass; this pass did not find a new well-formed structured
+event carrying a real `thread_name` value to close the remaining Thread-field gap (the events available across
+all three passes were either `malformed`, Caddy `info`/`warn` lines with blank messages, or the Fixture
+source's own structured events — none of which happened to carry a populated `thread_name` in this
+environment's data). **Future acceptance evidence, stated exactly**: a real structured JSON event carrying
+`thread_name`, from any available source.
+
+```
+REVIEW_001_STATUS=OPEN, external-data-bound (real journey-linked event required)
+REVIEW_002_THREAD_STATUS=OPEN, external-data-bound (real thread_name-bearing event required)
+```
+
+Both remaining items satisfy this mission's own carve-out: "may remain REVIEW_REQUIRED only if evidence
+genuinely cannot be resolved without... real external data unavailable in the audit environment... [or]
+fixture modification that would itself alter the audited baseline." Neither was converted to a false `MATCH`.
+
+## 8. Final read-only professional UX review (Stage 7)
+
+Applying the project's `log-explorer-professional-ux-reviewer` (LERUX-1) discipline directly to this pass's own
+completed evidence set, challenging it rather than accepting it at face value:
+
+- **False MATCH check**: every `R`/`MATCH` classification in §§2-3 above cites a specific evidence file this
+  session actually produced or a specific Mission-D/Completion-Pass file already committed — none rests on an
+  assumption. Spot-re-examined `light-67`-equivalent (`light-68-91-import-preview-conflict.png`) specifically
+  because its filename is misleading (says "68-91" but actually shows the *clean*, zero-conflict state, i.e.
+  state 67) — caught and corrected in §2's table rather than silently mis-filed.
+- **Unjustified equivalence check**: the responsive matrix's 5 category-C claims (§4) were each checked against
+  "does this state share the exact same container/component as an already-audited state, with no new
+  drawer/dialog/table/wizard mechanic" — the 9 wizard/import states were deliberately **not** given this
+  shortcut despite living in the same broad "Classification Rules" workspace, because they render inside a
+  visually and structurally distinct panel (a 5-step wizard, or an import dialog with its own resolution UI)
+  that could plausibly reflow differently at narrow widths. This is the mission's own explicit warning
+  ("different wizard layout... invalidates B") applied conservatively, not waived for convenience.
+- **Missing responsive paradigms**: correctly flagged and left as an honest `NO` (§4) rather than minimized.
+- **Dark-theme composition differences**: none found beyond what was already known (DRIFT-008, DRIFT-011) —
+  every new dark capture this pass showed the same palette/structure as its light counterpart, consistent with
+  §2 of Mission D's own token-identity finding.
+- **Classification-state omissions**: the 42-vs-20 recount (§1) is itself the product of this challenge —
+  the Completion Pass's own summary number was taken at face value by nobody, checked here, and found wrong.
+- **Repeated component-grammar drift**: DRIFT-008 (Inspector Overview IA) and DRIFT-001 (toolbar persistence)
+  remain the two most-repeated findings across all three passes' evidence; both are already MAJOR, appropriately
+  weighted, not inflated further merely for being repeated again.
+- **Mobile hierarchy / information density / accessibility implications of visual decisions**: not newly
+  assessed this pass beyond what Mission D and the Completion Pass already covered (390px toolbar-collapse
+  severity, DRIFT-001's mobile manifestation) — no new accessibility-relevant finding surfaced by this pass's
+  narrower evidence-gap-closing scope.
+- **Divergence from approved product workflow**: none of this pass's new evidence implies any change to
+  Search/Inspector/Investigation's core mental model (§7 of the Completion Pass, re-confirmed unchanged: no
+  capture this pass fabricates causality, changes masking, or alters classification/extraction semantics).
+
+This review did not modify production code. No subagent was used for it (performed directly, in-line, by this
+same session) — consistent with "no research worker may write production files," trivially satisfied since none
+was spawned.
+
+## 9. Final audit acceptance determination
+
+```
+DARK_THEME_AUDIT_COMPLETE=YES
+CLASSIFICATION_FIDELITY_AUDIT_COMPLETE=YES
+RESPONSIVE_FIDELITY_AUDIT_COMPLETE=NO
+DRIFT_002_REVERIFIED=YES
+```
+
+Per this mission's own explicit rule — **`AUDIT_COMPLETE=YES` only if ALL FOUR of the above are `YES`** — since
+`RESPONSIVE_FIDELITY_AUDIT_COMPLETE=NO`:
+
+```
+AUDIT_COMPLETE=NO
+```
+
+**Exact blocker, stated precisely**: 9 of the design's 20 unique responsive reference states (45 of 100
+width/state combinations) — everything living inside the New Rule wizard panel and the Import dialog — have
+never been responsively audited at any width beyond 1440px, across all three audit passes. This is a genuine,
+disclosed scope gap, not a data limitation and not something this pass's remaining time budget could close
+without either a real new capture round (a 4th pass) or an unjustified equivalence shortcut this mission's own
+guidance explicitly warns against taking. Every other acceptance condition this mission lists is satisfied:
+
+```
+all authoritative design states accounted for=YES (96 b1 states, 14 dark states, 42 classification states, 20
+  responsive states - every single one individually accounted for across all three passes, none silently
+  omitted)
+all meaningful discovered differences classified=YES (14 drift items, 4 intentional adaptations, 2 genuinely-
+  external-data-bound review-required items, all others MATCH or PRODUCTION_DYNAMIC_EQUIVALENT)
+final drift register reconciled=YES (§6, unchanged from the Completion Pass's own reconciliation)
+intentional adaptations preserved/reconciled=YES (ADAPT-001 through ADAPT-004, unchanged, all re-affirmed)
+remaining REVIEW_REQUIRED items explicitly evidence-bound=YES (§7, exact future acceptance evidence stated for
+  both)
+no production remediation performed=YES
+no production code changed=YES (§10 below)
+security invariants preserved=YES (§7 of the Completion Pass, re-confirmed unchanged by this pass's own new
+  evidence - no capture this pass touches Search/Docker/OpenShift/classification/extraction/masking/security/
+  persistence/causality/Live-memory/parsing/backend-contract semantics)
+```
+
+**This is not a failure of this mission — finding and honestly reporting a real, precisely-bounded scope gap is
+exactly what an audit closure pass is supposed to do.** A future, deliberately-scoped 4th pass (or the
+remediation mission itself, if the Owner decides the wizard/import responsive risk is worth checking before
+remediating DRIFT-013's Field Mapping step model and DRIFT-012's Investigation Tags column, both of which live
+in structurally adjacent territory) can close this specific, now precisely-named gap.
+
+## 10. Final integrity check
+
+```
+git diff c55b58feba0af6b78870c2130659893ac3dd6ba4..HEAD -- frontend backend desktop
+```
+
+Confirmed **EMPTY** before committing this section. Only files under `docs/verification/` and this checkpoint
+are staged. `sofra-caddy-1` (an unrelated, pre-existing Docker Compose stack this session discovered was
+occupying host port 80) was reported, not touched — a temporary preview-deployment request from the user mid-
+session was paused when it required stopping that container, per the harness's own permission system; it
+remains fully untouched and is not part of this mission's scope.
+
+```
+PRODUCTION_CODE_CHANGED_BY_THIS_PASS=NO
+REMEDIATION_PERFORMED=NO
+```

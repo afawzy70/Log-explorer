@@ -1875,3 +1875,106 @@ ChatGPT/Owner supervisor: read `docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUD
 original report and this completion section) before deciding what, if anything, to remediate and in what order.
 §8 of the completion section ("Remediation candidate grouping") gives a starting structure for that decision,
 not an implementation plan.
+
+---
+
+## Session 14 — Final Audit Closure Pass EXECUTED (audit-only, no remediation); AUDIT_COMPLETE=NO with an exact, bounded blocker
+
+Mission (`IMPECCABLE_VISUAL_FIDELITY_FINAL_AUDIT_CLOSURE`) — a third and final closure pass targeting the
+specific gaps Session 13's own Completion Pass disclosed as `PARTIAL`: dark-theme coverage (8/14 states),
+classification-workflow coverage, and responsive coverage, plus an independent re-verification of DRIFT-002.
+Verified before starting: HEAD matched the expected `c55b58f`, worktree clean, PR #61 OPEN/DRAFT/NOT_MERGED, CI
+green on that exact HEAD. **Audit only — zero production files modified.**
+
+**Full findings are in `docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUDIT.md`'s own "Final Audit Closure"
+section** — not duplicated here. Headline outcomes:
+
+- **Caught a second count error**: the Completion Pass's own `CLASSIFICATION_DESIGN_STATES_INVENTORIED=20` was
+  itself wrong, in the same family as Session 13's drift-count fix — re-derived from Mission D's own inventory
+  table, the true count is **42** design states. All 42 are now individually accounted for (17 direct rendered
+  comparisons, 12 dynamic-equivalent, 12 not-applicable, 1 genuinely review-required).
+- **Dark theme closed from 8/14 to 13/14 states**, including a genuine first for any audit pass: a real event
+  classified by **two rules simultaneously**, both tag chips visible in the Inspector (design state 45,
+  `dark-45-inspector-multiple-classifications.png`) — achieved by seeding two real, broadly-matching
+  classification rules through the actual UI (not fixture manipulation) and searching the Fixture source's
+  malformed-log corpus, which required discovering that `LogLineParser`'s `malformed()` events populate
+  `rawLine`, not `message` or `service` — the fix that made real multi-tag matching possible at all.
+- **Closed a real classification-state gap this session's own capture work made possible**: a genuine
+  **detected pattern** (not just "no safe pattern") was achieved for the first time across any audit pass, by
+  switching to the environment's separate `Fixture (dev/test only)` source and sampling the literal repeated
+  string `"Payment authorization failed"` — design states 57 (rule-detected) and 86 (no-extraction-suggestion)
+  both now have real evidence in both themes.
+- **Closed the tag-colour-conflict state (91)** by exporting a real saved rule pack, editing one rule's
+  `displayColor` in the exported JSON, and re-importing it — the real backend correctly refused the colour
+  clash with the exact tag name and its already-claimed colour, distinct from a generic rule conflict (68),
+  confirming D40's one-colour-per-rule model is enforced exactly as designed.
+- **Two REVIEW_REQUIRED items remain, narrower and more precisely evidence-bound than before**: state 85
+  (extraction suggestions with real variable content) — three independent real attempts across all three
+  passes never found a repeated-but-variable message template in this environment's available data; and
+  REVIEW-001 (Journey ID) — a real `"Journey step 1/2/3"`-worded event was found and its Request Flow tab
+  opened directly, confirming even that narratively-journey-themed event never populates a real `journeyId`
+  field.
+- **DRIFT-002 independently re-verified**, not merely re-copied: confirmed via `git log` that
+  `AdvancedFilters.tsx`/`.module.css` has been unchanged since before Mission D's own capture, then
+  independently re-checked all 9 required comparison dimensions against the existing evidence — 5 of 9 show a
+  clear structural difference, 0 show a clear match, confirming `VISUAL_DESIGN_DRIFT` / `MAJOR` from first
+  principles, not inheritance.
+- **Frozen the final drift register: still exactly 14 items, 0 BLOCKER, 7 MAJOR, 7 MINOR.** No new drift found,
+  no existing finding disproven — this pass's new evidence only strengthens (never weakens) DRIFT-008 and
+  DRIFT-011's existing classifications.
+- **`RESPONSIVE_FIDELITY_AUDIT_COMPLETE=NO`, with an exact, bounded blocker, not a vague gap**: 9 of the
+  design's 20 unique responsive states — everything inside the New Rule wizard panel and the Import dialog —
+  have never been responsively audited at any width beyond 1440px. This pass built the full 20-state category
+  matrix (A/B/C/D/E/F) rather than capturing more screenshots blindly, deliberately declining to apply an
+  unjustified equivalence shortcut to the wizard/import states (the mission's own guidance explicitly warns
+  against this), leaving the gap honestly disclosed rather than papered over. **Because of this one dimension,
+  overall `AUDIT_COMPLETE=NO`** — every other acceptance condition (dark theme, classification, DRIFT-002,
+  drift register, adaptations, review-required items, no remediation, no production changes, security
+  invariants) is satisfied.
+
+**A user preview-deployment request arrived mid-session** (temporarily using host port 80 to preview the
+current build). Investigation found port 80 was already bound by `sofra-caddy-1`, part of a real, unrelated,
+pre-existing Docker Compose stack (`sofra-web-1`/`sofra-caddy-1`/`sofra-db-1`) that turns out to be the actual
+data source behind this environment's own `Local Docker Compose` Log Explorer source (explaining, retroactively,
+why that source's events were generic Postgres/Caddy/Next.js log lines rather than a synthetic business-domain
+corpus — a genuinely useful incidental discovery for this audit). The user explicitly authorized stopping that
+container temporarily; the action was blocked by Claude Code's own permission system (auto-mode classifier:
+"Interfere With Workloads") before it ran. Per the harness's own guidance, this was reported to the user rather
+than routed around, and the user then redirected back to the audit mission without resolving the preview
+request. **`sofra-caddy-1` remains fully untouched**, and no preview was deployed.
+
+**Verification before commit**: `git diff c55b58f..HEAD -- frontend backend desktop` was empty. `npm run
+typecheck` PASS, full frontend unit suite PASS (1163/1163, unchanged), `npm run build` PASS. No backend/E2E
+rerun performed locally (no product code changed; starting-HEAD CI already proved backend/E2E/desktop health).
+Temporary local capture specs and dev processes (backend + frontend) were all removed/stopped before commit.
+
+**Committed to PR #61**: the "Final Audit Closure" section appended to
+`docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUDIT.md` (both prior sections preserved unchanged above it),
+`docs/verification/visual-fidelity-final-closure/` (25 new production screenshots + 3 exported classification-
+rule pack files used as real import-workflow evidence), and this checkpoint update. **No production code, CSS,
+component, token, or backend file was touched.**
+
+```
+IMPECCABLE_VISUAL_FIDELITY_GATE_RECORDED=YES
+IMPECCABLE_VISUAL_FIDELITY_AUDIT_EXECUTED=YES
+IMPECCABLE_VISUAL_FIDELITY_AUDIT_COMPLETION_PASS_EXECUTED=YES
+IMPECCABLE_VISUAL_FIDELITY_FINAL_AUDIT_CLOSURE_EXECUTED=YES
+DARK_THEME_AUDIT_COMPLETE=YES
+CLASSIFICATION_FIDELITY_AUDIT_COMPLETE=YES
+RESPONSIVE_FIDELITY_AUDIT_COMPLETE=NO
+AUDIT_COMPLETE=NO
+FINAL_UI_UX_ACCEPTANCE=NOT_YET_AUTHORIZED
+UNTRACKED_OWNER_REQUIREMENTS=0
+PRODUCTION_CODE_CHANGED_BY_AUDIT=NO
+REMEDIATION_PERFORMED=NO
+FINAL_DRIFT_COUNT=14 (0 BLOCKER, 7 MAJOR, 7 MINOR - unchanged, frozen)
+FINAL_REVIEW_REQUIRED_COUNT=2 (both external-data-bound, exact future acceptance evidence stated)
+```
+
+**This closure pass does not authorize remediation, merge, main integration, or Source Experience Parity
+implementation.** The next action belongs to the ChatGPT/Owner supervisor: read
+`docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUDIT.md`'s "Final Audit Closure" section in full, then decide
+whether to (a) run one more deliberately-scoped pass to close the named responsive gap (New Rule wizard + Import
+dialog at 4 non-1440 widths) before authorizing remediation, or (b) authorize remediation now against the
+frozen 14-item drift register while treating the responsive gap as a known, accepted risk to close later. Either
+is a legitimate Owner decision — this session does not make it.
