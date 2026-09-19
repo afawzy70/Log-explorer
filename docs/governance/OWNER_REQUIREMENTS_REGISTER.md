@@ -2657,3 +2657,35 @@ regression gate). No new owner requirement was found during either the audit or 
 `UNTRACKED_OWNER_REQUIREMENTS=0` holds throughout. `FINAL_UI_UX_ACCEPTANCE` remains `NOT_YET_AUTHORIZED`: that
 sign-off is an explicit owner decision this remediation mission does not have standing to grant, and PR #61
 stays open/draft/unmerged pending it.
+
+**Addendum — final UI/UX acceptance granted (`PR61_FINAL_PRE_MERGE_CLOSURE` mission).** The status block and
+both addenda above are left unedited as the historical record of their own sessions — at the time each was
+written, `FINAL_UI_UX_ACCEPTANCE=NOT_YET_AUTHORIZED` was true and is preserved as such. The sign-off those
+sessions correctly said they had no standing to grant has since been given: ChatGPT Owner review
+independently verified the exact-head visual remediation/evidence closure and granted final UI/UX acceptance,
+and separately reviewed and accepted the subsequently-implemented Source Experience Parity work (mission
+`SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT`, recovered in `SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1`) and
+the controlled integration of latest `main` (mission `PR61_CONTROLLED_LATEST_MAIN_INTEGRATION`, PR #62/#63/#64,
+merge commit `047097b68df1015f5965d3eecdf144a755f6b4a4`). This addendum records that later, current
+authoritative state — it does not retroactively change what any earlier session was entitled to say at the
+time.
+
+```
+AUDIT_COMPLETE=YES
+VISUAL_DRIFT_REMEDIATION_COMPLETE=YES
+FINAL_UI_UX_ACCEPTANCE=YES
+FINAL_UI_UX_ACCEPTANCE_SOURCE=CHATGPT_OWNER_FINAL_UI_UX_REMEDIATION_REVIEW
+DRIFTS_CLOSED=16
+DRIFTS_REMAINING=0
+SOURCE_EXPERIENCE_PARITY_IMPLEMENTED=YES
+SOURCE_EXPERIENCE_PARITY_OWNER_ACCEPTED=YES
+LATEST_MAIN_INTEGRATION=PASS
+UNTRACKED_OWNER_REQUIREMENTS=0
+PR_61_STATE=OPEN, DRAFT, NOT_MERGED
+MERGE_AUTHORIZED=NO — final merge authorization is a separate ChatGPT Owner decision this entry does not grant
+```
+
+Full current-state matrix and scope reconciliation (D8, OpenShift Loki, A1b, real-OpenShift-validation, Port 80
+preview, DB/cache/retention — each classified, none implemented or changed by this entry):
+`docs/verification/PR61_FINAL_PRE_MERGE_CLOSURE.md`. No production code was touched to produce this addendum;
+`UNTRACKED_OWNER_REQUIREMENTS=0` holds.

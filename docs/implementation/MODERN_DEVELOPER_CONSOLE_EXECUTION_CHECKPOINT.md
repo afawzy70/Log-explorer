@@ -2293,3 +2293,51 @@ MERGE_AUTHORIZED=NO
 PR_61_STATE=OPEN, DRAFT, NOT_MERGED
 NEXT_ACTION=CHATGPT_OWNER_POST_INTEGRATION_REVIEW
 ```
+
+## FINAL_PRE_MERGE_CLOSURE — final UI/UX acceptance recorded, scope reconciled
+
+`MISSION=PR61_FINAL_PRE_MERGE_CLOSURE` — documentation/governance-only closure at head
+`c1d0e3b223bfdf2cd543165d6071b4dfb2e7e837`. No implementation, no redesign, no re-audit, no merge, no draft-
+status change. This session's own six earlier `FINAL_UI_UX_ACCEPTANCE=NOT_YET_AUTHORIZED` status blocks above
+(lines recording Sessions' own historical state) are left untouched — each was true when written. ChatGPT
+Owner review has since independently verified the exact-head visual remediation/evidence closure and granted
+final UI/UX acceptance, and separately accepted Source Experience Parity and the controlled `main` integration
+(PR #62/#63/#64, merge `047097b68df1015f5965d3eecdf144a755f6b4a4`). This section records that later,
+current-authoritative state.
+
+Full current-state matrix, and a read-only scope reconciliation of everything not yet complete — D8 (Live
+Service EXCLUDE, confirmed still absent from `FollowRequest.java`, consistently recorded across five prior
+documents as a separate deferred lane, never a PR61 blocker), OpenShift Loki (backend capability preserved,
+deliberately UI-unselectable per `sourcePolicy.ts`'s `UI_UNAVAILABLE_SOURCE_IDS`, an already-recorded decision
+not a gap), A1b (mass tag-recolor; confirmed `NOT_IMPLEMENTED`, `ImportPanel.tsx` explicitly defers it to an
+unapproved future server change), real OpenShift cluster validation (confirmed `NOT_AVAILABLE` for the current
+composition — and, per `docs/verification/OS_1C_OPENSHIFT_DIRECT_SEARCH_REPORT.md`, no real-cluster evidence
+has ever existed anywhere in this repository's history for any composition; this is the project's constant
+credential-gated state, not a new or composition-specific gap), Port 80 preview (not a product requirement,
+not touched), and DB/cache/retention (out of scope, not implemented) — is in
+`docs/verification/PR61_FINAL_PRE_MERGE_CLOSURE.md`. Nothing in that reconciliation blocks PR #61's merge.
+
+```
+MISSION=PR61_FINAL_PRE_MERGE_CLOSURE
+AUDIT_COMPLETE=YES
+VISUAL_DRIFT_REMEDIATION_COMPLETE=YES
+FINAL_UI_UX_ACCEPTANCE=YES
+FINAL_UI_UX_ACCEPTANCE_SOURCE=CHATGPT_OWNER_FINAL_UI_UX_REMEDIATION_REVIEW
+DRIFTS_CLOSED=16
+DRIFTS_REMAINING=0
+SOURCE_EXPERIENCE_PARITY_IMPLEMENTED=YES
+SOURCE_EXPERIENCE_PARITY_OWNER_ACCEPTED=YES
+LATEST_MAIN_INTEGRATION=PASS
+D8_CURRENT_STATUS=SEPARATE_APPROVED_LANE (deferred, not a PR61 blocker)
+OPENSHIFT_LOKI_CURRENT_STATUS=DEFERRED_WITH_REASON (UI-unselectable by deliberate policy; not a PR61 blocker)
+A1B_STATUS=NOT_IMPLEMENTED (unchanged, not a PR61 blocker)
+REAL_OPENSHIFT_LATEST_COMPOSITION_VALIDATION=EXTERNAL_VALIDATION_LIMITATION (no credentials/cluster; unbroken project-wide state)
+PORT80_PREVIEW_BLOCKS_PR61_MERGE=NO
+DB_CACHE_RETENTION_BLOCKS_PR61_MERGE=NO
+PRODUCTION_CODE_CHANGED=NO
+UNTRACKED_OWNER_REQUIREMENTS=0
+PR61_PRE_MERGE_CLOSURE=PASS
+MERGE_AUTHORIZED=NO
+PR_61_STATE=OPEN, DRAFT, NOT_MERGED
+NEXT_ACTION=CHATGPT_OWNER_FINAL_PR61_MERGE_READINESS_REVIEW
+```
