@@ -2310,12 +2310,36 @@ Service EXCLUDE, confirmed still absent from `FollowRequest.java`, consistently 
 documents as a separate deferred lane, never a PR61 blocker), OpenShift Loki (backend capability preserved,
 deliberately UI-unselectable per `sourcePolicy.ts`'s `UI_UNAVAILABLE_SOURCE_IDS`, an already-recorded decision
 not a gap), A1b (mass tag-recolor; confirmed `NOT_IMPLEMENTED`, `ImportPanel.tsx` explicitly defers it to an
-unapproved future server change), real OpenShift cluster validation (confirmed `NOT_AVAILABLE` for the current
-composition — and, per `docs/verification/OS_1C_OPENSHIFT_DIRECT_SEARCH_REPORT.md`, no real-cluster evidence
-has ever existed anywhere in this repository's history for any composition; this is the project's constant
-credential-gated state, not a new or composition-specific gap), Port 80 preview (not a product requirement,
-not touched), and DB/cache/retention (out of scope, not implemented) — is in
+unapproved future server change), real OpenShift cluster validation, dark theme, Port 80 preview (not a product
+requirement, not touched), and DB/cache/retention (out of scope, not implemented) — is in
 `docs/verification/PR61_FINAL_PRE_MERGE_CLOSURE.md`. Nothing in that reconciliation blocks PR #61's merge.
+
+**Factual correction (`PR61_FINAL_PRE_MERGE_CLOSURE_FACTUAL_CORRECTION` mission).** Two statements in this
+section's first version were wrong, not merely superseded, and are corrected here rather than preserved:
+
+- *Real OpenShift validation* was stated as if no real-cluster evidence had ever existed in this repository.
+  That was false: `docs/verification/OS_1F_OPENSHIFT_PROFESSIONAL_UX_REPORT.md` records `REAL_OPENSHIFT_1F=PASS`
+  — a genuine real Red Hat Developer Sandbox run (`api.rm1.0a51.p1.openshiftapps.com`) covering connection,
+  project selection, workload/pod/container discovery, historical/scoped/severity-filtered search, Inspector
+  evidence, context, cross-service correlation, Live (including multi-replica/all-workloads/rollout truthfulness),
+  and token-leakage checks — 22/22 rows `PASS`, evidence in
+  `docs/verification/OS_1F_REAL_OPENSHIFT_EVIDENCE/`. What remains true is narrower and more precise: that real
+  run (commit `9063beb`, 2026-09-13) predates `f280b0b` "Implement Source Experience Parity" (2026-09-18) by 5
+  days and validated the OLD composition (scope selection inside `OpenShiftSettingsPanel`), not PR61's current
+  Search-toolbar `OpenShiftScopeSelect` + `invalidateSearchForScopeChange` composition. Both are true at once:
+  `HISTORICAL_REAL_OPENSHIFT_DIRECT_VALIDATION=PASS` / `REAL_OPENSHIFT_1F=PASS`, and separately
+  `REAL_OPENSHIFT_LATEST_PR61_COMPOSITION_VALIDATION=NOT_AVAILABLE` (never fabricated as validated — it wasn't
+  revalidated after Source Experience Parity moved scope selection).
+- *Dark theme* was stated as "not implemented." That was false: `useTheme.ts` applies a real
+  `data-theme="light"|"dark"` switch; `tokensV2.css` has a complete `:root[data-theme='dark']` block; 56/57
+  production `.module.css` files consume the v2 token system; this document's own Session 13 → Final Audit
+  Closure arc (lines 1828, 1896, 1962, 2047 above) already shows `DARK_THEME_AUDIT_COMPLETE` moving from
+  `PARTIAL` (8/14 states) to `YES` (14/14 states), with real rendered evidence in
+  `docs/verification/visual-fidelity-final-closure/`. Corrected: `DARK_THEME_IMPLEMENTED=YES`,
+  `DARK_THEME_AUDIT_COMPLETE=YES`.
+
+Neither correction changes any other conclusion in this section; no production code changed to produce either
+correction.
 
 ```
 MISSION=PR61_FINAL_PRE_MERGE_CLOSURE
@@ -2331,7 +2355,12 @@ LATEST_MAIN_INTEGRATION=PASS
 D8_CURRENT_STATUS=SEPARATE_APPROVED_LANE (deferred, not a PR61 blocker)
 OPENSHIFT_LOKI_CURRENT_STATUS=DEFERRED_WITH_REASON (UI-unselectable by deliberate policy; not a PR61 blocker)
 A1B_STATUS=NOT_IMPLEMENTED (unchanged, not a PR61 blocker)
-REAL_OPENSHIFT_LATEST_COMPOSITION_VALIDATION=EXTERNAL_VALIDATION_LIMITATION (no credentials/cluster; unbroken project-wide state)
+HISTORICAL_REAL_OPENSHIFT_DIRECT_VALIDATION=PASS (REAL_OPENSHIFT_1F=PASS, real Red Hat Developer Sandbox, OLD composition)
+REAL_OPENSHIFT_LATEST_PR61_COMPOSITION_VALIDATION=NOT_AVAILABLE (not revalidated after Source Experience Parity)
+REAL_OPENSHIFT_LATEST_COMPOSITION_BLOCKS_PR61_MERGE=NO
+DARK_THEME_IMPLEMENTED=YES
+DARK_THEME_AUDIT_COMPLETE=YES
+DARK_THEME_BLOCKS_PR61_MERGE=NO
 PORT80_PREVIEW_BLOCKS_PR61_MERGE=NO
 DB_CACHE_RETENTION_BLOCKS_PR61_MERGE=NO
 PRODUCTION_CODE_CHANGED=NO
@@ -2339,5 +2368,5 @@ UNTRACKED_OWNER_REQUIREMENTS=0
 PR61_PRE_MERGE_CLOSURE=PASS
 MERGE_AUTHORIZED=NO
 PR_61_STATE=OPEN, DRAFT, NOT_MERGED
-NEXT_ACTION=CHATGPT_OWNER_FINAL_PR61_MERGE_READINESS_REVIEW
+NEXT_ACTION=CHATGPT_OWNER_FINAL_MERGE_AUTHORIZATION_REVIEW
 ```

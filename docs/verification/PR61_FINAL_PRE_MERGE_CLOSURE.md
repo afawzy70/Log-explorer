@@ -22,11 +22,27 @@ CI_WINDOWS_DESKTOP=PASS  CI_MACOS_DESKTOP=PASS
 All values matched the mission's authoritative figures exactly before any
 change was made.
 
+## Correction record (`PR61_FINAL_PRE_MERGE_CLOSURE_FACTUAL_CORRECTION`)
+
+This document's first version, committed at head
+`ed4b05b92f2dfffd5d27c555a98bae5cf25e9e59`, contained two factual errors —
+not superseded decisions, genuine inaccuracies — independently re-verified
+against repository evidence and corrected in place below (Modern Developer
+Console's row, Dark theme's row, the two Real OpenShift rows, and §3 of the
+scope reconciliation): it wrongly stated no real-cluster OpenShift evidence
+had ever existed anywhere in this repository (false — see the corrected
+§3 below), and it wrongly stated dark theme was not implemented (false —
+see the corrected matrix row below). It also used "in production" wording
+for Modern Developer Console that could be misread as claiming PR #61 was
+already merged/deployed, corrected to unambiguous wording. Every other
+conclusion in the first version was re-checked against this correction's
+own findings and stands unchanged.
+
 ## Final current-state matrix
 
 | Area | Current status | Merge-blocking | Evidence / reason |
 |---|---|---|---|
-| Modern Developer Console | Implemented, in production | NO | `frontend/src`; full unit/E2E regression green |
+| Modern Developer Console | Implemented in PR #61's production code path; final merge candidate (PR #61 is still open/draft/unmerged — not yet deployed or released) | NO | `frontend/src`; full unit/E2E regression green |
 | Visual audit | Complete | NO | `docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUDIT.md` — 16 drift items found (DRIFT-001…016), 4 intentional adaptations (ADAPT-001…004) |
 | Visual remediation | Complete, 16/16 closed | NO | Same doc's "VISUAL DRIFT REMEDIATION VERIFICATION" section |
 | Final UI/UX acceptance | **YES** (owner-granted) | NO | `docs/governance/OWNER_REQUIREMENTS_REGISTER.md` final-acceptance addendum; `FINAL_UI_UX_ACCEPTANCE_SOURCE=CHATGPT_OWNER_FINAL_UI_UX_REMEDIATION_REVIEW` |
@@ -46,11 +62,12 @@ change was made.
 | PR63 (first-search warmup) | Integrated, preserved | NO | `StartupWarmup.java`/`StartupWarmupProperties.java`; `logexplorer.startup.*` in `application.yml`; `docs/performance/FIRST_SEARCH_WARMUP_INVESTIGATION.md` |
 | PR64 (OpenShift large-response/buffer-lifecycle fix) | Integrated, preserved | NO | `OpenShiftApiClientHttpsBufferLifecycleTest` (18/18), `OpenShiftApiClientByteBoundTest` (28/28) green |
 | Responsive | Covered 1920/1440/1280/1024/768/390 | NO | Repeated across every UX-R phase's evidence set |
-| Dark theme | Not implemented (light theme required, dark only if complete — CLAUDE.md §7) | NO | No dark-theme work was ever in scope for this PR |
+| Dark theme | Implemented and complete (CLAUDE.md §7 requires dark theme only if complete and accessible — it is) | NO | `useTheme.ts` real `data-theme` switch; `tokensV2.css` complete `:root[data-theme='dark']` block; 56/57 production `.module.css` files on the v2 token system; `DARK_THEME_AUDIT_COMPLETE=YES` (14/14 states), real rendered evidence in `docs/verification/visual-fidelity-final-closure/` |
 | Accessibility | WCAG 2.2 AA target, axe checks in test suite | NO | `jest-axe` usage across component tests; keyboard-workflow E2E (`ux-r6-final-polish.spec.ts` §13) |
 | Windows desktop | CI green at exact head | NO | `CI_WINDOWS_DESKTOP=PASS`, run `35438310831` |
 | macOS desktop | CI green at exact head | NO | `CI_MACOS_DESKTOP=PASS`, run `35438310840` |
-| Real OpenShift — latest composition validation | `NOT_AVAILABLE` | NO | See "Scope reconciliation" §3 below |
+| Real OpenShift — historical direct validation | `PASS` (`REAL_OPENSHIFT_1F=PASS`, real Red Hat Developer Sandbox, older composition) | NO | See "Scope reconciliation" §3 below |
+| Real OpenShift — latest PR61 composition validation | `NOT_AVAILABLE` (not revalidated after Source Experience Parity) | NO | See "Scope reconciliation" §3 below |
 | OpenShift Loki | UI-unselectable by deliberate policy; backend capability preserved | NO | See "Scope reconciliation" §2 below |
 | D8 (Live Service EXCLUDE) | Separate, deferred functional lane | NO | See "Scope reconciliation" §1 below |
 | DB / cache / retention | Not implemented, out of scope | NO | CLAUDE.md §8 out-of-scope list; no such code exists |
@@ -103,20 +120,51 @@ because real Loki happens to be unavailable.
 
 ### 3. Real OpenShift validation for the latest Source-Parity composition
 
-**Classification: `EXTERNAL_VALIDATION_LIMITATION`.**
+**Classification: `EXTERNAL_VALIDATION_LIMITATION`** for the latest
+composition specifically — corrected from this document's first version,
+which incorrectly stated that no real-cluster evidence had ever existed in
+this repository. That was false, and is corrected here.
 
-`REAL_OPENSHIFT_VALIDATION=NOT_AVAILABLE` is recorded in both
-`SOURCE_EXPERIENCE_PARITY_VERIFICATION.md` (lines 194, 420) and
-`PR61_LATEST_MAIN_INTEGRATION_VERIFICATION.md:192` for the current
-composition. This is not a regression or a gap specific to the current
-composition: `docs/verification/OS_1C_OPENSHIFT_DIRECT_SEARCH_REPORT.md`
-(the original OpenShift Direct-search implementation, PR #40/#41) records
-`REAL_OPENSHIFT_1A/1B/1C=BLOCKED_CREDENTIALS` — no real-cluster evidence
-has ever existed anywhere in this repository's history, for any
-composition, old or new. This has always been the project's
-credential-gated state, not something this integration introduced or
-worsened. Not fabricated as passing; honestly classified as an external
-limitation, consistent with how every prior session has treated it.
+**What actually happened (real, verified, `PASS`):**
+`docs/verification/OS_1F_OPENSHIFT_PROFESSIONAL_UX_REPORT.md` records
+`REAL_OPENSHIFT_1F=PASS` — a genuine real Red Hat Developer Sandbox run
+against `api.rm1.0a51.p1.openshiftapps.com`, 22/22 rows `PASS`, covering
+connection, project selection, workload/pod/multi-replica/multi-container
+discovery, historical/scoped/severity-filtered search, Inspector WHERE
+evidence, masking, surrounding/context logs, cross-service correlation,
+Live (single-replica, multi-replica, all-workloads), target-snapshot
+immutability during a real rollout, partial-target-down honesty, and
+token-leakage checks. Evidence: `docs/verification/OS_1F_REAL_OPENSHIFT_EVIDENCE/`
+(screenshots A–V). `docs/verification/FINAL_FUNCTIONAL_CLOSURE_REPORT.md:447`
+already records the correct supersession narrative for the earlier
+`OS_1C_OPENSHIFT_DIRECT_SEARCH_REPORT.md` `REAL_OPENSHIFT_1A/1B/1C=BLOCKED_CREDENTIALS`
+rows: "superseded in practice by `REAL_OPENSHIFT_1F=PASS`'s real Sandbox
+run." Those older `BLOCKED_CREDENTIALS` statements are historical text and
+are not rewritten here — they were true when written, and OS-1F's own
+report explains the supersession rather than silently overwriting them.
+
+**What is still genuinely `NOT_AVAILABLE`, precisely:** OS-1F's real
+Sandbox run (commit `9063beb`, 2026-09-13) is a git ancestor of, and 5 days
+older than, `f280b0b` "Implement Source Experience Parity: OpenShift scope
+selection moves to Search" (2026-09-18). OS-1F validated the OLD
+composition, where OpenShift scope selection lived inside
+`OpenShiftSettingsPanel`. It was never re-run against PR61's current
+composition — the Search-toolbar `OpenShiftScopeSelect` plus the
+`invalidateSearchForScopeChange` scope-invalidation lifecycle added by
+Source Experience Parity and its targeted recovery. `REAL_OPENSHIFT_VALIDATION=NOT_AVAILABLE`
+in `SOURCE_EXPERIENCE_PARITY_VERIFICATION.md` (lines 194, 420) and
+`PR61_LATEST_MAIN_INTEGRATION_VERIFICATION.md:192` refers to exactly this —
+the latest composition, not "ever" — and is accurate as far as it goes,
+just imprecise without this document's earlier, now-corrected overstatement
+sitting next to it. Not fabricated as validated: the latest composition
+genuinely was not revalidated against a real cluster.
+
+```
+HISTORICAL_REAL_OPENSHIFT_DIRECT_VALIDATION=PASS
+REAL_OPENSHIFT_1F=PASS
+REAL_OPENSHIFT_LATEST_PR61_COMPOSITION_VALIDATION=NOT_AVAILABLE
+REAL_OPENSHIFT_LATEST_COMPOSITION_BLOCKS_PR61_MERGE=NO
+```
 
 ### 4. A1b
 
@@ -185,8 +233,25 @@ already has full green CI from the controlled `main` integration.
 ## Final result
 
 ```
+FINAL_UI_UX_ACCEPTANCE=YES
+SOURCE_EXPERIENCE_PARITY_OWNER_ACCEPTED=YES
+HISTORICAL_REAL_OPENSHIFT_DIRECT_VALIDATION=PASS
+REAL_OPENSHIFT_1F=PASS
+REAL_OPENSHIFT_LATEST_PR61_COMPOSITION_VALIDATION=NOT_AVAILABLE
+REAL_OPENSHIFT_LATEST_COMPOSITION_BLOCKS_PR61_MERGE=NO
+DARK_THEME_IMPLEMENTED=YES
+DARK_THEME_AUDIT_COMPLETE=YES
+DARK_THEME_BLOCKS_PR61_MERGE=NO
+D8_CURRENT_STATUS=SEPARATE_APPROVED_LANE
+D8_BLOCKS_PR61_MERGE=NO
+OPENSHIFT_LOKI_CURRENT_STATUS=DEFERRED_WITH_REASON
+OPENSHIFT_LOKI_BLOCKS_PR61_MERGE=NO
+A1B_STATUS=NOT_IMPLEMENTED
+PORT80_PREVIEW_BLOCKS_PR61_MERGE=NO
+DB_CACHE_RETENTION_BLOCKS_PR61_MERGE=NO
+UNTRACKED_OWNER_REQUIREMENTS=0
 PR61_PRE_MERGE_CLOSURE=PASS
 MERGE_AUTHORIZED=NO
 PR_61_STATE=OPEN, DRAFT, NOT_MERGED
-NEXT_ACTION=CHATGPT_OWNER_FINAL_PR61_MERGE_READINESS_REVIEW
+NEXT_ACTION=CHATGPT_OWNER_FINAL_MERGE_AUTHORIZATION_REVIEW
 ```
