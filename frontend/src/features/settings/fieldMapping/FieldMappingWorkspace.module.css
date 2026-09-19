@@ -1,7 +1,30 @@
+/*
+ * B6.1 (Session 6) - full v2 semantic tokens from the start (mission's own explicit requirement): this is a
+ * full-page takeover workspace with no unstyled v1 sibling to mismatch against, matching B5's own
+ * `features/journey/` reasoning.
+ */
 .wrapper {
-  padding: var(--space-4);
-  max-width: 960px;
-  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  /* This is a flex item of App.tsx's own results-column layout. Without an
+     explicit min-width: 0, a flex item's automatic minimum width defaults
+     to its content's min-content size - which .fieldsTable's min-width:
+     720px (see .tableScroll below) would otherwise propagate all the way
+     up, forcing the whole page wider than the viewport at narrow widths
+     instead of staying contained by .tableScroll's own horizontal scroll. */
+  min-width: 0;
+  background: var(--v2-bg-app);
+  /*
+   * Explicit, not inherited: the ambient inherited `color` above this
+   * full-v2 takeover is the v1 `--color-text` token (shared/tokens.css),
+   * which has no dark-theme override at all. Without this, every plain-text
+   * node here that doesn't set its own color (table cells, <code> paths,
+   * JSON sample text) renders in the fixed light-theme v1 ink color even
+   * under [data-theme='dark'], making it unreadable against a dark
+   * background.
+   */
+  color: var(--v2-ink-1);
 }
 
 .header {
@@ -9,129 +32,268 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
-  margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-4) 0;
 }
 
 .title {
   margin: 0;
-  font-size: var(--font-size-lg);
+  font: var(--v2-text-workspace);
+  color: var(--v2-ink-1);
+}
+
+.readinessOk {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-2);
+  border-radius: var(--v2-r-xs);
+  background: var(--v2-accent-tint);
+  color: var(--v2-accent-ink);
+  font: var(--v2-text-meta);
+  font-weight: 600;
+}
+
+.readinessBlocked {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-2);
+  border-radius: var(--v2-r-xs);
+  background: var(--v2-danger-tint);
+  color: var(--v2-danger);
+  font: var(--v2-text-meta);
   font-weight: 600;
 }
 
 .hint {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-  margin: var(--space-1) 0;
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+  margin: var(--space-1) var(--space-4) 0;
 }
 
 .error {
-  color: var(--color-danger);
-  font-size: var(--font-size-sm);
+  color: var(--v2-danger);
+  font: var(--v2-text-body);
+  margin: var(--space-1) var(--space-4) 0;
 }
 
-.readyStatus {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-  margin: 0 0 var(--space-3);
-}
-
-.notReadyStatus {
-  margin: 0 0 var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border: var(--border-width) solid var(--color-danger);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-  color: var(--color-danger);
-}
-
-.section {
-  border-top: var(--border-width) solid var(--color-border);
-  padding-top: var(--space-3);
-  margin-top: var(--space-3);
-}
-
-.subheading {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  margin: 0 0 var(--space-2);
-}
-
-.samplesArea {
-  margin-top: var(--space-2);
+/* ------------------------------------------------------------------ process strip */
+.processStrip {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--v2-surface-work);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
 }
 
-.samplePreview {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
-  background: var(--color-bg);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-2);
-  max-height: 220px;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.discoveredList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 160px;
-  overflow-y: auto;
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
-}
-
-.discoveredRow {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--font-size-xs);
-  border-bottom: var(--border-width) solid var(--color-border);
-}
-
-.discoveredRow:last-child {
-  border-bottom: none;
-}
-
-.fieldEditorList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.fieldRow {
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-2);
-}
-
-.fieldHeader {
+.processStep {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: var(--space-1);
+  min-width: 0;
+  max-width: 100%;
 }
 
-.fieldName {
-  font-size: var(--font-size-sm);
+.processStepLine {
+  width: 24px;
+  height: var(--v2-bw);
+  background: var(--v2-line-strong);
+  margin: 0 var(--space-2);
+}
+
+.processStepBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--v2-r-full);
+  font: 600 11px/1 var(--v2-font-ui);
+  flex: none;
+}
+
+.processStepCurrent {
+  background: var(--v2-accent-tint);
+  color: var(--v2-accent-ink);
+}
+
+.processStepDone {
+  background: var(--v2-accent);
+  color: var(--v2-ink-inverse);
+}
+
+.processStepText {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+.processStepLabel {
+  font: var(--v2-text-body-strong);
+  color: var(--v2-ink-1);
+}
+
+.processStepDetail {
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-3);
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .processStepDetail {
+    white-space: normal;
+  }
+}
+
+/* ------------------------------------------------------------------ body: table + evidence aside */
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 420px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+@media (max-width: 1365px) {
+  .body {
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .body {
+    /* minmax(0, 1fr), not a bare 1fr - a bare 1fr's implicit min-width is
+       auto (the content's intrinsic minimum), which lets .fieldsTable's
+       min-width: 720px force this grid track - and the whole page - wider
+       than the viewport at narrow widths. */
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.main {
+  padding: var(--space-3) var(--space-4);
+  min-width: 0;
+  /* Belt-and-suspenders alongside .tableScroll's own overflow-x: auto -
+     without this, .fieldsTable's min-width: 720px still contributes to
+     this grid item's intrinsic-size pass in some engines, pushing the
+     whole page wider than the viewport instead of staying contained by
+     .tableScroll's own horizontal scrollbar. */
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--space-3);
+}
+
+.segmented {
+  display: inline-flex;
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  overflow: hidden;
+}
+
+.segmented button {
+  border: none;
+  background: var(--v2-surface-work);
+  color: var(--v2-ink-2);
+  padding: var(--space-1) var(--space-3);
+  font: var(--v2-text-body);
+  cursor: pointer;
+  border-right: var(--v2-bw) solid var(--v2-line);
+}
+
+.segmented button:last-child {
+  border-right: none;
+}
+
+.segmented button[aria-pressed='true'] {
+  background: var(--v2-accent-tint);
+  color: var(--v2-accent-ink);
   font-weight: 600;
 }
 
+.count {
+  margin-left: 4px;
+  color: var(--v2-ink-3);
+  font: var(--v2-text-meta);
+}
+
+.segmented button[aria-pressed='true'] .count {
+  color: var(--v2-accent-ink);
+}
+
+/* CLAUDE.md §4 invariant, same as every other real table in this app: horizontal scroll wraps the table, the page itself never overflows. */
+.tableScroll {
+  overflow-x: auto;
+  contain: paint;
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-surface-work);
+}
+
+.fieldsTable {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font: var(--v2-text-body);
+}
+
+.fieldsTable th,
+.fieldsTable td {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  vertical-align: top;
+  border-bottom: var(--v2-bw) solid var(--v2-line);
+}
+
+.fieldsTable thead th {
+  font: var(--v2-text-colhead);
+  color: var(--v2-ink-2);
+  background: var(--v2-surface-sunken);
+  white-space: nowrap;
+}
+
+.colField {
+  width: 200px;
+}
+
+.colStatus {
+  width: 140px;
+}
+
+.colActions {
+  width: 280px;
+}
+
+.fieldRow.fieldRowEditing {
+  background: var(--v2-accent-tint);
+}
+
+.fieldName {
+  display: block;
+  font: var(--v2-text-body-strong);
+  color: var(--v2-ink-1);
+}
+
+.fieldKey {
+  display: block;
+  font: var(--v2-text-data);
+  color: var(--v2-ink-3);
+}
+
 .sensitiveBadge {
-  font-size: var(--font-size-xs);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-1);
-  color: var(--color-text-secondary);
+  display: inline-flex;
+  margin-top: 2px;
+  padding: 0 6px;
+  border-radius: var(--v2-r-xs);
+  border: var(--v2-bw) solid var(--v2-line);
+  color: var(--v2-ink-2);
+  font: var(--v2-text-meta);
 }
 
 /*
@@ -140,40 +302,87 @@
  * (`VerificationBadge`'s own label), never color alone (CLAUDE.md §7).
  */
 .unverifiedBadge {
-  font-size: var(--font-size-xs);
+  display: inline-flex;
+  padding: 0 6px;
+  border-radius: var(--v2-r-xs);
+  border: var(--v2-bw) solid var(--v2-line);
+  color: var(--v2-ink-2);
+  font: var(--v2-text-meta);
   font-weight: 600;
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-1);
-  color: var(--color-text-secondary);
 }
 
 .verifiedBadge {
-  font-size: var(--font-size-xs);
+  display: inline-flex;
+  padding: 0 6px;
+  border-radius: var(--v2-r-xs);
+  background: var(--v2-accent-tint);
+  color: var(--v2-accent-ink);
+  font: var(--v2-text-meta);
   font-weight: 600;
-  border: var(--border-width) solid var(--color-success, var(--color-border));
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-1);
-  color: var(--color-success, var(--color-text));
 }
 
 .needsChangeBadge {
-  font-size: var(--font-size-xs);
+  display: inline-flex;
+  padding: 0 6px;
+  border-radius: var(--v2-r-xs);
+  background: var(--v2-warning-tint);
+  color: var(--v2-warning);
+  font: var(--v2-text-meta);
   font-weight: 600;
-  border: var(--border-width) solid var(--color-severity-warn);
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-1);
-  color: var(--color-severity-warn);
 }
 
 /* Recovery mission "Field Mapping Verification Workflow Recovery" - "The owner should never have to guess which version is being checked." A dashed border (distinct from every status badge's solid border) plus its own text, never color alone. */
 .unsavedBadge {
-  font-size: var(--font-size-xs);
+  display: inline-block;
+  margin-top: 2px;
+  padding: 0 6px;
+  border-radius: var(--v2-r-xs);
+  border: var(--v2-bw) dashed var(--v2-ink-3);
+  color: var(--v2-ink-2);
+  font: var(--v2-text-meta);
   font-weight: 600;
-  border: var(--border-width) dashed var(--color-text-secondary);
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-1);
-  color: var(--color-text-secondary);
+}
+
+.notMappedNote {
+  font-style: italic;
+  color: var(--v2-ink-3);
+  font: var(--v2-text-meta);
+}
+
+.pathSummaryList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pathSummaryList code {
+  font: var(--v2-text-data);
+}
+
+.observedNote {
+  margin-left: 6px;
+  color: var(--v2-ink-3);
+  font: var(--v2-text-meta);
+}
+
+.notObservedNote {
+  margin-left: 6px;
+  color: var(--v2-warning);
+  font: var(--v2-text-meta);
+}
+
+.actionsCell {
+  white-space: nowrap;
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.editorRow td {
+  background: var(--v2-surface-sunken);
 }
 
 .candidateList {
@@ -190,20 +399,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-2);
-  font-size: var(--font-size-xs);
-  font-family: var(--font-mono);
-}
-
-.observedNote {
-  color: var(--color-text-secondary);
-  font-family: inherit;
-  font-size: var(--font-size-xs);
-}
-
-.notObservedNote {
-  color: var(--color-severity-warn);
-  font-family: inherit;
-  font-size: var(--font-size-xs);
+  font: var(--v2-text-data);
 }
 
 .candidateActions {
@@ -213,11 +409,24 @@
 }
 
 .candidateActions button {
-  border: var(--border-width) solid var(--color-border);
-  background: var(--color-bg-raised);
-  border-radius: var(--radius-sm);
+  border: var(--v2-bw) solid var(--v2-line);
+  background: var(--v2-surface-work);
+  border-radius: var(--v2-r-xs);
   cursor: pointer;
   min-width: 24px;
+  color: var(--v2-ink-2);
+}
+
+.pickerRow {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+  align-items: center;
+}
+
+.pickerRow select {
+  flex: 1;
+  font: var(--v2-text-data);
 }
 
 .addCandidateRow {
@@ -227,8 +436,7 @@
 
 .addCandidateRow input {
   flex: 1;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font: var(--v2-text-data);
 }
 
 .srOnly {
@@ -245,88 +453,32 @@
 
 .foundBadge {
   margin: var(--space-1) 0 0;
-  font-size: var(--font-size-xs);
-  color: var(--color-success, var(--color-text));
+  font: var(--v2-text-meta);
+  color: var(--v2-accent-ink);
 }
 
 .absentBadge {
   margin: var(--space-1) 0 0;
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
 }
 
 .invalidBadge {
   margin: var(--space-1) 0 0;
-  font-size: var(--font-size-xs);
-  color: var(--color-danger);
+  font: var(--v2-text-meta);
+  color: var(--v2-danger);
 }
 
 .validationSummary {
   margin-top: var(--space-2);
-  font-size: var(--font-size-xs);
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
 }
 
 .conflictList {
   margin: var(--space-1) 0 0;
   padding-left: var(--space-4);
-  color: var(--color-danger);
-}
-
-.scanStats {
-  margin: var(--space-2) 0 0;
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-}
-
-.scanBoundNotice {
-  margin: var(--space-1) 0 0;
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-}
-
-.warningBanner {
-  margin: var(--space-2) 0 0;
-  padding: var(--space-2) var(--space-3);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-}
-
-.schemaTableWrapper {
-  max-height: 220px;
-  overflow-y: auto;
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
-}
-
-.schemaTable {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--font-size-xs);
-}
-
-.schemaTable th,
-.schemaTable td {
-  text-align: left;
-  padding: var(--space-1) var(--space-2);
-  border-bottom: var(--border-width) solid var(--color-border);
-}
-
-.schemaTable code {
-  font-family: var(--font-mono);
-}
-
-.pickerRow {
-  display: flex;
-  gap: var(--space-2);
-  margin-bottom: var(--space-1);
-  align-items: center;
-}
-
-.pickerRow select {
-  flex: 1;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  color: var(--v2-danger);
 }
 
 .advancedEntry {
@@ -334,24 +486,168 @@
 }
 
 .advancedEntry summary {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
   cursor: pointer;
 }
 
-.verificationActions {
-  display: flex;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-  padding-top: var(--space-2);
-  border-top: var(--border-width) dashed var(--color-border);
+/* ------------------------------------------------------------------ evidence aside */
+.evidence {
+  border-left: var(--v2-bw) solid var(--v2-line);
+  background: var(--v2-surface-inspector, var(--v2-surface-work));
+  padding: var(--space-3) var(--space-4);
+  overflow-y: auto;
 }
 
-.actions {
-  margin-top: var(--space-3);
+@media (max-width: 1023px) {
+  .evidence {
+    border-left: none;
+    border-top: var(--v2-bw) solid var(--v2-line);
+  }
+}
+
+.evidenceHeading {
+  margin: var(--space-3) 0 var(--space-2);
+  font: var(--v2-text-section);
+  color: var(--v2-ink-1);
+}
+
+.evidenceHeading:first-child {
+  margin-top: 0;
+}
+
+.scanStats {
+  margin: var(--space-2) 0 0;
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+}
+
+.scanBoundNotice {
+  margin: var(--space-1) 0 0;
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+}
+
+.warningBanner {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border: var(--v2-bw) solid var(--v2-warning);
+  background: var(--v2-warning-tint);
+  border-radius: var(--v2-r-md);
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-1);
+}
+
+.samplesArea {
+  margin-top: var(--space-2);
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.samplesArea label {
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+}
+
+.samplePreview {
+  font: var(--v2-text-data);
+  background: var(--v2-surface-sunken);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  padding: var(--space-2);
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.discoveredList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+}
+
+.discoveredRow {
+  display: flex;
+  justify-content: space-between;
   gap: var(--space-2);
-  border-top: var(--border-width) solid var(--color-border);
-  padding-top: var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  font: var(--v2-text-meta);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
+}
+
+.discoveredRow:last-child {
+  border-bottom: none;
+}
+
+.schemaTableWrapper {
+  max-height: 220px;
+  overflow-y: auto;
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+}
+
+.schemaTable {
+  width: 100%;
+  border-collapse: collapse;
+  font: var(--v2-text-meta);
+}
+
+.schemaTable th,
+.schemaTable td {
+  text-align: left;
+  padding: var(--space-1) var(--space-2);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
+}
+
+.schemaTable code {
+  font: var(--v2-text-data);
+}
+
+/* ------------------------------------------------------------------ sticky action bar */
+.actionBar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--v2-surface-work);
+  border-top: var(--v2-bw) solid var(--v2-line);
+}
+
+.actionBarStatus {
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+  flex: 1 1 auto;
+  min-width: 200px;
+}
+
+.actionBarButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+@media (max-width: 767px) {
+  .actionBar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .actionBarStatus {
+    min-width: 0;
+  }
+
+  .actionBarButtons {
+    margin-left: 0;
+    justify-content: flex-end;
+  }
 }

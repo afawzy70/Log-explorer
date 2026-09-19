@@ -1,9 +1,15 @@
+/*
+ * Session 11 - full v2 tokens for the table's own remaining v1 leaks. The sticky header, severity marks, and
+ * selected/root row states were already v2 (B3); this closes the rest (scroll wrapper, sort header, hover/
+ * focus row states, timestamp weighting, protected-value/id-label text, error/warn row tints, the gap row) so
+ * the whole table is coherently dark-theme correct, not just its newer pieces.
+ */
 /* Horizontal scroll belongs around the table; the page itself must never overflow (CLAUDE.md §4). */
 .scrollWrapper {
   overflow-x: auto;
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-raised);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-surface-work);
 }
 
 /*
@@ -36,8 +42,9 @@
   padding: var(--space-2) var(--space-3);
   text-align: left;
   vertical-align: top;
-  border-bottom: var(--border-width) solid var(--color-border);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
   overflow: hidden;
+  color: var(--v2-ink-1);
 }
 
 /*
@@ -57,14 +64,50 @@
   padding: var(--space-1) var(--space-2);
 }
 
+/*
+ * Compact's own row-height math (8px vertical padding + a ~19px text line)
+ * lands near the design's 28px row target (`--v2-h-row`) for every column
+ * except Actions: its trigger button is a deliberate, untouched 28x28px
+ * hit target (WCAG 2.5.8), so 4px top + 4px bottom padding around it alone
+ * forced the WHOLE row to 36-37px, not 28px - measured in the real
+ * rendered app, not assumed. Zeroing only this cell's OWN vertical padding
+ * in compact density lets the row settle at the design's target without
+ * touching the button's size at all: the button supplies its own border
+ * and background, so it still reads as a distinct control with no padding
+ * around it, exactly as `.compact th, .compact td` above already promises
+ * ("hit targets... are untouched - only spacing shrinks").
+ */
+.compact td.actionsCell {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/*
+ * B3 RESTYLE (COMPONENT_INVENTORY.md's ResultsTable.tsx entry - sticky header is already correct
+ * mechanically, `position: sticky; top: 0` predates this pass; this updates its colours/type to the B1
+ * design). A real, deliberate style delta, not a guess: the design's own `.grid thead th` (`prototype/
+ * styles/app.css`) drops the uppercase/letter-spacing treatment entirely in favour of plain sentence-case
+ * semibold text - confirmed against the design's own rendered reference screenshot ("Time", "Level",
+ * "Service"...), not assumed from the token names alone. `z-index: 2` is new (the design's own value) so a
+ * later addition of a positioned element that scrolls with the body can never render on top of the sticky
+ * header - `ActionsCell`'s and `TableSettingsControl`'s own popovers already sit at `z-index: 20`, well
+ * above this, so nothing regresses.
+ *
+ * Deliberately NOT copied: the design's explicit `height: var(--v2-h-row-header)` with `padding: 0 8px`
+ * (replacing padding-based sizing entirely). This table's header shares its box model with `.table th,
+ * .table td` above, including density-aware padding; forcing a fixed pixel height on top of that risked
+ * clipping text at typical zoom/font-scale without a real, verified need - a pixel value that must be true
+ * to preserve, not a target to hit for its own sake (CLAUDE.md §4 table geometry invariants). The header's
+ * own measured height is unchanged by this commit.
+ */
 .table thead th {
-  font-size: var(--font-size-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  color: var(--color-text-secondary);
-  background: var(--color-bg-canvas);
+  font: var(--v2-text-colhead);
+  color: var(--v2-ink-2);
+  background: var(--v2-surface-bar);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
   position: sticky;
   top: 0;
+  z-index: 2;
 }
 
 /*
@@ -93,13 +136,13 @@
 }
 
 .sortableHeader:hover {
-  color: var(--color-text);
+  color: var(--v2-ink-1);
 }
 
 .sortableHeader:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
+  outline: 2px solid var(--v2-focus);
   outline-offset: 2px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--v2-r-sm);
 }
 
 /* Never color-only: the glyph itself changes (▲/▼ vs ↕), plus aria-sort on the <th> and a visually-hidden text description. */
@@ -115,6 +158,110 @@
 }
 
 /*
+ * COMPONENT_INVENTORY.md "severity mark in a 22 px gutter inside the Time cell" (B3 restyle). Fixed
+ * left padding regardless of density - unlike the row's own height, this gutter is a constant reserved
+ * width, not something compact/comfortable should shrink - so both density rules below must outrank
+ * `.compact td`'s own `padding` shorthand; `.table td.timeCell`/`.compact td.timeCell` mirror the
+ * existing `.compact td.actionsCell` precedent above for the same reason.
+ */
+.table td.timeCell {
+  position: relative;
+  padding-left: 22px;
+}
+
+.compact td.timeCell {
+  padding-left: 22px;
+}
+
+/*
+ * Severity marks: shape carries the level even without colour - a diamond (ERROR), triangle (WARN),
+ * filled dot (INFO), ring (DEBUG), or flat bar (TRACE). Additive to the Level column's own coloured
+ * text (`levelDot`/`levelCell` below), not a replacement for it.
+ */
+.sevMark {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-block;
+  flex: none;
+}
+
+.sevMarkError {
+  width: 8px;
+  height: 8px;
+  background: var(--v2-sev-error-mark);
+  border-radius: var(--v2-r-xs);
+}
+
+.sevMark.sevMarkError {
+  transform: translateY(-50%) rotate(45deg) scale(0.9);
+}
+
+.sevMarkWarn {
+  width: 10px;
+  height: 8px;
+  background: var(--v2-sev-warn-mark);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.sevMarkInfo {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--v2-sev-info-mark);
+}
+
+.sevMarkDebug {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--v2-sev-debug-mark);
+}
+
+.sevMarkTrace {
+  width: 8px;
+  height: 2px;
+  background: var(--v2-sev-trace-mark);
+}
+
+/*
+ * The context-root row's independent marker (see the combined SELECTED x ROOT state comment further
+ * below) - a ring around the severity mark, in the same 22px Time-cell gutter. `pointer-events: none` so
+ * it never intercepts the row's own click-to-inspect. Injected only into the `time` column's `<td>` by
+ * `ResultsTable.tsx`, sized to clear every severity-mark shape (largest is the 10x8px WARN triangle)
+ * without touching the timestamp text that starts at the cell's own 22px padding edge.
+ */
+.rootMarker {
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--v2-trigger-line);
+  pointer-events: none;
+}
+
+@media (forced-colors: active) {
+  .sevMarkError,
+  .sevMarkWarn,
+  .sevMarkInfo {
+    background: CanvasText;
+  }
+  .sevMarkDebug {
+    box-shadow: inset 0 0 0 1.5px CanvasText;
+  }
+  .sevMarkTrace {
+    background: CanvasText;
+  }
+  .rootMarker {
+    border-color: CanvasText;
+  }
+}
+
+/*
  * UX-R4 §13 - the calendar date is repeated on nearly every row of a
  * result set, so it sits at secondary emphasis behind the clock time,
  * which is what actually distinguishes one row from the next. Both are
@@ -123,11 +270,11 @@
  * concatenate back to exactly the canonical `formatTimestampCell` string.
  */
 .timeDatePart {
-  color: var(--color-text-tertiary);
+  color: var(--v2-ink-3);
 }
 
 .timeClockPart {
-  color: var(--color-text);
+  color: var(--v2-ink-1);
 }
 
 .levelCell {
@@ -160,13 +307,13 @@
 }
 
 .idLabel {
-  color: var(--color-text-tertiary);
+  color: var(--v2-ink-3);
   font-family: var(--font-sans);
   margin-right: var(--space-1);
 }
 
 .protectedValue {
-  color: var(--color-protected);
+  color: var(--v2-masked);
 }
 
 /*
@@ -200,7 +347,7 @@
 .idLinkCell:hover,
 .idLinkCell:focus-visible {
   text-decoration: underline;
-  color: var(--color-accent);
+  color: var(--v2-accent-ink);
 }
 
 /*
@@ -236,12 +383,12 @@
  * all legitimately win over it at equal specificity.
  */
 .table tbody tr.errorRow {
-  background: color-mix(in srgb, var(--color-severity-error-bg) 60%, transparent);
-  box-shadow: inset 3px 0 0 var(--color-severity-error);
+  background: var(--v2-sev-error-row);
+  box-shadow: inset 3px 0 0 var(--v2-sev-error);
 }
 
 .table tbody tr.warnRow {
-  box-shadow: inset 3px 0 0 var(--color-severity-warn);
+  box-shadow: inset 3px 0 0 var(--v2-sev-warn);
 }
 
 /*
@@ -266,7 +413,7 @@
 }
 
 .table tbody tr[data-row-index]:hover {
-  background: var(--color-bg-hover);
+  background: var(--v2-hover);
 }
 
 /*
@@ -274,59 +421,60 @@
  * it is not clipped by the scroll wrapper on the first/last row.
  */
 .table tbody tr[data-row-index]:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
+  outline: 2px solid var(--v2-focus);
   outline-offset: -2px;
 }
 
 /*
- * "Selected row stays identifiable" (IMPLEMENTATION_PLAN.md "Phase H"),
- * strengthened for UX-R4 §7: the investigator must be able to answer
- * "which event am I currently investigating?" instantly, in a dense table,
- * while the inspector is open. Two independent cues, neither of them
- * colour alone: a distinct background *and* a 4px accent rail (wider than
- * both severity rails above, so a selected ERROR row still reads as
- * selected rather than merely red). `aria-selected` on the row itself
- * (ResultsTable.tsx) carries the same state non-visually.
+ * Session 3 - combined SELECTED x ROOT state model. Production can have a row that is genuinely BOTH
+ * selected AND the context root at once (re-opening the inspector on the root event itself) - unlike the
+ * design prototype's simplified model, which assumes only one of the two is ever true per view (its own
+ * `--accent`/`--trigger-line` and `--accent-tint`/`--selected` tokens are literally identical values,
+ * confirming the prototype never needed to keep them visually apart). The previous implementation here
+ * made ROOT win outright over SELECTED on their shared background/box-shadow channel, so a selected+root
+ * row visually read as "root only" - `aria-selected` was still true, but nothing on screen showed it.
+ * That's a real requirement gap, not a simplification: fixed by giving SELECTED and ROOT each their own,
+ * non-competing visual channel, so both literally coexist on the same row:
  *
- * The `:hover` variant repeats the same declarations rather than relying
- * on the cascade, so selection survives the pointer resting on the row -
- * §8's explicit "do not allow hover styling to erase selected state".
+ *   SELECTED owns: row background tint + a top/bottom hairline (`box-shadow`, inset). Two independent
+ *   cues, neither colour alone: a distinct background *and* the hairline (never erased by hover - the
+ *   `:hover` variant repeats the declarations rather than relying on the cascade, per §8's explicit "do
+ *   not allow hover styling to erase selected state"). `aria-selected` on the row carries the same state
+ *   non-visually.
+ *
+ *   ROOT owns: a dashed row `outline` (a different CSS box entirely from `box-shadow`/`background`, so it
+ *   can never be clobbered by SELECTED's or a severity row's declarations, whichever wins the shared
+ *   channel) plus an independent ring marker around the Time cell's severity mark (`.rootMarker`, injected
+ *   by `ResultsTable.tsx`'s row-render loop only into the `time` column's `<td>` - not threaded through
+ *   `ColumnRenderContext`, keeping this additive rather than touching every column definition).
+ *   `aria-current="location"` plus a visually-hidden "Original event you were investigating" label (in the
+ *   Actions cell) carry the same state non-visually.
+ *
+ * Because these two states never fight over the same CSS property, UNSELECTED_NON_ROOT, SELECTED_NON_ROOT,
+ * UNSELECTED_ROOT, and SELECTED_ROOT are all four genuinely, simultaneously legible - not just class-name
+ * presence, but real distinct paint. Severity rows keep their existing lower-precedence background/
+ * box-shadow (`.errorRow`/`.warnRow` above); SELECTED still wins that one shared channel over severity,
+ * exactly as before (same specificity, later source order).
  */
 .table tbody tr.selectedRow,
 .table tbody tr.selectedRow:hover {
-  background: var(--color-bg-selected);
-  box-shadow: inset 4px 0 0 var(--color-accent);
+  background: var(--v2-selected);
+  box-shadow: inset 0 1px 0 var(--v2-accent), inset 0 -1px 0 var(--v2-accent);
 }
 
-/*
- * UI Gap Closure Pass - "Context ordering": marks the row a "Show ±30
- * seconds" context view is centered on. Never color alone - `aria-current`
- * on the row itself (see ResultsTable.tsx) and a visually-hidden label in
- * its Actions cell both carry the same meaning non-visually; the dashed
- * border (a different pattern than `.selectedRow`'s solid one) keeps the
- * two distinct even if both classes are ever applied to the same row at
- * once (re-opening the inspector on the root event itself).
- */
 .table tbody tr.contextRootRow {
-  background: var(--color-accent-bg);
-  box-shadow: inset 3px 0 0 var(--color-accent);
-  outline: 1px dashed var(--color-accent);
+  outline: 1px dashed var(--v2-trigger-line);
   outline-offset: -1px;
 }
 
-/*
- * UX-R4: the context-root marker must keep winning over both the new
- * severity rails and `.selectedRow` when the investigator re-opens the
- * inspector on the root event itself - the dashed outline is what
- * distinguishes "the event you came here from" from "the event you have
- * selected", and it is the only cue that survives being both at once.
- * Raised to `.table tbody tr.contextRootRow` so it matches the
- * specificity of the interaction states above and wins on source order,
- * exactly as it did before those rules existed (when every row rule was
- * a bare single class).
- */
-.table tbody tr.contextRootRow:hover {
-  background: var(--color-accent-bg);
+@media (forced-colors: active) {
+  .table tbody tr.selectedRow,
+  .table tbody tr.selectedRow:hover {
+    box-shadow: inset 0 1px 0 Highlight, inset 0 -1px 0 Highlight;
+  }
+  .table tbody tr.contextRootRow {
+    outline-color: CanvasText;
+  }
 }
 
 /*
@@ -340,11 +488,11 @@
  * `.selectedRow`/`.contextRootRow`.
  */
 .gapRow {
-  background: var(--color-bg-hover);
-  color: var(--color-text-secondary);
+  background: var(--v2-surface-sunken);
+  color: var(--v2-ink-2);
   font-style: italic;
-  border-top: 1px dashed var(--color-border);
-  border-bottom: 1px dashed var(--color-border);
+  border-top: 1px dashed var(--v2-line);
+  border-bottom: 1px dashed var(--v2-line);
 }
 
 

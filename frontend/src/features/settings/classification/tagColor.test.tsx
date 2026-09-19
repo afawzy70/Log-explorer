@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { ClassificationRulesWorkspace } from './ClassificationRulesWorkspace';
 import {
+  ApiError,
   createClassificationRule,
   deleteClassificationRule,
   detectClassificationPattern,
@@ -112,7 +113,14 @@ function renderWorkspace() {
   const onRulesChanged = vi.fn();
   const buildScope = vi.fn(() => SCOPE);
   const utils = render(
-    <ClassificationRulesWorkspace sourceEvent={null} buildScope={buildScope} onRulesChanged={onRulesChanged} onClose={onClose} />,
+    <ClassificationRulesWorkspace
+      sourceEvent={null}
+      buildScope={buildScope}
+      onRulesChanged={onRulesChanged}
+      onClose={onClose}
+      onOpenMapping={vi.fn()}
+      onOpenSettings={vi.fn()}
+    />,
   );
   return { ...utils, onClose, onRulesChanged, buildScope };
 }
@@ -208,6 +216,37 @@ describe('Tag colour - what actually reaches the server', () => {
     return mockCreate.mock.calls[0][1];
   }
 
+  it("routes a save-time colour conflict under the Tag colour field, not only the generic list (§22.11 A2) - the server's real path is rules[N].displayColor even for a single rule", async () => {
+    const user = userEvent.setup();
+    mockCreate.mockRejectedValue(
+      new ApiError(400, {
+        status: 400,
+        reason: 'RULE_INVALID',
+        detail: 'The classification rule is invalid',
+        errors: [
+          {
+            path: 'rules[1].displayColor',
+            message: 'Tag "middleware" is already shown in BLUE by "Existing rule". Every rule that uses a tag must show it in the same colour — change one of the two colours.',
+          },
+        ],
+      }),
+    );
+    const { fieldset } = await openClassificationStep(user);
+    await user.type(screen.getByLabelText('Rule name'), 'Middleware call');
+    await user.type(screen.getByLabelText('Tags (comma-separated, required)'), 'middleware');
+    await user.click(within(fieldset).getByRole('radio', { name: 'Red' }));
+    await user.click(screen.getByRole('button', { name: '5. Save' }));
+    await user.click(screen.getByRole('button', { name: 'Save rule' }));
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+
+    // The failed save keeps the draft and stays on the Save step (the rail, never a locked wizard) - the generic
+    // summary there lists the raw conflict already; the real fix under test is that returning to the
+    // Classification step shows it scoped to the Tag colour field too, not only in that generic list.
+    await user.click(screen.getByRole('button', { name: '2. Classification' }));
+    const liveFieldset = await screen.findByRole('group', { name: 'Tag colour' });
+    expect(await within(liveFieldset).findByText(/already shown in BLUE by "Existing rule"/)).toBeInTheDocument();
+  });
+
   it('a rule saved without touching the colour sends no displayColor, so the server\'s deterministic default applies', async () => {
     const user = userEvent.setup();
     const sent = await saveNewRule(user);
@@ -242,17 +281,20 @@ describe('Tag colour - what actually reaches the server', () => {
 });
 
 describe('Tag colour - the rules list', () => {
-  it('draws every rule\'s tags as chips in that rule\'s colour, with the tag text always present', async () => {
+  it("draws each rule's FIRST tag as a real chip in that rule's colour, plus a neutral \"+n\" for the rest - never a chip per tag, never a second coloured chip (§22.11 A11/A3)", async () => {
     renderWorkspace();
     const table = await screen.findByRole('table', { name: 'Classification rules' });
     const rows = within(table).getAllByRole('row').slice(1);
     expect(rows).toHaveLength(3);
 
-    expect(tagChipsIn(rows[0])).toEqual([
-      { text: 'middleware', color: 'BLUE' },
-      { text: 'gateway', color: 'BLUE' },
-    ]);
+    // Two tags (middleware, gateway): one real chip for the first, a neutral +1 for the rest - the tag text is
+    // never lost, it just moves from a second coloured chip into the row's accessible name.
+    expect(tagChipsIn(rows[0])).toEqual([{ text: 'middleware', color: 'BLUE' }]);
+    expect(within(rows[0]).getByText('+1')).toBeInTheDocument();
+    expect(within(rows[0]).getByRole('cell', { name: 'Tags: middleware, gateway' })).toBeInTheDocument();
+
     expect(tagChipsIn(rows[1])).toEqual([{ text: 'payments', color: 'RED' }]);
+    expect(within(rows[1]).queryByText(/^\+\d+$/)).not.toBeInTheDocument();
     // No colour saved yet: the neutral palette entry, never an invented one, and never a chip with no text.
     expect(tagChipsIn(rows[2])).toEqual([{ text: 'legacy', color: 'GRAY' }]);
   });

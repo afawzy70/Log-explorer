@@ -42,14 +42,17 @@ import { headerLabel } from './inspector-helpers';
 
 // Tags joined the default set with the owner mission "Classification real search scope, assisted extraction, and
 // visual tagging" (CLAUDE.md §4, register §27 CSX-8) - a saved rule must be visible in the table after a re-search.
-const DEFAULT_HEADERS = ['Time', 'Level', 'Service', 'What happened', 'Tags', 'User/Customer', 'Correlation/Trace', 'Actions'];
-const CUSTOMIZED_HEADERS = ['Time', 'Service', 'Level', 'What happened', 'Tags', 'User/Customer', 'Correlation/Trace', 'Logger', 'Trace ID', 'Actions'];
+const DEFAULT_HEADERS = ['Time', 'Level', 'Service', 'What happened', 'Tags', 'User / Customer', 'Correlation / Trace', 'Actions'];
+const CUSTOMIZED_HEADERS = ['Time', 'Service', 'Level', 'What happened', 'Tags', 'User / Customer', 'Correlation / Trace', 'Logger', 'Trace ID', 'Actions'];
 const STORAGE_KEY = 'logexplorer.tablePreferences.v1';
 
 async function gotoFixtureAllLevels(page: Page) {
   await page.goto('/');
   await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
+  // B2 (Session 4) - the level chips now live behind the Severity field trigger's popover.
+  await page.getByRole('button', { name: /^severity:/i }).click();
   await page.getByRole('button', { name: /^all$/i }).click(); // severity: All - the 250-event corpus, exceeds the 200 default page limit
+  await page.keyboard.press('Escape');
 }
 
 async function search(page: Page) {
@@ -168,7 +171,10 @@ test.describe('Legacy Remediation Slice 4 — results table configurability & po
     // preferences are read from localStorage independently of that.
     await expect(page.getByText(/run a search to see results/i)).toBeVisible();
     await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
+    // B2 (Session 4) - the level chips now live behind the Severity field trigger's popover.
+    await page.getByRole('button', { name: /^severity:/i }).click();
     await page.getByRole('button', { name: /^all$/i }).click();
+    await page.keyboard.press('Escape');
     await search(page);
 
     expect(await headers(page)).toEqual(CUSTOMIZED_HEADERS);
@@ -187,7 +193,9 @@ test.describe('Legacy Remediation Slice 4 — results table configurability & po
     await page.getByRole('button', { name: 'Close' }).click();
 
     expect(await headers(page)).toEqual(DEFAULT_HEADERS);
-    await expect(page.locator('table')).not.toHaveClass(/compact/i);
+    // Modern Developer Console (B1) owner decision D1: compact (28px rows) is
+    // now the default density, so a reset lands back on it.
+    await expect(page.locator('table')).toHaveClass(/compact/i);
     await captureScreenshot(page, 'legacy-slice4', 'reset-to-default');
   });
 

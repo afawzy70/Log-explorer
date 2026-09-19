@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
 import { captureScreenshot, setViewport } from './helpers';
+import { openSettingsSection } from './settings-helpers';
 
 const PHASE = 'UX_R3_EVIDENCE';
 
@@ -16,8 +17,8 @@ async function alwaysFailLiveConnections(page: Page) {
 test.describe('UX-R3 BEFORE evidence - current rendered UI, pre-redesign', () => {
   test('A/B: Docker Settings - Local and Remote modes', async ({ page }) => {
     await gotoFixture(page);
-    await page.getByRole('button', { name: /docker settings/i }).click();
-    await expect(page.getByRole('dialog', { name: /docker connection/i })).toBeVisible();
+    await openSettingsSection(page, /docker settings/i);
+    await expect(page.getByTestId('docker-settings-panel')).toBeVisible();
     await captureScreenshot(page, PHASE, 'BEFORE-A-docker-settings-local');
 
     await page.getByLabel('Mode').selectOption('REMOTE');
@@ -57,7 +58,7 @@ test.describe('UX-R3 BEFORE evidence - current rendered UI, pre-redesign', () =>
     await gotoFixture(page);
     await setViewport(page, 390, 844);
     await captureScreenshot(page, PHASE, 'BEFORE-N-narrow-search');
-    await page.getByRole('button', { name: /docker settings/i }).click();
+    await openSettingsSection(page, /docker settings/i);
     await captureScreenshot(page, PHASE, 'BEFORE-N-narrow-settings');
   });
 });

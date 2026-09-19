@@ -1,5 +1,6 @@
 import { useId, useState } from 'react';
 import { Button } from '../../../shared/ui/Button';
+import { TagChip } from '../../../shared/ui/TagChip';
 import {
   applyClassificationImport,
   isRulesRevisionConflict,
@@ -15,7 +16,7 @@ import type {
   RuleValidationError,
 } from '../../../shared/api/types';
 import { REVISION_CONFLICT_MESSAGE, errorMessage } from './ruleDraft';
-import styles from './ClassificationRulesWorkspace.module.css';
+import styles from './ImportPanel.module.css';
 
 export interface ImportPanelProps {
   fileName: string;
@@ -35,7 +36,15 @@ const STATUS_TEXT: Record<ImportItemStatus, string> = {
   INVALID: 'Invalid',
 };
 
-/** Import preview + apply. Preview has already run (it writes nothing); Apply is the only write. */
+/**
+ * Import preview + apply. Preview has already run (it writes nothing); Apply is the only write.
+ *
+ * <p>B6.6 (Session 9) recomposed this to full v2 tokens via a new, separate {@link ImportPanel.module.css} -
+ * every class name matches what this file already imported from the old shared
+ * `ClassificationRulesWorkspace.module.css`, so only the import path changed, not the JSX itself. A1a's tag-
+ * colour-conflict block (below) keeps blocking Apply truthfully with zero resolution UI - A1b (a backend mass-
+ * recolour action) stays explicitly not implemented, and none of that logic was touched here.
+ */
 export function ImportPanel({ fileName, packText, initialPreview, onReloadRules, onApplied, onCancel }: ImportPanelProps) {
   const id = useId();
   const [preview, setPreview] = useState(initialPreview);
@@ -48,6 +57,7 @@ export function ImportPanel({ fileName, packText, initialPreview, onReloadRules,
   const [conflict, setConflict] = useState(false);
 
   const needsResolution = mode === 'MERGE' && preview.conflicts > 0;
+  const tagColorConflicts = preview.tagColorConflicts ?? [];
   const blockers: string[] = [];
   if (preview.invalid > 0) {
     blockers.push(
@@ -59,6 +69,17 @@ export function ImportPanel({ fileName, packText, initialPreview, onReloadRules,
   }
   if (mode === 'REPLACE_ALL' && !confirmReplace) {
     blockers.push('Confirm that every existing rule not in this pack will be deleted.');
+  }
+  if (tagColorConflicts.length > 0) {
+    // A tag keeps one colour everywhere - neither MERGE nor REPLACE_ALL may
+    // silently pick a winner (owner mission §22.11 A1a). Executing a
+    // resolution (A1b) is a separate, not-yet-approved server change (D39);
+    // the only safe action here is to block and say what to fix.
+    blockers.push(
+      `${tagColorConflicts.length} tag colour conflict${tagColorConflicts.length === 1 ? '' : 's'} — resolve ${
+        tagColorConflicts.length === 1 ? 'it' : 'them'
+      } by editing the pack file or an existing rule's colour, then import again.`,
+    );
   }
   const canApply = blockers.length === 0 && !applying;
 
@@ -122,8 +143,27 @@ export function ImportPanel({ fileName, packText, initialPreview, onReloadRules,
         <li>New: {preview.newRules}</li>
         <li>Identical: {preview.identical}</li>
         <li>Conflicts: {preview.conflicts}</li>
+        <li>Tag colour conflicts: {tagColorConflicts.length}</li>
         <li>Invalid: {preview.invalid}</li>
       </ul>
+
+      {tagColorConflicts.length > 0 ? (
+        <div role="alert" className={styles.error}>
+          <p>
+            {tagColorConflicts.length === 1 ? 'One tag' : `${tagColorConflicts.length} tags`} in this pack would be
+            shown in a different colour than {tagColorConflicts.length === 1 ? 'it already is' : 'they already are'}{' '}
+            here. A tag keeps one colour everywhere, so this must be settled before importing — neither Merge nor
+            Replace all will choose a colour for you.
+          </p>
+          <ul className={styles.errorList}>
+            {tagColorConflicts.map((err, i) => (
+              <li key={i}>
+                <span className={styles.mono}>{err.path}</span>: {err.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {preview.items.length > 0 ? (
         <ul className={styles.itemList} aria-label="Rules in this pack">
@@ -135,7 +175,17 @@ export function ImportPanel({ fileName, packText, initialPreview, onReloadRules,
               {item.status === 'CONFLICT' && item.existingName ? (
                 <span className={styles.hint}> (existing rule: {item.existingName})</span>
               ) : null}
-              {item.tags.length > 0 ? <span className={styles.hint}> Tags: {item.tags.join(', ')}</span> : null}
+              {item.tags.length > 0 ? (
+                <span className={styles.hint}>
+                  {' '}
+                  Tags:{' '}
+                  <span className={styles.chooserTags}>
+                    {item.tags.map((tag) => (
+                      <TagChip key={tag} tag={tag} color={item.displayColor ?? undefined} />
+                    ))}
+                  </span>
+                </span>
+              ) : null}
               {item.errors.length > 0 ? (
                 <ul className={styles.errorList}>
                   {item.errors.map((err, i) => (
@@ -230,7 +280,9 @@ export function ImportPanel({ fileName, packText, initialPreview, onReloadRules,
       <div className={styles.actions}>
         <Button onClick={onCancel}>Cancel</Button>
         <Button
-          variant="primary"
+          // Danger styling only for the destructive mode - the label itself stays exactly "Apply import" /
+          // "Applying…" in every mode, asserted verbatim by the existing test suite.
+          variant={mode === 'REPLACE_ALL' ? 'danger' : 'primary'}
           onClick={apply}
           disabled={!canApply}
           aria-describedby={blockers.length > 0 ? `${id}-blockers` : undefined}

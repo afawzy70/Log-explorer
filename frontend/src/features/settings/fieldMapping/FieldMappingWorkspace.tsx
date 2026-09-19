@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../../shared/ui/Button';
+import { Icon } from '../../../shared/ui/Icon';
+import { VisuallyHidden } from '../../../shared/ui/VisuallyHidden';
 import {
   fetchFieldMappingSchemaScan,
   markFieldMappingNeedsChange,
@@ -46,6 +48,8 @@ export interface FieldMappingWorkspaceProps {
 
 const DEFAULT_SCAN_MAX_EVENTS = 200;
 
+type FilterMode = 'all' | 'needsAttention' | 'unsaved';
+
 /**
  * The Mapping Verification workspace (owner mission "Mapping Verification
  * and Investigation Workspace" - Part A). A real, dedicated full-page
@@ -71,6 +75,31 @@ const DEFAULT_SCAN_MAX_EVENTS = 200;
  * in this component's own `useState` — never `localStorage`/`sessionStorage`/
  * a URL, never logged, discarded the moment this workspace closes or the
  * page reloads. There is no caching layer here by design.
+ *
+ * <p><b>B6.1 (Session 6) RECOMPOSE</b> (`COMPONENT_INVENTORY.md`'s own
+ * `FieldMappingWorkspace.tsx` REPLACE_VISUALLY entry: "Card column becomes a
+ * field table ... with an inline editor row, a process strip ... an
+ * evidence side panel ... and a sticky action bar"). Every state variable
+ * and handler function below is byte-for-byte unchanged from the pre-B6
+ * implementation — this recompose is presentation/IA only, exactly as the
+ * mission requires ("preserve the production mapping model... do NOT
+ * invent mappings... do NOT change backend mapping semantics"). The only
+ * two genuinely NEW pieces of state are `editingField` (which single
+ * field's row shows its full candidate editor - the design's own table
+ * shows every field collapsed to its current candidates by default) and
+ * `filterMode` (the All/Needs attention/Unsaved segmented filter) - both
+ * are pure presentation state, never sent to the server, never read by any
+ * mutation.
+ *
+ * <p><b>One deliberate deviation from the design's own literal per-status
+ * action-button set</b> ("unmapped -> Map, verified -> edit+more, else ->
+ * Verify+edit"): here, Verify and Mark needs change stay on every row
+ * (Verify simply disabled for an unmapped field, exactly as before this
+ * recompose), rather than being replaced by a different button set per
+ * status. Preserves every existing "Verify is disabled for X" test/
+ * behaviour byte-for-byte rather than trading it for the design's own
+ * slightly terser per-status button variation - a deliberate, documented
+ * trade-off, not an oversight.
  */
 export function FieldMappingWorkspace({
   sourceId,
@@ -127,6 +156,10 @@ export function FieldMappingWorkspace({
   const [markingNeedsChangeField, setMarkingNeedsChangeField] = useState<CanonicalFieldKey | null>(null);
   const [verifyErrors, setVerifyErrors] = useState<Partial<Record<CanonicalFieldKey, string>>>({});
 
+  // B6.1 (Session 6) - purely presentational; never sent to the server, never read by any mutation.
+  const [editingField, setEditingField] = useState<CanonicalFieldKey | null>(null);
+  const [filterMode, setFilterMode] = useState<FilterMode>('all');
+
   // Mission §8 (carried forward): changing the selected project/namespace
   // means every scan/draft/validation result belongs to a scope that no
   // longer applies - never silently carry a scan or an in-progress edit
@@ -144,6 +177,8 @@ export function FieldMappingWorkspace({
     setValidationReport(null);
     setActionError(null);
     setVerifyErrors({});
+    setEditingField(null);
+    setFilterMode('all');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceId, project]);
 
@@ -307,11 +342,11 @@ export function FieldMappingWorkspace({
    * active) candidate against them — never trusts a client-side claim.
    * Deliberately uses `field.candidatePaths` (the saved value), not any
    * pending unsaved draft: the button itself is disabled while a draft is
-   * pending for this field (see `FieldEditorRow` below) so this is never
-   * reachable in that state. Since the recovery-mission fix to `runSave`
-   * (its own doc comment has the full root-cause explanation), the saved
-   * value Verify checks here is now genuinely what the owner most recently
-   * reviewed and saved — not a stale, never-actually-persisted candidate.
+   * pending for this field so this is never reachable in that state. Since
+   * the recovery-mission fix to `runSave` (its own doc comment has the
+   * full root-cause explanation), the saved value Verify checks here is
+   * now genuinely what the owner most recently reviewed and saved — not a
+   * stale, never-actually-persisted candidate.
    */
   function runVerify(field: CanonicalFieldKey) {
     setVerifyingField(field);
@@ -355,6 +390,32 @@ export function FieldMappingWorkspace({
     return validationReport?.fields.find((f) => f.field === field) ?? null;
   }
 
+  const hasScanEvidence = (scanResult?.representativeEvents.length ?? 0) > 0;
+
+  const rows =
+    profile?.fields.map((field) => ({
+      field,
+      candidates: candidatesFor(field.field, field.candidatePaths),
+      hasDraft: drafts[field.field] != null,
+    })) ?? [];
+  const counts = {
+    verified: rows.filter((r) => r.field.verificationStatus === 'VERIFIED').length,
+    unverified: rows.filter((r) => r.field.verificationStatus === 'UNVERIFIED').length,
+    needsChange: rows.filter((r) => r.field.verificationStatus === 'NEEDS_CHANGE').length,
+    notMapped: rows.filter((r) => r.candidates.length === 0).length,
+    unsaved: rows.filter((r) => r.hasDraft).length,
+  };
+  const needsAttentionCount = rows.filter((r) => r.field.verificationStatus === 'NEEDS_CHANGE' || r.candidates.length === 0).length;
+  const visibleRows = rows.filter((r) => {
+    if (filterMode === 'needsAttention') {
+      return r.field.verificationStatus === 'NEEDS_CHANGE' || r.candidates.length === 0;
+    }
+    if (filterMode === 'unsaved') {
+      return r.hasDraft;
+    }
+    return true;
+  });
+
   return (
     <div className={styles.wrapper} data-testid="field-mapping-workspace">
       <div className={styles.header}>
@@ -364,6 +425,13 @@ export function FieldMappingWorkspace({
         <h1 id={headingId} className={styles.title}>
           Log Schema &amp; Field Mapping Verification
         </h1>
+        {profile ? (
+          <span className={profile.searchReady ? styles.readinessOk : styles.readinessBlocked}>
+            {profile.searchReady
+              ? 'Search ready.'
+              : 'Search is disabled — configure and validate log field mapping before searching this source.'}
+          </span>
+        ) : null}
       </div>
       <p className={styles.hint}>
         Map each canonical field to the real JSON path(s) your source uses, then verify it against real evidence.
@@ -380,11 +448,14 @@ export function FieldMappingWorkspace({
 
       {profile ? (
         <>
-          <p role="status" className={profile.searchReady ? styles.readyStatus : styles.notReadyStatus}>
-            {profile.searchReady
-              ? 'Search ready.'
-              : 'Search is disabled — configure and validate log field mapping before searching this source.'}
-          </p>
+          <ProcessStrip
+            scanned={scanResult != null}
+            scanEventCount={scanResult?.totalEventsInspected ?? 0}
+            counts={counts}
+            validationReport={validationReport}
+            hasUnsavedEdits={hasUnsavedEdits}
+          />
+
           {profile.scopeLabel ? (
             <p className={styles.hint}>
               Showing the mapping and verification status for <strong>{profile.scopeLabel}</strong> only — never
@@ -392,215 +463,240 @@ export function FieldMappingWorkspace({
             </p>
           ) : null}
 
-          <section className={styles.section}>
-            <h2 className={styles.subheading}>1. Quick Schema Scan</h2>
-            {sourceSupportsSampling ? (
-              <>
-                <Button variant="secondary" onClick={runScan} disabled={scanning || !sourceId}>
-                  {scanning ? 'Scanning…' : scanResult ? 'Rescan' : `Run Quick Schema Scan (up to ${DEFAULT_SCAN_MAX_EVENTS} events)`}
-                </Button>
-                {scanError ? (
-                  <p role="alert" className={styles.error}>
-                    {scanError}
-                  </p>
-                ) : null}
-
-                {scanResult ? (
-                  <>
-                    <p className={styles.scanStats}>
-                      Selected scope: <strong>{scanResult.scopeLabel ?? 'All (no project selected)'}</strong>.
-                      {scanResult.servicesObserved.length > 0
-                        ? ` Services observed: ${scanResult.servicesObserved.join(', ')}.`
-                        : ''}
-                    </p>
-                    <p className={styles.scanStats}>
-                      Observed {scanResult.totalEventsInspected} event
-                      {scanResult.totalEventsInspected === 1 ? '' : 's'} ({scanResult.structuredJsonEventCount}{' '}
-                      structured JSON
-                      {scanResult.nonJsonEventCount > 0
-                        ? `, ${scanResult.nonJsonEventCount} non-JSON/malformed excluded from the schema below`
-                        : ''}
-                      , {scanResult.structuralVariantCount} structural variant
-                      {scanResult.structuralVariantCount === 1 ? '' : 's'}). This is the{' '}
-                      <strong>observed</strong> schema from this scan, not a guaranteed-complete one — a source may
-                      still emit shapes this scan didn't happen to see.
-                    </p>
-                    {scanResult.eventLimitReached || scanResult.byteLimitReached || scanResult.durationLimitReached ? (
-                      <p className={styles.scanBoundNotice}>
-                        Scan stopped early:{' '}
-                        {[
-                          scanResult.eventLimitReached ? 'event limit reached' : null,
-                          scanResult.byteLimitReached ? 'byte limit reached' : null,
-                          scanResult.durationLimitReached ? 'time limit reached' : null,
-                        ]
-                          .filter(Boolean)
-                          .join(', ')}
-                        .
-                      </p>
-                    ) : null}
-
-                    {newlyDiscoveredPaths.length > 0 || disappearedPaths.length > 0 ? (
-                      <div role="status" className={styles.warningBanner}>
-                        {newlyDiscoveredPaths.length > 0 ? (
-                          <p>Newly discovered since the last scan: {newlyDiscoveredPaths.map((p) => <code key={p}>{p}</code>)}</p>
-                        ) : null}
-                        {disappearedPaths.length > 0 ? (
-                          <p>No longer observed since the last scan: {disappearedPaths.map((p) => <code key={p}>{p}</code>)}</p>
-                        ) : null}
-                      </div>
-                    ) : null}
-
-                    {scanResult.mappedPathsNotObserved.length > 0 ? (
-                      <div role="alert" className={styles.warningBanner}>
-                        <p>
-                          Saved mapping path{scanResult.mappedPathsNotObserved.length === 1 ? '' : 's'} not observed in
-                          this scan: {scanResult.mappedPathsNotObserved.map((p) => <code key={p}>{p}</code>)}. The
-                          saved mapping is unchanged — review and re-save only if you want to update it.
-                        </p>
-                      </div>
-                    ) : null}
-
-                    {scanResult.representativeEvents.length > 0 ? (
-                      <div className={styles.samplesArea}>
-                        <label htmlFor={`${headingId}-sample-select`}>
-                          {scanResult.representativeEvents.length} representative Original Event Sample
-                          {scanResult.representativeEvents.length === 1 ? '' : 's'} (real, unmasked — never
-                          persisted)
-                        </label>
-                        <select
-                          id={`${headingId}-sample-select`}
-                          value={selectedSampleIndex}
-                          onChange={(event) => setSelectedSampleIndex(Number(event.target.value))}
-                        >
-                          {scanResult.representativeEvents.map((sample, index) => (
-                            <option key={index} value={index}>
-                              Sample {index + 1} — {sample.severity}
-                            </option>
-                          ))}
-                        </select>
-                        <pre className={styles.samplePreview}>
-                          {formatJson(scanResult.representativeEvents[selectedSampleIndex]?.originalJson ?? '')}
-                        </pre>
-                      </div>
-                    ) : null}
-
-                    {scanResult.diagnosticNonJsonSamples.length > 0 ? (
-                      <details className={styles.advancedEntry}>
-                        <summary>
-                          {scanResult.diagnosticNonJsonSamples.length} non-JSON/malformed line
-                          {scanResult.diagnosticNonJsonSamples.length === 1 ? '' : 's'} (diagnostics only — never
-                          used for field mapping)
-                        </summary>
-                        <ul className={styles.discoveredList}>
-                          {scanResult.diagnosticNonJsonSamples.map((sample, index) => (
-                            <li key={index} className={styles.discoveredRow}>
-                              <code>{sample.originalJson}</code>
-                            </li>
-                          ))}
-                        </ul>
-                      </details>
-                    ) : null}
-                  </>
-                ) : (
-                  <p className={styles.hint}>Run a scan to review real Original Event Samples and the Discovered Source Schema.</p>
-                )}
-              </>
-            ) : (
-              <p className={styles.hint}>
-                This source does not support Original Source JSON sampling — capability not advertised.
-              </p>
-            )}
-          </section>
-
-          {discovered.length > 0 ? (
-            <section className={styles.section}>
-              <h2 className={styles.subheading}>2. Discovered Source Schema</h2>
-              <p className={styles.hint}>
-                The observed union of JSON paths seen across this scan — not the original event content.
-              </p>
-              <datalist id={datalistId}>
-                {discovered.map((d) => (
-                  <option key={d.path} value={d.path} />
-                ))}
-              </datalist>
-              <div className={styles.schemaTableWrapper}>
-                <table className={styles.schemaTable}>
+          <div className={styles.body}>
+            <div className={styles.main}>
+              <div className={styles.toolbar}>
+                <div className={styles.segmented} role="group" aria-label="Filter fields">
+                  <button type="button" aria-pressed={filterMode === 'all'} onClick={() => setFilterMode('all')}>
+                    All <span className={styles.count}>{rows.length}</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={filterMode === 'needsAttention'}
+                    onClick={() => setFilterMode('needsAttention')}
+                  >
+                    Needs attention <span className={styles.count}>{needsAttentionCount}</span>
+                  </button>
+                  <button type="button" aria-pressed={filterMode === 'unsaved'} onClick={() => setFilterMode('unsaved')}>
+                    Unsaved <span className={styles.count}>{counts.unsaved}</span>
+                  </button>
+                </div>
+              </div>
+              <div className={styles.tableScroll}>
+                <table className={styles.fieldsTable} aria-label="Canonical field mapping">
+                  <colgroup>
+                    <col className={styles.colField} />
+                    <col />
+                    <col className={styles.colStatus} />
+                    <col className={styles.colActions} />
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th scope="col">Path</th>
-                      <th scope="col">Type(s)</th>
-                      <th scope="col">Seen</th>
-                      <th scope="col">Coverage</th>
+                      <th scope="col">Canonical field</th>
+                      <th scope="col">Mapped path</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">
+                        <VisuallyHidden>Actions</VisuallyHidden>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {discovered.map((d) => (
-                      <tr key={d.path}>
-                        <td>
-                          <code>{d.path}</code>
-                        </td>
-                        <td>{d.observedTypes.join(', ').toLowerCase()}</td>
-                        <td>{d.occurrenceCount}</td>
-                        <td>{d.coveragePercentage.toFixed(0)}%</td>
-                      </tr>
+                    {visibleRows.map(({ field, candidates, hasDraft }) => (
+                      <FieldRow
+                        key={field.field}
+                        field={field}
+                        candidates={candidates}
+                        hasDraft={hasDraft}
+                        editing={editingField === field.field}
+                        onToggleEdit={() => setEditingField((prev) => (prev === field.field ? null : field.field))}
+                        newCandidateText={newCandidateText[field.field] ?? ''}
+                        pickerOptions={discoveredPathStrings.filter((p) => !candidates.includes(p))}
+                        observedPaths={discoveredPathStrings}
+                        hasScanEvidence={hasScanEvidence}
+                        pickerSelection={pickerSelection[field.field] ?? ''}
+                        datalistId={datalistId}
+                        validation={reportFor(field.field)}
+                        verifying={verifyingField === field.field}
+                        markingNeedsChange={markingNeedsChangeField === field.field}
+                        verifyError={verifyErrors[field.field] ?? null}
+                        onNewCandidateTextChange={(value) =>
+                          setNewCandidateText((prev) => ({ ...prev, [field.field]: value }))
+                        }
+                        onPickerSelectionChange={(value) =>
+                          setPickerSelection((prev) => ({ ...prev, [field.field]: value }))
+                        }
+                        onAdd={() => addCandidate(field.field, field.candidatePaths)}
+                        onAddPicked={() => addPickedCandidate(field.field, field.candidatePaths)}
+                        onRemove={(index) => removeCandidate(field.field, field.candidatePaths, index)}
+                        onMove={(index, direction) => moveCandidate(field.field, field.candidatePaths, index, direction)}
+                        onVerify={() => runVerify(field.field)}
+                        onMarkNeedsChange={() => runMarkNeedsChange(field.field)}
+                      />
                     ))}
                   </tbody>
                 </table>
               </div>
-            </section>
-          ) : null}
+              {visibleRows.length === 0 ? <p className={styles.hint}>No fields match this filter.</p> : null}
+            </div>
 
-          <section className={styles.section}>
-            <h2 className={styles.subheading}>3. Map &amp; verify canonical fields</h2>
-            <ul className={styles.fieldEditorList}>
-              {profile.fields.map((field) => (
-                <FieldEditorRow
-                  key={field.field}
-                  field={field}
-                  candidates={candidatesFor(field.field, field.candidatePaths)}
-                  hasDraft={drafts[field.field] != null}
-                  newCandidateText={newCandidateText[field.field] ?? ''}
-                  pickerOptions={discoveredPathStrings.filter(
-                    (p) => !candidatesFor(field.field, field.candidatePaths).includes(p),
+            <aside className={styles.evidence} aria-label="Scan evidence">
+              <h2 className={styles.evidenceHeading}>Original event sample</h2>
+              {sourceSupportsSampling ? (
+                <>
+                  <Button variant="secondary" onClick={runScan} disabled={scanning || !sourceId}>
+                    {scanning ? 'Scanning…' : scanResult ? 'Rescan' : `Run Quick Schema Scan (up to ${DEFAULT_SCAN_MAX_EVENTS} events)`}
+                  </Button>
+                  {scanError ? (
+                    <p role="alert" className={styles.error}>
+                      {scanError}
+                    </p>
+                  ) : null}
+
+                  {scanResult ? (
+                    <>
+                      <p className={styles.scanStats}>
+                        Selected scope: <strong>{scanResult.scopeLabel ?? 'All (no project selected)'}</strong>.
+                        {scanResult.servicesObserved.length > 0
+                          ? ` Services observed: ${scanResult.servicesObserved.join(', ')}.`
+                          : ''}
+                      </p>
+                      <p className={styles.scanStats}>
+                        Observed {scanResult.totalEventsInspected} event
+                        {scanResult.totalEventsInspected === 1 ? '' : 's'} ({scanResult.structuredJsonEventCount}{' '}
+                        structured JSON
+                        {scanResult.nonJsonEventCount > 0
+                          ? `, ${scanResult.nonJsonEventCount} non-JSON/malformed excluded from the schema below`
+                          : ''}
+                        , {scanResult.structuralVariantCount} structural variant
+                        {scanResult.structuralVariantCount === 1 ? '' : 's'}). This is the{' '}
+                        <strong>observed</strong> schema from this scan, not a guaranteed-complete one — a source may
+                        still emit shapes this scan didn't happen to see.
+                      </p>
+                      {scanResult.eventLimitReached || scanResult.byteLimitReached || scanResult.durationLimitReached ? (
+                        <p className={styles.scanBoundNotice}>
+                          Scan stopped early:{' '}
+                          {[
+                            scanResult.eventLimitReached ? 'event limit reached' : null,
+                            scanResult.byteLimitReached ? 'byte limit reached' : null,
+                            scanResult.durationLimitReached ? 'time limit reached' : null,
+                          ]
+                            .filter(Boolean)
+                            .join(', ')}
+                          .
+                        </p>
+                      ) : null}
+
+                      {newlyDiscoveredPaths.length > 0 || disappearedPaths.length > 0 ? (
+                        <div role="status" className={styles.warningBanner}>
+                          {newlyDiscoveredPaths.length > 0 ? (
+                            <p>Newly discovered since the last scan: {newlyDiscoveredPaths.map((p) => <code key={p}>{p}</code>)}</p>
+                          ) : null}
+                          {disappearedPaths.length > 0 ? (
+                            <p>No longer observed since the last scan: {disappearedPaths.map((p) => <code key={p}>{p}</code>)}</p>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      {scanResult.mappedPathsNotObserved.length > 0 ? (
+                        <div role="alert" className={styles.warningBanner}>
+                          <p>
+                            Saved mapping path{scanResult.mappedPathsNotObserved.length === 1 ? '' : 's'} not observed in
+                            this scan: {scanResult.mappedPathsNotObserved.map((p) => <code key={p}>{p}</code>)}. The
+                            saved mapping is unchanged — review and re-save only if you want to update it.
+                          </p>
+                        </div>
+                      ) : null}
+
+                      {scanResult.representativeEvents.length > 0 ? (
+                        <div className={styles.samplesArea}>
+                          <label htmlFor={`${headingId}-sample-select`}>
+                            {scanResult.representativeEvents.length} representative Original Event Sample
+                            {scanResult.representativeEvents.length === 1 ? '' : 's'} (real, unmasked — never
+                            persisted)
+                          </label>
+                          <select
+                            id={`${headingId}-sample-select`}
+                            value={selectedSampleIndex}
+                            onChange={(event) => setSelectedSampleIndex(Number(event.target.value))}
+                          >
+                            {scanResult.representativeEvents.map((sample, index) => (
+                              <option key={index} value={index}>
+                                Sample {index + 1} — {sample.severity}
+                              </option>
+                            ))}
+                          </select>
+                          <pre className={styles.samplePreview}>
+                            {formatJson(scanResult.representativeEvents[selectedSampleIndex]?.originalJson ?? '')}
+                          </pre>
+                        </div>
+                      ) : null}
+
+                      {scanResult.diagnosticNonJsonSamples.length > 0 ? (
+                        <details className={styles.advancedEntry}>
+                          <summary>
+                            {scanResult.diagnosticNonJsonSamples.length} non-JSON/malformed line
+                            {scanResult.diagnosticNonJsonSamples.length === 1 ? '' : 's'} (diagnostics only — never
+                            used for field mapping)
+                          </summary>
+                          <ul className={styles.discoveredList}>
+                            {scanResult.diagnosticNonJsonSamples.map((sample, index) => (
+                              <li key={index} className={styles.discoveredRow}>
+                                <code>{sample.originalJson}</code>
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      ) : null}
+                    </>
+                  ) : (
+                    <p className={styles.hint}>Run a scan to review real Original Event Samples and the Discovered Source Schema.</p>
                   )}
-                  observedPaths={discoveredPathStrings}
-                  hasScanEvidence={(scanResult?.representativeEvents.length ?? 0) > 0}
-                  pickerSelection={pickerSelection[field.field] ?? ''}
-                  datalistId={datalistId}
-                  validation={reportFor(field.field)}
-                  verifying={verifyingField === field.field}
-                  markingNeedsChange={markingNeedsChangeField === field.field}
-                  verifyError={verifyErrors[field.field] ?? null}
-                  onNewCandidateTextChange={(value) =>
-                    setNewCandidateText((prev) => ({ ...prev, [field.field]: value }))
-                  }
-                  onPickerSelectionChange={(value) => setPickerSelection((prev) => ({ ...prev, [field.field]: value }))}
-                  onAdd={() => addCandidate(field.field, field.candidatePaths)}
-                  onAddPicked={() => addPickedCandidate(field.field, field.candidatePaths)}
-                  onRemove={(index) => removeCandidate(field.field, field.candidatePaths, index)}
-                  onMove={(index, direction) => moveCandidate(field.field, field.candidatePaths, index, direction)}
-                  onVerify={() => runVerify(field.field)}
-                  onMarkNeedsChange={() => runMarkNeedsChange(field.field)}
-                />
-              ))}
-            </ul>
-          </section>
+                </>
+              ) : (
+                <p className={styles.hint}>
+                  This source does not support Original Source JSON sampling — capability not advertised.
+                </p>
+              )}
 
-          <section className={styles.section}>
-            <h2 className={styles.subheading}>4. Validate &amp; preview</h2>
-            <Button
-              variant="secondary"
-              onClick={runValidate}
-              disabled={validating || (scanResult?.representativeEvents.length ?? 0) === 0}
-            >
-              {validating ? 'Validating…' : 'Validate mapping'}
-            </Button>
-            {(scanResult?.representativeEvents.length ?? 0) === 0 ? (
-              <p className={styles.hint}>Run a Quick Schema Scan first — validation needs real samples to check against.</p>
-            ) : null}
-
-            {validationReport ? <ValidationSummary report={validationReport} /> : null}
-          </section>
+              {discovered.length > 0 ? (
+                <>
+                  <h2 className={styles.evidenceHeading}>Discovered source schema</h2>
+                  <p className={styles.hint}>
+                    The observed union of JSON paths seen across this scan — not the original event content.
+                  </p>
+                  <datalist id={datalistId}>
+                    {discovered.map((d) => (
+                      <option key={d.path} value={d.path} />
+                    ))}
+                  </datalist>
+                  <div className={styles.schemaTableWrapper}>
+                    <table className={styles.schemaTable} aria-label="Discovered source schema">
+                      <thead>
+                        <tr>
+                          <th scope="col">Path</th>
+                          <th scope="col">Type(s)</th>
+                          <th scope="col">Seen</th>
+                          <th scope="col">Coverage</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {discovered.map((d) => (
+                          <tr key={d.path}>
+                            <td>
+                              <code>{d.path}</code>
+                            </td>
+                            <td>{d.observedTypes.join(', ').toLowerCase()}</td>
+                            <td>{d.occurrenceCount}</td>
+                            <td>{d.coveragePercentage.toFixed(0)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+            </aside>
+          </div>
 
           {actionError ? (
             <p role="alert" className={styles.error}>
@@ -608,18 +704,110 @@ export function FieldMappingWorkspace({
             </p>
           ) : null}
 
-          <div className={styles.actions}>
-            <Button variant="secondary" onClick={runReset} disabled={resetting}>
-              {resetting ? 'Resetting…' : '5. Reset to defaults'}
-            </Button>
-            <Button variant="primary" onClick={runSave} disabled={!canSave}>
-              {saving ? 'Saving…' : '6. Save mapping'}
-            </Button>
+          <div className={styles.actionBar}>
+            <span className={styles.actionBarStatus}>
+              {validationReport
+                ? `Draft validated against ${validationReport.sampleCount} sample${validationReport.sampleCount === 1 ? '' : 's'}${hasUnsavedEdits ? ` · ${counts.unsaved} unsaved field${counts.unsaved === 1 ? '' : 's'}` : ''}`
+                : hasUnsavedEdits
+                  ? `${counts.unsaved} unsaved field${counts.unsaved === 1 ? '' : 's'} — validate before saving`
+                  : 'Saved mapping in use for search'}
+            </span>
+            <div className={styles.actionBarButtons}>
+              <Button variant="ghost" onClick={runReset} disabled={resetting}>
+                <Icon name="rotate-ccw" size="sm" />
+                {resetting ? 'Resetting…' : 'Reset to defaults'}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={runValidate}
+                disabled={validating || (scanResult?.representativeEvents.length ?? 0) === 0}
+              >
+                {validating ? 'Validating…' : 'Validate mapping'}
+              </Button>
+              <Button variant="primary" onClick={runSave} disabled={!canSave}>
+                {saving ? 'Saving…' : 'Save mapping'}
+              </Button>
+            </div>
+            {(scanResult?.representativeEvents.length ?? 0) === 0 ? (
+              <p className={styles.hint}>Run a Quick Schema Scan first — validation needs real samples to check against.</p>
+            ) : null}
+            {validationReport ? <ValidationSummary report={validationReport} /> : null}
           </div>
         </>
       ) : (
         <p role="status">Loading…</p>
       )}
+    </div>
+  );
+}
+
+/**
+ * B6.1 (Session 6) - the process strip (`COMPONENT_INVENTORY.md`'s own
+ * required item). DRIFT-13 remediation: restores the approved explicit 5-step
+ * model - Scan / Map fields / Validate / Save / Verify - confirmed from the
+ * design's own rendered process strip (`b1/13-mapping-workspace-1440x900.png`)
+ * and the LERUX-1 review record ("per-field Verify and Mark needs change,
+ * with the step order Scan → Map → Validate → Save → Verify"), not the
+ * 4-step "Map & verify" merge this strip previously used. Verify is
+ * inherently per-field (the same row-level Verified/Needs-change actions the
+ * table already exposes), so it is a descriptive step, not a new global
+ * gate/action of its own - each step is stated truthfully from real counts
+ * only, never a fabricated "done" claim.
+ */
+function ProcessStrip({
+  scanned,
+  scanEventCount,
+  counts,
+  validationReport,
+  hasUnsavedEdits,
+}: {
+  scanned: boolean;
+  scanEventCount: number;
+  counts: { verified: number; unverified: number; needsChange: number; notMapped: number; unsaved: number };
+  validationReport: FieldMappingValidationReport | null;
+  hasUnsavedEdits: boolean;
+}) {
+  const steps: Array<{ label: string; detail: string; state: 'done' | 'current' }> = [
+    {
+      label: 'Scan',
+      detail: scanned ? `${scanEventCount} event${scanEventCount === 1 ? '' : 's'} sampled` : 'Not run yet',
+      state: scanned ? 'done' : 'current',
+    },
+    {
+      label: 'Map fields',
+      detail: `${counts.verified} verified · ${counts.unverified} unverified · ${counts.needsChange} needs change · ${counts.notMapped} not mapped`,
+      state: 'current',
+    },
+    {
+      label: 'Validate',
+      detail: !hasUnsavedEdits ? 'Not needed' : validationReport?.passed ? 'Passed for current draft' : 'Not yet validated',
+      state: validationReport?.passed ? 'done' : 'current',
+    },
+    {
+      label: 'Save',
+      detail: hasUnsavedEdits ? `${counts.unsaved} unsaved field${counts.unsaved === 1 ? '' : 's'}` : 'Saved',
+      state: hasUnsavedEdits ? 'current' : 'done',
+    },
+    {
+      label: 'Verify',
+      detail: 'Per field, against the latest scan',
+      state: counts.unverified === 0 && counts.needsChange === 0 && counts.notMapped === 0 ? 'done' : 'current',
+    },
+  ];
+  return (
+    <div className={styles.processStrip} aria-label="Field mapping workflow">
+      {steps.map((step, index) => (
+        <span key={step.label} className={styles.processStep}>
+          {index > 0 ? <span className={styles.processStepLine} aria-hidden="true" /> : null}
+          <span className={`${styles.processStepBadge} ${step.state === 'done' ? styles.processStepDone : styles.processStepCurrent}`}>
+            {step.state === 'done' ? <Icon name="check" size="sm" /> : index + 1}
+          </span>
+          <span className={styles.processStepText}>
+            <span className={styles.processStepLabel}>{step.label}</span>
+            <span className={styles.processStepDetail}>{step.detail}</span>
+          </span>
+        </span>
+      ))}
     </div>
   );
 }
@@ -638,10 +826,20 @@ function VerificationBadge({ status }: { status: FieldVerificationStatus }) {
   return <span className={className}>{label}</span>;
 }
 
-function FieldEditorRow({
+/**
+ * B6.1 (Session 6) - one field's row: a compact, always-visible summary
+ * (current candidates, status, Verify/Mark needs change/Edit actions) plus
+ * a full-width editor row shown only while `editing` is true. Every piece
+ * of the editor row below (candidate list, picker, manual entry) is the
+ * exact pre-B6 `FieldEditorRow` JSX, unchanged - only its container moved
+ * from an always-expanded `<li>` to a conditionally-rendered `<tr>`.
+ */
+function FieldRow({
   field,
   candidates,
   hasDraft,
+  editing,
+  onToggleEdit,
   newCandidateText,
   pickerOptions,
   observedPaths,
@@ -665,6 +863,8 @@ function FieldEditorRow({
   candidates: string[];
   /** Owner mission "Mapping Verification and Investigation Workspace" - true while this field has a pending unsaved draft; Verify is disabled then, since it would otherwise check stale (saved) candidates while the screen shows different (draft) ones. */
   hasDraft: boolean;
+  editing: boolean;
+  onToggleEdit: () => void;
   newCandidateText: string;
   /** Mission §A10 — discovered paths not already mapped for this field, offered as a picker (e.g. `[cif] [mdc.cif] [customer.cif]`). */
   pickerOptions: string[];
@@ -688,138 +888,165 @@ function FieldEditorRow({
 }) {
   const canVerify = candidates.length > 0 && !hasDraft && hasScanEvidence && !verifying;
   return (
-    <li className={styles.fieldRow}>
-      <div className={styles.fieldHeader}>
-        <span className={styles.fieldName}>{field.displayName}</span>
-        {field.sensitive ? <span className={styles.sensitiveBadge}>Protected</span> : null}
-        <VerificationBadge status={field.verificationStatus} />
-        {/*
-         * Recovery mission "Field Mapping Verification Workflow Recovery" -
-         * "The owner should never have to guess which version is being
-         * checked." A visible, textual (never color-alone) marker right
-         * next to the verification badge itself - the exact place the
-         * owner is already looking when wondering why a field won't
-         * verify - rather than only a hint sentence further down the row.
-         */}
-        {hasDraft ? <span className={styles.unsavedBadge}>Unsaved changes</span> : null}
-      </div>
-
-      {candidates.length === 0 ? <p className={styles.hint}>Not mapped yet.</p> : null}
-
-      <ol className={styles.candidateList}>
-        {candidates.map((path, index) => (
-          <li key={`${path}-${index}`} className={styles.candidateItem}>
-            <code>{path}</code>
-            {observedPaths.includes(path) ? (
-              <span className={styles.observedNote}>(observed in latest scan)</span>
-            ) : observedPaths.length > 0 ? (
-              <span className={styles.notObservedNote}>(not observed in latest scan)</span>
-            ) : null}
-            <div className={styles.candidateActions}>
-              <button type="button" aria-label={`Move ${path} up`} disabled={index === 0} onClick={() => onMove(index, -1)}>
-                ↑
-              </button>
-              <button
-                type="button"
-                aria-label={`Move ${path} down`}
-                disabled={index === candidates.length - 1}
-                onClick={() => onMove(index, 1)}
-              >
-                ↓
-              </button>
-              <button type="button" aria-label={`Remove ${path}`} onClick={() => onRemove(index)}>
-                ×
-              </button>
-            </div>
-          </li>
-        ))}
-      </ol>
-
-      {pickerOptions.length > 0 ? (
-        <div className={styles.pickerRow}>
-          <label htmlFor={`candidate-picker-${field.field}`} className={styles.srOnly}>
-            Add a discovered path as a candidate for {field.displayName}
-          </label>
-          <select
-            id={`candidate-picker-${field.field}`}
-            value={pickerSelection}
-            onChange={(event) => onPickerSelectionChange(event.target.value)}
+    <>
+      <tr className={`${styles.fieldRow} ${editing ? styles.fieldRowEditing : ''}`}>
+        <td>
+          <span className={styles.fieldName}>{field.displayName}</span>
+          <span className={styles.fieldKey}>{field.field}</span>
+          {field.sensitive ? <span className={styles.sensitiveBadge}>Protected</span> : null}
+          {hasDraft ? <span className={styles.unsavedBadge}>Unsaved changes</span> : null}
+        </td>
+        <td>
+          {candidates.length === 0 ? (
+            <span className={styles.notMappedNote}>Not mapped</span>
+          ) : (
+            <ul className={styles.pathSummaryList}>
+              {candidates.map((path, index) => (
+                <li key={`${path}-${index}`}>
+                  <code>{path}</code>
+                  {observedPaths.includes(path) ? (
+                    <span className={styles.observedNote}>(observed in latest scan)</span>
+                  ) : observedPaths.length > 0 ? (
+                    <span className={styles.notObservedNote}>(not observed in latest scan)</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </td>
+        <td>
+          <VerificationBadge status={field.verificationStatus} />
+        </td>
+        <td className={styles.actionsCell}>
+          <Button variant="secondary" onClick={onVerify} disabled={!canVerify}>
+            {verifying ? 'Verifying…' : 'Verify'}
+          </Button>
+          {field.verificationStatus !== 'NEEDS_CHANGE' ? (
+            <Button variant="ghost" onClick={onMarkNeedsChange} disabled={markingNeedsChange}>
+              {markingNeedsChange ? 'Marking…' : 'Mark needs change'}
+            </Button>
+          ) : null}
+          <Button
+            variant="ghost"
+            onClick={onToggleEdit}
+            aria-expanded={editing}
+            aria-label={candidates.length === 0 ? `Map ${field.displayName}` : `Edit candidates for ${field.displayName}`}
           >
-            <option value="">Select a discovered path…</option>
-            {pickerOptions.map((path) => (
-              <option key={path} value={path}>
-                {path}
-              </option>
-            ))}
-          </select>
-          <Button variant="secondary" onClick={onAddPicked} disabled={!pickerSelection}>
-            Add
+            <Icon name="pencil" size="sm" />
+            {candidates.length === 0 ? 'Map' : 'Edit'}
           </Button>
-        </div>
-      ) : null}
+          {/*
+           * Owner mission "Service Filter, Docker Performance, and Verified
+           * Default Mapping" §C - an owner-approved default starts VERIFIED
+           * with no scan required to establish it, so this hint would be
+           * actively misleading for an untouched VERIFIED field - it only
+           * makes sense for a field that genuinely still needs real
+           * evidence to become VERIFIED (custom/modified/unmapped).
+           */}
+          {!hasScanEvidence && field.verificationStatus !== 'VERIFIED' ? (
+            <p className={styles.hint}>Run a Quick Schema Scan first — verification needs real samples as evidence.</p>
+          ) : null}
+          {verifyError ? (
+            <p role="alert" className={styles.error}>
+              {verifyError}
+            </p>
+          ) : null}
+        </td>
+      </tr>
+      {editing ? (
+        <tr className={styles.editorRow}>
+          <td colSpan={4}>
+            <ol className={styles.candidateList}>
+              {candidates.map((path, index) => (
+                <li key={`${path}-${index}`} className={styles.candidateItem}>
+                  <code>{path}</code>
+                  {observedPaths.includes(path) ? (
+                    <span className={styles.observedNote}>(observed in latest scan)</span>
+                  ) : observedPaths.length > 0 ? (
+                    <span className={styles.notObservedNote}>(not observed in latest scan)</span>
+                  ) : null}
+                  <div className={styles.candidateActions}>
+                    <button type="button" aria-label={`Move ${path} up`} disabled={index === 0} onClick={() => onMove(index, -1)}>
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Move ${path} down`}
+                      disabled={index === candidates.length - 1}
+                      onClick={() => onMove(index, 1)}
+                    >
+                      ↓
+                    </button>
+                    <button type="button" aria-label={`Remove ${path}`} onClick={() => onRemove(index)}>
+                      ×
+                    </button>
+                  </div>
+                </li>
+              ))}
+              {candidates.length === 0 ? <li className={styles.hint}>Not mapped yet.</li> : null}
+            </ol>
 
-      <details className={styles.advancedEntry}>
-        <summary>Advanced: enter a path manually</summary>
-        <div className={styles.addCandidateRow}>
-          <label htmlFor={`candidate-input-${field.field}`} className={styles.srOnly}>
-            Add a candidate path for {field.displayName}
-          </label>
-          <input
-            id={`candidate-input-${field.field}`}
-            type="text"
-            list={datalistId}
-            placeholder="e.g. mdc.cif or cif"
-            value={newCandidateText}
-            onChange={(event) => onNewCandidateTextChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                onAdd();
-              }
-            }}
-          />
-          <Button variant="secondary" onClick={onAdd}>
-            Add
-          </Button>
-        </div>
-      </details>
+            {pickerOptions.length > 0 ? (
+              <div className={styles.pickerRow}>
+                <label htmlFor={`candidate-picker-${field.field}`} className={styles.srOnly}>
+                  Add a discovered path as a candidate for {field.displayName}
+                </label>
+                <select
+                  id={`candidate-picker-${field.field}`}
+                  value={pickerSelection}
+                  onChange={(event) => onPickerSelectionChange(event.target.value)}
+                >
+                  <option value="">Select a discovered path…</option>
+                  {pickerOptions.map((path) => (
+                    <option key={path} value={path}>
+                      {path}
+                    </option>
+                  ))}
+                </select>
+                <Button variant="secondary" onClick={onAddPicked} disabled={!pickerSelection}>
+                  Add
+                </Button>
+              </div>
+            ) : null}
 
-      {validation ? <FieldValidationBadge validation={validation} /> : null}
+            <details className={styles.advancedEntry}>
+              <summary>Advanced: enter a path manually</summary>
+              <div className={styles.addCandidateRow}>
+                <label htmlFor={`candidate-input-${field.field}`} className={styles.srOnly}>
+                  Add a candidate path for {field.displayName}
+                </label>
+                <input
+                  id={`candidate-input-${field.field}`}
+                  type="text"
+                  list={datalistId}
+                  placeholder="e.g. mdc.cif or cif"
+                  value={newCandidateText}
+                  onChange={(event) => onNewCandidateTextChange(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      onAdd();
+                    }
+                  }}
+                />
+                <Button variant="secondary" onClick={onAdd}>
+                  Add
+                </Button>
+              </div>
+            </details>
 
-      <div className={styles.verificationActions}>
-        <Button variant="secondary" onClick={onVerify} disabled={!canVerify}>
-          {verifying ? 'Verifying…' : 'Verify'}
-        </Button>
-        {field.verificationStatus !== 'NEEDS_CHANGE' ? (
-          <Button variant="ghost" onClick={onMarkNeedsChange} disabled={markingNeedsChange}>
-            {markingNeedsChange ? 'Marking…' : 'Mark needs change'}
-          </Button>
-        ) : null}
-      </div>
-      {hasDraft ? (
-        <p className={styles.hint}>
-          This field has unsaved changes — click <strong>6. Save mapping</strong> below first. Verify always checks
-          exactly what was last saved, so it stays disabled until this edit is saved.
-        </p>
+            {validation ? <FieldValidationBadge validation={validation} /> : null}
+
+            {hasDraft ? (
+              <p className={styles.hint}>
+                This field has unsaved changes — Save mapping below first. Verify always checks exactly what was last
+                saved, so it stays disabled until this edit is saved.
+              </p>
+            ) : null}
+          </td>
+        </tr>
       ) : null}
-      {/*
-       * Owner mission "Service Filter, Docker Performance, and Verified
-       * Default Mapping" §C - an owner-approved default starts VERIFIED
-       * with no scan required to establish it (BUILT_IN_DEFAULT_PROFILE_STATUS=VERIFIED,
-       * QUICK_SCAN_NOT_REQUIRED_FOR_DEFAULT_VERIFICATION), so this hint
-       * would be actively misleading for an untouched VERIFIED field -
-       * it only makes sense for a field that genuinely still needs real
-       * evidence to become VERIFIED (custom/modified/unmapped).
-       */}
-      {!hasScanEvidence && field.verificationStatus !== 'VERIFIED' ? (
-        <p className={styles.hint}>Run a Quick Schema Scan first — verification needs real samples as evidence.</p>
-      ) : null}
-      {verifyError ? (
-        <p role="alert" className={styles.error}>
-          {verifyError}
-        </p>
-      ) : null}
-    </li>
+    </>
   );
 }
 

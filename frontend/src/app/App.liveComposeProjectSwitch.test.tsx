@@ -94,7 +94,11 @@ describe('App - switching the Compose project while Live is active (UX-R3 §19)'
 
     // Switching the Compose project mid-Live - the mission's own exact
     // scenario: the app must never keep streaming project-a events under a
-    // project-b scope header.
+    // project-b scope header. DRIFT-001 remediation: Live now shows the
+    // compact scope bar, not the full toolbar, while streaming - "Edit
+    // search" reveals the real toolbar unchanged, same as Investigation's
+    // own established pattern.
+    await user.click(screen.getByRole('button', { name: /edit search/i }));
     await user.selectOptions(screen.getByLabelText(/compose project/i), 'project-b');
 
     expect(source.closed).toBe(true); // the real EventSource connection was actually torn down

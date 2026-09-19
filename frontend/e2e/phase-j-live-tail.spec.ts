@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { assertNoHorizontalOverflow, captureScreenshot, setViewport, setZoom } from './helpers';
+import { openSettingsSection } from './settings-helpers';
 
 /*
  * Browser checks - IMPLEMENTATION_PLAN.md "Phase J": live tail Start /
@@ -16,6 +17,12 @@ import { assertNoHorizontalOverflow, captureScreenshot, setViewport, setZoom } f
  * AND begins streaming immediately. The panel's own "Start" button only
  * ever appears afterward, for restarting from `idle`/`stopped`/`error`
  * (e.g. after Stop).
+ *
+ * B7 (Session 10) - the event list is now a real <table> (`tbody tr` per
+ * row), not the earlier card-list <ol>/<li> (COMPONENT_INVENTORY.md's own
+ * RECOMPOSE classification, CLAUDE.md §5). Row-count/visibility locators
+ * were updated to match; the button/label/state-badge contract this file
+ * verifies is otherwise unchanged.
  */
 
 async function selectFixtureSource(page: import('@playwright/test').Page) {
@@ -53,13 +60,16 @@ test('clicking Live immediately streams real, masked events from the fixture sou
   // enables CIF masking first (the real, current owner-facing workflow).
   // Reset at the end so this shared-singleton backend policy never leaks
   // into a later test in the same run.
-  await page.getByRole('button', { name: /privacy & masking/i }).click();
-  const maskingDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+  await openSettingsSection(page, /privacy & masking/i);
+  const maskingDialog = page.getByTestId('privacy-masking-settings-panel');
   await expect(maskingDialog).toBeVisible();
   if (!(await maskingDialog.getByLabel('CIF').isChecked())) {
     await maskingDialog.getByLabel('CIF').click();
   }
-  await page.getByRole('button', { name: /^close$/i }).click();
+  // B6.2 (Session 7) - Privacy & masking is no longer a popover with its own "Close" - only the
+  // consolidated Settings workspace itself (a full-page takeover) needs closing, otherwise it would keep
+  // outranking Live in App.tsx's render precedence, the same way Field Mapping/Classification already did.
+  await page.getByRole('button', { name: /back to search results/i }).click();
 
   await page.getByRole('button', { name: /^live$/i }).click();
 
@@ -70,7 +80,7 @@ test('clicking Live immediately streams real, masked events from the fixture sou
 
   // The real fixture generator emits its first tick within ~700ms.
   await expect(panel.getByRole('status')).toHaveText(/^live$/i, { timeout: 5_000 });
-  await expect(panel.locator('[class*="list"] li').first()).toBeVisible({ timeout: 5_000 });
+  await expect(panel.locator('tbody tr').first()).toBeVisible({ timeout: 5_000 });
 
   // No raw sensitive value ever reaches the DOM - only masked forms.
   const bodyText = await page.locator('body').innerText();
@@ -80,13 +90,12 @@ test('clicking Live immediately streams real, masked events from the fixture sou
 
   // Restore the fresh default (unmasked) so this shared-singleton
   // backend policy never leaks into a later test in the same run.
-  await page.getByRole('button', { name: /privacy & masking/i }).click();
-  const cleanupDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+  await openSettingsSection(page, /privacy & masking/i);
+  const cleanupDialog = page.getByTestId('privacy-masking-settings-panel');
   await expect(cleanupDialog).toBeVisible();
   if (await cleanupDialog.getByLabel('CIF').isChecked()) {
     await cleanupDialog.getByLabel('CIF').click();
   }
-  await page.getByRole('button', { name: /^close$/i }).click();
 });
 
 test('Pause diverts new events into a buffered count without changing the visible list; Resume flushes them', async ({
@@ -96,8 +105,8 @@ test('Pause diverts new events into a buffered count without changing the visibl
   await page.getByRole('button', { name: /^live$/i }).click();
   const panel = panelOf(page);
 
-  await expect(panel.locator('[class*="list"] li').first()).toBeVisible({ timeout: 5_000 });
-  const visibleBeforePause = await panel.locator('[class*="list"] li').count();
+  await expect(panel.locator('tbody tr').first()).toBeVisible({ timeout: 5_000 });
+  const visibleBeforePause = await panel.locator('tbody tr').count();
 
   await panel.getByRole('button', { name: /^pause$/i }).click();
   await expect(panel.getByRole('status')).toHaveText(/^paused$/i);
@@ -106,14 +115,14 @@ test('Pause diverts new events into a buffered count without changing the visibl
   // enough for at least one, then confirm it went to the buffer, not the
   // visible list.
   await expect(panel.getByText(/buffered while paused/i)).toBeVisible({ timeout: 5_000 });
-  const visibleWhilePaused = await panel.locator('[class*="list"] li').count();
+  const visibleWhilePaused = await panel.locator('tbody tr').count();
   expect(visibleWhilePaused).toBe(visibleBeforePause);
 
   await panel.getByRole('button', { name: /^resume$/i }).click();
   await expect(panel.getByRole('status')).toHaveText(/^live$/i);
   await expect(panel.getByText(/buffered while paused/i)).not.toBeVisible();
 
-  const visibleAfterResume = await panel.locator('[class*="list"] li').count();
+  const visibleAfterResume = await panel.locator('tbody tr').count();
   expect(visibleAfterResume).toBeGreaterThan(visibleBeforePause);
 
   await captureScreenshot(page, 'j', 'live-tail-paused-then-resumed-1280px');
@@ -125,7 +134,7 @@ test('Stop ends the stream and returns to a startable state; Start again resumes
   await selectFixtureSource(page);
   await page.getByRole('button', { name: /^live$/i }).click();
   const panel = panelOf(page);
-  await expect(panel.locator('[class*="list"] li').first()).toBeVisible({ timeout: 5_000 });
+  await expect(panel.locator('tbody tr').first()).toBeVisible({ timeout: 5_000 });
 
   await panel.getByRole('button', { name: /^stop$/i }).click();
   await expect(panel.getByRole('status')).toHaveText(/^stopped$/i);
@@ -134,7 +143,7 @@ test('Stop ends the stream and returns to a startable state; Start again resumes
 
   await panel.getByRole('button', { name: /^start$/i }).click();
   await expect(panel.getByRole('status')).toHaveText(/^live$/i, { timeout: 5_000 });
-  await expect(panel.locator('[class*="list"] li').first()).toBeVisible({ timeout: 5_000 });
+  await expect(panel.locator('tbody tr').first()).toBeVisible({ timeout: 5_000 });
 });
 
 test('"Back to search results" leaves live mode, and a fresh Live click starts an entirely new session', async ({
@@ -143,7 +152,7 @@ test('"Back to search results" leaves live mode, and a fresh Live click starts a
   await selectFixtureSource(page);
   await page.getByRole('button', { name: /^live$/i }).click();
   const panel = panelOf(page);
-  await expect(panel.locator('[class*="list"] li').first()).toBeVisible({ timeout: 5_000 });
+  await expect(panel.locator('tbody tr').first()).toBeVisible({ timeout: 5_000 });
 
   await panel.getByRole('button', { name: /back to search results/i }).click();
   await expect(panel).not.toBeVisible();
@@ -170,7 +179,7 @@ test('"Back to search results" is reachable and activatable by keyboard alone (D
   await selectFixtureSource(page);
   await page.getByRole('button', { name: /^live$/i }).click();
   const panel = panelOf(page);
-  await expect(panel.locator('[class*="list"] li').first()).toBeVisible({ timeout: 5_000 });
+  await expect(panel.locator('tbody tr').first()).toBeVisible({ timeout: 5_000 });
 
   const exitButton = panel.getByRole('button', { name: /back to search results/i });
   await exitButton.focus();
@@ -188,7 +197,7 @@ test('no page-level horizontal overflow while live tail is streaming, at 1280px 
 }) => {
   await selectFixtureSource(page);
   await page.getByRole('button', { name: /^live$/i }).click();
-  await expect(panelOf(page).locator('[class*="list"] li').first()).toBeVisible({ timeout: 5_000 });
+  await expect(panelOf(page).locator('tbody tr').first()).toBeVisible({ timeout: 5_000 });
 
   await setViewport(page, 1280);
   await assertNoHorizontalOverflow(page);

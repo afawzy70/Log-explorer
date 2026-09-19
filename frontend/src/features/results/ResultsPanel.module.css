@@ -2,95 +2,196 @@
   padding: var(--space-4);
 }
 
-.breadcrumb {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-accent-bg);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
+/*
+ * B5 Investigation - the mode bar / stat row / timeline plot are all designed to bleed to the full column
+ * width (matching the design's own edge-to-edge `.mode-bar`/`.cap-summary`/`.scope-plot`, and how they
+ * naturally sit in `JourneyView.tsx`'s own unpadded `.wrapper`) - `.wrapper` here still has uniform padding
+ * for the rest of ResultsPanel's content (B2/B3, unrelated to B5, left untouched), so these three break out
+ * of it with a matching negative margin rather than sitting oddly inset like a card.
+ */
+.investigationBleed {
+  margin: 0 calc(-1 * var(--space-4)) var(--space-3);
+}
+
+.investigationBleed:last-child {
+  margin-bottom: 0;
 }
 
 /*
- * UX-R4 §36 - this row carries one more control than it used to (Sort,
- * alongside the counts summary, Columns and Refresh), and at 390px that
- * was enough to push Refresh 34px past the viewport and overflow the
- * *page* - which CLAUDE.md §4 forbids outright, unlike the results
- * table's own wrapper scroll. Found by measuring the real rendered page
- * at 390px, not by eye. Wrapping is the fix rather than hiding a control:
- * every control here stays reachable at every width, it simply takes a
- * second line when there is not room for one.
+ * Session 11 (Stage 6, safe legacy cleanup) - `.summaryRow` (a former UX-R4 §36 wrapping-row fix),
+ * `.summary` (incl. the `.summaryRow > .summary` child-combinator rule that depended on it), `.empty`,
+ * `.error`, `.loading`, `.errorTitle`, `.errorDetail` removed here: `.summary`/`.empty`/`.error`/
+ * `.loading` were flagged as dead in Stage 2 (grep-confirmed zero consumers in ResultsPanel.tsx,
+ * superseded by `.statePanel*`'s B3 restyle and ScopeStrip's own counts `readout`); `.summaryRow`
+ * itself and `.errorTitle`/`.errorDetail` were found dead by the same check while removing the rest.
+ * Re-confirmed zero consumers immediately before deletion, per Stage 6's own mandate.
  */
-.summaryRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
-}
 
 /*
- * The counts sentence is the only elastic member of the row - it may
- * shrink and wrap so the controls beside it never have to.
+ * B3 (COMPONENT_INVENTORY.md's ResultsPanel.tsx RECOMPOSE entry - "loading, empty, error ... use the new
+ * state panels"). The design's own `.state-panel` (prototype/styles/app.css): an icon + heading/detail/
+ * actions card, `is-danger` for a failure. Applied here to the EXISTING error/empty content unchanged -
+ * this restyles presentation, it does not add the design's own extra content (a facts-chip summary of
+ * active filters, "Source health"/"Query details" buttons) that depends on data this table doesn't have
+ * plumbed to it yet (that summary lives in the scope strip, itself B2 - not squeezed in here).
  */
-.summaryRow > .summary {
-  flex: 1 1 12rem;
+.statePanel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-surface-work);
+}
+
+.statePanelIcon {
+  color: var(--v2-ink-3);
+  margin-top: 2px;
+}
+
+.statePanelBody {
   min-width: 0;
 }
 
-.summary {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
+.statePanelTitle {
+  margin: 0;
+  font: var(--v2-text-section);
+  color: var(--v2-ink-1);
 }
 
-.empty {
-  color: var(--color-text-tertiary);
-  padding: var(--space-6) 0;
-  text-align: center;
+.statePanelDetail {
+  margin: 2px 0 0;
+  font: var(--v2-text-body);
+  color: var(--v2-ink-2);
 }
 
-.error {
-  color: var(--color-danger);
-  background: var(--color-danger-bg);
-  border-radius: var(--radius-sm);
-  padding: var(--space-3);
-}
-
-.loading {
-  color: var(--color-text-secondary);
-  padding: var(--space-6) 0;
-  text-align: center;
-}
-
-.loadMoreRow {
+.statePanelActions {
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
-  margin-top: var(--space-3);
+  margin-top: var(--space-2);
 }
 
-.loadMoreError {
-  color: var(--color-danger);
-  font-size: var(--font-size-sm);
+.statePanelDanger {
+  border-color: var(--v2-danger-line);
+  background: var(--v2-danger-tint);
+}
+
+.statePanelDanger .statePanelIcon {
+  color: var(--v2-danger);
 }
 
 /*
- * UX-R6 §11 - the failed-search state. Sized to its content (no giant
- * empty region below it) and laid out as title / detail / action so the
- * investigator can read what happened and act on it without leaving the
- * workspace.
+ * Re-search stale treatment (B3 - "re-search stale-row treatment"): `state.searchResult` from the
+ * PREVIOUS search stays populated while a new one is in flight (`useSearchState.ts`'s `runSearch` never
+ * nulls it before the new response lands - confirmed by reading the hook, not assumed), so ResultsPanel
+ * can keep showing it instead of blanking to a bare loading state on every re-search. Deliberately opacity-
+ * based rather than the design's own per-element text recolouring (`tr.is-stale td { color: ... }`):
+ * this table's cell content is too varied (severity marks use `background` not `color`, tag chips and
+ * links carry their own colour, several specific `color` rules at higher specificity than a wrapper-level
+ * override) for a blanket colour override to apply consistently everywhere without `!important` gymnastics
+ * across every one of those rules - opacity dims the whole region uniformly, with the same effect, and
+ * cannot be defeated by any inner rule's own specificity.
  */
-.errorTitle {
-  margin: 0 0 var(--space-1) 0;
-  font-weight: 600;
+.staleResults {
+  opacity: 0.55;
+  transition: opacity 150ms var(--v2-ease-standard, ease);
 }
 
-.errorDetail {
-  margin: 0 0 var(--space-3) 0;
-  color: var(--color-text);
+.staleNotice {
+  margin: 0 0 var(--space-2);
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .staleResults {
+    transition: none;
+  }
+}
+
+/*
+ * First-search skeleton (B3 - "first-search skeleton"): only shown when there is no previous result to
+ * keep displaying (`state.searchLoading && !state.searchResult` in ResultsPanel.tsx) - a re-search instead
+ * keeps the real table visible with `.staleResults` above. `role="status"` plus the real "Searching..."
+ * text (unchanged from the previous loading copy - existing tests assert it) is the accessible content;
+ * the bars are `aria-hidden` decoration only.
+ */
+.skeleton {
+  padding: var(--space-2) 0;
+}
+
+.skeletonRows {
+  margin-top: var(--space-2);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  overflow: hidden;
+}
+
+.skeletonRow {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
+  background: var(--v2-surface-work);
+}
+
+.skeletonRow:last-child {
+  border-bottom: none;
+}
+
+.skeletonBar {
+  display: block;
+  height: 8px;
+  border-radius: var(--v2-r-xs);
+  background: var(--v2-surface-sunken);
+  animation: v2Breathe 1400ms var(--v2-ease-standard) infinite alternate;
+}
+
+@keyframes v2Breathe {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonBar {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
+/*
+ * B3 (COMPONENT_INVENTORY.md's "load-more failure state") - the design's own `.load-more` is a horizontal
+ * footer row (summary text, then an inline error on failure, then the button), not the vertical centred
+ * stack this used before. Deliberately does NOT copy the design's own duplicate "N events loaded" text
+ * into this row - `.summary` above the table already states the full counts (CLAUDE.md §4 "counts stay
+ * distinct... no contradictory copy"), and repeating a second, differently-worded count here risked
+ * exactly that.
+ */
+.loadMoreRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  padding: var(--space-2) 0 0;
+  border-top: var(--v2-bw) solid var(--v2-line);
+  font: var(--v2-text-meta);
+}
+
+.loadMoreError {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--v2-danger);
+  font: var(--v2-text-meta);
+}
+

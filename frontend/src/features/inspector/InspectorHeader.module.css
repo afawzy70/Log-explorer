@@ -15,83 +15,126 @@
  *
  * `background` is required, not decorative: a transparent sticky header
  * would let the scrolling section content show through underneath it.
+ *
+ * B4 (Session 4) - background/border restyled to v2 tokens
+ * (`prototype/styles/app.css`'s `.insp-head`), matching the design's own
+ * `--surface-inspector`/`--line` pair rather than the v1 raised-surface
+ * tokens this panel used before.
  */
 .header {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--color-bg-raised);
-  padding: var(--space-4);
-  border-bottom: var(--border-width) solid var(--color-border);
+  background: var(--v2-surface-inspector);
+  padding: 10px 14px 0;
+  border-bottom: var(--v2-bw) solid var(--v2-line);
 }
 
-.badgeRow {
+/* The identity/close line - level, service, then Close pinned to the trailing edge. */
+.meta {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: var(--space-2);
+  min-width: 0;
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+  white-space: nowrap;
+}
+
+.dotSep {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--v2-ink-3);
+  flex-shrink: 0;
 }
 
 .levelBadge {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  font-size: var(--font-size-xs);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
 }
 
 .levelDot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .service {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.title {
-  margin: 0 0 var(--space-3) 0;
-  font-size: var(--font-size-md);
-  font-weight: 600;
-  overflow-wrap: break-word;
+.closeButton {
+  margin-left: auto;
 }
 
 /*
- * UX-R5 §7 - the position indicator sits on the identity row, pushed to
- * the trailing edge so it never competes with severity/service for the
- * first read. Tertiary weight: it answers "where am I in the set", which
- * matters while navigating, not while reading the event.
+ * The title, with a decorative "this is the event under inspection" mark
+ * (matching the design's own crosshair) - never the sole cue (the row's
+ * own `aria-selected`/`aria-current` and the `role="dialog"` already
+ * carry the same meaning non-visually), clamped to two lines so a long
+ * message can't push the tabs below the fold.
+ */
+.title {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 8px 0 10px;
+  font: var(--v2-text-workspace);
+  color: var(--v2-ink-1);
+  overflow-wrap: break-word;
+}
+
+.title span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.titleIcon {
+  color: var(--v2-accent);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+/*
+ * UX-R5 §7 - the position indicator sits with Previous/Next, pushed to
+ * the trailing edge of the actions row so it never competes with the
+ * classification/context actions for the first read. Tertiary weight: it
+ * answers "where am I in the set", which matters while navigating, not
+ * while reading the event.
  */
 .position {
-  margin-left: auto;
-  font-size: var(--font-size-xs);
-  color: var(--color-text-tertiary);
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+  padding: 0 var(--space-1);
   white-space: nowrap;
 }
 
 /*
- * UX-R5 §6/§14 - navigation and the inspector-level context action group
- * together on the leading edge; Close is separated to the trailing edge.
- * Before UX-R5 all three of Previous/Next/Close were equal-weight
- * siblings in one row, so "leave this panel" read as a peer of "move
+ * UX-R5 §6/§14 - the classification/context actions group on the leading
+ * edge; Previous/Next/position group on the trailing edge, so "leave this
+ * panel" (moved to the meta line above) never reads as a peer of "move
  * through the investigation". Wrapping is preserved for narrow panels.
  */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: 10px;
+}
+
 .nav {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-1);
-}
-
-.navGroup {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1);
+  margin-left: auto;
 }

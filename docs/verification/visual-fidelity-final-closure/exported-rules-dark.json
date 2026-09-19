@@ -1,0 +1,53 @@
+{
+  "format": "log-explorer-classification-pack",
+  "schemaVersion": 1,
+  "pack": {
+    "name": "Log Explorer classification rules",
+    "version": "1",
+    "exportedAt": "2026-09-18T14:50:46.388674097Z"
+  },
+  "rules": [
+    {
+      "id": "payment-auth-failed-dark",
+      "name": "Payment auth failed dark",
+      "description": "",
+      "tags": [
+        "payment-auth-failed-dark"
+      ],
+      "displayColor": "PURPLE",
+      "enabled": true,
+      "priority": 100,
+      "matchMode": "ALL",
+      "conditions": [
+        {
+          "field": "message",
+          "matcher": "EXACT",
+          "value": "Payment authorization failed",
+          "ignoreCase": false
+        }
+      ],
+      "extractions": []
+    },
+    {
+      "id": "payment-auth-failed-dark-2",
+      "name": "Payment auth failed dark",
+      "description": "",
+      "tags": [
+        "payment-auth-failed-dark"
+      ],
+      "displayColor": "RED",
+      "enabled": true,
+      "priority": 100,
+      "matchMode": "ALL",
+      "conditions": [
+        {
+          "field": "message",
+          "matcher": "EXACT",
+          "value": "Payment authorization failed",
+          "ignoreCase": false
+        }
+      ],
+      "extractions": []
+    }
+  ]
+}

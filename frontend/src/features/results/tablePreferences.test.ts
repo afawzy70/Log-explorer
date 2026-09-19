@@ -24,7 +24,8 @@ describe('tablePreferences', () => {
       expect(visible).toEqual(['time', 'level', 'service', 'whatHappened', 'tags', 'userCustomer', 'correlationTrace']);
       expect(prefs.columnOrder).toEqual(DEFAULT_COLUMN_ORDER);
       expect(prefs.hiddenColumnIds).toEqual(DEFAULT_HIDDEN_COLUMN_IDS);
-      expect(prefs.density).toBe('comfortable');
+      // Modern Developer Console (B1) owner decision D1: compact (28px rows) is the default.
+      expect(prefs.density).toBe('compact');
     });
 
     it('never includes any of the five protected fields as a column id', () => {
@@ -117,13 +118,13 @@ describe('tablePreferences', () => {
       expect(result).toEqual(defaultTablePreferences());
     });
 
-    it('falls back to "comfortable" for any invalid density value', () => {
+    it('falls back to the default density ("compact") for any invalid value', () => {
       expect(
         sanitizeTablePreferences({ version: 1, columnOrder: [], hiddenColumnIds: [], density: 'ultra-dense' }).density,
-      ).toBe('comfortable');
+      ).toBe('compact');
       expect(
         sanitizeTablePreferences({ version: 1, columnOrder: [], hiddenColumnIds: [], density: null }).density,
-      ).toBe('comfortable');
+      ).toBe('compact');
     });
 
     it('accepts a valid "compact" density', () => {

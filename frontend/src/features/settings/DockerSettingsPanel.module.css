@@ -1,82 +1,104 @@
-.wrapper {
-  position: relative;
-  display: inline-block;
-}
-
-.trigger {
-  border: var(--border-width) solid var(--color-border);
-  background: var(--color-bg-raised);
-  border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-}
-
-.trigger:hover {
-  background: var(--color-bg-hover);
-}
-
+/*
+ * B6.2 (Session 7) - RECOMPOSED from a trigger-button popover (v1 tokens) into a persistent inline section
+ * (full v2 tokens) of `SettingsWorkspace`, which is itself already full-v2 (Session 4) - "full v2 or full v1,
+ * never mixed" applies here exactly as it did for FieldMappingWorkspace in B6.1: this panel now always renders
+ * inside an already-v2 parent, so partial v1 styling would look patchy, especially in dark theme.
+ * Class names mirror the design's own prototype (`docs/ux-v2-modern-developer-console/prototype/scripts/app.js`
+ * `settings()`, styles in `prototype/styles/app.css`) - `.panel`/`.panelHead`/`.scopeTag`/`.roTag`/`.kv`/
+ * `.subPanel`/`.field`/`.editorRow` below correspond to that prototype's `.panel`/`.panel-head`/`.scope-tag`/
+ * `.ro-tag`/`.kv`/`.sub-panel`/`.lbl-field`/`.editor-row`.
+ */
 .panel {
-  position: absolute;
-  top: calc(100% + var(--space-2));
-  right: 0;
-  z-index: 20;
-  background: var(--color-bg-raised);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
-  padding: var(--space-4);
-  width: 420px;
-  max-width: calc(100vw - var(--space-6));
-  max-height: min(600px, 80vh);
-  overflow-y: auto;
+  background: var(--v2-surface-work);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  margin-bottom: var(--space-4);
+  max-width: 900px;
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: var(--v2-bw) solid var(--v2-line-subtle);
+  flex-wrap: wrap;
 }
 
 .heading {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  margin: 0 0 var(--space-3);
+  margin: 0;
+  font: var(--v2-text-body-strong);
+  color: var(--v2-ink-1);
 }
 
-.subheading {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  margin: var(--space-4) 0 var(--space-2);
+.scopeTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 var(--space-2);
+  border-radius: var(--v2-r-xs);
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+  background: var(--v2-neutral-tint);
+}
+
+.roTag {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-3);
+}
+
+.panelBody {
+  padding: var(--space-3) var(--space-4);
 }
 
 .summaryList {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: 160px minmax(0, 1fr);
   gap: var(--space-1) var(--space-3);
   margin: 0;
-  font-size: var(--font-size-sm);
+  font: var(--v2-text-body);
 }
 
 .summaryList dt {
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-3);
+  font: var(--v2-text-meta);
+  padding-top: 2px;
 }
 
 .summaryList dd {
   margin: 0;
-  font-family: var(--font-mono, monospace);
+  color: var(--v2-ink-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font: var(--v2-text-data);
 }
 
 .note {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-  margin: var(--space-3) 0 0;
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-3);
+  margin: var(--space-2) 0 0;
 }
 
 .hint {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-3);
   margin: 0 0 var(--space-2);
 }
 
+.subPanel {
+  border-top: var(--v2-bw) solid var(--v2-line-subtle);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
 
-.testSection {
-  border-top: var(--border-width) solid var(--color-border);
-  padding-top: var(--space-2);
+.subheading {
+  margin: 0 0 var(--space-2);
+  font: var(--v2-text-section);
+  color: var(--v2-ink-1);
 }
 
 .field {
@@ -84,19 +106,22 @@
   flex-direction: column;
   gap: var(--space-1);
   margin-bottom: var(--space-2);
+  max-width: 420px;
 }
 
 .field label {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  font: var(--v2-text-label);
+  color: var(--v2-ink-2);
 }
 
 .field input,
 .field select {
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-sm);
   padding: var(--space-2);
-  font-size: var(--font-size-sm);
+  font: var(--v2-text-data);
+  background: var(--v2-surface-work);
+  color: var(--v2-ink-1);
 }
 
 .checkboxField {
@@ -104,30 +129,38 @@
   align-items: center;
   gap: var(--space-2);
   margin-bottom: var(--space-2);
-  font-size: var(--font-size-sm);
+  font: var(--v2-text-body);
+  color: var(--v2-ink-1);
+}
+
+.editorRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  margin-top: var(--space-2);
 }
 
 .testUp {
-  color: var(--color-severity-info, var(--color-text));
-  font-size: var(--font-size-sm);
-  margin-top: var(--space-2);
+  color: var(--v2-success);
+  font: var(--v2-text-body);
+  margin: 0;
 }
 
 .testDown {
-  color: var(--color-danger);
-  font-size: var(--font-size-sm);
-  margin-top: var(--space-2);
+  color: var(--v2-danger);
+  font: var(--v2-text-body);
+  margin: 0;
 }
 
 .error {
-  color: var(--color-danger);
-  font-size: var(--font-size-sm);
+  color: var(--v2-danger);
+  font: var(--v2-text-body);
+  margin: 0;
 }
 
-.actions {
-  margin-top: var(--space-3);
-  display: flex;
-  justify-content: flex-end;
-  border-top: var(--border-width) solid var(--color-border);
-  padding-top: var(--space-3);
+@media (max-width: 767px) {
+  .field {
+    max-width: none;
+  }
 }

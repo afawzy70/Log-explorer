@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Icon } from '../../shared/ui/Icon';
 import type { QueryPlan } from '../../shared/api/types';
 import styles from './QueryPlanDisclosure.module.css';
 
@@ -16,11 +17,24 @@ export interface QueryPlanDisclosureProps {
  * no masking itself, it only renders already-safe strings, exactly the
  * "server-side redaction, never frontend masking" posture the mission
  * requires.
+ *
+ * <p>B2 (Session 4) RECOMPOSE - "opens from Query details in the scope
+ * strip instead of an inline disclosure" (`COMPONENT_INVENTORY.md`).
+ * Deliberately keeps the exact same `<details>`/`<summary>` mechanism
+ * (still collapsed by default, still keyboard-operable, no extra JS
+ * state) rather than rebuilding it as a `usePopoverTrigger`/
+ * `useDismissableLayer` popover - only `.details`/`.body`'s own CSS
+ * changes, to sit as a compact dropdown anchored under the "Query
+ * details" trigger inside the strip's right-hand control group instead
+ * of an inline block above the table.
  */
 export function QueryPlanDisclosure({ queryPlan }: QueryPlanDisclosureProps) {
   return (
     <details className={styles.details}>
-      <summary className={styles.summary}>Query details</summary>
+      <summary className={styles.summary}>
+        <Icon name="braces" size="sm" />
+        Query details
+      </summary>
       <div className={styles.body}>
         <Row label="Executed query">
           <code className={styles.code}>{queryPlan.resolvedQuery}</code>

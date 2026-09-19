@@ -1,6 +1,26 @@
+/*
+ * B7 (Session 10) - full v2 tokens for the Live tail workspace, matching the design's own `live()` prototype
+ * function (`docs/ux-v2-modern-developer-console/prototype/scripts/app.js`) and its `.acq`/`.live-*` grammar.
+ * This is a full-page takeover with no unstyled v1 sibling (same reasoning as every other B6/B7 takeover
+ * workspace) - safe to build fully in v2 from the start.
+ *
+ * COMPONENT_INVENTORY.md's own row for this file (`features/live/LiveTailPanel.tsx`) is classified RECOMPOSE,
+ * naming "event table" as required content - a deliberate, owner-approved supersession of an earlier
+ * production decision ("Legacy Remediation Slice 5": a card-style <ol>/<li> list, explicitly "never the seven-
+ * column results table", to stay visually distinct from historical Search). This session applies the later,
+ * authoritative design decision instead (CLAUDE.md §5's own "when an older requirement conflicts with a later
+ * decision, apply the later decision, name the conflict explicitly" rule) - Live now renders a real semantic
+ * <table>, mirroring Results' own column/severity-mark grammar, which is exactly what Stage 1's own "Live must
+ * visually belong to the same product... do not create a second design language" instruction asks for. Live
+ * stays visually distinct through its own mode-bar/acquisition badge/pulse, never through a structurally
+ * different event list.
+ */
 .wrapper {
-  padding: var(--space-4);
-  border-top: 3px solid var(--color-severity-error);
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--v2-bg-app);
+  color: var(--v2-ink-1);
 }
 
 .header {
@@ -8,64 +28,76 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
-  margin-bottom: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-2);
 }
 
+.title {
+  margin: 0;
+  font: var(--v2-text-workspace);
+  color: var(--v2-ink-1);
+}
+
+/* ------------------------------------------------------------------ acquisition-state badge */
 .liveBadge {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
-  padding: 2px var(--space-2);
-  border-radius: var(--radius-sm);
-  background: var(--color-severity-error-bg);
-  color: var(--color-severity-error);
-  font-size: var(--font-size-xs);
-  font-weight: 700;
+  gap: 6px;
+  height: 24px;
+  padding: 0 var(--space-2);
+  border-radius: var(--v2-r-sm);
+  border: var(--v2-bw) solid var(--v2-line);
+  font: 650 11px/16px var(--v2-font-ui);
   letter-spacing: 0.04em;
+  white-space: nowrap;
+  /* DRIFT-004: design's own `.acq`/`.acq-live` class visually uppercases the literal text "Live" - the
+     accessible name (from the real text content) stays exactly "Live", this is presentation only. */
+  text-transform: uppercase;
 }
 
 .liveDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--v2-r-full);
   background: currentColor;
   opacity: 0.5;
+  flex: none;
 }
 
 .liveDotActive {
   opacity: 1;
-  animation: pulse 1.4s ease-in-out infinite;
+  animation: live-pulse 1800ms ease-out infinite;
 }
 
 /*
- * UX-R3 §16 - one tone per state family, each paired with the badge's own
- * distinct text (`liveBadgeText`) so meaning never rides on color alone.
- * Restrained, not novelty animation: only the LIVE dot pulses (unchanged
- * from before), every other state is static.
+ * UX-R3 §16 - one tone per state family, each paired with the badge's own distinct text (`liveBadgeText`) so
+ * meaning never rides on color alone. Restrained, not novelty animation: only the LIVE dot pulses, every other
+ * state is static.
  */
 .toneLive {
-  background: var(--color-severity-error-bg);
-  color: var(--color-severity-error);
+  color: var(--v2-success);
+  border-color: color-mix(in srgb, var(--v2-success) 45%, var(--v2-line));
+  background: var(--v2-success-tint);
 }
 
 .tonePaused {
-  background: var(--color-severity-warn-bg);
-  color: var(--color-severity-warn);
+  color: var(--v2-ink-1);
+  background: var(--v2-surface-sunken);
 }
 
 .toneConnecting {
-  background: var(--color-severity-info-bg);
-  color: var(--color-severity-info);
+  color: var(--v2-accent-ink);
+  background: var(--v2-accent-tint);
+  border-style: dashed;
 }
 
 .toneFailed {
-  background: var(--color-danger-bg);
-  color: var(--color-danger);
+  color: var(--v2-danger);
+  background: var(--v2-danger-tint);
+  border-color: var(--v2-danger-line);
 }
 
 .toneStopped {
-  background: var(--color-bg-hover);
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -74,8 +106,9 @@
   }
 }
 
-@keyframes pulse {
-  0%, 100% {
+@keyframes live-pulse {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -83,111 +116,291 @@
   }
 }
 
-.title {
-  margin: 0;
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-}
-
 .controls {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-2);
   margin-left: auto;
 }
 
+.kbd {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 4px;
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-xs);
+  font: 600 10px/14px var(--v2-font-mono);
+  color: var(--v2-ink-3);
+}
+
 .disclaimer {
-  margin: 0 0 var(--space-3) 0;
-  color: var(--color-text-tertiary);
-  font-size: var(--font-size-xs);
+  margin: 0 var(--space-4) var(--space-1);
+  color: var(--v2-ink-3);
+  font: var(--v2-text-meta);
 }
 
 .error {
-  margin-bottom: var(--space-3);
-  color: var(--color-danger);
-  background: var(--color-danger-bg);
-  border-radius: var(--radius-sm);
-  padding: var(--space-3);
+  margin: 0 var(--space-4) var(--space-2);
+  color: var(--v2-danger);
+  background: var(--v2-danger-tint);
+  border-radius: var(--v2-r-md);
+  padding: var(--space-2) var(--space-3);
+  font: var(--v2-text-body);
 }
 
 .reconnectNotice {
-  margin: 0 0 var(--space-3) 0;
-  color: var(--color-text-secondary);
-  background: var(--color-bg-hover);
-  border-radius: var(--radius-sm);
+  margin: 0 var(--space-4) var(--space-2);
+  color: var(--v2-ink-1);
+  background: var(--v2-warning-tint);
+  border-radius: var(--v2-r-md);
   padding: var(--space-2) var(--space-3);
-  font-size: var(--font-size-sm);
+  font: var(--v2-text-meta);
 }
 
-/**
- * OS-1E — the source's own truthful partial-live-state disclosure list
- * (a target stopped, or the target set was capped). Reuses the exact
- * same warning tone `SourceHealthBadge.module.css`'s own `.warningsList`
- * already established for source-reported warnings elsewhere in the app
- * (`--color-severity-warn`) rather than inventing a second visual
- * language for "the source is telling you something is incomplete."
+/*
+ * OS-1E - the source's own truthful partial-live-state disclosure list (a target stopped, or the target set
+ * was capped). Same warning tone the rest of the app uses for source-reported warnings.
  */
 .sourceWarnings {
-  margin: 0 0 var(--space-3) 0;
+  margin: 0 var(--space-4) var(--space-2);
   padding: var(--space-2) var(--space-3);
-  background: var(--color-bg-hover);
-  border-radius: var(--radius-sm);
+  background: var(--v2-warning-tint);
+  border-radius: var(--v2-r-md);
   list-style: none;
 }
 
 .sourceWarningsItem {
-  color: var(--color-severity-warn);
-  font-size: var(--font-size-sm);
+  color: var(--v2-warning);
+  font: var(--v2-text-meta);
 }
 
 .sourceWarningsItem + .sourceWarningsItem {
   margin-top: var(--space-1);
 }
 
+/* ------------------------------------------------------------------ filter row + counts */
 .filterRow {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
-  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-top: var(--v2-bw) solid var(--v2-line);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
+  background: var(--v2-surface-work);
+}
+
+.filterNote {
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-3);
 }
 
 .textFilterLabel {
-  flex: 1;
+  flex: 1 1 260px;
   min-width: 180px;
 }
 
 .textFilterInput {
   width: 100%;
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-2);
-  font-size: var(--font-size-sm);
-}
-
-.jumpButton {
-  margin-bottom: var(--space-3);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-sm);
+  padding: var(--space-1) var(--space-2);
+  font: var(--v2-text-body);
+  background: var(--v2-surface-work);
+  color: var(--v2-ink-1);
 }
 
 .counts {
-  margin: 0 0 var(--space-3) 0;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
+  margin: 0;
+  padding: var(--space-1) var(--space-4);
+  color: var(--v2-ink-2);
+  font: var(--v2-text-meta);
+  background: var(--v2-surface-bar, var(--v2-surface-inspector));
+}
+
+.jumpButton {
+  position: sticky;
+  top: var(--space-2);
+  z-index: 3;
+  margin: var(--space-2) auto 0;
+  display: block;
+  box-shadow: var(--v2-shadow-pop);
 }
 
 .empty {
-  color: var(--color-text-tertiary);
+  color: var(--v2-ink-3);
   padding: var(--space-6) 0;
   text-align: center;
+  font: var(--v2-text-body);
 }
 
-.list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-raised);
-  overflow: hidden;
+/* ------------------------------------------------------------------ event table */
+.tableScroll {
+  margin: var(--space-2) var(--space-4) var(--space-4);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-surface-work);
+  overflow: auto;
   max-height: 70vh;
-  overflow-y: auto;
+  contain: paint;
+}
+
+.table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font: var(--v2-text-body);
+}
+
+/*
+ * DRIFT-011 remediation: Session 11's own Stage 5 change (below, kept for history) was based on an
+ * incorrect premise - it claimed to match Results' "default (comfortable) density", but Results'
+ * real default (tablePreferences.ts's defaultTablePreferences()) is 'compact', which renders with
+ * exactly this var(--space-1) var(--space-2) padding. Live has no density toggle of its own, so it
+ * should match the one default every other table in the product actually uses. Reverted.
+ */
+.table th,
+.table td {
+  text-align: left;
+  vertical-align: top;
+  padding: var(--space-1) var(--space-2);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
+}
+
+.table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.table thead th {
+  font: var(--v2-text-colhead);
+  color: var(--v2-ink-2);
+  background: var(--v2-surface-inspector, var(--v2-surface-work));
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr:hover {
+  background: var(--v2-surface-sunken);
+}
+
+.colTime {
+  /* DRIFT-007 remediation: matches the design's own exact `live()` colgroup spec
+     (prototype/scripts/app.js) rather than Results' own Time column width - the `.timeText` ellipsis
+     safety mechanism below still applies at this narrower width, so a very long formatted timestamp
+     truncates gracefully rather than overflowing the column. */
+  width: 172px;
+}
+
+.colLevel {
+  width: 70px;
+}
+
+.colService {
+  width: 180px;
+}
+
+.colTags {
+  width: 156px;
+}
+
+.colId {
+  width: 120px;
+}
+
+.timeCell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: var(--v2-text-data);
+  color: var(--v2-ink-2);
+}
+
+/*
+ * `min-width: 0` is required for a flex child to actually shrink below its
+ * content's intrinsic width - without it `overflow`/`text-overflow` below
+ * are silently ineffective and the text bleeds into the Level column
+ * instead (the bug this fix replaces: full "date, time.ms" text at a
+ * fixed 190px column width, with an inline (non-absolute) severity mark
+ * ahead of it, is routinely wider than the column).
+ */
+.timeText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeDatePart {
+  color: var(--v2-ink-3);
+}
+
+.timeClockPart {
+  color: var(--v2-ink-1);
+}
+
+.levelCell {
+  font: var(--v2-text-meta);
+  font-weight: 600;
+  color: var(--v2-ink-2);
+}
+
+.serviceCell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: var(--v2-text-body-strong);
+  color: var(--v2-ink-1);
+}
+
+.serviceSwatch {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--v2-r-full);
+  flex: none;
+}
+
+.messageCell {
+  color: var(--v2-ink-1);
+  overflow-wrap: break-word;
+}
+
+.tagsCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.idCell {
+  font: var(--v2-text-data);
+  color: var(--v2-ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.errorRow td {
+  background: var(--v2-danger-tint);
+}
+
+@media (max-width: 767px) {
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .controls {
+    margin-left: 0;
+    justify-content: flex-end;
+  }
+
+  .filterRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }

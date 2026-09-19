@@ -1,71 +1,54 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Button } from '../../shared/ui/Button';
-import { useDismissableLayer } from '../../shared/ui/useDismissableLayer';
-import { usePopoverTrigger } from '../../shared/ui/usePopoverTrigger';
+import { Icon } from '../../shared/ui/Icon';
 import {
   connectOpenShift,
   disconnectOpenShift,
   fetchOpenShiftConnection,
-  fetchOpenShiftContainers,
   fetchOpenShiftIntakeAllowed,
-  fetchOpenShiftPods,
   fetchOpenShiftProxySettings,
-  fetchOpenShiftWorkloads,
   openShiftFailureReason,
-  selectOpenShiftContainer,
-  selectOpenShiftPod,
-  selectOpenShiftProject,
-  selectOpenShiftWorkload,
   updateOpenShiftProxySettings,
 } from '../../shared/api/client';
 import type {
   OpenShiftConnectionSummary,
   OpenShiftFailureReason,
-  OpenShiftPodDiscovery,
-  OpenShiftWorkloadDiscovery,
-  OpenShiftWorkloadKind,
+  OpenShiftScopeSummary,
   ProxyMode,
 } from '../../shared/api/types';
+import { WORKLOAD_KIND_LABELS } from '../search/openshift/workloadKindLabels';
 import styles from './OpenShiftSettingsPanel.module.css';
 
 /**
- * A workload kind's own name, for the select control (OS-1B §6/§21).
- * Jobs/CronJobs are deferred, not offered. Exported so `Shell`'s
- * `ScopeTrail` (OS-1F) can render the identical label for the same
- * kind, rather than maintaining a second, driftable copy.
- */
-export const WORKLOAD_KIND_LABELS: Record<OpenShiftWorkloadKind, string> = {
-  DEPLOYMENT: 'Deployment',
-  DEPLOYMENT_CONFIG: 'DeploymentConfig',
-  STATEFUL_SET: 'StatefulSet',
-  DAEMON_SET: 'DaemonSet',
-};
-
-/** Encodes a workload selection into the `<select>` control's single value. */
-function workloadOptionValue(kind: OpenShiftWorkloadKind, name: string): string {
-  return `${kind}::${name}`;
-}
-
-/**
- * OpenShift connection workspace (OS-1A §18).
+ * OpenShift connection settings (OS-1A §18).
  *
- * <p><b>Deliberately not a clone of `DockerSettingsPanel`.</b> That panel
- * is read-only by design - it shows the effective configuration and offers
- * an ephemeral Test Connection, because Docker's connection is owned by
- * deployment configuration and there is no authenticated admin boundary to
- * justify a Save. OpenShift is the opposite case: the connection *is* the
- * user's own credential, supplied at runtime, and the panel's whole job is
- * to commit it. Same visual language, different interaction model, because
- * the domain genuinely differs (OS-A §24 explicitly allows this).
+ * <p>B6.2 (Session 7) recomposed this from a trigger-button popover into a
+ * persistent inline section of the Settings workspace - COMPONENT_
+ * INVENTORY.md's own RECOMPOSE row: "Same move; connection summary,
+ * investigation scope selectors, Disconnect as a danger button." This is
+ * the LAST of the three B6.2 panels migrated (Docker, then Privacy &amp;
+ * masking, then this one) precisely because it is the highest-risk: it
+ * owns the credential-intake form and the `--insecure-skip-tls-verify`
+ * refusal (see {@link describeFailure}'s `INSECURE_TLS_REFUSED` case,
+ * enforced server-side and surfaced here verbatim - untouched by this
+ * recompose). All connect/disconnect/scope-selection/proxy logic below is
+ * byte-for-byte the same as before; only the popover chrome (trigger
+ * button, `usePopoverTrigger`, `useDismissableLayer`, `role="dialog"`) is
+ * gone, replaced by a persistent `<section>` that fetches its three pieces
+ * of state (connection summary, intake-allowed, proxy settings) on mount
+ * instead of on trigger-click. This component only mounts once per
+ * Settings-workspace open (`App.tsx`'s own takeover ternary), which gives
+ * the same "always a fresh fetch" guarantee the old open/close cycle used
+ * to provide explicitly.
  *
- * <h2>The token never lives in this component</h2>
+ * <h2>The token never lives in this component longer than the request</h2>
  *
  * <p>The pasted command sits in one piece of local state while the user is
  * typing, is submitted once, and is cleared immediately afterwards -
- * whether the attempt succeeded or failed. It is never written to
- * `localStorage`, `sessionStorage` or the URL (CLAUDE.md §2 rule 4), and
- * there is no code path that reads it back from the server, because the
- * server has no endpoint that returns it.
+ * whether the attempt succeeded or failed, and also on unmount (Settings
+ * closing). It is never written to `localStorage`, `sessionStorage` or the
+ * URL (CLAUDE.md §2 rule 4), and there is no code path that reads it back
+ * from the server, because the server has no endpoint that returns it.
  *
  * <h2>Failures are specific, never "connection failed"</h2>
  *
@@ -76,29 +59,33 @@ function workloadOptionValue(kind: OpenShiftWorkloadKind, name: string): string 
  * never be shown as "no accessible projects", which is a different truth
  * entirely (§15).
  *
- * <h2>OS-1F - {@code onScopeChanged}</h2>
+ * <h2>SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - connection only, no scope editing</h2>
  *
- * <p>Called after every connect/disconnect/project/workload/pod/container
- * mutation that actually succeeded, so a caller (`Shell`'s
- * `useOpenShiftScopeSummary`) can re-read the truth from {@code GET
- * /scope} and keep the header `ScopeTrail` in sync - this panel never
- * pushes its own local state upward, it only signals "something changed,
- * go re-read the source of truth."
+ * <p>This panel used to also own Project/Workload/Pod/Container SELECTION
+ * (OS-1B/OS-1F) - it now shows that scope read-only (the {@code scope}
+ * prop, the same lifted {@code useOpenShiftScopeSummary} instance
+ * `Shell`'s `ScopeTrail` reads) and links back to Search, where scope is
+ * now actually chosen (`OpenShiftScopeSelect.tsx`). This keeps exactly ONE
+ * authoritative, editable scope state - the backend session - with
+ * exactly one editable UI surface (Search) and one informational,
+ * always-in-sync mirror (here), never two competing selectors that could
+ * drift apart. {@code onScopeChanged} is still called after every
+ * connect/disconnect (the one mutation this panel still performs), so the
+ * lifted summary Search reads stays current.
  */
-export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: () => void } = {}) {
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const popover = usePopoverTrigger();
+export function OpenShiftSettingsPanel({
+  scope,
+  onScopeChanged,
+}: {
+  scope?: OpenShiftScopeSummary | null;
+  onScopeChanged?: () => void;
+} = {}) {
   const headingId = useId();
   const commandId = useId();
   const nameId = useId();
-  const projectId = useId();
   const proxyGroupId = useId();
   const proxyHostId = useId();
   const proxyPortId = useId();
-
-  const workloadId = useId();
-  const podId = useId();
-  const containerId = useId();
 
   const [summary, setSummary] = useState<OpenShiftConnectionSummary | null>(null);
   const [intakeAllowed, setIntakeAllowed] = useState(true);
@@ -115,32 +102,18 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
   const [connecting, setConnecting] = useState(false);
   const [failure, setFailure] = useState<{ message: string; reason: OpenShiftFailureReason | null } | null>(null);
 
-  // OS-1B - workload/pod/container scope, one level at a time. Each level
-  // is `undefined` until its own discovery call resolves ("loading" vs
-  // "genuinely empty" must stay distinguishable - §24), and `null`
-  // selections mean "All" at that level (§22), never "unknown".
-  const [workloadDiscovery, setWorkloadDiscovery] = useState<OpenShiftWorkloadDiscovery | undefined>(undefined);
-  const [selectedWorkload, setSelectedWorkload] = useState<{ kind: OpenShiftWorkloadKind; name: string } | null>(
-    null,
-  );
-  const [pods, setPods] = useState<OpenShiftPodDiscovery | undefined>(undefined);
-  const [selectedPod, setSelectedPod] = useState<string | null>(null);
-  const [containers, setContainers] = useState<string[] | undefined>(undefined);
-  const [selectedContainer, setSelectedContainer] = useState<string | null>(null);
-  const [scopeError, setScopeError] = useState<string | null>(null);
-
   // Pre-closure functional recovery 2 (§B2/§B3) - proxy mode is
   // independent of connect/disconnect: readable and editable in either
   // panel state, since it is what a user configures IN ORDER TO reach the
   // cluster (§B12: Connect is this application's "Test connection"
   // action, and must use whatever proxy mode is currently selected).
   //
-  // The radio group's own selection IS the source of truth once the panel
-  // is open (seeded from the server's last-committed value on open, then
-  // updated optimistically-but-server-confirmed on every change below) -
-  // there is no separate "committed" value tracked afterward, since
-  // nothing else in this panel needs to distinguish "what the form shows"
-  // from "what the server has" once they have been reconciled.
+  // The radio group's own selection IS the source of truth once loaded
+  // (seeded from the server's last-committed value on mount, then updated
+  // optimistically-but-server-confirmed on every change below) - there is
+  // no separate "committed" value tracked afterward, since nothing else in
+  // this panel needs to distinguish "what the form shows" from "what the
+  // server has" once they have been reconciled.
   const [formMode, setFormMode] = useState<ProxyMode>('SYSTEM');
   const [proxyBusy, setProxyBusy] = useState(false);
   const [proxyError, setProxyError] = useState<string | null>(null);
@@ -150,45 +123,9 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
   const [customHostInput, setCustomHostInput] = useState('');
   const [customPortInput, setCustomPortInput] = useState('');
 
-  useDismissableLayer(wrapperRef, popover.isOpen, close);
-
-  // Belt and braces: if this component ever unmounts while a command is
-  // still in state, drop it rather than leaving it for the GC to decide.
-  useEffect(() => () => setLoginCommand(''), []);
-
-  function close() {
-    popover.close();
-    // The pasted command must not survive the panel closing.
-    setLoginCommand('');
+  useEffect(() => {
     setFailure(null);
-  }
-
-  function resetScope() {
-    setWorkloadDiscovery(undefined);
-    setSelectedWorkload(null);
-    setPods(undefined);
-    setSelectedPod(null);
-    setContainers(undefined);
-    setSelectedContainer(null);
-    setScopeError(null);
-  }
-
-  function open() {
-    popover.open();
-    setFailure(null);
-    resetScope();
-    void fetchOpenShiftConnection().then((s) => {
-      setSummary(s);
-      // OS-1B - the panel does not attempt to restore a prior workload/pod/
-      // container selection into these controls on reopen; only the
-      // top-level project selection is a durable summary field today. The
-      // backend's own session-side selection is untouched either way -
-      // this is a display-only starting point, documented in the OS-1B
-      // verification report as a deliberate v1 simplification.
-      if (s.state === 'CONNECTED' && s.selectedProject) {
-        void loadWorkloads();
-      }
-    }).catch(() => setSummary(null));
+    void fetchOpenShiftConnection().then(setSummary).catch(() => setSummary(null));
     void fetchOpenShiftIntakeAllowed().then(setIntakeAllowed).catch(() => setIntakeAllowed(true));
     setProxyError(null);
     void fetchOpenShiftProxySettings().then((p) => {
@@ -196,7 +133,15 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
       setCustomHostInput(p.host ?? '');
       setCustomPortInput(p.port != null ? String(p.port) : '');
     }).catch(() => undefined);
-  }
+    // Mount-once fetch of the three pieces of state this panel owns - see
+    // the doc comment above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Belt and braces: if this component ever unmounts (Settings closing)
+  // while a command is still in state, drop it rather than leaving it for
+  // the GC to decide.
+  useEffect(() => () => setLoginCommand(''), []);
 
   /** SYSTEM/DIRECT apply immediately - neither needs a host/port, so there is nothing to validate or hold pending. */
   async function selectProxyMode(mode: 'SYSTEM' | 'DIRECT') {
@@ -262,94 +207,6 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
     }
   }
 
-  async function loadWorkloads() {
-    try {
-      const discovery = await fetchOpenShiftWorkloads();
-      setWorkloadDiscovery(discovery);
-      // No workload is selected yet at this point (a fresh project
-      // selection always starts at "All workloads" - OS-1B §14), so the
-      // pod level can resolve immediately for the whole project.
-      void loadPods();
-    } catch {
-      setScopeError('Could not discover workloads for this project.');
-    }
-  }
-
-  async function loadPods() {
-    try {
-      const result = await fetchOpenShiftPods();
-      setPods(result);
-    } catch {
-      setScopeError('Could not discover pods for this scope.');
-    }
-  }
-
-  async function loadContainers() {
-    try {
-      const result = await fetchOpenShiftContainers();
-      setContainers(result);
-    } catch {
-      setScopeError('Could not discover containers for this pod.');
-    }
-  }
-
-  async function onSelectWorkload(value: string) {
-    setScopeError(null);
-    setContainers(undefined);
-    setSelectedContainer(null);
-    setPods(undefined);
-    setSelectedPod(null);
-    if (!value) {
-      setSelectedWorkload(null);
-      try {
-        await selectOpenShiftWorkload(null);
-        onScopeChanged?.();
-      } catch {
-        setScopeError('Could not clear the workload selection.');
-      }
-      void loadPods();
-      return;
-    }
-    const [kind, name] = value.split('::') as [OpenShiftWorkloadKind, string];
-    try {
-      await selectOpenShiftWorkload({ kind, name });
-      setSelectedWorkload({ kind, name });
-      onScopeChanged?.();
-      void loadPods();
-    } catch {
-      setScopeError('That workload is no longer available. Refresh and try again.');
-    }
-  }
-
-  async function onSelectPod(podName: string) {
-    setScopeError(null);
-    setContainers(undefined);
-    setSelectedContainer(null);
-    const value = podName || null;
-    try {
-      await selectOpenShiftPod(value);
-      setSelectedPod(value);
-      onScopeChanged?.();
-      if (value) {
-        void loadContainers();
-      }
-    } catch {
-      setScopeError('That pod is no longer available. Refresh and try again.');
-    }
-  }
-
-  async function onSelectContainer(containerName: string) {
-    setScopeError(null);
-    const value = containerName || null;
-    try {
-      await selectOpenShiftContainer(value);
-      setSelectedContainer(value);
-      onScopeChanged?.();
-    } catch {
-      setScopeError('That container is no longer available on this pod.');
-    }
-  }
-
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
@@ -394,240 +251,221 @@ export function OpenShiftSettingsPanel({ onScopeChanged }: { onScopeChanged?: ()
   const scopeLabelSingular = isNamespaceMode ? 'Namespace' : 'Project';
 
   return (
-    <div ref={wrapperRef} className={styles.wrapper}>
-      <Button
-        ref={popover.triggerRef}
-        variant="secondary"
-        aria-haspopup="dialog"
-        aria-expanded={popover.isOpen}
-        onClick={() => (popover.isOpen ? close() : open())}
-      >
-        OpenShift
-      </Button>
+    <section className={styles.panel} aria-labelledby={headingId} data-testid="openshift-settings-panel">
+      <div className={styles.panelHead}>
+        <h2 id={headingId} className={styles.heading}>
+          OpenShift
+        </h2>
+        <span className={styles.scopeTag}>
+          <Icon name="server" size="sm" />
+          OpenShift sources only
+        </span>
+        {/*
+          State is never colour-only: the word itself is the signal, and
+          the dot is decoration (CLAUDE.md §7).
+        */}
+        <span
+          data-testid="openshift-connection-state"
+          className={`${styles.state} ${connecting ? styles.stateConnecting : stateClass(summary?.state, styles)}`}
+        >
+          <span className={styles.stateDot} aria-hidden="true" />
+          {connecting ? 'Connecting…' : stateLabel(summary?.state)}
+        </span>
+        {connected ? (
+          <span className={styles.right}>
+            <Button variant="danger" disabled={busy} onClick={() => void run(disconnectOpenShift)}>
+              Disconnect
+            </Button>
+          </span>
+        ) : null}
+      </div>
 
-      {popover.isOpen ? (
-        <div className={styles.panel} role="dialog" aria-labelledby={headingId}>
-          <div className={styles.header}>
-            <h2 id={headingId} className={styles.heading}>
-              OpenShift connection
-            </h2>
-            {/*
-              State is never colour-only: the word itself is the signal, and
-              the dot is decoration (CLAUDE.md §7).
-            */}
-            <span
-              data-testid="openshift-connection-state"
-              className={`${styles.state} ${connecting ? styles.stateConnecting : stateClass(summary?.state, styles)}`}
-            >
-              <span className={styles.stateDot} aria-hidden="true" />
-              {connecting ? 'Connecting…' : stateLabel(summary?.state)}
-            </span>
-          </div>
+      <div className={styles.panelBody}>
+        {!intakeAllowed ? (
+          <p className={styles.blocked} role="alert">
+            Sign-in is disabled because Log Explorer is reachable from the network. OpenShift credentials can only be
+            entered when it is bound to a local address.
+          </p>
+        ) : null}
 
-          {!intakeAllowed ? (
-            <p className={styles.blocked} role="alert">
-              Sign-in is disabled because Log Explorer is reachable from the network. OpenShift credentials can only
-              be entered when it is bound to a local address.
-            </p>
-          ) : null}
+        {connected ? (
+          <>
+            <dl className={styles.summaryList}>
+              <div className={styles.summaryRow}>
+                <dt>Server</dt>
+                <dd className={styles.mono}>{summary?.server ?? '—'}</dd>
+              </div>
+              <div className={styles.summaryRow}>
+                <dt>User</dt>
+                <dd>{summary?.username ?? 'Not reported by this cluster'}</dd>
+              </div>
+              <div className={styles.summaryRow}>
+                <dt>TLS</dt>
+                <dd>Verified{summary?.usingPrivateCa ? ' (private certificate authority)' : ''}</dd>
+              </div>
+              {summary?.proxy ? (
+                <div className={styles.summaryRow}>
+                  <dt>Proxy</dt>
+                  <dd className={styles.mono}>{summary.proxy}</dd>
+                </div>
+              ) : null}
+              <div className={styles.summaryRow}>
+                <dt>{scopeLabelPlural}</dt>
+                <dd>{summary?.projectCount ?? 0}</dd>
+              </div>
+            </dl>
 
-          {connected ? (
-            <>
-              <dl className={styles.summaryList}>
-                <div className={styles.summaryRow}>
-                  <dt>Server</dt>
-                  <dd className={styles.mono}>{summary?.server ?? '—'}</dd>
-                </div>
-                <div className={styles.summaryRow}>
-                  <dt>User</dt>
-                  <dd>{summary?.username ?? 'Not reported by this cluster'}</dd>
-                </div>
-                <div className={styles.summaryRow}>
-                  <dt>TLS</dt>
-                  <dd>
-                    Verified{summary?.usingPrivateCa ? ' (private certificate authority)' : ''}
-                  </dd>
-                </div>
-                {summary?.proxy ? (
+            {summary && summary.projectCount === 0 ? (
+              <p className={styles.empty}>
+                This account can sign in, but has no {scopeLabelPlural.toLowerCase()}. Ask a cluster administrator
+                for access to one.
+              </p>
+            ) : (
+              // SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - read-only, sourced from the same lifted `scope`
+              // summary Search itself reads (never a second authority) - Project/Workload/Pod/Container are
+              // now selected from the Search toolbar (`OpenShiftScopeSelect.tsx`), not here.
+              <div className={styles.scope}>
+                <dl className={styles.summaryList}>
                   <div className={styles.summaryRow}>
-                    <dt>Proxy</dt>
-                    <dd className={styles.mono}>{summary.proxy}</dd>
+                    <dt>{scopeLabelSingular}</dt>
+                    <dd>{scope?.selectedProject ?? 'None selected'}</dd>
                   </div>
-                ) : null}
-                <div className={styles.summaryRow}>
-                  <dt>{scopeLabelPlural}</dt>
-                  <dd>{summary?.projectCount ?? 0}</dd>
-                </div>
-              </dl>
-
-              {summary && summary.projectCount === 0 ? (
-                <p className={styles.empty}>
-                  This account can sign in, but has no {scopeLabelPlural.toLowerCase()}. Ask a cluster administrator
-                  for access to one.
+                  {scope?.selectedProject ? (
+                    <>
+                      <div className={styles.summaryRow}>
+                        <dt>Workload</dt>
+                        <dd>
+                          {scope.selectedWorkloadName && scope.selectedWorkloadKind
+                            ? `${scope.selectedWorkloadName} (${WORKLOAD_KIND_LABELS[scope.selectedWorkloadKind]})`
+                            : 'All workloads'}
+                        </dd>
+                      </div>
+                      <div className={styles.summaryRow}>
+                        <dt>Pod</dt>
+                        <dd>{scope.selectedPod ?? 'All matching pods'}</dd>
+                      </div>
+                      <div className={styles.summaryRow}>
+                        <dt>Container</dt>
+                        <dd>{scope.selectedContainer ?? 'All applicable containers'}</dd>
+                      </div>
+                    </>
+                  ) : null}
+                </dl>
+                <p className={styles.hint}>
+                  {scopeLabelSingular}, Workload, Pod and Container are selected from Search, not here - open Search
+                  and choose OpenShift as the source to change them.
                 </p>
-              ) : (
-                <div className={styles.field}>
-                  <label className={styles.label} htmlFor={projectId}>
-                    {scopeLabelSingular}
-                  </label>
-                  <select
-                    id={projectId}
-                    className={styles.select}
-                    value={summary?.selectedProject ?? ''}
-                    disabled={busy}
-                    onChange={async (e) => {
-                      const project = e.target.value || null;
-                      resetScope();
-                      await run(() => selectOpenShiftProject(project));
-                      if (project) {
-                        void loadWorkloads();
-                      }
-                    }}
-                  >
-                    <option value="">All {scopeLabelPlural.toLowerCase()} (none selected)</option>
-                    {summary?.projects.map((project) => (
-                      <option key={project} value={project}>
-                        {project}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              </div>
+            )}
 
-              {summary?.selectedProject ? (
-                <OpenShiftScopeControls
-                  workloadId={workloadId}
-                  podId={podId}
-                  containerId={containerId}
-                  busy={busy}
-                  workloadDiscovery={workloadDiscovery}
-                  selectedWorkload={selectedWorkload}
-                  pods={pods}
-                  selectedPod={selectedPod}
-                  containers={containers}
-                  selectedContainer={selectedContainer}
-                  scopeError={scopeError}
-                  onSelectWorkload={onSelectWorkload}
-                  onSelectPod={onSelectPod}
-                  onSelectContainer={onSelectContainer}
-                />
-              ) : null}
-
-              <OpenShiftProxyFieldset
-                groupId={proxyGroupId}
-                hostId={proxyHostId}
-                portId={proxyPortId}
-                formMode={formMode}
-                proxyBusy={proxyBusy}
-                proxyError={proxyError}
-                customHostInput={customHostInput}
-                customPortInput={customPortInput}
-                onSelectMode={(mode) => {
-                  if (mode === 'CUSTOM') {
-                    setFormMode('CUSTOM');
-                    setProxyError(null);
-                  } else {
-                    void selectProxyMode(mode);
-                  }
-                }}
-                onHostChange={setCustomHostInput}
-                onPortChange={setCustomPortInput}
-                onApplyCustom={() => void applyCustomProxy()}
+            <OpenShiftProxyFieldset
+              groupId={proxyGroupId}
+              hostId={proxyHostId}
+              portId={proxyPortId}
+              formMode={formMode}
+              proxyBusy={proxyBusy}
+              proxyError={proxyError}
+              customHostInput={customHostInput}
+              customPortInput={customPortInput}
+              onSelectMode={(mode) => {
+                if (mode === 'CUSTOM') {
+                  setFormMode('CUSTOM');
+                  setProxyError(null);
+                } else {
+                  void selectProxyMode(mode);
+                }
+              }}
+              onHostChange={setCustomHostInput}
+              onPortChange={setCustomPortInput}
+              onApplyCustom={() => void applyCustomProxy()}
+            />
+          </>
+        ) : (
+          <form onSubmit={submit}>
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor={nameId}>
+                Connection name <span className={styles.optional}>(optional)</span>
+              </label>
+              <input
+                id={nameId}
+                className={styles.input}
+                type="text"
+                value={connectionName}
+                disabled={busy || !intakeAllowed}
+                placeholder="Production OpenShift"
+                onChange={(e) => setConnectionName(e.target.value)}
               />
+            </div>
 
-              <div className={styles.actions}>
-                <Button variant="ghost" disabled={busy} onClick={() => void run(disconnectOpenShift)}>
-                  Disconnect
-                </Button>
-              </div>
-            </>
-          ) : (
-            <form onSubmit={submit}>
-              <div className={styles.field}>
-                <label className={styles.label} htmlFor={nameId}>
-                  Connection name <span className={styles.optional}>(optional)</span>
-                </label>
-                <input
-                  id={nameId}
-                  className={styles.input}
-                  type="text"
-                  value={connectionName}
-                  disabled={busy || !intakeAllowed}
-                  placeholder="Production OpenShift"
-                  onChange={(e) => setConnectionName(e.target.value)}
-                />
-              </div>
+            <OpenShiftProxyFieldset
+              groupId={proxyGroupId}
+              hostId={proxyHostId}
+              portId={proxyPortId}
+              formMode={formMode}
+              proxyBusy={proxyBusy}
+              proxyError={proxyError}
+              customHostInput={customHostInput}
+              customPortInput={customPortInput}
+              onSelectMode={(mode) => {
+                if (mode === 'CUSTOM') {
+                  setFormMode('CUSTOM');
+                  setProxyError(null);
+                } else {
+                  void selectProxyMode(mode);
+                }
+              }}
+              onHostChange={setCustomHostInput}
+              onPortChange={setCustomPortInput}
+              onApplyCustom={() => void applyCustomProxy()}
+            />
 
-              <OpenShiftProxyFieldset
-                groupId={proxyGroupId}
-                hostId={proxyHostId}
-                portId={proxyPortId}
-                formMode={formMode}
-                proxyBusy={proxyBusy}
-                proxyError={proxyError}
-                customHostInput={customHostInput}
-                customPortInput={customPortInput}
-                onSelectMode={(mode) => {
-                  if (mode === 'CUSTOM') {
-                    setFormMode('CUSTOM');
-                    setProxyError(null);
-                  } else {
-                    void selectProxyMode(mode);
-                  }
-                }}
-                onHostChange={setCustomHostInput}
-                onPortChange={setCustomPortInput}
-                onApplyCustom={() => void applyCustomProxy()}
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor={commandId}>
+                Paste your <code>oc login</code> command
+              </label>
+              <textarea
+                id={commandId}
+                className={styles.command}
+                value={loginCommand}
+                disabled={busy || !intakeAllowed}
+                rows={3}
+                spellCheck={false}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                /* Treated as a secret: never offered to autofill, never
+                   spell-checked, and cleared as soon as it is submitted. */
+                aria-describedby={`${commandId}-hint`}
+                placeholder="oc login --token=… --server=https://api.example.com:6443"
+                onChange={(e) => setLoginCommand(e.target.value)}
               />
+              <p id={`${commandId}-hint`} className={styles.hint}>
+                The command is read, never run. Your token is held in memory for this session only — it is never
+                saved to disk and never shown again.
+              </p>
+            </div>
 
-              <div className={styles.field}>
-                <label className={styles.label} htmlFor={commandId}>
-                  Paste your <code>oc login</code> command
-                </label>
-                <textarea
-                  id={commandId}
-                  className={styles.command}
-                  value={loginCommand}
-                  disabled={busy || !intakeAllowed}
-                  rows={3}
-                  spellCheck={false}
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  /* Treated as a secret: never offered to autofill, never
-                     spell-checked, and cleared as soon as it is submitted. */
-                  aria-describedby={`${commandId}-hint`}
-                  placeholder="oc login --token=… --server=https://api.example.com:6443"
-                  onChange={(e) => setLoginCommand(e.target.value)}
-                />
-                <p id={`${commandId}-hint`} className={styles.hint}>
-                  The command is read, never run. Your token is held in memory for this session only — it is never
-                  saved to disk and never shown again.
-                </p>
-              </div>
+            {failure ? (
+              <p className={styles.error} role="alert">
+                {failure.message}
+              </p>
+            ) : null}
 
-              {failure ? (
-                <p className={styles.error} role="alert">
-                  {failure.message}
-                </p>
-              ) : null}
+            <div className={styles.actions}>
+              <Button type="submit" variant="primary" disabled={busy || !intakeAllowed || !loginCommand.trim()}>
+                {busy ? 'Connecting…' : 'Connect'}
+              </Button>
+            </div>
+          </form>
+        )}
 
-              <div className={styles.actions}>
-                <Button type="submit" variant="primary" disabled={busy || !intakeAllowed || !loginCommand.trim()}>
-                  {busy ? 'Connecting…' : 'Connect'}
-                </Button>
-              </div>
-            </form>
-          )}
-
-          {connected && failure ? (
-            <p className={styles.error} role="alert">
-              {failure.message}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
+        {connected && failure ? (
+          <p className={styles.error} role="alert">
+            {failure.message}
+          </p>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -759,166 +597,6 @@ function OpenShiftProxyFieldset({
         </p>
       ) : null}
     </fieldset>
-  );
-}
-
-interface OpenShiftScopeControlsProps {
-  workloadId: string;
-  podId: string;
-  containerId: string;
-  busy: boolean;
-  workloadDiscovery: OpenShiftWorkloadDiscovery | undefined;
-  selectedWorkload: { kind: OpenShiftWorkloadKind; name: string } | null;
-  pods: OpenShiftPodDiscovery | undefined;
-  selectedPod: string | null;
-  containers: string[] | undefined;
-  selectedContainer: string | null;
-  scopeError: string | null;
-  onSelectWorkload: (value: string) => void;
-  onSelectPod: (value: string) => void;
-  onSelectContainer: (value: string) => void;
-}
-
-/**
- * OS-1B §4/§21 - the workload → pod → container hierarchy beneath a
- * selected project. A small, focused component rather than folding this
- * into the panel's own JSX, so each level's loading/empty/forbidden/error
- * states (§24) stay readable on their own.
- */
-function OpenShiftScopeControls({
-  workloadId,
-  podId,
-  containerId,
-  busy,
-  workloadDiscovery,
-  selectedWorkload,
-  pods,
-  selectedPod,
-  containers,
-  selectedContainer,
-  scopeError,
-  onSelectWorkload,
-  onSelectPod,
-  onSelectContainer,
-}: OpenShiftScopeControlsProps) {
-  const problemKinds = (workloadDiscovery?.kindOutcomes ?? []).filter(
-    (o) => o.status === 'FORBIDDEN' || o.status === 'ERROR',
-  );
-
-  return (
-    <div className={styles.scope}>
-      {scopeError ? (
-        <p className={styles.error} role="alert">
-          {scopeError}
-        </p>
-      ) : null}
-
-      <div className={styles.field}>
-        <label className={styles.label} htmlFor={workloadId}>
-          Workload
-        </label>
-        {workloadDiscovery === undefined ? (
-          <p className={styles.hint} aria-live="polite">
-            Discovering workloads…
-          </p>
-        ) : workloadDiscovery.status === 'FORBIDDEN' ? (
-          <p className={styles.error} role="alert">
-            Signed in, but this account is not permitted to list workloads in this project.
-          </p>
-        ) : (
-          <>
-            <select
-              id={workloadId}
-              className={styles.select}
-              disabled={busy}
-              value={selectedWorkload ? workloadOptionValue(selectedWorkload.kind, selectedWorkload.name) : ''}
-              onChange={(e) => onSelectWorkload(e.target.value)}
-            >
-              <option value="">All workloads</option>
-              {workloadDiscovery.workloads.map((w) => (
-                <option key={workloadOptionValue(w.kind, w.name)} value={workloadOptionValue(w.kind, w.name)}>
-                  {w.name} ({WORKLOAD_KIND_LABELS[w.kind]})
-                </option>
-              ))}
-            </select>
-            {workloadDiscovery.workloads.length === 0 ? (
-              <p className={styles.hint}>No workloads in this project.</p>
-            ) : null}
-            {problemKinds.length > 0 ? (
-              <p className={styles.hint}>
-                Some workload types could not be listed:{' '}
-                {problemKinds
-                  .map((o) => `${WORKLOAD_KIND_LABELS[o.kind]} (${o.status === 'FORBIDDEN' ? 'forbidden' : 'error'})`)
-                  .join(', ')}
-                .
-              </p>
-            ) : null}
-          </>
-        )}
-      </div>
-
-      <div className={styles.field}>
-        <label className={styles.label} htmlFor={podId}>
-          Pod
-        </label>
-        {pods === undefined ? (
-          <p className={styles.hint} aria-live="polite">
-            Discovering pods…
-          </p>
-        ) : (
-          <>
-            <select
-              id={podId}
-              className={styles.select}
-              disabled={busy}
-              value={selectedPod ?? ''}
-              onChange={(e) => onSelectPod(e.target.value)}
-            >
-              <option value="">All matching pods</option>
-              {pods.pods.map((pod) => (
-                <option key={pod.name} value={pod.name}>
-                  {pod.name} ({pod.phase}, {pod.readySummary})
-                </option>
-              ))}
-            </select>
-            {pods.pods.length === 0 ? <p className={styles.hint}>No pods currently match this scope.</p> : null}
-            {pods.status === 'PARTIAL' ? (
-              <p className={styles.hint}>
-                This list may be incomplete - not every workload type could be checked, so some pods may be missing.
-              </p>
-            ) : null}
-          </>
-        )}
-      </div>
-
-      <div className={styles.field}>
-        <label className={styles.label} htmlFor={containerId}>
-          Container
-        </label>
-        {selectedPod === null ? (
-          <p className={styles.hint}>Select a specific pod to choose a container.</p>
-        ) : containers === undefined ? (
-          <p className={styles.hint} aria-live="polite">
-            Discovering containers…
-          </p>
-        ) : (
-          <select
-            id={containerId}
-            className={styles.select}
-            disabled={busy}
-            value={selectedContainer ?? ''}
-            onChange={(e) => onSelectContainer(e.target.value)}
-          >
-            <option value="">All applicable containers</option>
-            {containers.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-    </div>
   );
 }
 

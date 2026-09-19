@@ -1,12 +1,19 @@
 import { Button } from '../../shared/ui/Button';
+import { Icon } from '../../shared/ui/Icon';
 import { formatInterval } from '../../shared/time/interval';
 import { DEFAULT_PRESET_ID, TIME_RANGE_PRESETS } from '../../shared/time/presets';
+import { ActiveFilters } from '../search/ActiveFilters';
+import { DEFAULT_SEVERITY_LEVELS } from '../search/severityLevels';
+import { getTimeRangeDisplayLabel } from '../timerange/label';
+import { defaultTimeRange } from '../../app/useSearchState';
 import type { SearchState } from '../../app/useSearchState';
+import type { AdvancedFilterValues } from '../search/advancedFilterFields';
+import type { LogEvent } from '../../shared/api/types';
+import { InvestigationModeBar } from '../journey/InvestigationModeBar';
+import { TimelinePlot } from '../journey/TimelinePlot';
 import { buildCountsSummary } from './counts';
 import { ResultsTable } from './ResultsTable';
-import { QueryPlanDisclosure } from './QueryPlanDisclosure';
-import { TableSettingsControl } from './TableSettingsControl';
-import { SortControl } from './SortControl';
+import { ScopeStrip } from './ScopeStrip';
 import { ContextSummary } from './ContextSummary';
 import { detectGaps } from './gapDetection';
 import type { GapMarker } from './gapDetection';
@@ -18,28 +25,104 @@ const NO_GAPS: GapMarker[] = [];
 const DAY_MS = TIME_RANGE_PRESETS.find((p) => p.id === DEFAULT_PRESET_ID)!.durationMs;
 
 /**
- * "Breadcrumb back to the original search" (HANDOVER.md §16.7/§16.4) -
- * shown above the results in every state (loading/error/empty/results),
- * since a "find related logs" or "show context" detour can legitimately
- * land on any of them (e.g. a context search with zero results is still a
- * detour the investigator needs to back out of). The button's label is
- * dynamic (owner mission "Mapping Verification and Investigation
- * Workspace" - "Investigation navigation/continuity"): Surroundings
- * launched from within a Trace/Span/Correlation/Journey view says "Back to
- * Trace"/etc, never the generic "Back to original search" it would
- * otherwise falsely claim.
+ * B5 Investigation - the Surroundings context view's "mode bar" (`COMPONENT_INVENTORY.md`'s own required B5
+ * item), shown above the results in every state (loading/error/empty/results) since a "Show Surroundings"
+ * detour can legitimately land on any of them (e.g. a context search with zero results is still a detour the
+ * investigator needs to back out of). The Back label is dynamic (owner mission "Mapping Verification and
+ * Investigation Workspace" - "Investigation navigation/continuity"): Surroundings launched from within a
+ * Trace/Span/Correlation/Journey view says "Back to Trace"/etc, never the generic "Back to original search" it
+ * would otherwise falsely claim. Was a plain ghost-button breadcrumb before B5 - now the same
+ * `InvestigationModeBar` primitive the capture view (`JourneyView.tsx`) uses.
  */
-function Breadcrumb({ state }: { state: SearchState }) {
+function InvestigationBreadcrumb({ state }: { state: SearchState }) {
   if (!state.breadcrumbLabel) {
     return null;
   }
+  // Keeps the exact, already-tested `breadcrumbLabel` text as the title itself (e.g. "Context — ±30s around
+  // Jan 1, 2026, 12:00:00.000 PM UTC") rather than a new fixed "Surroundings" heading - this is the same
+  // truthful, event-specific statement the pre-B5 plain breadcrumb already showed, only the chrome around it
+  // (Back button + kbd hint) is new.
   return (
-    <div className={styles.breadcrumb}>
-      <span>{state.breadcrumbLabel}</span>
-      <Button variant="ghost" onClick={state.restoreOriginalSearch}>
-        ← {state.restoreOriginalSearchLabel}
-      </Button>
+    <div className={styles.investigationBleed}>
+      <InvestigationModeBar backLabel={state.restoreOriginalSearchLabel} onBack={state.restoreOriginalSearch} title={state.breadcrumbLabel} />
     </div>
+  );
+}
+
+/**
+ * B5 Investigation - the Surroundings ±30s window plot, sharing `TimelinePlot` with the capture view. The
+ * committed time range for a context search IS the real ±30s window (`useSearchState.ts#showContext` sets
+ * `start`/`end` to exactly `centerMs ± 30000` before firing the request) - reused directly as `loMs`/`hiMs`
+ * rather than re-deriving bounds from the returned events' own span (which the design's own `contextView()`
+ * also treats as fixed, not data-dependent - a sparse window still shows the full ±30s span, not just
+ * whatever few points happened to be observed in it).
+ */
+function ContextWindowPlot({ state, events, gaps }: { state: SearchState; events: LogEvent[]; gaps: GapMarker[] }) {
+  const range = state.lastSearchedRange;
+  if (!range) {
+    return null;
+  }
+  const loMs = Date.parse(range.start);
+  const hiMs = Date.parse(range.end);
+  if (Number.isNaN(loMs) || Number.isNaN(hiMs)) {
+    return null;
+  }
+  return (
+    <TimelinePlot
+      events={events}
+      rootIdentity={state.contextRootIdentity}
+      gaps={gaps}
+      loMs={loMs}
+      hiMs={hiMs}
+      originMs={(loMs + hiMs) / 2}
+      ariaLabel={`60-second window with ${events.length} event${events.length === 1 ? '' : 's'} and ${gaps.length} gap${gaps.length === 1 ? '' : 's'}; the selected event is at the centre.`}
+      variant="window"
+    />
+  );
+}
+
+/**
+ * B2 (Session 4) - `ActiveFilters` itself is unchanged (`COMPONENT_INVENTORY.md`'s
+ * own ActiveFilters.tsx row: "Chips move into the scope strip ... EXCLUDE
+ * chip keeps the word Excluding ... Clear all never touches source/scope");
+ * only its mount point and prop-wiring moved here from `Toolbar.tsx`
+ * (which previously rendered it, always, in its own `.activeFiltersRow`).
+ * Built once per render and passed into `ScopeStrip` from every branch
+ * below, so "always visible regardless of search state" is preserved
+ * exactly - the one real visibility change is that the strip (chips
+ * included) no longer renders while Live/Settings/Field mapping/
+ * Classification rules/Journey are the active view, since `ResultsPanel`
+ * itself does not mount then either (see `ScopeStrip`'s own doc comment).
+ */
+function buildActiveFilters(state: SearchState) {
+  function removeAdvancedField(key: keyof AdvancedFilterValues) {
+    state.applyAdvancedFilters({ ...state.advancedFilters, text: state.searchText, [key]: '' });
+  }
+
+  function removeTag(tag: string) {
+    state.setSelectedTags(state.selectedTags.filter((t) => t !== tag));
+  }
+
+  function removeService(service: string) {
+    state.setSelectedServices(state.selectedServices.filter((s) => s !== service));
+  }
+
+  return (
+    <ActiveFilters
+      timeRangeLabel={getTimeRangeDisplayLabel(state.timeRange)}
+      onRemoveTimeRange={() => state.setTimeRange(defaultTimeRange())}
+      selectedLevels={state.selectedLevels}
+      onRemoveSeverity={() => state.setSelectedLevels(DEFAULT_SEVERITY_LEVELS)}
+      selectedServices={state.selectedServices}
+      onRemoveService={removeService}
+      serviceFilterMode={state.serviceFilterMode}
+      onClearServices={() => state.setSelectedServices([])}
+      advancedValues={{ ...state.advancedFilters, text: state.searchText }}
+      onRemoveAdvancedField={removeAdvancedField}
+      selectedTags={state.selectedTags}
+      onRemoveTag={removeTag}
+      onClearAll={state.clearAllFilters}
+    />
   );
 }
 
@@ -59,6 +142,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
   // requirement): nothing in `useTablePreferences` ever reads or writes
   // anything search-related.
   const table = useTablePreferences();
+  const activeFilters = buildActiveFilters(state);
 
   if (state.searchError) {
     /*
@@ -80,25 +164,44 @@ export function ResultsPanel({ state }: { state: SearchState }) {
      */
     return (
       <div className={styles.wrapper}>
-        <Breadcrumb state={state} />
-        <div className={styles.error} role="alert">
-          <p className={styles.errorTitle}>Search failed</p>
-          <p className={styles.errorDetail}>{state.searchError}</p>
-          <Button variant="secondary" onClick={() => state.runSearch()} disabled={state.searchLoading}>
-            Retry search
-          </Button>
+        <InvestigationBreadcrumb state={state} />
+        <ScopeStrip activeFilters={activeFilters} />
+        <div className={`${styles.statePanel} ${styles.statePanelDanger}`} role="alert">
+          <Icon name="circle-alert" size="lg" className={styles.statePanelIcon} />
+          <div className={styles.statePanelBody}>
+            <p className={styles.statePanelTitle}>Search failed</p>
+            <p className={styles.statePanelDetail}>{state.searchError}</p>
+            <div className={styles.statePanelActions}>
+              <Button variant="secondary" onClick={() => state.runSearch()} disabled={state.searchLoading}>
+                Retry search
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
-  if (state.searchLoading) {
+  /*
+   * First-ever search (no previous result to keep showing) - a skeleton, not a blank "Searching..." wait.
+   * A RE-search (searchLoading with an existing searchResult) instead falls through to the normal render
+   * path below with `.staleResults` applied - see that branch's own comment.
+   */
+  if (state.searchLoading && !state.searchResult) {
     return (
       <div className={styles.wrapper}>
-        <Breadcrumb state={state} />
-        <p className={styles.loading} role="status">
+        <InvestigationBreadcrumb state={state} />
+        <ScopeStrip activeFilters={activeFilters} />
+        <div className={styles.skeleton} role="status">
           Searching…
-        </p>
+          <div className={styles.skeletonRows} aria-hidden="true">
+            {[92, 78, 96, 64, 88, 72].map((width, i) => (
+              <div key={i} className={styles.skeletonRow}>
+                <span className={styles.skeletonBar} style={{ width: `${width}%` }} />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
@@ -106,8 +209,14 @@ export function ResultsPanel({ state }: { state: SearchState }) {
   if (!state.searchResult) {
     return (
       <div className={styles.wrapper}>
-        <Breadcrumb state={state} />
-        <p className={styles.empty}>Run a search to see results.</p>
+        <InvestigationBreadcrumb state={state} />
+        <ScopeStrip activeFilters={activeFilters} />
+        <div className={styles.statePanel}>
+          <Icon name="search" size="lg" className={styles.statePanelIcon} />
+          <div className={styles.statePanelBody}>
+            <p className={styles.statePanelTitle}>Run a search to see results</p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -120,12 +229,106 @@ export function ResultsPanel({ state }: { state: SearchState }) {
   // detection is out of scope for an ordinary historical search.
   const gaps = state.breadcrumbLabel ? detectGaps(events) : NO_GAPS;
 
+  // Re-search stale treatment - see `.staleResults`'s own comment in ResultsPanel.module.css for why
+  // `state.searchResult` is still populated (and thus renders normally, just visually muted) while
+  // `state.searchLoading` is also true.
+  const isStale = state.searchLoading;
+
   if (events.length === 0) {
     const oneDayAgo = new Date(Date.now() - DAY_MS);
     return (
       <div className={styles.wrapper}>
-        <Breadcrumb state={state} />
-        {state.breadcrumbLabel ? (
+        <InvestigationBreadcrumb state={state} />
+        <ScopeStrip
+          activeFilters={activeFilters}
+          onRefresh={() => state.refresh()}
+          refreshDisabled={state.searchLoading}
+          queryPlan={queryPlan}
+        />
+        {isStale ? (
+          <p className={styles.staleNotice} role="status">
+            Searching…
+          </p>
+        ) : null}
+        <div className={isStale ? styles.staleResults : undefined}>
+          {state.breadcrumbLabel ? (
+            <div className={styles.investigationBleed}>
+              <ContextSummary
+                events={events}
+                range={state.lastSearchedRange}
+                source={state.selectedSource?.displayName ?? null}
+                counts={counts}
+                gaps={gaps}
+                rootIdentity={state.contextRootIdentity}
+              />
+              <ContextWindowPlot state={state} events={events} gaps={gaps} />
+            </div>
+          ) : null}
+          <div className={styles.statePanel}>
+            <Icon name="search" size="lg" className={styles.statePanelIcon} />
+            <div className={styles.statePanelBody}>
+              <p className={styles.statePanelTitle}>No results for this range</p>
+              <div className={styles.statePanelActions}>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    // Bug fix: `setTimeRange` alone (the previous behavior) only
+                    // ever adjusted the committed range - it never actually
+                    // re-ran the search, so this "one-click" affordance
+                    // (CLAUDE.md §4) silently left the stale, still-empty
+                    // result set on screen. Passing the same range straight
+                    // into `runSearch` avoids relying on `setTimeRange`'s state
+                    // update having landed yet (`runSearch`'s own doc comment
+                    // explains why that ordering can't be trusted).
+                    const nextRange = {
+                      presetId: DEFAULT_PRESET_ID,
+                      start: oneDayAgo.toISOString(),
+                      end: new Date().toISOString(),
+                    };
+                    state.setTimeRange(nextRange);
+                    state.runSearch(nextRange);
+                  }}
+                >
+                  Search last 1 day
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const summaryText = `${buildCountsSummary(counts, events.length)}${
+    state.lastSearchedRange
+      ? ` — showing results for ${formatInterval(state.lastSearchedRange.start, state.lastSearchedRange.end)}`
+      : ''
+  }`;
+
+  return (
+    <div className={styles.wrapper}>
+      <InvestigationBreadcrumb state={state} />
+      <ScopeStrip
+        activeFilters={activeFilters}
+        readout={summaryText}
+        onRefresh={() => state.refresh()}
+        refreshDisabled={state.searchLoading}
+        queryPlan={queryPlan}
+        sort={
+          state.breadcrumbLabel
+            ? undefined
+            : { value: state.sortDirection, onChange: state.setSortDirection, disabled: state.searchLoading }
+        }
+        table={table}
+      />
+      {isStale ? (
+        <p className={styles.staleNotice} role="status">
+          Searching…
+        </p>
+      ) : null}
+      <div className={isStale ? styles.staleResults : undefined}>
+      {state.breadcrumbLabel ? (
+        <div className={styles.investigationBleed}>
           <ContextSummary
             events={events}
             range={state.lastSearchedRange}
@@ -134,69 +337,9 @@ export function ResultsPanel({ state }: { state: SearchState }) {
             gaps={gaps}
             rootIdentity={state.contextRootIdentity}
           />
-        ) : null}
-        <RefreshRow state={state} />
-        <QueryPlanDisclosure queryPlan={queryPlan} />
-        <p className={styles.empty}>
-          No results for this range.{' '}
-          <Button
-            variant="ghost"
-            onClick={() => {
-              // Bug fix: `setTimeRange` alone (the previous behavior) only
-              // ever adjusted the committed range - it never actually
-              // re-ran the search, so this "one-click" affordance
-              // (CLAUDE.md §4) silently left the stale, still-empty
-              // result set on screen. Passing the same range straight
-              // into `runSearch` avoids relying on `setTimeRange`'s state
-              // update having landed yet (`runSearch`'s own doc comment
-              // explains why that ordering can't be trusted).
-              const nextRange = {
-                presetId: DEFAULT_PRESET_ID,
-                start: oneDayAgo.toISOString(),
-                end: new Date().toISOString(),
-              };
-              state.setTimeRange(nextRange);
-              state.runSearch(nextRange);
-            }}
-          >
-            Search last 1 day
-          </Button>
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className={styles.wrapper}>
-      <Breadcrumb state={state} />
-      {state.breadcrumbLabel ? (
-        <ContextSummary
-          events={events}
-          range={state.lastSearchedRange}
-          source={state.selectedSource?.displayName ?? null}
-          counts={counts}
-          gaps={gaps}
-          rootIdentity={state.contextRootIdentity}
-        />
+          <ContextWindowPlot state={state} events={events} gaps={gaps} />
+        </div>
       ) : null}
-      <div className={styles.summaryRow}>
-        <p className={styles.summary}>
-          {buildCountsSummary(counts, events.length)}
-          {state.lastSearchedRange
-            ? ` — showing results for ${formatInterval(state.lastSearchedRange.start, state.lastSearchedRange.end)}`
-            : ''}
-        </p>
-        {state.breadcrumbLabel ? null : (
-          <SortControl
-            value={state.sortDirection}
-            onChange={state.setSortDirection}
-            disabled={state.searchLoading}
-          />
-        )}
-        <TableSettingsControl table={table} />
-        <RefreshRow state={state} />
-      </div>
-      <QueryPlanDisclosure queryPlan={queryPlan} />
       <ResultsTable
         events={events}
         selectedIndex={state.selectedIndex}
@@ -217,6 +360,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
         sortable={!state.breadcrumbLabel}
         timeSortDirection={state.breadcrumbLabel ? undefined : state.sortDirection}
         onTimeSortChange={state.breadcrumbLabel ? undefined : state.setSortDirection}
+        inspectorOpen={state.selectedEvent != null}
       />
       {nextCursor ? (
         <div className={styles.loadMoreRow}>
@@ -225,6 +369,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
           </Button>
           {state.loadMoreError ? (
             <span className={styles.loadMoreError} role="alert">
+              <Icon name="circle-alert" size="sm" />
               {state.loadMoreError}{' '}
               <Button variant="ghost" onClick={state.loadMore}>
                 Retry
@@ -233,22 +378,7 @@ export function ResultsPanel({ state }: { state: SearchState }) {
           ) : null}
         </div>
       ) : null}
+      </div>
     </div>
-  );
-}
-
-/**
- * "Refresh" (Legacy Remediation Slice 1) - a compact workspace action, not
- * a new card/control: re-runs the exact current committed search from page
- * 1 (`state.refresh` is `runSearch` itself - see that state's own
- * comment). Rendered whenever a search has actually run, including an
- * empty-result view (re-running is exactly how a user notices new data
- * has since appeared).
- */
-function RefreshRow({ state }: { state: SearchState }) {
-  return (
-    <Button variant="ghost" onClick={() => state.refresh()} disabled={state.searchLoading}>
-      ↻ Refresh
-    </Button>
   );
 }

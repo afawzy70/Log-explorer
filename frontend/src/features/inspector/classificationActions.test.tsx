@@ -200,6 +200,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     health: null,
     healthLoading: false,
     retryHealth: vi.fn(),
+    invalidateSearchForScopeChange: vi.fn(),
     searchResult: null,
     searchLoading: false,
     loadingMore: false,
@@ -236,6 +237,9 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     mappingWorkspaceOpen: false,
     openMappingWorkspace: vi.fn(),
     closeMappingWorkspace: vi.fn(),
+    settingsWorkspaceOpen: false,
+    openSettingsWorkspace: vi.fn(),
+    closeSettingsWorkspace: vi.fn(),
     selectedTags: [],
     setSelectedTags: vi.fn(),
     classificationTags: null,
@@ -265,6 +269,8 @@ function renderWorkspace(sourceEvent: LogEvent) {
       buildScope={buildScope}
       onRulesChanged={onRulesChanged}
       onClose={onClose}
+      onOpenMapping={vi.fn()}
+      onOpenSettings={vi.fn()}
     />,
   );
   return { ...utils, onClose, onRulesChanged, buildScope };

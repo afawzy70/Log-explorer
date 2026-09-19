@@ -32,7 +32,10 @@ import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, set
 async function runFixtureSearchAllLevels(page: import('@playwright/test').Page) {
   await page.goto('/');
   await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
+  // B2 (Session 4) - the level chips now live behind the Severity field trigger's popover.
+  await page.getByRole('button', { name: /^severity:/i }).click();
   await page.getByRole('button', { name: /^all$/i }).click(); // severity: All - include every fixture event, not just INFO/WARN/ERROR
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: /^search$/i }).click();
   await expect(page.getByRole('table')).toBeVisible({ timeout: 10_000 });
   await expect(page.locator('tbody tr').first()).toBeVisible();
@@ -100,14 +103,14 @@ test('opening the inspector before Load More preserves the selected event throug
 
   const dialog = page.getByRole('dialog', { name: /event details/i });
   await expect(dialog).toBeVisible();
-  const inspectorTimeBefore = await dialog.getByRole('heading', { name: /^overview$/i }).locator('..').textContent();
+  const inspectorTimeBefore = await dialog.getByRole('heading', { name: /when & where/i }).locator('..').textContent();
 
   await page.getByRole('button', { name: /^load more$/i }).click();
   await expect.poll(async () => page.locator('tbody tr').count(), { timeout: 5_000 }).toBeGreaterThan(200);
 
   // The inspector is still open, on the same event, after the page grew.
   await expect(dialog).toBeVisible();
-  const inspectorTimeAfter = await dialog.getByRole('heading', { name: /^overview$/i }).locator('..').textContent();
+  const inspectorTimeAfter = await dialog.getByRole('heading', { name: /when & where/i }).locator('..').textContent();
   expect(inspectorTimeAfter).toBe(inspectorTimeBefore);
   const firstRowTimeAfter = await page.locator('tbody tr').nth(0).locator('td').first().textContent();
   expect(firstRowTimeAfter).toBe(firstRowTimeBefore); // the underlying result set was appended to, never reordered/replaced

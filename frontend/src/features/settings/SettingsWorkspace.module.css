@@ -1,0 +1,156 @@
+/*
+ * B2 (Session 4) - matches the existing takeover-workspace convention (FieldMappingWorkspace.module.css's
+ * own `.wrapper`/`.header` pair), restyled to v2 tokens since this is new B2 surface, not a restyle of
+ * something already v1-styled.
+ *
+ * `background`/`min-height` are deliberate, not decorative: neither existing workspace sets its own
+ * background (both rely on the surrounding page, which is still v1-styled and doesn't follow
+ * `data-theme='dark'` yet - the known, already-documented foundation-only state). This component's OWN text
+ * uses v2 tokens that DO follow dark theme, so without its own matching v2 background it looked washed-out
+ * in dark mode (light-toned text over the still-light v1 page background) - measured in the real app, not
+ * assumed. Self-contained theming, per this session's own "use v2 tokens from the start" instruction.
+ */
+.wrapper {
+  padding: var(--space-4);
+  background: var(--v2-bg-app);
+  min-height: 100%;
+  /*
+   * B6.2 (Session 7) - explicit, not inherited: the ambient inherited `color`
+   * above this full-v2 workspace is the v1 `--color-text` token (shared/
+   * tokens.css), which has no dark-theme override at all. B6.1's own
+   * FieldMappingWorkspace hit exactly this bug (illegible dark-theme text on
+   * every plain-text node that doesn't set its own color) - fixed here
+   * before it could repeat, since this file was already full-v2 (Session 4)
+   * but had never been dark-theme-verified until this session touched it.
+   */
+  color: var(--v2-ink-1);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.title {
+  margin: 0;
+  font: var(--v2-text-workspace);
+  color: var(--v2-ink-1);
+}
+
+.body {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.nav {
+  position: sticky;
+  top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-right: var(--v2-bw) solid var(--v2-line);
+  padding-right: var(--space-3);
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2);
+  border-radius: var(--v2-r-md);
+  font: var(--v2-text-body);
+  color: var(--v2-ink-2);
+  text-decoration: none;
+  white-space: nowrap;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.navItem:hover,
+.navItem:focus-visible {
+  background: var(--v2-hover);
+  color: var(--v2-ink-1);
+}
+
+/* DRIFT-016 remediation - the active section, non-color-only (bold weight + a left accent bar, not tint alone). */
+.navItem[aria-current='page'] {
+  background: var(--v2-accent-tint);
+  color: var(--v2-accent-ink);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--v2-accent);
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.section {
+  scroll-margin-top: var(--space-4);
+}
+
+.sectionHeading {
+  margin: 0 0 var(--space-1);
+  font: var(--v2-text-section);
+  color: var(--v2-ink-1);
+}
+
+.sectionHint {
+  margin: 0 0 var(--space-3);
+  font: var(--v2-text-body);
+  color: var(--v2-ink-2);
+  max-width: 60ch;
+}
+
+.sectionStatusOk,
+.sectionStatusBlocked {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 0 var(--space-3);
+  padding: 2px var(--space-2);
+  border-radius: var(--v2-r-xs);
+  font: var(--v2-text-meta);
+  font-weight: 600;
+}
+
+.sectionStatusOk {
+  background: var(--v2-accent-tint);
+  color: var(--v2-accent-ink);
+}
+
+.sectionStatusBlocked {
+  background: var(--v2-danger-tint);
+  color: var(--v2-danger);
+}
+
+.sectionRow {
+  margin-bottom: var(--space-2);
+}
+
+.sectionRow:last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 768px) {
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .nav {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-right: 0;
+    border-bottom: var(--v2-bw) solid var(--v2-line);
+    padding-right: 0;
+    padding-bottom: var(--space-3);
+  }
+}

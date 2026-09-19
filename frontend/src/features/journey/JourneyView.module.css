@@ -1,116 +1,64 @@
 .wrapper {
-  padding: var(--space-4);
-}
-
-.header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
-}
-
-.title {
-  margin: 0;
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-}
-
-.value {
-  font-family: var(--font-mono);
-  font-weight: 400;
-  color: var(--color-text-secondary);
-}
-
-.summary {
-  margin: 0 0 var(--space-2) 0;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
-}
-
-/* Owner mission "Mapping Verification and Investigation Workspace" - "Selected event: N of M loaded", mirroring InspectorHeader's own position-indicator wording style. */
-.position {
-  margin: 0 0 var(--space-2) 0;
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--color-accent);
-}
-
-.disclaimer {
-  margin: 0 0 var(--space-3) 0;
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-severity-warn-bg);
-  color: var(--color-severity-warn);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
-}
-
-/* Legacy Remediation Slice 6 - Errors/Warnings/First-Last/Gaps, matching ContextSummary's own stat-tile visual language (a small dl, not a chart/library). */
-.stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-5);
-  margin: 0 0 var(--space-2);
-}
-
-.stat {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  min-height: 100%;
+  background: var(--v2-bg-app);
 }
 
-.stat dt {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
+.claim {
+  flex-basis: 100%;
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  color: var(--v2-ink-2);
+  font: var(--v2-text-meta);
+  margin-top: var(--space-1);
 }
 
-.stat dd {
-  margin: 0;
-  font-size: var(--font-size-sm);
-  font-weight: 600;
+.claimNote {
+  color: var(--v2-ink-3);
 }
 
 .incompleteNotice {
-  margin: 0 0 var(--space-2);
-  font-size: var(--font-size-xs);
+  margin: var(--space-2) var(--space-4) 0;
+  font: var(--v2-text-meta);
   font-weight: 600;
-  color: var(--color-severity-warn);
+  color: var(--v2-warning);
 }
 
-/* An investigation-gap marker between two timeline entries - a sibling <li>, never nested inside JourneyEntryRow's own <li> (valid <ol> markup). Muted/dashed, never color alone (the text itself says "Gap detected"). */
-.gapMarker {
-  list-style: none;
-  padding: var(--space-2) var(--space-4);
-  font-size: var(--font-size-xs);
-  font-style: italic;
-  color: var(--color-text-secondary);
-  background: var(--color-bg-hover);
-  border-top: 1px dashed var(--color-border);
-  border-bottom: 1px dashed var(--color-border);
+.traceCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
 }
 
-.list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-raised);
-  overflow: hidden;
+.traceTag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: var(--v2-r-xs);
+  background: var(--v2-accent-tint);
+  color: var(--v2-accent-ink);
+  font: 600 11px/16px var(--v2-font-mono);
+}
+
+.traceMono {
+  font: var(--v2-text-data);
+  color: var(--v2-ink-3);
 }
 
 .error {
-  color: var(--color-danger);
-  background: var(--color-danger-bg);
-  border-radius: var(--radius-sm);
+  margin: var(--space-3) var(--space-4);
+  color: var(--v2-danger);
+  background: var(--v2-danger-tint);
+  border-radius: var(--v2-r-md);
   padding: var(--space-3);
 }
 
 .status,
 .empty {
-  color: var(--color-text-tertiary);
+  color: var(--v2-ink-3);
   padding: var(--space-6) 0;
   text-align: center;
 }

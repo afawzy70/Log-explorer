@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 
@@ -68,23 +68,38 @@ describe('App - Classification rules workspace takeover', () => {
     vi.unstubAllGlobals();
   });
 
-  it('opens from the header, replaces the results workspace, is mutually exclusive with field mapping, and closes back', async () => {
+  /*
+   * B2 (Session 4) - "Classification rules" no longer has its own top-level Shell button
+   * (COMPONENT_INVENTORY.md: "Replaced by Settings › Classification rules"); it is now reached via the
+   * consolidated Settings entry point, one extra click, same destination and behaviour otherwise.
+   */
+  it('opens from Settings, replaces the results workspace, is mutually exclusive with field mapping, and closes back', async () => {
     const user = userEvent.setup();
     render(<App />);
     await waitFor(() => expect(screen.getByRole('combobox', { name: /source/i })).toHaveValue('fixture'));
 
-    await user.click(screen.getByRole('button', { name: 'Classification rules' }));
+    await user.click(screen.getByRole('button', { name: /^settings$/i }));
+    await waitFor(() => expect(screen.getByTestId('settings-workspace')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Manage classification rules' }));
     await waitFor(() => expect(screen.getByTestId('classification-rules-workspace')).toBeInTheDocument());
     expect(await screen.findByText('No classification rules yet.')).toBeInTheDocument();
     expect(screen.queryByText(/run a search to see results/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('settings-workspace')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /log schema & field mapping/i }));
+    // DRIFT-016 remediation - the classification workspace now renders its own SettingsNav, whose "Field
+    // mapping" nav item shares its accessible name with Shell's persistent top-level trigger; scope to the
+    // page header (Shell's own <header>, an implicit "banner" landmark) to click that one specifically.
+    await user.click(within(screen.getByRole('banner')).getByRole('button', { name: /^field mapping$/i }));
     await waitFor(() => expect(screen.getByTestId('field-mapping-workspace')).toBeInTheDocument());
     expect(screen.queryByTestId('classification-rules-workspace')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Classification rules' }));
+    await user.click(screen.getByRole('button', { name: /^settings$/i }));
+    await waitFor(() => expect(screen.getByTestId('settings-workspace')).toBeInTheDocument());
+    expect(screen.queryByTestId('field-mapping-workspace')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Manage classification rules' }));
     await waitFor(() => expect(screen.getByTestId('classification-rules-workspace')).toBeInTheDocument());
     expect(screen.queryByTestId('field-mapping-workspace')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('settings-workspace')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /back to search results/i }));
     await waitFor(() => expect(screen.queryByTestId('classification-rules-workspace')).not.toBeInTheDocument());

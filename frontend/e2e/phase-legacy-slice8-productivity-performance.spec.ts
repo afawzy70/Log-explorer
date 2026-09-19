@@ -161,7 +161,7 @@ test.describe('Legacy Remediation Slice 8 — productivity, safe preferences & f
     await expect(panel.getByRole('status')).toHaveText(/^live$/i);
 
     await expect
-      .poll(async () => (await panel.locator('li').count().catch(() => 0)) > 0, { timeout: 15_000 })
+      .poll(async () => (await panel.locator('tbody tr').count().catch(() => 0)) > 0, { timeout: 15_000 })
       .toBe(true);
     await page.keyboard.press('c');
     // Clear only fires while there is at least one visible event - a
@@ -240,9 +240,9 @@ test.describe('Legacy Remediation Slice 8 — productivity, safe preferences & f
     await gotoFixture(page);
     await search(page); // the Columns control only renders once results exist
     // The app started normally and the table settings control still works,
-    // showing the default (comfortable) density rather than crashing.
+    // showing the default (compact, D1) density rather than crashing.
     await page.getByRole('button', { name: /^columns$/i }).click();
-    await expect(page.getByRole('button', { name: /^comfortable$/i })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: /^compact$/i })).toHaveAttribute('aria-pressed', 'true');
     await page.keyboard.press('Escape');
     await expect(page.locator('tbody tr').first()).toBeVisible();
   });
@@ -272,7 +272,8 @@ test.describe('Legacy Remediation Slice 8 — productivity, safe preferences & f
     await page.getByRole('menuitem', { name: /view details/i }).click();
     const dialog = page.getByRole('dialog', { name: /event details/i });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('heading', { name: /overview/i })).toBeVisible();
+    // DRIFT-008 remediation: Overview shows "When & where" as its sub-heading, not a redundant "Overview" heading.
+    await expect(dialog.getByRole('heading', { name: /when & where/i })).toBeVisible();
     await page.getByRole('button', { name: /close event inspector/i }).click();
     await expect(dialog).not.toBeVisible();
   });

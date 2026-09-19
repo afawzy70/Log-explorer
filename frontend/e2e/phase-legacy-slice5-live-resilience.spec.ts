@@ -33,8 +33,13 @@ function panelOf(page: Page) {
   return page.getByTestId('live-tail-panel');
 }
 
+/*
+ * B7 (Session 10) - Live's event list is now a real <table> (COMPONENT_
+ * INVENTORY.md's own RECOMPOSE classification, CLAUDE.md §5), so a "row"
+ * is a <tbody> <tr>, not a card-list <li>.
+ */
 function rows(page: Page) {
-  return panelOf(page).locator('[class*="list"] li');
+  return panelOf(page).locator('tbody tr');
 }
 
 /** Aborts every /logs/live connection attempt - simulates a hard connection failure. */
@@ -66,7 +71,11 @@ test.describe('Legacy Remediation Slice 5 — Live resilience, follow-newest, fi
     const totalBefore = await rows(page).count();
     const receivedTextBefore = await panel.getByText(/received:/i).textContent();
 
-    await panel.getByRole('button', { name: /^errors only$/i }).click();
+    // DRIFT-005 remediation - the level toggles are always-visible segmented buttons (no popover, no
+    // "All"/"Errors only" quick actions, matching the approved design's own four-button grammar).
+    const severityGroup = panel.getByRole('group', { name: /displayed severity/i });
+    await severityGroup.getByRole('button', { name: /^info$/i }).click();
+    await severityGroup.getByRole('button', { name: /^warn$/i }).click();
     const afterSeverityFilter = await rows(page).count();
     expect(afterSeverityFilter).toBeLessThanOrEqual(totalBefore);
 
@@ -76,7 +85,8 @@ test.describe('Legacy Remediation Slice 5 — Live resilience, follow-newest, fi
     expect(receivedTextAfter).not.toBe(null);
     void receivedTextBefore;
 
-    await panel.getByRole('button', { name: /^all$/i }).click();
+    await severityGroup.getByRole('button', { name: /^info$/i }).click();
+    await severityGroup.getByRole('button', { name: /^warn$/i }).click();
     await expect.poll(async () => rows(page).count()).toBeGreaterThanOrEqual(afterSeverityFilter);
 
     // Text filter: an impossible needle must produce the "no events match" message, not the true-empty message.
@@ -105,9 +115,18 @@ test.describe('Legacy Remediation Slice 5 — Live resilience, follow-newest, fi
     const panel = panelOf(page);
 
     await expect(panel.getByRole('button', { name: /^✓ follow newest$/i })).toBeVisible({ timeout: 5_000 });
-    await expect.poll(async () => rows(page).count(), { timeout: 15_000 }).toBeGreaterThan(8);
 
-    const list = page.locator('[data-testid="live-tail-panel"] ol[class*="list"]');
+    const list = page.locator('[data-testid="live-tail-panel"] [class*="tableScroll"]');
+    /*
+     * B7 (Session 10) - table rows are shorter than the old card-list
+     * entries, so a fixed row-count is no longer a reliable proxy for
+     * "enough content to overflow the container". Poll the real invariant
+     * instead: the container must actually be scrollable.
+     */
+    await expect
+      .poll(async () => list.evaluate((el) => el.scrollHeight > el.clientHeight), { timeout: 15_000 })
+      .toBe(true);
+
     await list.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
     await list.dispatchEvent('scroll');
 
@@ -210,10 +229,12 @@ test.describe('Legacy Remediation Slice 5 — Live resilience, follow-newest, fi
     // burst of 5 every ~4.2s) while interacting with controls throughout -
     // proves the UI stays responsive during genuine sustained load, not
     // just immediately after Start.
+    // DRIFT-005 remediation - the level toggles are always-visible segmented buttons, no popover to open.
+    const severityGroup = panel.getByRole('group', { name: /displayed severity/i });
     for (let i = 0; i < 4; i++) {
       await page.waitForTimeout(2_000);
-      await panel.getByRole('button', { name: /^errors only$/i }).click();
-      await panel.getByRole('button', { name: /^all$/i }).click();
+      await severityGroup.getByRole('button', { name: /^info$/i }).click();
+      await severityGroup.getByRole('button', { name: /^info$/i }).click();
     }
 
     const finalCount = await rows(page).count();

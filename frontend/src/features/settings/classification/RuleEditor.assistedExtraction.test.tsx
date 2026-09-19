@@ -236,6 +236,14 @@ describe('RuleEditor - assisted extraction: the suggestion list', () => {
     expect(within(items[1]).getByText('Duration')).toBeInTheDocument();
     expect(within(items[1]).getByText('Found in 40 / 40')).toBeInTheDocument();
     expect(within(items[0]).getByLabelText('Output name')).toHaveValue('endpoint');
+
+    // §22.11 A6 - a visual coverage bar alongside the text, decorative (never the only signal - the text above
+    // already states the same number). 38/40 = 95%, 40/40 = 100%.
+    const fill0 = items[0].querySelector('[class*="coverageBarFill"]') as HTMLElement;
+    const fill1 = items[1].querySelector('[class*="coverageBarFill"]') as HTMLElement;
+    expect(fill0.style.width).toBe('95%');
+    expect(fill1.style.width).toBe('100%');
+    expect(items[0].querySelector('[class*="coverageBar"][aria-hidden="true"]')).toBeInTheDocument();
   });
 
   it('"Add n selected values" moves exactly the ticked suggestions into the rule as confirmed values, renamed and marked sensitive as the user set them', async () => {

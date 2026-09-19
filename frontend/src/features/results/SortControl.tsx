@@ -1,4 +1,5 @@
-import { useId } from 'react';
+import { Button } from '../../shared/ui/Button';
+import { Icon } from '../../shared/ui/Icon';
 import type { SearchDirection } from '../../shared/api/types';
 import styles from './SortControl.module.css';
 
@@ -16,25 +17,26 @@ import styles from './SortControl.module.css';
  * IDENTICAL `state.sortDirection`/`onChange` this component uses - there
  * is still only ONE sort-direction state in the whole application; the
  * header is simply a second, equally-truthful way to change it, not a
- * different truth. This `<select>` itself is unchanged and remains the
- * primary, most-discoverable control.
+ * different truth.
  *
- * <p><b>Historical rationale (Slice 4) for why a plain labelled
- * `<select>`, not a sortable Time header, was originally chosen:</b> "A
- * clickable column header implies *column* sorting - that any column
- * could be sorted, and that what is being sorted is the rows currently on
- * screen. Neither is true here: this control commits a
- * whole-result-set, source-side ordering that is re-queried from the
- * source and re-paginated from page 1" (see `useSearchState`'s own
- * `setSortDirection`) - this technical description of what Newest/Oldest
- * actually does remains fully accurate; only the "so Time must never also
- * be a header button" conclusion is superseded. Naming the two orderings
- * in words ("Newest first" / "Oldest first") states exactly what the
- * backend will actually do, and the committed direction is always
- * readable at a glance rather than encoded in an arrow glyph's direction -
- * which is precisely the "sorting must be semantically truthful"
- * requirement, expressed in the affordance itself rather than only in the
- * implementation behind it.
+ * <p><b>B2 (Session 4) RECOMPOSE - `<select>` becomes a toggle button</b>
+ * (`COMPONENT_INVENTORY.md`'s own SortControl.tsx entry), moved into the
+ * scope strip. There are only ever two orderings, so a single click
+ * always reaches the other one - a dropdown never added a reachable state
+ * a toggle can't, it only cost an extra click. The committed direction is
+ * still always named in words on the button face itself ("Newest first" /
+ * "Oldest first"), never encoded only in an arrow glyph's direction -
+ * exactly the same "sorting must be semantically truthful" requirement
+ * the original `<select>` satisfied, now expressed as a toggle instead.
+ *
+ * <p>Historical rationale (Slice 4) for why a plain labelled `<select>`,
+ * not a sortable Time header, was originally chosen: "A clickable column
+ * header implies *column* sorting - that any column could be sorted, and
+ * that what is being sorted is the rows currently on screen. Neither is
+ * true here: this control commits a whole-result-set, source-side
+ * ordering that is re-queried from the source and re-paginated from page
+ * 1" (see `useSearchState`'s own `setSortDirection`) - this technical
+ * description of what Newest/Oldest actually does remains fully accurate.
  *
  * <p>It is deliberately not rendered at all in a context ("Show
  * surrounding logs") view: that view is always chronological-ascending by
@@ -54,22 +56,19 @@ export function SortControl({
   onChange: (next: SearchDirection) => void;
   disabled?: boolean;
 }) {
-  const id = useId();
+  const isNewestFirst = value === 'BACKWARD';
+  const label = isNewestFirst ? 'Newest first' : 'Oldest first';
+  const nextValue: SearchDirection = isNewestFirst ? 'FORWARD' : 'BACKWARD';
   return (
-    <div className={styles.wrapper}>
-      <label className={styles.label} htmlFor={id}>
-        Sort
-      </label>
-      <select
-        id={id}
-        className={styles.select}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value as SearchDirection)}
-      >
-        <option value="BACKWARD">Newest first</option>
-        <option value="FORWARD">Oldest first</option>
-      </select>
-    </div>
+    <Button
+      variant="ghost"
+      className={styles.toggle}
+      disabled={disabled}
+      onClick={() => onChange(nextValue)}
+      aria-label={`Sort order: ${label}`}
+    >
+      <Icon name={isNewestFirst ? 'arrow-down-wide-narrow' : 'arrow-up-narrow-wide'} size="sm" />
+      {label}
+    </Button>
   );
 }

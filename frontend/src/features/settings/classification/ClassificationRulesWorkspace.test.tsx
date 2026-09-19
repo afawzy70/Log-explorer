@@ -189,11 +189,12 @@ function importPreview(overrides: Partial<ImportPreviewResult> = {}): ImportPrev
     conflicts: 1,
     invalid: 0,
     items: [
-      { index: 0, id: 'new-rule', name: 'New rule A', tags: ['x'], status: 'NEW', existingName: null, errors: [] },
-      { index: 1, id: 'mw-call', name: 'Middleware call v2', tags: ['middleware'], status: 'CONFLICT', existingName: 'Middleware call', errors: [] },
-      { index: 2, id: 'pay-fail', name: 'Payment failure', tags: ['payments'], status: 'IDENTICAL', existingName: null, errors: [] },
+      { index: 0, id: 'new-rule', name: 'New rule A', tags: ['x'], status: 'NEW', existingName: null, errors: [], displayColor: 'CYAN' },
+      { index: 1, id: 'mw-call', name: 'Middleware call v2', tags: ['middleware'], status: 'CONFLICT', existingName: 'Middleware call', errors: [], displayColor: 'BLUE' },
+      { index: 2, id: 'pay-fail', name: 'Payment failure', tags: ['payments'], status: 'IDENTICAL', existingName: null, errors: [], displayColor: 'RED' },
     ],
     currentRevision: 9,
+    tagColorConflicts: [],
     ...overrides,
   };
 }
@@ -203,7 +204,15 @@ function renderWorkspace(props: Partial<Parameters<typeof ClassificationRulesWor
   const onRulesChanged = vi.fn();
   const buildScope = vi.fn(() => SCOPE);
   const utils = render(
-    <ClassificationRulesWorkspace sourceEvent={null} buildScope={buildScope} onRulesChanged={onRulesChanged} onClose={onClose} {...props} />,
+    <ClassificationRulesWorkspace
+      sourceEvent={null}
+      buildScope={buildScope}
+      onRulesChanged={onRulesChanged}
+      onClose={onClose}
+      onOpenMapping={vi.fn()}
+      onOpenSettings={vi.fn()}
+      {...props}
+    />,
   );
   return { ...utils, onClose, onRulesChanged, buildScope };
 }
@@ -254,6 +263,28 @@ describe('ClassificationRulesWorkspace - list', () => {
     expect(screen.getByText(/Revision 7/)).toBeInTheDocument();
     expect(screen.getByText('/data/classification-rules.json')).toBeInTheDocument();
     expect(screen.queryByRole('status', { name: /recovered/i })).not.toBeInTheDocument();
+  });
+
+  it('a rule with several tags shows the first as a real chip plus a NEUTRAL "+n" counter - never a chip per tag, never a second coloured chip (§22.11 A11/A3)', async () => {
+    mockFetch.mockResolvedValue(rulesState({ rules: [{ ...RULE_A, tags: ['middleware', 'payments', 'slow'] }] }));
+    renderWorkspace();
+    const table = await screen.findByRole('table', { name: 'Classification rules' });
+    const row = within(table).getAllByRole('row')[1];
+
+    const coloured = within(row).getAllByText((_, el) => el?.hasAttribute('data-tag-color') === true);
+    expect(coloured).toHaveLength(1);
+    expect(coloured[0]).toHaveTextContent('middleware');
+
+    expect(within(row).getByText('+2')).toBeInTheDocument();
+    // The complete list is discoverable, not only in a hover: the cell's own accessible name carries it.
+    expect(within(row).getByRole('cell', { name: 'Tags: middleware, payments, slow' })).toBeInTheDocument();
+  });
+
+  it('a rule with one tag shows no overflow counter at all', async () => {
+    renderWorkspace();
+    const table = await screen.findByRole('table', { name: 'Classification rules' });
+    const row = within(table).getAllByRole('row')[1];
+    expect(within(row).queryByText(/^\+\d+$/)).not.toBeInTheDocument();
   });
 
   it('shows a status banner with the server message when status is not OK', async () => {
@@ -393,6 +424,42 @@ describe('ClassificationRulesWorkspace - import', () => {
     expect(mockPreview).not.toHaveBeenCalled();
   });
 
+  it('draws each pack rule\'s tags as a real coloured chip, in that rule\'s OWN colour, never the matched rule\'s colour (§22.11 A12)', async () => {
+    const user = userEvent.setup();
+    mockPreview.mockResolvedValue(importPreview());
+    renderWorkspace();
+    await screen.findByRole('table');
+    await uploadPack(user);
+    await screen.findByRole('heading', { name: 'Import classification rules' });
+
+    const newRow = screen.getByText('New rule A').closest('li') as HTMLElement;
+    const newChip = within(newRow).getByText('x').closest('[data-tag-color]') as HTMLElement;
+    expect(newChip).toHaveAttribute('data-tag-color', 'CYAN');
+
+    // CONFLICT: the pack rule's own colour (BLUE), never the existing "Middleware call" rule's colour - here they
+    // happen to coincide, which would hide a bug that substitutes one for the other, so also proved below with a
+    // pack whose colour genuinely differs from the existing rule's.
+    const conflictRow = screen.getByText('Middleware call v2').closest('li') as HTMLElement;
+    expect(within(conflictRow).getByText('middleware').closest('[data-tag-color]')).toHaveAttribute('data-tag-color', 'BLUE');
+  });
+
+  it('a CONFLICT item keeps drawing the PACK rule\'s own colour even when it genuinely differs from the existing rule\'s (never silently substituted)', async () => {
+    const user = userEvent.setup();
+    mockPreview.mockResolvedValue(
+      importPreview({
+        conflicts: 1,
+        items: [
+          { index: 0, id: 'mw-call', name: 'Middleware call v2', tags: ['middleware'], status: 'CONFLICT', existingName: 'Middleware call', errors: [], displayColor: 'PURPLE' },
+        ],
+      }),
+    );
+    renderWorkspace();
+    await screen.findByRole('table');
+    await uploadPack(user);
+    const row = (await screen.findByText('Middleware call v2')).closest('li') as HTMLElement;
+    expect(within(row).getByText('middleware').closest('[data-tag-color]')).toHaveAttribute('data-tag-color', 'PURPLE');
+  });
+
   it('previews counts; merge with conflicts requires a resolution; Apply sends the preview revision and shows the summary', async () => {
     const user = userEvent.setup();
     mockPreview.mockResolvedValue(importPreview());
@@ -431,6 +498,46 @@ describe('ClassificationRulesWorkspace - import', () => {
     expect(onRulesChanged).toHaveBeenCalled();
   });
 
+  it('surfaces a tag colour conflict BEFORE Apply and blocks both MERGE and REPLACE_ALL until it is resolved outside the app (§22.11 A1a)', async () => {
+    const user = userEvent.setup();
+    mockPreview.mockResolvedValue(
+      importPreview({
+        conflicts: 0,
+        tagColorConflicts: [
+          { path: 'rules[0].displayColor', message: 'Tag "payments" is already shown in BLUE by "Payment failure". Every rule that uses a tag must show it in the same colour — change one of the two colours.' },
+        ],
+      }),
+    );
+    renderWorkspace();
+    await screen.findByRole('table');
+    await uploadPack(user);
+
+    expect(await screen.findByText('Tag colour conflicts: 1')).toBeInTheDocument();
+    expect(screen.getByText(/Tag "payments" is already shown in BLUE by "Payment failure"/)).toBeInTheDocument();
+    expect(screen.getByText(/resolve it by editing the pack file or an existing rule's colour/)).toBeInTheDocument();
+
+    // MERGE is blocked, with no resolution radios offered for a colour conflict - there is nothing to pick between.
+    const apply = screen.getByRole('button', { name: 'Apply import' });
+    expect(apply).toBeDisabled();
+
+    // Blocked under REPLACE_ALL too, even after its own confirmation is checked - the colour conflict is a
+    // separate, independent blocker that survives switching modes.
+    await user.click(screen.getByRole('radio', { name: 'Replace all rules' }));
+    await user.click(screen.getByRole('checkbox', { name: 'I understand this deletes every existing rule that is not in this pack' }));
+    expect(apply).toBeDisabled();
+    expect(mockApply).not.toHaveBeenCalled();
+  });
+
+  it('a clean pack (no colour conflict) shows the zero count and never blocks on it', async () => {
+    const user = userEvent.setup();
+    mockPreview.mockResolvedValue(importPreview({ conflicts: 0, tagColorConflicts: [] }));
+    renderWorkspace();
+    await screen.findByRole('table');
+    await uploadPack(user);
+    expect(await screen.findByText('Tag colour conflicts: 0')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Apply import' })).toBeEnabled();
+  });
+
   it('disables Apply with an explanation when the pack contains invalid rules', async () => {
     const user = userEvent.setup();
     mockPreview.mockResolvedValue(
@@ -438,7 +545,7 @@ describe('ClassificationRulesWorkspace - import', () => {
         conflicts: 0,
         invalid: 1,
         items: [
-          { index: 0, id: 'broken', name: 'Broken rule', tags: [], status: 'INVALID', existingName: null, errors: [{ path: 'tags', message: 'At least one tag is required' }] },
+          { index: 0, id: 'broken', name: 'Broken rule', tags: [], status: 'INVALID', existingName: null, errors: [{ path: 'tags', message: 'At least one tag is required' }], displayColor: 'GRAY' },
         ],
       }),
     );

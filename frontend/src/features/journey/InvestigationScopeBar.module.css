@@ -1,0 +1,48 @@
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 3px var(--space-4);
+  background: var(--v2-surface-bar);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+  flex-wrap: wrap;
+}
+
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  white-space: nowrap;
+}
+
+.k {
+  color: var(--v2-ink-3);
+}
+
+.v {
+  color: var(--v2-ink-1);
+  font-weight: 500;
+}
+
+.kept {
+  margin-left: auto;
+  color: var(--v2-ink-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .kept {
+    margin-left: 0;
+    /* DRIFT-001 remediation - this bar is now also reused for Live, whose own kept-note text can run
+       longer than Investigation's; letting it wrap here (instead of nowrap) prevents any future note
+       text from forcing page-level horizontal overflow at narrow widths - found via real E2E. */
+    white-space: normal;
+  }
+}

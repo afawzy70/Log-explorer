@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, setViewport, setZoom } from './helpers';
+import { openSettingsSection } from './settings-helpers';
 
 /*
  * UX-R4 - the Results investigation workstation, verified against the real
@@ -179,15 +180,17 @@ test.describe('UX-R4 §17/§18/§19 - row actions', () => {
 test.describe('UX-R4 §9/§10/§12 - truthful sorting', () => {
   test('G/H: Newest first and Oldest first are real, opposite orderings', async ({ page }) => {
     await runRealSearch(page);
-    const sort = page.getByRole('combobox', { name: /sort/i });
-    await expect(sort).toHaveValue('BACKWARD');
+    // B2 (Session 4) - the Sort `<select>` became a toggle button (COMPONENT_INVENTORY.md's SortControl.tsx
+    // RECOMPOSE), living in the scope strip; a click always flips to the other ordering.
+    const sort = page.getByRole('button', { name: /^sort order:/i });
+    await expect(sort).toHaveAccessibleName(/newest first/i);
     await captureScreenshot(page, PHASE, 'AFTER-G-newest-first');
 
     const newestTop = await messageOf(page, 0);
 
-    await sort.selectOption('FORWARD');
+    await sort.click();
     await expect(page.getByRole('table')).toBeVisible();
-    await expect(sort).toHaveValue('FORWARD');
+    await expect(sort).toHaveAccessibleName(/oldest first/i);
     const oldestTop = await messageOf(page, 0);
     await captureScreenshot(page, PHASE, 'AFTER-H-oldest-first');
 
@@ -205,7 +208,7 @@ test.describe('UX-R4 §9/§10/§12 - truthful sorting', () => {
     const descending = await readTimes();
     expect(descending).toEqual([...descending].sort((a, b) => b - a));
 
-    await page.getByRole('combobox', { name: /sort/i }).selectOption('FORWARD');
+    await page.getByRole('button', { name: /^sort order:/i }).click();
     await expect(page.getByRole('table')).toBeVisible();
     const ascending = await readTimes();
     expect(ascending).toEqual([...ascending].sort((a, b) => a - b));
@@ -219,7 +222,7 @@ test.describe('UX-R4 §9/§10/§12 - truthful sorting', () => {
       .toBeGreaterThan(200);
     const afterLoadMore = await rows(page).count();
 
-    await page.getByRole('combobox', { name: /sort/i }).selectOption('FORWARD');
+    await page.getByRole('button', { name: /^sort order:/i }).click();
     await expect(page.getByRole('table')).toBeVisible();
 
     await expect.poll(async () => rows(page).count()).toBeLessThan(afterLoadMore);
@@ -227,7 +230,7 @@ test.describe('UX-R4 §9/§10/§12 - truthful sorting', () => {
 
   test('pagination keeps the committed direction and never duplicates a row', async ({ page }) => {
     await runRealSearch(page);
-    await page.getByRole('combobox', { name: /sort/i }).selectOption('FORWARD');
+    await page.getByRole('button', { name: /^sort order:/i }).click();
     await expect(page.getByRole('table')).toBeVisible();
 
     await page.getByRole('button', { name: /load more/i }).click();
@@ -246,7 +249,7 @@ test.describe('UX-R4 §9/§10/§12 - truthful sorting', () => {
     await page.getByRole('menuitem', { name: /show surroundings/i }).click();
     await expect(page.getByRole('button', { name: /back to original search/i })).toBeVisible({ timeout: 15_000 });
 
-    await expect(page.getByRole('combobox', { name: /sort/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^sort order:/i })).toHaveCount(0);
   });
 });
 
@@ -339,15 +342,17 @@ test.describe('UX-R4 §33 - no security regression from the new entry points', (
     // the end so this shared-singleton backend policy never leaks into a
     // later test.
     const protectedLabels = ['CIF', 'Username', 'Customer ID', 'Device ID', 'Device IP'];
-    await page.getByRole('button', { name: /privacy & masking/i }).click();
-    const maskingDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+    await openSettingsSection(page, /privacy & masking/i);
+    const maskingDialog = page.getByTestId('privacy-masking-settings-panel');
     await expect(maskingDialog).toBeVisible();
     for (const label of protectedLabels) {
       if (!(await maskingDialog.getByLabel(label).isChecked())) {
         await maskingDialog.getByLabel(label).click();
       }
     }
-    await page.getByRole('button', { name: /^close$/i }).click();
+    // B6.2 (Session 7) - Privacy & masking is no longer a popover with its own "Close" - it is a persistent
+    // section; only the consolidated Settings workspace itself (a full-page takeover) needs closing.
+    await page.getByRole('button', { name: /back to search results/i }).click();
 
     await rows(page).nth(3).click();
     await expect(page.getByRole('dialog', { name: 'Event details' })).toBeVisible();
@@ -374,14 +379,13 @@ test.describe('UX-R4 §33 - no security regression from the new entry points', (
     // Restore the fresh default (unmasked) so this shared-singleton
     // backend policy never leaks into a later test in the same run.
     await page.keyboard.press('Escape'); // close whatever panel/dialog is open
-    await page.getByRole('button', { name: /privacy & masking/i }).click();
-    const cleanupDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+    await openSettingsSection(page, /privacy & masking/i);
+    const cleanupDialog = page.getByTestId('privacy-masking-settings-panel');
     await expect(cleanupDialog).toBeVisible();
     for (const label of protectedLabels) {
       if (await cleanupDialog.getByLabel(label).isChecked()) {
         await cleanupDialog.getByLabel(label).click();
       }
     }
-    await page.getByRole('button', { name: /^close$/i }).click();
   });
 });

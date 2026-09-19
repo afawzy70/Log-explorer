@@ -2486,3 +2486,206 @@ extraction, tag presentation and colour only. The Live Service EXCLUDE
 defect (D8), `SEARCH_PERFORMANCE_ROOT_CAUSE`, the Loki backend capability
 (§12, SSEL-2) and the Modern Developer Console design lane are untouched.
 `HISTORICAL_DECISIONS_PRESERVED=YES`. `UNTRACKED_OWNER_REQUIREMENTS=0`.
+
+## 28. Source experience parity — Docker / OpenShift primary Search
+
+`SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT` — recorded during the Modern
+Developer Console implementation (B6.3 mission, Session 8) as an explicit
+owner-approved requirement. **This entry records the requirement only; it
+is not implemented by this session** — implementation belongs to a future
+source/Search integration slice, named explicitly so it is never silently
+forgotten between now and then.
+
+Connection/setup may legitimately differ by source (Docker's local/remote
++ TLS/host/port form vs. OpenShift's `oc login` command + project/proxy
+form — both already true in production, both preserved by B6.2). Once
+either source is connected, the **primary Search experience must remain
+one unified workflow**:
+
+```
+Source → Scope → Filters → Search → Results → Inspector/Investigation
+```
+
+Docker's scope hierarchy is Project → Service. OpenShift's scope hierarchy
+is Project → Workload → optional Pod(s). **OpenShift Workload is the
+UX-equivalent scope level to Docker Service** — the level a user picks to
+narrow "which running thing" before searching; Pod is an optional, deeper
+refinement with no Docker equivalent, not a replacement for the
+Workload↔Service equivalence. After a successful OpenShift connection, the
+user must reach and use the exact same Search workspace and the exact same
+primary Search action already used for Docker — never a second,
+OpenShift-specific primary search screen or workflow living somewhere
+else. Source-specific topology may add controls (e.g. a Pod selector), but
+must never change the shape of the pipeline above.
+
+```
+SOURCE_EXPERIENCE_PARITY_RECORDED=YES
+SOURCE_EXPERIENCE_PARITY_IMPLEMENTED=NOT_YET — future source/Search integration slice
+DOCKER_SCOPE_HIERARCHY=PROJECT_THEN_SERVICE
+OPENSHIFT_SCOPE_HIERARCHY=PROJECT_THEN_WORKLOAD_THEN_OPTIONAL_POD
+OPENSHIFT_WORKLOAD_UX_EQUIVALENT_TO=DOCKER_SERVICE
+SEPARATE_OPENSHIFT_PRIMARY_SEARCH_SCREEN=NO
+UNIFIED_SEARCH_PIPELINE=SOURCE_SCOPE_FILTERS_SEARCH_RESULTS_INSPECTOR
+UNTRACKED_OWNER_REQUIREMENTS=0
+```
+
+**Current state, as of Session 8 (informational, not a completeness
+claim):** both sources already share one `Toolbar`/`ScopeStrip`/results
+pipeline (B2, Session 4) — there is no known second, standalone OpenShift
+search screen today. This entry exists so that any future OpenShift-scope
+work (e.g. deeper Workload/Pod integration, additional filters) is held to
+this parity bar explicitly, rather than the bar being assumed and never
+written down. A dedicated audit confirming `SOURCE_EXPERIENCE_PARITY_IMPLEMENTED=YES`
+against this exact requirement is out of scope for B6.3 and is deferred to
+the source/Search integration slice named above.
+
+**Scope discipline.** B6.3 (Classification Rules workspace recompose)
+does not touch Search, Toolbar, ScopeStrip, or OpenShift/Docker scope
+selection in any way. `UNTRACKED_OWNER_REQUIREMENTS=0`.
+
+**Addendum — implemented (`SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT` mission).** The status block above is
+left unedited as the historical record of Session 8 (which recorded the requirement only). This requirement
+was subsequently implemented — see `docs/verification/SOURCE_EXPERIENCE_PARITY_VERIFICATION.md` for the full
+contract discovery, architecture, Docker/OpenShift behavior, Settings/Search responsibility split, security
+reverification, automated tests, and responsive/accessibility evidence. In summary: OpenShift's
+Project/Workload/Pod/Container scope selection moved from Settings (read-only there now) into the Search
+toolbar itself, using the exact same Search button/Results table/Inspector Docker already used, with the
+backend's own `OpenShiftSession` remaining the single authoritative scope state throughout (no new backend
+capability or endpoint was needed — `Search` already read that committed session scope, never a
+request-carried field). No new owner requirement was found in the process — `UNTRACKED_OWNER_REQUIREMENTS=0`
+holds.
+
+```
+SOURCE_EXPERIENCE_PARITY_IMPLEMENTED=YES
+IMPLEMENTATION_VERIFICATION=docs/verification/SOURCE_EXPERIENCE_PARITY_VERIFICATION.md
+OPENSHIFT_SCOPE_HIERARCHY=PROJECT_THEN_WORKLOAD_THEN_OPTIONAL_POD_THEN_OPTIONAL_CONTAINER
+SETTINGS_OWNS=CONNECTION_CONFIGURATION_ONLY
+SEARCH_OWNS=SCOPE_SELECTION
+SINGLE_AUTHORITATIVE_SCOPE_STATE=YES
+UNTRACKED_OWNER_REQUIREMENTS=0
+```
+
+---
+
+## 29. Mandatory visual fidelity gate — production implementation vs. the approved design reference
+
+`IMPECCABLE_VISUAL_FIDELITY_GATE` — recorded during the Modern Developer Console implementation (Session 10
+continuation, `MODERN_DEVELOPER_CONSOLE_SESSION_10_CONTINUATION_GLOBAL_HARDENING` mission) as an explicit
+owner-approved requirement. **This entry records and preserves the requirement only; the audit itself is not
+executed by this session** — it is deliberately a separate, later mission, so it is never silently skipped or
+folded into ordinary hardening work.
+
+**The requirement.** Passing implementation, functional tests, responsive tests, accessibility tests, dark
+theme, and CI is **not sufficient** to declare the Modern Developer Console finally UI/UX-accepted. After
+internal implementation/hardening is complete (i.e. after the B1–B7 build-out and the global hardening stages
+in `docs/implementation/MODERN_DEVELOPER_CONSOLE_EXECUTION_CHECKPOINT.md` have reached their own internal
+completion gate), a separate, mandatory **Visual Fidelity Audit** must compare the actual rendered production
+implementation on `ux/v2-modern-developer-console` (PR #61) against the approved Impeccable/B1 design reference
+on `design/v2-modern-developer-console` (**PR #58 — the authoritative visual reference**, `docs/ux-v2-modern-
+developer-console/` and its prototype captures on that branch, not this branch's own prose description of what
+it believes it built).
+
+**Method.** The comparison must be against the actual approved design captures/prototype rendered output, not
+merely against design tokens, prose specs, or the implementation agent's own self-report of what it did.
+Representative states of every major workspace must be covered:
+
+- Application Shell
+- Search
+- Results
+- Inspector
+- Investigation
+- Settings
+- Field Mapping
+- Classification Rules
+- Rule Builder
+- Assisted Extraction
+- Import/Export
+- Live
+- Dialogs and other important transient states
+
+At minimum, the audit must evaluate: layout geometry, spacing, typography, density, component sizing,
+alignment, borders, radii, shadows/elevation, table geometry, column geometry, icon treatment, controls, tags,
+severity treatment, visual hierarchy, state styling, light theme, dark theme, and responsive behavior — using
+equivalent viewport/state combinations between the two branches wherever possible.
+
+**Classification, not automatic defect-finding.** A production/design difference is **not automatically a
+defect**. Every meaningful difference found must be classified as exactly one of:
+
+1. `INTENTIONAL_PRODUCTION_ADAPTATION` — required because real production behavior/functionality (real data,
+   real states, real interaction constraints) genuinely differs from what a static prototype can represent,
+   with evidence for why.
+2. `VISUAL_DESIGN_DRIFT` — the production implementation failed to reproduce the approved design's fidelity
+   without a justified functional reason.
+
+Any `VISUAL_DESIGN_DRIFT` found must be remediated and reverified before final UI/UX acceptance is granted. The
+audit must **never** recommend weakening real production functionality merely to achieve screenshot similarity,
+and must **never** recommend copying prototype behavior that conflicts with an already-proven production
+requirement (e.g. any of CLAUDE.md's non-negotiable rules, or a requirement already `VERIFIED` elsewhere in
+this register).
+
+**This gate is separate from, and in addition to, normal accessibility/responsive hardening** (this register's
+existing Stage 3/Stage 4 global-hardening work) — passing those does not satisfy this gate, and this gate does
+not substitute for them.
+
+```
+IMPECCABLE_VISUAL_FIDELITY_GATE_RECORDED=YES
+IMPECCABLE_VISUAL_FIDELITY_AUDIT_EXECUTED=NO
+FINAL_UI_UX_ACCEPTANCE=NOT_YET_AUTHORIZED
+DESIGN_REFERENCE_PR=58 (design/v2-modern-developer-console, B1 "Instrument Neutral")
+PRODUCTION_IMPLEMENTATION_PR=61 (ux/v2-modern-developer-console)
+AUDIT_TIMING=SEPARATE_FUTURE_MISSION_AFTER_INTERNAL_IMPLEMENTATION_COMPLETION
+AUDIT_METHOD=RENDERED_PRODUCTION_UI_VS_RENDERED_APPROVED_DESIGN_CAPTURES
+DIFFERENCE_CLASSIFICATION_VOCABULARY=INTENTIONAL_PRODUCTION_ADAPTATION_OR_VISUAL_DESIGN_DRIFT
+VISUAL_DESIGN_DRIFT_MUST_BE_REMEDIATED=YES
+FUNCTIONALITY_NEVER_WEAKENED_FOR_SCREENSHOT_SIMILARITY=YES
+UNTRACKED_OWNER_REQUIREMENTS=0
+```
+
+**Scope discipline.** This entry only records and preserves the requirement, per this session's explicit
+instruction. No visual comparison, no screenshot diffing against PR #58, and no remediation work was performed
+under this entry. `UNTRACKED_OWNER_REQUIREMENTS=0`.
+
+**Addendum — audit executed and remediated in later missions.** The status block above is left unedited as the
+historical record of this entry's own session (which recorded the requirement only). The gate this entry
+describes was subsequently exercised across the missions documented in
+`docs/verification/IMPECCABLE_VISUAL_FIDELITY_AUDIT.md`: the initial audit and its two closure passes found 16
+`VISUAL_DESIGN_DRIFT` items (DRIFT-001 through DRIFT-016, 0 blocker / 9 major / 7 minor) and classified every
+other production/design difference examined as `INTENTIONAL_PRODUCTION_ADAPTATION` (ADAPT-001 through
+ADAPT-004); the `IMPECCABLE_VISUAL_DRIFT_REMEDIATION_PR61` mission then remediated all 16 items in place (see
+that document's own "VISUAL DRIFT REMEDIATION VERIFICATION" section for the per-item evidence and the full
+regression gate). No new owner requirement was found during either the audit or the remediation pass —
+`UNTRACKED_OWNER_REQUIREMENTS=0` holds throughout. `FINAL_UI_UX_ACCEPTANCE` remains `NOT_YET_AUTHORIZED`: that
+sign-off is an explicit owner decision this remediation mission does not have standing to grant, and PR #61
+stays open/draft/unmerged pending it.
+
+**Addendum — final UI/UX acceptance granted (`PR61_FINAL_PRE_MERGE_CLOSURE` mission).** The status block and
+both addenda above are left unedited as the historical record of their own sessions — at the time each was
+written, `FINAL_UI_UX_ACCEPTANCE=NOT_YET_AUTHORIZED` was true and is preserved as such. The sign-off those
+sessions correctly said they had no standing to grant has since been given: ChatGPT Owner review
+independently verified the exact-head visual remediation/evidence closure and granted final UI/UX acceptance,
+and separately reviewed and accepted the subsequently-implemented Source Experience Parity work (mission
+`SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT`, recovered in `SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1`) and
+the controlled integration of latest `main` (mission `PR61_CONTROLLED_LATEST_MAIN_INTEGRATION`, PR #62/#63/#64,
+merge commit `047097b68df1015f5965d3eecdf144a755f6b4a4`). This addendum records that later, current
+authoritative state — it does not retroactively change what any earlier session was entitled to say at the
+time.
+
+```
+AUDIT_COMPLETE=YES
+VISUAL_DRIFT_REMEDIATION_COMPLETE=YES
+FINAL_UI_UX_ACCEPTANCE=YES
+FINAL_UI_UX_ACCEPTANCE_SOURCE=CHATGPT_OWNER_FINAL_UI_UX_REMEDIATION_REVIEW
+DRIFTS_CLOSED=16
+DRIFTS_REMAINING=0
+SOURCE_EXPERIENCE_PARITY_IMPLEMENTED=YES
+SOURCE_EXPERIENCE_PARITY_OWNER_ACCEPTED=YES
+LATEST_MAIN_INTEGRATION=PASS
+UNTRACKED_OWNER_REQUIREMENTS=0
+PR_61_STATE=OPEN, DRAFT, NOT_MERGED
+MERGE_AUTHORIZED=NO — final merge authorization is a separate ChatGPT Owner decision this entry does not grant
+```
+
+Full current-state matrix and scope reconciliation (D8, OpenShift Loki, A1b, real-OpenShift-validation, Port 80
+preview, DB/cache/retention — each classified, none implemented or changed by this entry):
+`docs/verification/PR61_FINAL_PRE_MERGE_CLOSURE.md`. No production code was touched to produce this addendum;
+`UNTRACKED_OWNER_REQUIREMENTS=0` holds.

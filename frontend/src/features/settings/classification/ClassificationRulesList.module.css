@@ -1,0 +1,458 @@
+/*
+ * B6.3 (Session 8) - full v2 tokens for the Classification Rules LIST view only.
+ *
+ * Deliberately a SEPARATE CSS module from ClassificationRulesWorkspace.module.css: that file is also imported
+ * by RuleEditor.tsx and ImportPanel.tsx (B6.4/B6.6, explicitly frozen this session - "do not opportunistically
+ * redesign"). Restyling the shared module's tokens would silently restyle those two frozen surfaces as a side
+ * effect, which is exactly the "full v2 or full v1, never mixed" hazard B6.1/B6.2 already ran into, applied at
+ * the wrong granularity. Classes here are used ONLY by ClassificationRulesWorkspace.tsx's own `view.kind ===
+ * 'list'` (and the loading/error pre-load state) rendering branch - the editor/import/chooseRule branches keep
+ * using the original, untouched v1 module exactly as before.
+ */
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--v2-bg-app);
+  /* Explicit, not inherited - the ambient v1 --color-text token has no dark-theme override (the exact bug
+     found and fixed in B6.1's FieldMappingWorkspace, and again pre-empted in B6.2's SettingsWorkspace). */
+  color: var(--v2-ink-1);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) 0;
+}
+
+.headerRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.title {
+  margin: 0;
+  font: var(--v2-text-workspace);
+  color: var(--v2-ink-1);
+}
+
+.hint {
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+  margin: var(--space-1) var(--space-4) 0;
+}
+
+/* DRIFT-016 remediation - Settings context (nav + breadcrumb), restoring the approved "Classification
+   Rules is reached inside Settings" composition instead of a standalone takeover with no way back other
+   than "Back to search results". Grid mirrors SettingsWorkspace.module.css's own `.body`/`.nav` pair
+   exactly, since SettingsNav renders with that module's classes regardless of caller. */
+.body {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  align-items: start;
+}
+
+.content {
+  min-width: 0;
+}
+
+.breadcrumb {
+  margin: 0;
+}
+
+.breadcrumbList {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-3);
+}
+
+.breadcrumbLink {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: var(--v2-ink-3);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.breadcrumbLink:hover,
+.breadcrumbLink:focus-visible {
+  color: var(--v2-ink-1);
+}
+
+.breadcrumbList [aria-current='page'] {
+  color: var(--v2-ink-2);
+  font-weight: 600;
+}
+
+.breadcrumbSep {
+  color: var(--v2-ink-3);
+}
+
+/* ------------------------------------------------------------------ status banners */
+.bannerWarning,
+.bannerDanger {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--v2-r-md);
+  font: var(--v2-text-body);
+}
+
+.bannerWarning {
+  background: var(--v2-warning-tint);
+  color: var(--v2-warning);
+}
+
+.bannerDanger {
+  background: var(--v2-danger-tint);
+  color: var(--v2-danger);
+}
+
+/* ------------------------------------------------------------------ meta block */
+.metaBlock {
+  margin-bottom: var(--space-3);
+}
+
+.metaLine {
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-3);
+  margin: 0 0 2px;
+}
+
+.mono {
+  font: var(--v2-text-data);
+}
+
+/* ------------------------------------------------------------------ toolbar */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.filterField {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 220px;
+  flex: 1 1 260px;
+}
+
+.filterField label {
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+}
+
+.filterField input {
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-sm);
+  padding: var(--space-1) var(--space-2);
+  font: var(--v2-text-body);
+  background: var(--v2-surface-work);
+  color: var(--v2-ink-1);
+}
+
+.toolbarActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.exportNote {
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-3);
+  margin: 0 0 var(--space-2);
+}
+
+.fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ------------------------------------------------------------------ notices */
+.notice {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-accent-tint);
+  color: var(--v2-accent-ink);
+  font: var(--v2-text-body);
+}
+
+.error {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-danger-tint);
+  color: var(--v2-danger);
+  font: var(--v2-text-body);
+}
+
+.error p {
+  margin: 0 0 var(--space-1);
+}
+
+.error p:last-child {
+  margin-bottom: 0;
+}
+
+/* ------------------------------------------------------------------ empty state */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-4);
+  border: var(--v2-bw) dashed var(--v2-line);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-surface-work);
+  color: var(--v2-ink-2);
+}
+
+.emptyState p {
+  margin: 0;
+}
+
+.emptyStateTitle {
+  font: var(--v2-text-body-strong);
+  color: var(--v2-ink-1);
+}
+
+/* ------------------------------------------------------------------ table */
+.tableScroll {
+  overflow-x: auto;
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-surface-work);
+  /* Same fix B6.1 needed for FieldMappingWorkspace's own table: without this, a min-width table inside an
+     overflow-x: auto wrapper can still leak into the page's own scrollWidth in some layout combinations. */
+  contain: paint;
+}
+
+.table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font: var(--v2-text-body);
+}
+
+.table th,
+.table td {
+  text-align: left;
+  vertical-align: top;
+  padding: var(--space-2);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
+}
+
+.table thead th {
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+  font-weight: 600;
+  background: var(--v2-surface-inspector, var(--v2-surface-work));
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.colSelect {
+  width: 40px;
+}
+
+.colName {
+  width: 230px;
+}
+
+.colTags {
+  width: 170px;
+}
+
+.colExtracts {
+  width: 90px;
+}
+
+.colEnabled {
+  width: 96px;
+}
+
+.colActions {
+  width: 232px;
+}
+
+.ruleName {
+  display: block;
+  font: var(--v2-text-body-strong);
+  color: var(--v2-ink-1);
+}
+
+.ruleDesc {
+  display: block;
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-3);
+}
+
+.rulePriority {
+  display: block;
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.tagCell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.matcher {
+  font: var(--v2-text-data);
+  color: var(--v2-ink-1);
+}
+
+.numCell {
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.emptyCell {
+  color: var(--v2-ink-3);
+}
+
+.enabledCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.enabledWord {
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+}
+
+.rowActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+/* A row for a disabled rule reads as visually de-emphasised, never invisible - name/matcher dim, tag chip
+   gets a dashed border (matching the approved design's own disabled-row treatment), text is unchanged. */
+.disabledRow .ruleName,
+.disabledRow .matcher {
+  color: var(--v2-ink-3);
+}
+
+.disabledRow :global([data-tag-color]) {
+  border-style: dashed;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ------------------------------------------------------------------ delete confirmation modal */
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--v2-scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  z-index: 40;
+}
+
+.confirm {
+  width: 100%;
+  max-width: 420px;
+  background: var(--v2-surface-work);
+  border-radius: var(--v2-r-lg, var(--v2-r-md));
+  box-shadow: var(--v2-shadow-sheet);
+  padding: var(--space-4);
+}
+
+.confirmHeading {
+  margin: 0 0 var(--space-2);
+  font: var(--v2-text-body-strong);
+  color: var(--v2-ink-1);
+}
+
+.confirmBody {
+  margin: 0 0 var(--space-4);
+  font: var(--v2-text-body);
+  color: var(--v2-ink-2);
+}
+
+.confirmButtons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* ------------------------------------------------------------------ responsive */
+@media (max-width: 767px) {
+  /* Same collapse as SettingsWorkspace.module.css's own `.body`/`.nav` pair - SettingsNav renders its own
+     `.nav` from that module and already goes horizontal/wrapping under this same breakpoint, so only the
+     grid-to-stack here needs restating locally. */
+  .body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
+  /*
+   * .filterField's own `flex: 1 1 260px` sets a preferred WIDTH for the row
+   * layout above - once .toolbar flips to flex-direction: column here, that
+   * same flex-basis becomes a preferred HEIGHT instead, stretching the
+   * field to ~260px tall with justify-content: space-between pushing
+   * .toolbarActions off toward the bottom of the toolbar's own height.
+   * Reset to natural content height when stacked.
+   */
+  .filterField {
+    flex: none;
+  }
+
+  .toolbarActions {
+    justify-content: flex-end;
+  }
+}

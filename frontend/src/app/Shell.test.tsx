@@ -56,6 +56,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     health: null,
     healthLoading: false,
     retryHealth: vi.fn(),
+    invalidateSearchForScopeChange: vi.fn(),
     searchResult: null,
     searchLoading: false,
     loadingMore: false,
@@ -92,6 +93,9 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     mappingWorkspaceOpen: false,
     openMappingWorkspace: vi.fn(),
     closeMappingWorkspace: vi.fn(),
+    settingsWorkspaceOpen: false,
+    openSettingsWorkspace: vi.fn(),
+    closeSettingsWorkspace: vi.fn(),
     selectedTags: [],
     setSelectedTags: vi.fn(),
     classificationTags: null,
@@ -111,17 +115,71 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
 }
 
 describe('Shell - Mapping Verification workspace entry point (owner mission "Mapping Verification and Investigation Workspace")', () => {
+  /*
+   * B2 (Session 4) - the top-level Shell trigger's own label shortened from "Log schema & field mapping" to
+   * "Field mapping", matching the design's own `shell()` button (`prototype/scripts/app.js`); the fuller
+   * descriptive text stays inside `SettingsWorkspace`'s own Field mapping section button, see that
+   * component's own test coverage.
+   */
   it('offers a trigger that opens the real dedicated workspace, never a popover of its own', async () => {
     const user = userEvent.setup();
     const openMappingWorkspace = vi.fn();
     render(
-      <Shell state={baseState({ openMappingWorkspace })} openShiftScope={null} onOpenShiftScopeChanged={vi.fn()} />,
+      <Shell state={baseState({ openMappingWorkspace })} openShiftScope={null} liveModeActive={false} />,
     );
-    const trigger = screen.getByRole('button', { name: /log schema & field mapping/i });
+    const trigger = screen.getByRole('button', { name: /^field mapping$/i });
     await user.click(trigger);
     expect(openMappingWorkspace).toHaveBeenCalledTimes(1);
     // Unlike the old popover implementation, clicking it renders no dialog/panel here at all.
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('offers a single consolidated Settings entry point that opens the settings workspace', async () => {
+    const user = userEvent.setup();
+    const openSettingsWorkspace = vi.fn();
+    render(<Shell state={baseState({ openSettingsWorkspace })} openShiftScope={null} liveModeActive={false} />);
+    await user.click(screen.getByRole('button', { name: /^settings$/i }));
+    expect(openSettingsWorkspace).toHaveBeenCalledTimes(1);
+    // Privacy & masking / Docker settings / OpenShift / Classification rules no longer have their own
+    // top-level Shell buttons - they only exist once inside the Settings workspace.
+    expect(screen.queryByRole('button', { name: /privacy & masking/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /docker settings/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^classification rules$/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the current workspace trail, defaulting to "Search"', () => {
+    render(<Shell state={baseState()} openShiftScope={null} liveModeActive={false} />);
+    const trail = screen.getByRole('navigation', { name: /current workspace/i });
+    expect(trail).toHaveTextContent('Search');
+  });
+
+  it('the workspace trail reads "Settings" (not "Search › Settings") while the settings workspace is open', () => {
+    render(
+      <Shell state={baseState({ settingsWorkspaceOpen: true })} openShiftScope={null} liveModeActive={false} />,
+    );
+    const trail = screen.getByRole('navigation', { name: /current workspace/i });
+    expect(trail).toHaveTextContent('Settings');
+    expect(trail).not.toHaveTextContent(/search.*settings/i);
+  });
+
+  it('the workspace trail reads "Search › Trace" while a Trace journey lookup is open', () => {
+    render(
+      <Shell
+        state={baseState({ journeyQuery: { field: 'traceId', value: 't-1' } })}
+        openShiftScope={null}
+        liveModeActive={false}
+      />,
+    );
+    const trail = screen.getByRole('navigation', { name: /current workspace/i });
+    expect(trail).toHaveTextContent('Search');
+    expect(trail).toHaveTextContent('Trace');
+  });
+
+  it('the workspace trail reads "Live" (not "Search › Live") while live tail is active', () => {
+    render(<Shell state={baseState()} openShiftScope={null} liveModeActive={true} />);
+    const trail = screen.getByRole('navigation', { name: /current workspace/i });
+    expect(trail).toHaveTextContent('Live');
+    expect(trail).not.toHaveTextContent(/search.*live/i);
   });
 });
 
@@ -132,7 +190,7 @@ describe('Shell - active Compose scope visibility (UX-R3 §12)', () => {
 
   it('shows only the source name when the active source has no real Compose-project concept', () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse({}))));
-    render(<Shell state={baseState()} openShiftScope={null} onOpenShiftScopeChanged={vi.fn()} />);
+    render(<Shell state={baseState()} openShiftScope={null} liveModeActive={false} />);
     expect(screen.getByText('Fixture')).toBeInTheDocument();
     expect(screen.queryByText('›')).not.toBeInTheDocument();
   });
@@ -156,7 +214,7 @@ describe('Shell - active Compose scope visibility (UX-R3 §12)', () => {
           selectedComposeProject: null,
         })}
         openShiftScope={null}
-        onOpenShiftScopeChanged={vi.fn()}
+        liveModeActive={false}
       />,
     );
     expect(screen.getByText('Local Docker')).toBeInTheDocument();
@@ -182,7 +240,7 @@ describe('Shell - active Compose scope visibility (UX-R3 §12)', () => {
           selectedComposeProject: 'project-a',
         })}
         openShiftScope={null}
-        onOpenShiftScopeChanged={vi.fn()}
+        liveModeActive={false}
       />,
     );
     expect(screen.getByText('Local Docker')).toBeInTheDocument();
@@ -215,7 +273,7 @@ describe('Shell - OpenShift ScopeTrail (OS-1F §6)', () => {
           selectedSourceId: 'openshift',
         })}
         openShiftScope={scope}
-        onOpenShiftScopeChanged={vi.fn()}
+        liveModeActive={false}
       />,
     );
   }

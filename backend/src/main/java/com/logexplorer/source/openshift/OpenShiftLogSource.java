@@ -119,7 +119,9 @@ public class OpenShiftLogSource implements LogSource {
               SourceHealth.Status.DEGRADED,
               "Connected to " + session.serverDisplay() + ", but no project/namespace is selected",
               now,
-              List.of("Select a project/namespace in Settings to search"))
+              // SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1 - Settings no longer owns scope selection;
+              // Search does (OpenShiftScopeSelect.tsx). This guidance must name where the action actually is.
+              List.of("Select a project/namespace in Search to search"))
           : new SourceHealth(
               SourceHealth.Status.UP,
               "Connected to " + session.serverDisplay() + " (" + session.selectedProject() + ")",

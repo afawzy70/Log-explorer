@@ -1,0 +1,49 @@
+/* SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - compact inline toolbar-row layout, matching ComposeProjectSelect's
+   existing pattern (a `.wrapper` flex item per control, wrapping naturally with the rest of the toolbar).
+   `flex-wrap` here (unlike ComposeProjectSelect, which never has a long hint) - Pod/Workload's own hint text
+   ("No pods currently match this scope", "Some workload types could not be listed") is real sentence-length
+   copy, not a short label; found as a real 390px overflow (17px) via E2E, not assumed. */
+.wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
+.label {
+  font-size: var(--font-size-sm);
+  color: var(--v2-ink-2);
+  white-space: nowrap;
+}
+
+.select {
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.error {
+  color: var(--v2-danger);
+  font-size: var(--font-size-sm);
+}
+
+.hint {
+  color: var(--v2-ink-2);
+  font-size: var(--font-size-sm);
+  /* Real sentence-length copy, not a short label - must be allowed to wrap (see `.wrapper`'s own comment). */
+  white-space: normal;
+  max-width: 100%;
+}

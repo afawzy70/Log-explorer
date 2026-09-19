@@ -96,10 +96,24 @@ async function runScan(user: ReturnType<typeof userEvent.setup>) {
   await waitFor(() => expect(mockScan).toHaveBeenCalled());
 }
 
-/** Adds `path` as a candidate for the field whose exact display name is `fieldDisplayName`, via the discovered-paths picker (mission §A10), not manual typing. */
+/**
+ * B6.1 (Session 6) RECOMPOSE - opens the given field's inline editor (a real, real editing gesture the
+ * design's own per-field edit-mode requires) if it is not already open. `hasDraft`/candidate-list state itself
+ * is completely unchanged by this recompose - only the picker/manual-entry/move/remove controls moved from an
+ * always-expanded `<li>` into a conditionally-rendered sibling `<tr>` (`FieldRow`'s own `editing` prop).
+ */
+async function openFieldEditor(user: ReturnType<typeof userEvent.setup>, fieldDisplayName: string) {
+  const fieldRow = screen.getByText(fieldDisplayName).closest('tr')!;
+  const editButton = within(fieldRow).getByRole('button', { name: /^(edit|map) candidates for |^map /i });
+  if (editButton.getAttribute('aria-expanded') !== 'true') {
+    await user.click(editButton);
+  }
+}
+
+/** Adds `path` as a candidate for the field whose exact display name is `fieldDisplayName`, via the discovered-paths picker (mission §A10), not manual typing. Opens that field's editor first (B6.1) - only one field's editor is ever open at a time, so the picker is unambiguous once open. */
 async function addViaPicker(user: ReturnType<typeof userEvent.setup>, fieldDisplayName: string, path: string) {
-  const fieldRow = screen.getByText(fieldDisplayName).closest('li')!;
-  const picker = within(fieldRow).getByLabelText(/add a discovered path as a candidate/i);
+  await openFieldEditor(user, fieldDisplayName);
+  const picker = screen.getByLabelText(/add a discovered path as a candidate/i);
   await user.selectOptions(picker, path);
   const pickerRow = picker.closest('div')!;
   await user.click(within(pickerRow).getByRole('button', { name: /^add$/i }));
@@ -143,9 +157,9 @@ describe('FieldMappingWorkspace', () => {
   it('shows the current profile with sensitive fields visually marked', () => {
     renderWorkspace();
     expect(screen.getByText('CIF')).toBeInTheDocument();
-    const cifRow = screen.getByText('CIF').closest('li')!;
+    const cifRow = screen.getByText('CIF').closest('tr')!;
     expect(within(cifRow).getByText('Protected')).toBeInTheDocument();
-    const serviceRow = screen.getByText('Service').closest('li')!;
+    const serviceRow = screen.getByText('Service').closest('tr')!;
     expect(within(serviceRow).queryByText('Protected')).not.toBeInTheDocument();
   });
 
@@ -157,7 +171,7 @@ describe('FieldMappingWorkspace', () => {
   describe('verification statuses (owner mission "Mapping Verification and Investigation Workspace")', () => {
     it('every field starts UNVERIFIED, even a built-in default candidate - DEFAULT_MAPPING != VERIFIED_MAPPING', () => {
       renderWorkspace();
-      const serviceRow = screen.getByText('Service').closest('li')!;
+      const serviceRow = screen.getByText('Service').closest('tr')!;
       expect(within(serviceRow).getByText('Unverified')).toBeInTheDocument();
       expect(within(serviceRow).queryByText('Verified')).not.toBeInTheDocument();
     });
@@ -168,7 +182,7 @@ describe('FieldMappingWorkspace', () => {
           fields: [{ field: 'cif', displayName: 'CIF', sensitive: true, candidatePaths: ['mdc.cif'], verificationStatus: 'VERIFIED' }],
         }),
       });
-      const cifRow = screen.getByText('CIF').closest('li')!;
+      const cifRow = screen.getByText('CIF').closest('tr')!;
       expect(within(cifRow).getByText('Verified')).toBeInTheDocument();
     });
 
@@ -178,7 +192,7 @@ describe('FieldMappingWorkspace', () => {
           fields: [{ field: 'cif', displayName: 'CIF', sensitive: true, candidatePaths: ['mdc.cif'], verificationStatus: 'NEEDS_CHANGE' }],
         }),
       });
-      const cifRow = screen.getByText('CIF').closest('li')!;
+      const cifRow = screen.getByText('CIF').closest('tr')!;
       expect(within(cifRow).getByText('Needs change')).toBeInTheDocument();
       expect(within(cifRow).queryByRole('button', { name: /mark needs change/i })).not.toBeInTheDocument();
     });
@@ -196,15 +210,15 @@ describe('FieldMappingWorkspace', () => {
       });
       await runScan(user);
 
-      const cifRow = screen.getByText('CIF').closest('li')!;
+      const cifRow = screen.getByText('CIF').closest('tr')!;
       expect(within(cifRow).getByText(/observed in latest scan/i)).toBeInTheDocument();
-      const serviceRow = screen.getByText('Service').closest('li')!;
+      const serviceRow = screen.getByText('Service').closest('tr')!;
       expect(within(serviceRow).getByText(/not observed in latest scan/i)).toBeInTheDocument();
     });
 
     it('Verify is disabled until a Quick Schema Scan has produced real samples', () => {
       renderWorkspace();
-      const cifRow = screen.getByText('CIF').closest('li')!;
+      const cifRow = screen.getByText('CIF').closest('tr')!;
       expect(within(cifRow).getByRole('button', { name: /^verify$/i })).toBeDisabled();
       expect(within(cifRow).getByText(/run a quick schema scan first/i)).toBeInTheDocument();
     });
@@ -220,7 +234,7 @@ describe('FieldMappingWorkspace', () => {
           fields: [{ field: 'cif', displayName: 'CIF', sensitive: true, candidatePaths: ['cif'], verificationStatus: 'VERIFIED' }],
         }),
       });
-      const cifRow = screen.getByText('CIF').closest('li')!;
+      const cifRow = screen.getByText('CIF').closest('tr')!;
       expect(within(cifRow).getByText('Verified')).toBeInTheDocument();
       expect(within(cifRow).queryByText(/run a quick schema scan first/i)).not.toBeInTheDocument();
     });
@@ -234,9 +248,9 @@ describe('FieldMappingWorkspace', () => {
           ],
         }),
       });
-      const cifRow = screen.getByText('CIF').closest('li')!;
+      const cifRow = screen.getByText('CIF').closest('tr')!;
       expect(within(cifRow).queryByText(/run a quick schema scan first/i)).not.toBeInTheDocument();
-      const journeyRow = screen.getByText('Journey ID').closest('li')!;
+      const journeyRow = screen.getByText('Journey ID').closest('tr')!;
       expect(within(journeyRow).getByText(/run a quick schema scan first/i)).toBeInTheDocument();
     });
 
@@ -245,7 +259,7 @@ describe('FieldMappingWorkspace', () => {
       mockScan.mockResolvedValue(scanResult());
       renderWorkspace();
       await runScan(user);
-      const journeyRow = screen.getByText('Journey Name').closest('li')!;
+      const journeyRow = screen.getByText('Journey Name').closest('tr')!;
       expect(within(journeyRow).getByRole('button', { name: /^verify$/i })).toBeDisabled();
     });
 
@@ -256,7 +270,7 @@ describe('FieldMappingWorkspace', () => {
       const { onProfileChanged } = renderWorkspace();
       await runScan(user);
 
-      const cifRow = screen.getByText('CIF').closest('li')!;
+      const cifRow = screen.getByText('CIF').closest('tr')!;
       await user.click(within(cifRow).getByRole('button', { name: /^verify$/i }));
 
       await waitFor(() => expect(mockVerify).toHaveBeenCalledWith('cif', ['{"cif":"2449"}'], 'fixture', null));
@@ -272,7 +286,7 @@ describe('FieldMappingWorkspace', () => {
       const { onProfileChanged } = renderWorkspace();
       await runScan(user);
 
-      const cifRow = screen.getByText('CIF').closest('li')!;
+      const cifRow = screen.getByText('CIF').closest('tr')!;
       await user.click(within(cifRow).getByRole('button', { name: /^verify$/i }));
 
       await waitFor(() => expect(within(cifRow).getByRole('alert')).toHaveTextContent(/not found in any of the given samples/i));
@@ -293,7 +307,7 @@ describe('FieldMappingWorkspace', () => {
       await runScan(user);
       await addViaPicker(user, 'CIF', 'customer.cif');
 
-      const cifRow = screen.getByText('CIF').closest('li')!;
+      const cifRow = screen.getByText('CIF').closest('tr')!;
       expect(within(cifRow).getByRole('button', { name: /^verify$/i })).toBeDisabled();
       expect(within(cifRow).getAllByText(/unsaved changes/i).length).toBeGreaterThan(0);
     });
@@ -367,7 +381,7 @@ describe('FieldMappingWorkspace', () => {
         />,
       );
 
-      const cifRow = screen.getByText('CIF').closest('li')!;
+      const cifRow = screen.getByText('CIF').closest('tr')!;
       // No lingering draft after a successful save - Verify is immediately available.
       expect(within(cifRow).getByRole('button', { name: /^verify$/i })).toBeEnabled();
       await user.click(within(cifRow).getByRole('button', { name: /^verify$/i }));
@@ -386,7 +400,7 @@ describe('FieldMappingWorkspace', () => {
       );
       const { onProfileChanged } = renderWorkspace();
 
-      const cifRow = screen.getByText('CIF').closest('li')!;
+      const cifRow = screen.getByText('CIF').closest('tr')!;
       await user.click(within(cifRow).getByRole('button', { name: /mark needs change/i }));
 
       await waitFor(() => expect(mockMarkNeedsChange).toHaveBeenCalledWith('cif', 'fixture', null));
@@ -435,6 +449,8 @@ describe('FieldMappingWorkspace', () => {
     const user = userEvent.setup();
     renderWorkspace();
     expect(screen.getByText('mdc.cif')).toBeInTheDocument();
+    // B6.1 (Session 6) RECOMPOSE - Remove lives in the field's own inline editor now, not always expanded.
+    await openFieldEditor(user, 'CIF');
     await user.click(screen.getByRole('button', { name: /remove mdc\.cif/i }));
     expect(screen.queryByText('mdc.cif')).not.toBeInTheDocument();
   });
@@ -505,7 +521,7 @@ describe('FieldMappingWorkspace', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/network error/i));
     expect(mockSave).not.toHaveBeenCalled();
     // The draft is NOT cleared on failure - the owner can retry without re-entering it.
-    const cifRow = screen.getByText('CIF').closest('li')!;
+    const cifRow = screen.getByText('CIF').closest('tr')!;
     expect(within(cifRow).getByText('cif', { selector: 'code' })).toBeInTheDocument();
   });
 
