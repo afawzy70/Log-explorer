@@ -253,3 +253,179 @@ SEARCH_OWNS=SCOPE_SELECTION
 SINGLE_AUTHORITATIVE_SCOPE_STATE=YES (backend OpenShiftSession, mirrored read-only everywhere else)
 UNTRACKED_OWNER_REQUIREMENTS=0
 ```
+
+# OWNER_REVIEW_RECOVERY_1
+
+`MISSION=SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1`. ChatGPT owner review of the implementation above found
+two concrete closure gaps, both fixed here. This section is additive - nothing in §1-12 above was rewritten;
+where those sections describe pre-recovery behavior, they remain historically accurate for what was true at
+the mission that wrote them.
+
+```
+START_HEAD=bbc7bdbd1c8723a84ddd400095aa20958cb2d57a
+```
+
+## Finding 1 — stale-result scope mismatch (primary defect)
+
+**What was found.** Docker's own Compose-project switch (`useSearchState.ts`) already had a full invalidation
+lifecycle: abort the in-flight request, clear `searchResult`/`searchError`/`loadMoreError`/
+`lastSearchedRange`/`selectedIndex`/`breadcrumbLabel`/`originalSnapshot`/`contextRootIdentity`/`journeyQuery`/
+`journeyResult`/`journeyError` - documented in the code itself as "never show Project A rows under a Project B
+scope header." OpenShift's new scope mutations (Project/Workload/Pod/Container, all now selected from Search -
+see the main sections above) only updated the backend session and re-read the summary
+(`openShiftScopeState.refresh()`); they never touched this same search/investigation state. A real sequence
+this allowed: search under Project A, see Results A, change to Project B/Workload B/Pod B/Container B - the
+`ScopeTrail` header updates to B immediately, but Results A could remain on screen until the investigator
+happened to click Search again. This is exactly the scope-truthfulness violation the Docker lifecycle's own
+comment already named as never-acceptable, just not yet extended to OpenShift's own scope-mutation surface.
+
+**In-flight request race.** The same gap meant a Search started under Project A, still in flight when the
+investigator switched to Project B, had no guarantee its late response wouldn't paint under Project B's now-
+current header.
+
+**The fix - `invalidateSearchForScopeChange`.** Extracted the scope-agnostic half of Docker's own reset
+(everything except `selectedServices`/service rediscovery, which stays Docker-specific) into a new function on
+`useSearchState.ts`, exposed as `state.invalidateSearchForScopeChange`. Docker's existing Compose-project
+effect now calls it directly instead of duplicating the reset list - byte-for-byte the same behavior, proven
+by the four pre-existing Compose-project tests in `useSearchState.test.ts` still passing unchanged. `App.tsx`
+calls the same function from a new handler, `handleOpenShiftScopeChangedFromSearch`, wired as `Toolbar`'s
+`onOpenShiftScopeChanged` prop (replacing the plain `openShiftScopeState.refresh` it used before this
+recovery). This handler is the one and only place OpenShift's own invalidation lifecycle lives - never a
+second, duplicated implementation:
+
+```
+successful scope mutation (Project/Workload/Pod/Container, including clearing a refinement)
+  -> invalidateSearchForScopeChange()   // aborts the in-flight request, clears search/investigation state
+  -> openShiftScopeState.refresh()      // re-reads the one authoritative scope
+  -> (Project only) state.retryHealth() // see Finding 2's health-refresh lifecycle below
+  -> the investigator explicitly runs Search again - never automatic
+```
+
+`useOpenShiftScopeEditor.ts`'s `onScopeChanged` callback now carries a `level: 'project' | 'workload' | 'pod' |
+'container'` argument (a new `OpenShiftScopeChangeLevel` type) precisely so this handler can gate the health
+re-check to the one level that actually affects it, without guessing or over-firing.
+
+**Verification.**
+- `useSearchState.test.ts` - a new `invalidateSearchForScopeChange` describe block (4 tests): clears the
+  result set/pagination and aborts an in-flight request so a stale response can never land, with no automatic
+  re-search; clears an Inspector selection left over from the old scope; clears context/breadcrumb/original-
+  snapshot state; clears journey/investigation state. All four Docker Compose-project-switch tests (unchanged)
+  still pass, proving Docker's own behavior is preserved exactly.
+- `OpenShiftScopeSelect.test.tsx` - strengthened to assert the exact `level` argument for every mutation
+  (Project, Workload, Pod, Container, and clearing a Workload refinement back to "All workloads").
+- `e2e/source-experience-parity.spec.ts` (new tests, real app + real backend, mocked OpenShift HTTP responses):
+  "changing Project A -> Project B invalidates Project A's results immediately, and never auto-fires a new
+  Search"; "changing Workload A -> Workload B invalidates the old results the same way"; "a stale in-flight
+  Search from the old scope cannot land after the scope changes" (a request held open past the scope change,
+  then released - its response never appears in the table).
+
+## Finding 2 — stale source health guidance, and its refresh lifecycle
+
+**What was found.** `OpenShiftLogSource.health()` (backend) returns a `DEGRADED` warning reading "Select a
+project/namespace in **Settings** to search" for a connected-but-unscoped session - written when Settings
+still owned scope selection. It is now factually wrong: Search owns it. Separately, nothing re-checked health
+after a Project was selected from Search, so a `DEGRADED` badge could remain stale even once a valid Project
+made the source genuinely searchable.
+
+**The fix.**
+- `OpenShiftLogSource.java` - the warning now reads "Select a project/namespace in **Search** to search."
+  This is the one, current, active piece of runtime guidance this finding is about; no historical verification
+  document that quotes the old wording was rewritten (the note at the top of this section applies here too).
+- `App.tsx`'s `handleOpenShiftScopeChangedFromSearch` calls `state.retryHealth()` - but **only when
+  `level === 'project'`**, matching the backend truth precisely: `OpenShiftLogSource#health()` reads
+  `session.selectedProject()` only, never Workload/Pod/Container, so those levels never issue an unnecessary
+  health request. This is one explicit, targeted refresh per relevant mutation - never a polling loop, never a
+  periodic interval (`SourceHealthBadge`'s own doc comment already establishes "zero interval-based network
+  calls" as the existing convention this reuses, not a new one).
+
+**Verification.**
+- `OpenShiftLogSourceTest.java` (backend, new, 2 tests): `connectedWithNoProjectSelectedNamesSearchNotSettingsAsWhereToAct`
+  asserts the warning text exactly and that it never contains "Settings";
+  `selectingAProjectReconcilesHealthFromDegradedToUp` asserts the server-side truth itself transitions
+  DEGRADED -> UP the instant a Project is selected, independent of when/how often the frontend asks.
+- `e2e/source-experience-parity.spec.ts` (new, real app + real backend): "OpenShift health guidance names
+  Search, not Settings, and reconciles from Degraded to Healthy after a Project is selected - without
+  polling" (opens the health details popover while Degraded, asserts the exact wording and the absence of
+  "Settings", then selects a Project and asserts the badge reconciles to Healthy with exactly one health
+  request); "a Workload change does not trigger an extra health request" (asserts zero additional health
+  calls for a Workload-only mutation).
+
+## Live scope-change verification (no code change)
+
+Explicitly re-verified, per this recovery mission's own "only change Live if a concrete failing test proves a
+frontend truthfulness defect" instruction - none was found. `useLiveTail.ts`'s existing terminal-source-state
+handling (`isTerminalSourceState`, OS-1E) already treats a backend-detected `STALE` source status (the
+`OpenShiftLiveTailProvider#detectStaleness()` signal for a Project/Workload/Pod/Container change while Live is
+active) as a definitive stop - transitioning straight to `'stopped'` rather than attempting a generic
+reconnect that could silently re-resolve into a different, newer scope. This is independent of where scope-
+selection UI lives (Settings or Search), since it is driven by the backend's own atomic scope snapshot at SSE
+connect time, not by which frontend surface triggered the change. Re-ran the existing targeted test
+(`useLiveTail.test.ts`, "STALE at the moment of disconnect also suppresses the generic reconnect") and
+confirmed it still passes, preserving this behavior unchanged.
+
+## Full regression gate
+
+```
+LOCAL_TYPECHECK=PASS            # npm run typecheck
+LOCAL_FRONTEND_UNIT=PASS        # 1177/1177 (includes 4 new invalidateSearchForScopeChange tests and 3 new OpenShiftScopeSelect level-wiring tests added this mission)
+LOCAL_BACKEND=PASS              # 1426/1426 (1424 baseline + 2 new OpenShiftLogSourceTest cases)
+LOCAL_BUILD=PASS                # npm run build
+LOCAL_E2E=PASS                  # 331/332, 1 pre-existing NOT_AVAILABLE real-cluster skip, across 4 shards
+```
+
+**A real, pre-existing E2E test race was found and fixed along the way** (not a regression this mission's own
+feature work introduced): `pre-closure-functional-recovery-2.spec.ts`'s "switching to Custom reveals host/port
+fields..." test called `customRadio.focus()` without `await`, a latent race that happened to resolve in time
+before this mission's removal of Settings' own scope-editing UI (above the proxy fieldset in the same panel)
+shifted render timing enough to expose it for real, failing once in a full-suite shard run. Fixed by adding
+the missing `await`; reverified with 3 repeated full-file runs at 100% pass, then the full E2E shard rerun at
+100% pass.
+
+## Final requirement reconciliation (recovery)
+
+```
+MISSION=SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1
+STATUS=COMPLETE
+START_HEAD=bbc7bdbd1c8723a84ddd400095aa20958cb2d57a
+
+STALE_RESULTS_AFTER_PROJECT_CHANGE=FIXED_AND_VERIFIED
+STALE_RESULTS_AFTER_WORKLOAD_CHANGE=FIXED_AND_VERIFIED
+STALE_RESULTS_AFTER_POD_CHANGE=FIXED_AND_VERIFIED (same invalidateSearchForScopeChange path, unit + wiring-level E2E)
+STALE_RESULTS_AFTER_CONTAINER_CHANGE=FIXED_AND_VERIFIED (same invalidateSearchForScopeChange path, unit + wiring-level E2E)
+
+OLD_SCOPE_INFLIGHT_REQUEST_ABORTED=YES
+OLD_SCOPE_RESPONSE_CANNOT_LAND=YES
+OLD_SCOPE_INSPECTOR_CLEARED=YES
+OLD_SCOPE_CONTEXT_CLEARED=YES
+OLD_SCOPE_INVESTIGATION_CLEARED=YES
+AUTO_SEARCH_ON_SCOPE_CHANGE=NO
+
+DOCKER_SCOPE_INVALIDATION_PRESERVED=YES (same 4 pre-existing tests, unchanged, still passing)
+
+OPENSHIFT_HEALTH_GUIDANCE_SEARCH_NOT_SETTINGS=YES
+OPENSHIFT_HEALTH_REFRESH_AFTER_PROJECT_CHANGE=YES (Project only, no polling)
+
+OPENSHIFT_LIVE_SCOPE_CHANGE_TRUTHFULNESS=PRESERVED_NO_CODE_CHANGE_NEEDED
+
+SETTINGS_CONNECTION_ONLY=YES (unchanged from the prior mission)
+SEARCH_SCOPE_AUTHORITY=YES (unchanged from the prior mission)
+SINGLE_BACKEND_SCOPE_AUTHORITY=YES (unchanged from the prior mission)
+
+LOCAL_TYPECHECK=PASS
+LOCAL_FRONTEND_UNIT=PASS
+LOCAL_BACKEND=PASS
+LOCAL_BUILD=PASS
+LOCAL_E2E=PASS
+
+REAL_OPENSHIFT_VALIDATION=NOT_AVAILABLE
+
+SOURCE_EXPERIENCE_PARITY_IMPLEMENTED=YES
+UNTRACKED_OWNER_REQUIREMENTS=0
+
+PR61_OPEN=YES
+PR61_DRAFT=YES
+PR61_NOT_MERGED=YES
+MERGE_AUTHORIZED=NO
+
+NEXT_ACTION=CHATGPT_OWNER_SOURCE_PARITY_RECOVERY_REVIEW
+```

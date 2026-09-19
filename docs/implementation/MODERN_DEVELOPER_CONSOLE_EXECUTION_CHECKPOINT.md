@@ -2159,3 +2159,52 @@ MERGE_AUTHORIZED=NO
 PR_61_STATE=OPEN, DRAFT, NOT_MERGED
 NEXT_ACTION=CHATGPT_OWNER_SOURCE_PARITY_REVIEW
 ```
+
+## Session 18 — Source Experience Parity Targeted Recovery 1 (owner review closure)
+
+`MISSION=SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1` - ChatGPT owner review of Session 17's implementation
+found two concrete closure gaps, both fixed here. Does not redo the parity implementation or any visual/a11y/
+responsive audit.
+
+- **Finding 1 (primary defect) - stale-result scope mismatch**: OpenShift's own Project/Workload/Pod/Container
+  mutations (Session 17) updated the backend session and the lifted scope summary, but never invalidated
+  `useSearchState`'s own search/investigation state - unlike Docker's existing Compose-project switch, which
+  already had a full "never show Project A rows under a Project B scope header" reset. Extracted that reset's
+  scope-agnostic half into a new `invalidateSearchForScopeChange` function (Docker's own effect now calls it
+  too, byte-for-byte the same behavior - its 4 pre-existing tests still pass unchanged), and wired `App.tsx`'s
+  new `handleOpenShiftScopeChangedFromSearch` to call it after every successful OpenShift scope mutation -
+  aborting any in-flight request from the old scope, clearing Inspector/context/journey state, and never
+  auto-firing a new Search.
+- **Finding 2 - stale health guidance**: `OpenShiftLogSource.health()`'s DEGRADED warning said "Select a
+  project/namespace in **Settings** to search" - stale since Session 17 moved scope selection to Search.
+  Corrected to say Search. Added a precise health-refresh lifecycle: `handleOpenShiftScopeChangedFromSearch`
+  re-checks health only for a Project change (the one level `OpenShiftLogSource#health()` actually depends on)
+  - no polling, one explicit request per relevant mutation.
+- **Live**: explicitly re-verified, no code change - the existing `STALE` terminal-source-state handling in
+  `useLiveTail.ts` (OS-1E) already protects against presenting a stale stream under a new scope, independent
+  of where scope-selection UI lives.
+- **A real, pre-existing E2E test race found and fixed**: `pre-closure-functional-recovery-2.spec.ts`'s own
+  unawaited `customRadio.focus()` call, exposed for real (not caused by any functional regression) once this
+  mission's scope-editing removal from Settings shifted render timing in that same panel.
+- **Full regression gate**: `npm run typecheck` PASS, frontend unit suite PASS (1177/1177), backend suite PASS
+  (1426/1426), production build PASS, full E2E suite PASS (331/332, 1 pre-existing `NOT_AVAILABLE` skip)
+  across 4 shards.
+
+```
+MISSION=SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1
+START_HEAD=bbc7bdbd1c8723a84ddd400095aa20958cb2d57a
+STALE_RESULTS_AFTER_SCOPE_CHANGE=FIXED_AND_VERIFIED (Project/Workload/Pod/Container, including clearing a refinement)
+OLD_SCOPE_INFLIGHT_REQUEST_ABORTED=YES
+AUTO_SEARCH_ON_SCOPE_CHANGE=NO
+DOCKER_SCOPE_INVALIDATION_PRESERVED=YES
+OPENSHIFT_HEALTH_GUIDANCE_SEARCH_NOT_SETTINGS=YES
+OPENSHIFT_HEALTH_REFRESH_AFTER_PROJECT_CHANGE=YES
+OPENSHIFT_LIVE_SCOPE_CHANGE_TRUTHFULNESS=PRESERVED_NO_CODE_CHANGE_NEEDED
+FULL_REGRESSION_GATE=PASS
+REAL_OPENSHIFT_VALIDATION=NOT_AVAILABLE
+SOURCE_EXPERIENCE_PARITY_IMPLEMENTED=YES
+UNTRACKED_OWNER_REQUIREMENTS=0
+MERGE_AUTHORIZED=NO
+PR_61_STATE=OPEN, DRAFT, NOT_MERGED
+NEXT_ACTION=CHATGPT_OWNER_SOURCE_PARITY_RECOVERY_REVIEW
+```
