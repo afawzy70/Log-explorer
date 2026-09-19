@@ -9,6 +9,7 @@ import { useLiveTail } from '../features/live/useLiveTail';
 import { useLiveKeyboardShortcuts } from '../features/live/useLiveKeyboardShortcuts';
 import { useSearchState } from './useSearchState';
 import { useOpenShiftScopeSummary } from '../features/settings/useOpenShiftScopeSummary';
+import type { OpenShiftScopeChangeLevel } from '../features/search/openshift/useOpenShiftScopeEditor';
 import { useProductivityShortcuts } from './useProductivityShortcuts';
 import { ShortcutRegistryProvider } from '../shared/keyboard/ShortcutRegistry';
 import { useTheme } from '../shared/theme/useTheme';
@@ -130,6 +131,27 @@ function AppContent() {
   // `Shell`.
   const mappingProject = resolveMappingProject(state, openShiftScopeState.scope);
 
+  /**
+   * SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1 - the invalidation lifecycle for a scope mutation made from
+   * Search's own `OpenShiftScopeSelect` (never for Settings' connect/disconnect, which stays on the plain
+   * `openShiftScopeState.refresh` it already used - see `SettingsWorkspace`'s own call site below). A result
+   * set may never remain presented as belonging to a newly-selected scope that did not produce it:
+   *   1. Invalidate any search/investigation state left over from the old scope (aborts an in-flight request
+   *      too - see `invalidateSearchForScopeChange`'s own doc comment) - never automatically re-runs Search.
+   *   2. Re-read the one authoritative OpenShift scope (`Shell`'s `ScopeTrail` and this same handler's caller
+   *      both then reflect it).
+   *   3. Only for a Project change - the one level `OpenShiftLogSource#health()` (backend) actually depends
+   *      on - re-check source health, so a `DEGRADED "no project selected"` badge reconciles to the truth as
+   *      soon as a valid Project is chosen, without polling.
+   */
+  function handleOpenShiftScopeChangedFromSearch(level: OpenShiftScopeChangeLevel) {
+    state.invalidateSearchForScopeChange();
+    openShiftScopeState.refresh();
+    if (level === 'project') {
+      state.retryHealth();
+    }
+  }
+
   const liveModeActive = live.connectionState !== 'idle';
   useLiveKeyboardShortcuts(live, liveModeActive);
 
@@ -214,7 +236,7 @@ function AppContent() {
             <Toolbar
               state={state}
               openShiftScope={openShiftScopeState.scope}
-              onOpenShiftScopeChanged={openShiftScopeState.refresh}
+              onOpenShiftScopeChanged={handleOpenShiftScopeChangedFromSearch}
               onStartLive={
                 state.selectedSourceId
                   ? () => live.start(state.selectedSourceId!, state.selectedServices, state.selectedComposeProject ?? undefined)

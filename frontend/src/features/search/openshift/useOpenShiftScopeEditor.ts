@@ -18,6 +18,14 @@ import type {
 } from '../../../shared/api/types';
 import { parseWorkloadOptionValue } from './workloadKindLabels';
 
+/**
+ * SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1 - which scope level a successful mutation changed. Carried so
+ * the caller can reconcile source health precisely: `OpenShiftLogSource#health()` (backend) depends only on
+ * `selectedProject` - Workload/Pod/Container changes never affect it - so only `'project'` needs to trigger a
+ * health re-check, never a blanket "refresh health on every scope click."
+ */
+export type OpenShiftScopeChangeLevel = 'project' | 'workload' | 'pod' | 'container';
+
 export interface OpenShiftScopeEditor {
   connection: OpenShiftConnectionSummary | null;
   /** Set only when the connection fetch itself failed (distinct from "still loading" - both start as `null`). */
@@ -44,12 +52,15 @@ export interface OpenShiftScopeEditor {
  * own doc comment). There is still exactly ONE authoritative scope: the
  * backend session (`OpenShiftSession`, OS-1B) - this hook only issues the
  * same mutation calls Settings used to issue directly, then calls
- * `onScopeChanged` so the ALREADY-LIFTED `useOpenShiftScopeSummary`
+ * `onScopeChanged(level)` so the ALREADY-LIFTED `useOpenShiftScopeSummary`
  * instance in `App.tsx` re-reads that one truth (never a second, parallel
- * scope authority). `scope` (that same lifted summary) is read, not
- * re-fetched, to seed the current Workload/Pod/Container selection on
- * mount/reconnect - avoiding a duplicate `GET /scope` call for data this
- * hook's caller already has.
+ * scope authority) AND - SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1 -
+ * invalidates any search/investigation results that belonged to the old
+ * scope, so a result set can never remain presented as belonging to a
+ * newly-selected scope that did not produce it. `scope` (that same lifted
+ * summary) is read, not re-fetched, to seed the current Workload/Pod/
+ * Container selection on mount/reconnect - avoiding a duplicate `GET
+ * /scope` call for data this hook's caller already has.
  *
  * Discovery calls carry a monotonic generation token (the same "a slow
  * previous response must never overwrite a newer selection" pattern
@@ -60,7 +71,7 @@ export interface OpenShiftScopeEditor {
 export function useOpenShiftScopeEditor(
   active: boolean,
   scope: OpenShiftScopeSummary | null,
-  onScopeChanged: () => void,
+  onScopeChanged: (level: OpenShiftScopeChangeLevel) => void,
 ): OpenShiftScopeEditor {
   const [connection, setConnection] = useState<OpenShiftConnectionSummary | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -195,7 +206,7 @@ export function useOpenShiftScopeEditor(
     selectOpenShiftProject(project)
       .then((updated) => {
         setConnection(updated);
-        onScopeChanged();
+        onScopeChanged('project');
         if (project) {
           void loadWorkloads();
         }
@@ -217,7 +228,7 @@ export function useOpenShiftScopeEditor(
     selectOpenShiftWorkload(workload)
       .then(() => {
         setSelectedWorkload(workload);
-        onScopeChanged();
+        onScopeChanged('workload');
         void loadPods();
       })
       .catch(() => setScopeError('That workload is no longer available. Refresh and try again.'))
@@ -234,7 +245,7 @@ export function useOpenShiftScopeEditor(
     selectOpenShiftPod(pod)
       .then(() => {
         setSelectedPod(pod);
-        onScopeChanged();
+        onScopeChanged('pod');
         if (pod) {
           void loadContainers();
         }
@@ -250,7 +261,7 @@ export function useOpenShiftScopeEditor(
     selectOpenShiftContainer(container)
       .then(() => {
         setSelectedContainer(container);
-        onScopeChanged();
+        onScopeChanged('container');
       })
       .catch(() => setScopeError('That container is no longer available on this pod.'))
       .finally(() => setBusy(false));

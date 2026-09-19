@@ -3,6 +3,7 @@ import { SourceSelect } from '../features/search/SourceSelect';
 import { ComposeProjectSelect } from '../features/search/ComposeProjectSelect';
 import { ServiceMultiSelect } from '../features/search/ServiceMultiSelect';
 import { OpenShiftScopeSelect } from '../features/search/openshift/OpenShiftScopeSelect';
+import type { OpenShiftScopeChangeLevel } from '../features/search/openshift/useOpenShiftScopeEditor';
 import { TimeRangeControl } from '../features/timerange/TimeRangeControl';
 import { SeverityFilter } from '../features/search/SeverityFilter';
 import { UniversalSearch } from '../features/search/UniversalSearch';
@@ -28,13 +29,13 @@ export interface ToolbarProps {
    */
   openShiftScope?: OpenShiftScopeSummary | null;
   /**
-   * SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - re-reads the authoritative
-   * OpenShift scope (`App.tsx`'s `openShiftScopeState.refresh`) after a
-   * Project/Workload/Pod/Container selection made from THIS toolbar's own
-   * `OpenShiftScopeSelect`. Undefined only in tests/stories that render
-   * `Toolbar` without ever selecting OpenShift as the source.
+   * SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT / TARGETED_RECOVERY_1 - fires after a successful
+   * Project/Workload/Pod/Container selection made from THIS toolbar's own `OpenShiftScopeSelect`.
+   * `App.tsx`'s handler re-reads the authoritative OpenShift scope, invalidates any stale search/
+   * investigation results left over from the old scope, and reconciles source health for a Project change.
+   * Undefined only in tests/stories that render `Toolbar` without ever selecting OpenShift as the source.
    */
-  onOpenShiftScopeChanged?: () => void;
+  onOpenShiftScopeChanged?: (level: OpenShiftScopeChangeLevel) => void;
 }
 
 /**

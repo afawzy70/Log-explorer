@@ -168,7 +168,12 @@ test.describe('PCFR2 Part B - user-configurable OpenShift/Loki proxy', () => {
   test('3-5. switching to Custom reveals host/port fields, both keyboard-reachable and correctly labeled', async ({ page }) => {
     const panel = await openProxySettings(page);
     const customRadio = panel.getByRole('radio', { name: /^custom proxy$/i });
-    customRadio.focus();
+    // SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1 - this `.focus()` call was missing its `await` (a
+    // pre-existing race, not a functional regression - the proxy fieldset itself is untouched by this
+    // mission). It happened to resolve before the following keypress by coincidental timing before Settings'
+    // own scope-editing UI was removed from above it in this same panel; that removal shifted render timing
+    // enough to expose the race for real. Found via a genuine, reproducible E2E failure, not assumed.
+    await customRadio.focus();
     await expect(customRadio).toHaveAttribute('type', 'radio');
     await page.keyboard.press(' ');
     await expect(customRadio).toBeChecked();

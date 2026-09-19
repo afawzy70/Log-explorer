@@ -16,8 +16,8 @@ const CONNECTED_SUMMARY = {
   connectionName: 'Production',
   server: 'api.example.com:6443',
   username: 'developer',
-  projectCount: 1,
-  projects: ['payments-dev'],
+  projectCount: 2,
+  projects: ['payments-dev', 'accounts-dev'],
   selectedProject: null as string | null,
   tlsVerified: true,
   usingPrivateCa: false,
@@ -133,8 +133,26 @@ async function mockConnectedOpenShift(page: Page) {
     jsonRoute(route, { status: 'UP', message: null, checkedAt: new Date().toISOString(), warnings: [] }),
   );
   await page.route('**/api/v1/sources/fixture/services', (route) => jsonRoute(route, []));
+  // SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1 - mirrors OpenShiftLogSource#health() exactly: DEGRADED with
+  // a "select a project" warning while connected but unscoped, UP once a project is selected - so a real
+  // Project change can be shown to reconcile the health badge without any separate polling mechanism.
   await page.route('**/api/v1/sources/openshift/health', (route) =>
-    jsonRoute(route, { status: 'UP', message: null, checkedAt: new Date().toISOString(), warnings: [] }),
+    jsonRoute(
+      route,
+      scope.selectedProject
+        ? {
+            status: 'UP',
+            message: `Connected to api.example.com:6443 (${scope.selectedProject})`,
+            checkedAt: new Date().toISOString(),
+            warnings: [],
+          }
+        : {
+            status: 'DEGRADED',
+            message: 'Connected to api.example.com:6443, but no project/namespace is selected',
+            checkedAt: new Date().toISOString(),
+            warnings: ['Select a project/namespace in Search to search'],
+          },
+    ),
   );
   await page.route('**/api/v1/settings/field-mapping**', (route) =>
     jsonRoute(route, { sourceId: 'openshift', scopeLabel: null, fields: [], modifiedFromDefault: false, searchReady: true }),
@@ -236,5 +254,171 @@ test.describe('SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - one primary Search pi
     await page.getByRole('combobox', { name: /^workload$/i }).selectOption({ label: 'payment-api (Deployment)' });
 
     await assertNoHorizontalOverflow(page);
+  });
+});
+
+test.describe('SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1 - scope-change invalidation and health reconciliation', () => {
+  test('changing Project A -> Project B invalidates Project A\'s results immediately, and never auto-fires a new Search', async ({
+    page,
+  }) => {
+    await mockConnectedOpenShift(page);
+    let searchCallCount = 0;
+    await page.route('**/api/v1/logs/search', (route) => {
+      searchCallCount += 1;
+      jsonRoute(route, {
+        events: [OPENSHIFT_EVENT],
+        counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false },
+        nextCursor: null,
+        queryPlan: null,
+      });
+    });
+
+    await page.goto('/');
+    await page.getByRole('combobox', { name: /^source$/i }).selectOption('openshift');
+    await page.getByRole('combobox', { name: /^project$/i }).selectOption('payments-dev');
+    await page.getByRole('button', { name: /^search$/i }).click();
+
+    const row = page.locator('tbody tr').filter({ hasText: 'Payment authorization failed' });
+    await expect(row).toBeVisible();
+    expect(searchCallCount).toBe(1);
+
+    // Project A -> Project B: Project A's row must disappear immediately, without the investigator clicking
+    // Search again, and no automatic Search must fire on their behalf.
+    await page.getByRole('combobox', { name: /^project$/i }).selectOption('accounts-dev');
+    await expect(row).toHaveCount(0);
+    await expect(page.getByText(/run a search to see results/i)).toBeVisible();
+
+    await page.waitForTimeout(300); // give a wrongly-auto-fired search time to appear, if one exists
+    expect(searchCallCount).toBe(1);
+  });
+
+  test('changing Workload A -> Workload B invalidates the old results the same way', async ({ page }) => {
+    await mockConnectedOpenShift(page);
+    let searchCallCount = 0;
+    await page.route('**/api/v1/logs/search', (route) => {
+      searchCallCount += 1;
+      jsonRoute(route, {
+        events: [OPENSHIFT_EVENT],
+        counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false },
+        nextCursor: null,
+        queryPlan: null,
+      });
+    });
+    // A second workload so the select has something to change to.
+    await page.route('**/api/v1/sources/openshift/workloads', (route) =>
+      jsonRoute(route, {
+        status: 'SUCCESS',
+        workloads: [
+          { kind: 'DEPLOYMENT', name: 'payment-api', desiredReplicas: 2, readyReplicas: 2 },
+          { kind: 'STATEFUL_SET', name: 'payment-ledger', desiredReplicas: 1, readyReplicas: 1 },
+        ],
+        kindOutcomes: [{ kind: 'DEPLOYMENT', status: 'AVAILABLE' }, { kind: 'STATEFUL_SET', status: 'AVAILABLE' }],
+      }),
+    );
+
+    await page.goto('/');
+    await page.getByRole('combobox', { name: /^source$/i }).selectOption('openshift');
+    await page.getByRole('combobox', { name: /^project$/i }).selectOption('payments-dev');
+    await page.getByRole('combobox', { name: /^workload$/i }).selectOption({ label: 'payment-api (Deployment)' });
+    await page.getByRole('button', { name: /^search$/i }).click();
+
+    const row = page.locator('tbody tr').filter({ hasText: 'Payment authorization failed' });
+    await expect(row).toBeVisible();
+    expect(searchCallCount).toBe(1);
+
+    await page.getByRole('combobox', { name: /^workload$/i }).selectOption({ label: 'payment-ledger (StatefulSet)' });
+    await expect(row).toHaveCount(0);
+
+    await page.waitForTimeout(300);
+    expect(searchCallCount).toBe(1);
+  });
+
+  test('a stale in-flight Search from the old scope cannot land after the scope changes', async ({ page }) => {
+    await mockConnectedOpenShift(page);
+    let releaseFirstSearch: (() => void) | null = null;
+    let searchCallCount = 0;
+    await page.route('**/api/v1/logs/search', async (route) => {
+      searchCallCount += 1;
+      if (searchCallCount === 1) {
+        await new Promise<void>((resolve) => { releaseFirstSearch = resolve; });
+      }
+      jsonRoute(route, {
+        events: [OPENSHIFT_EVENT],
+        counts: { estimatedTotal: 1, returned: 1, visible: 1, limit: 200, truncated: false },
+        nextCursor: null,
+        queryPlan: null,
+      });
+    });
+
+    await page.goto('/');
+    await page.getByRole('combobox', { name: /^source$/i }).selectOption('openshift');
+    await page.getByRole('combobox', { name: /^project$/i }).selectOption('payments-dev');
+    await page.getByRole('button', { name: /^search$/i }).click();
+    await expect.poll(() => searchCallCount).toBe(1); // in flight, held open by releaseFirstSearch
+
+    // Change scope while that request is still in flight, then let its (stale) response land.
+    await page.getByRole('combobox', { name: /^project$/i }).selectOption('accounts-dev');
+    releaseFirstSearch?.();
+
+    // The stale response must never populate the table under the new scope.
+    await page.waitForTimeout(300);
+    await expect(page.locator('tbody tr').filter({ hasText: 'Payment authorization failed' })).toHaveCount(0);
+  });
+
+  test('OpenShift health guidance names Search, not Settings, and reconciles from Degraded to Healthy after a Project is selected - without polling', async ({
+    page,
+  }) => {
+    await mockConnectedOpenShift(page);
+    await page.goto('/');
+    await page.getByRole('combobox', { name: /^source$/i }).selectOption('openshift');
+
+    const badge = page.getByRole('status').filter({ hasText: /degraded/i });
+    await expect(badge).toBeVisible();
+    await badge.getByRole('button', { name: /source health details/i }).click();
+    const dialog = page.getByRole('dialog', { name: /source health details/i });
+    await expect(dialog).toContainText('Select a project/namespace in Search to search');
+    await expect(dialog).not.toContainText('Settings');
+    await page.keyboard.press('Escape');
+
+    // A second, more specific route registered on top of `mockConnectedOpenShift`'s own dynamic health route
+    // (Playwright runs the most-recently-registered matching handler first) - it must still `jsonRoute` the
+    // same scope-aware response itself, never `route.continue()` (which would bypass the mock and hit the
+    // real, actually-disconnected dev backend instead).
+    let healthCallCount = 0;
+    await page.route('**/api/v1/sources/openshift/health', (route) => {
+      healthCallCount += 1;
+      jsonRoute(
+        route,
+        scope.selectedProject
+          ? { status: 'UP', message: `Connected to api.example.com:6443 (${scope.selectedProject})`, checkedAt: new Date().toISOString(), warnings: [] }
+          : { status: 'DEGRADED', message: 'Connected to api.example.com:6443, but no project/namespace is selected', checkedAt: new Date().toISOString(), warnings: ['Select a project/namespace in Search to search'] },
+      );
+    });
+
+    await page.getByRole('combobox', { name: /^project$/i }).selectOption('payments-dev');
+
+    await expect(page.getByRole('status').filter({ hasText: /healthy/i })).toBeVisible();
+    // Exactly one explicit health re-check for this one Project mutation - never a polling loop.
+    expect(healthCallCount).toBe(1);
+  });
+
+  test('a Workload change does not trigger an extra health request (only Project affects OpenShiftLogSource#health())', async ({
+    page,
+  }) => {
+    await mockConnectedOpenShift(page);
+    await page.goto('/');
+    await page.getByRole('combobox', { name: /^source$/i }).selectOption('openshift');
+    await page.getByRole('combobox', { name: /^project$/i }).selectOption('payments-dev');
+    await expect(page.getByRole('status').filter({ hasText: /healthy/i })).toBeVisible();
+
+    let healthCallCount = 0;
+    await page.route('**/api/v1/sources/openshift/health', (route) => {
+      healthCallCount += 1;
+      jsonRoute(route, { status: 'UP', message: `Connected to api.example.com:6443 (${scope.selectedProject})`, checkedAt: new Date().toISOString(), warnings: [] });
+    });
+
+    await page.getByRole('combobox', { name: /^workload$/i }).selectOption({ label: 'payment-api (Deployment)' });
+    await page.waitForTimeout(300);
+    expect(healthCallCount).toBe(0);
   });
 });

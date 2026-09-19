@@ -103,6 +103,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     health: null,
     healthLoading: false,
     retryHealth: vi.fn(),
+    invalidateSearchForScopeChange: vi.fn(),
     searchResult: null,
     searchLoading: false,
     loadingMore: false,

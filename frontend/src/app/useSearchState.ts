@@ -611,6 +611,30 @@ export function useSearchState() {
   }, [selectedSourceId]);
 
   /**
+   * SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1 - the source/scope-agnostic half of the "never show scope
+   * A's results under scope B's header" invariant UX-R3 §11 first established for Docker's own Compose
+   * project switch (below). Extracted so OpenShift's own scope mutations (Project/Workload/Pod/Container, all
+   * now selected from Search - see `OpenShiftScopeSelect.tsx`) can reuse the identical reset instead of a
+   * second, driftable copy. Deliberately does NOT touch `selectedServices`/service (re)discovery - that half
+   * is Docker-specific and stays in the effect below, which calls this function for its own scope-agnostic
+   * reset and then does its own Docker-specific work.
+   */
+  const invalidateSearchForScopeChange = useCallback(() => {
+    activeRequestRef.current?.abort(); // stale in-flight A request must never resolve into B's view
+    setSearchResult(null);
+    setSearchError(null);
+    setLoadMoreError(null);
+    setLastSearchedRange(null);
+    setSelectedIndex(null);
+    setBreadcrumbLabel(null);
+    setOriginalSnapshot(null);
+    setContextRootIdentity(null);
+    setJourneyQuery(null);
+    setJourneyResult(null);
+    setJourneyError(null);
+  }, []);
+
+  /**
    * UX-R3 §11 (project-switch lifecycle) - fires whenever the selected
    * Compose project itself changes (including "unselected" -> a real
    * project, and switching directly between two real projects). Mirrors
@@ -633,18 +657,7 @@ export function useSearchState() {
     if (!source?.capabilities.composeProjectScoping) {
       return; // this source has no project concept - nothing to switch
     }
-    activeRequestRef.current?.abort(); // stale in-flight A request must never resolve into B's view
-    setSearchResult(null);
-    setSearchError(null);
-    setLoadMoreError(null);
-    setLastSearchedRange(null);
-    setSelectedIndex(null);
-    setBreadcrumbLabel(null);
-    setOriginalSnapshot(null);
-    setContextRootIdentity(null);
-    setJourneyQuery(null);
-    setJourneyResult(null);
-    setJourneyError(null);
+    invalidateSearchForScopeChange();
     setSelectedServices([]); // B's own service set is about to be (re)discovered - A's selections cannot carry over
     if (source.capabilities.serviceDiscovery) {
       // Same generation guard as the source-change effect: switching
@@ -1321,6 +1334,15 @@ export function useSearchState() {
     health,
     healthLoading,
     retryHealth: () => selectedSourceId && checkHealth(selectedSourceId),
+    /**
+     * SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1 - the same reset Docker's own Compose-project switch
+     * already performs (search/investigation state only, never services - that half is source-specific).
+     * `App.tsx` calls this after a successful OpenShift Project/Workload/Pod/Container mutation, so a result
+     * set can never remain presented as belonging to a scope that did not produce it. Never triggers a new
+     * search itself - the user runs Search again explicitly, exactly like every other scope change in this
+     * app.
+     */
+    invalidateSearchForScopeChange,
     searchResult,
     searchLoading,
     loadingMore,

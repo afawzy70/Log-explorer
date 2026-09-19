@@ -1,14 +1,21 @@
 import { useId } from 'react';
 import type { OpenShiftScopeSummary } from '../../../shared/api/types';
 import { useOpenShiftScopeEditor } from './useOpenShiftScopeEditor';
+import type { OpenShiftScopeChangeLevel } from './useOpenShiftScopeEditor';
 import { OpenShiftScopeControls } from './OpenShiftScopeControls';
 import styles from './OpenShiftScopeControls.module.css';
 
 export interface OpenShiftScopeSelectProps {
   /** The already-lifted, authoritative scope summary (`App.tsx`'s `openShiftScopeState.scope`) - read, not re-fetched, to seed the current Workload/Pod/Container selection. */
   scope: OpenShiftScopeSummary | null;
-  /** Re-reads the one authoritative scope after any successful mutation here (same `openShiftScopeState.refresh` Settings already used). */
-  onScopeChanged: () => void;
+  /**
+   * Fires after any successful mutation here, naming which level changed. `App.tsx`'s handler re-reads the
+   * one authoritative scope (same `openShiftScopeState.refresh` Settings already used), invalidates any
+   * search/investigation results left over from the old scope (SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1),
+   * and - only for `'project'`, the one level that affects `OpenShiftLogSource#health()` - re-checks source
+   * health.
+   */
+  onScopeChanged: (level: OpenShiftScopeChangeLevel) => void;
 }
 
 /**

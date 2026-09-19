@@ -115,7 +115,100 @@ describe('OpenShiftScopeSelect', () => {
     expect(screen.getByRole('option', { name: 'payments' })).toBeInTheDocument();
     await user.selectOptions(select, 'payments');
 
-    await waitFor(() => expect(onScopeChanged).toHaveBeenCalled());
+    // SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1 - the exact level argument is the wiring contract
+    // App.tsx's handler relies on to invalidate old-scope search state and reconcile health precisely.
+    await waitFor(() => expect(onScopeChanged).toHaveBeenCalledWith('project'));
+  });
+
+  it('SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1 - reports the correct level for a Workload, Pod, and Container change, in order', async () => {
+    stubFetch((url, init) => {
+      if (url.endsWith('/workloads')) return jsonResponse(WORKLOAD_DISCOVERY);
+      if (url.endsWith('/workload') && init?.method === 'PUT') {
+        return jsonResponse({
+          selectedProject: 'payments',
+          discoveryApi: 'PROJECTS',
+          selectedWorkloadKind: 'DEPLOYMENT',
+          selectedWorkloadName: 'payment-api',
+          selectedPod: null,
+          selectedContainer: null,
+        });
+      }
+      if (url.endsWith('/pods')) return jsonResponse(PODS);
+      if (url.endsWith('/pod') && init?.method === 'PUT') {
+        return jsonResponse({
+          selectedProject: 'payments',
+          discoveryApi: 'PROJECTS',
+          selectedWorkloadKind: 'DEPLOYMENT',
+          selectedWorkloadName: 'payment-api',
+          selectedPod: 'payment-api-abc',
+          selectedContainer: null,
+        });
+      }
+      if (url.endsWith('/containers')) return jsonResponse(['application']);
+      if (url.endsWith('/container') && init?.method === 'PUT') {
+        return jsonResponse({
+          selectedProject: 'payments',
+          discoveryApi: 'PROJECTS',
+          selectedWorkloadKind: 'DEPLOYMENT',
+          selectedWorkloadName: 'payment-api',
+          selectedPod: 'payment-api-abc',
+          selectedContainer: 'application',
+        });
+      }
+      return jsonResponse(CONNECTED_WITH_PROJECT);
+    });
+    const onScopeChanged = vi.fn();
+    const user = userEvent.setup();
+    render(<OpenShiftScopeSelect scope={PROJECT_SCOPE} onScopeChanged={onScopeChanged} />);
+
+    await user.selectOptions(await screen.findByRole('combobox', { name: /^workload$/i }), 'DEPLOYMENT::payment-api');
+    await waitFor(() => expect(onScopeChanged).toHaveBeenCalledWith('workload'));
+
+    await user.selectOptions(await screen.findByRole('combobox', { name: /^pod$/i }), 'payment-api-abc');
+    await waitFor(() => expect(onScopeChanged).toHaveBeenCalledWith('pod'));
+
+    await user.selectOptions(await screen.findByRole('combobox', { name: /^container$/i }), 'application');
+    await waitFor(() => expect(onScopeChanged).toHaveBeenCalledWith('container'));
+
+    expect(onScopeChanged.mock.calls.map((c) => c[0])).toEqual(['workload', 'pod', 'container']);
+  });
+
+  it('SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1 - clearing a Workload refinement back to "All workloads" still reports a level, so the caller invalidates the narrower scope\'s results', async () => {
+    stubFetch((url, init) => {
+      if (url.endsWith('/workloads')) return jsonResponse(WORKLOAD_DISCOVERY);
+      if (url.endsWith('/workload') && init?.method === 'PUT') {
+        return jsonResponse({
+          selectedProject: 'payments',
+          discoveryApi: 'PROJECTS',
+          selectedWorkloadKind: null,
+          selectedWorkloadName: null,
+          selectedPod: null,
+          selectedContainer: null,
+        });
+      }
+      if (url.endsWith('/pods')) return jsonResponse(PODS);
+      return jsonResponse(CONNECTED_WITH_PROJECT);
+    });
+    const onScopeChanged = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <OpenShiftScopeSelect
+        scope={{
+          selectedProject: 'payments',
+          discoveryApi: 'PROJECTS',
+          selectedWorkloadKind: 'DEPLOYMENT',
+          selectedWorkloadName: 'payment-api',
+          selectedPod: null,
+          selectedContainer: null,
+        }}
+        onScopeChanged={onScopeChanged}
+      />,
+    );
+    await screen.findByRole('option', { name: 'payment-api (Deployment)' });
+
+    await user.selectOptions(screen.getByRole('combobox', { name: /^workload$/i }), '');
+
+    await waitFor(() => expect(onScopeChanged).toHaveBeenCalledWith('workload'));
   });
 
   it('discovers and lists workloads for the selected project, and does not spam the UI about an absent DeploymentConfig API', async () => {

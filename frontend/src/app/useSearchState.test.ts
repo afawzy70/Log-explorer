@@ -1289,4 +1289,78 @@ describe('useSearchState', () => {
       expect(searchCalls[1].body).toContain('"composeProject":"project-a"');
     });
   });
+
+  /**
+   * SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1 - `invalidateSearchForScopeChange` is the extracted,
+   * source-agnostic half of the reset the Compose-project-switch tests above already prove for Docker
+   * (`App.tsx` calls it directly after a successful OpenShift Project/Workload/Pod/Container mutation - see
+   * `App.tsx`'s own `handleOpenShiftScopeChangedFromSearch`). These tests exercise the function itself, in
+   * isolation, the same way the Compose-project tests exercise it indirectly through `setSelectedComposeProject`.
+   */
+  describe('invalidateSearchForScopeChange (SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1)', () => {
+    it('clears the result set and pagination, aborts an in-flight search, and never auto-fires a new one', async () => {
+      const result = await renderReady();
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      const staleCall = searchCalls[0];
+
+      act(() => result.current.invalidateSearchForScopeChange());
+      expect(result.current.searchResult).toBeNull();
+      expect(result.current.selectedIndex).toBeNull();
+
+      // The stale in-flight request must never repopulate the (now newly-scoped) view, even if it resolves late.
+      staleCall.resolve(
+        jsonResponse({
+          events: [eventWithMessage('stale-old-scope-row')],
+          counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      expect(result.current.searchResult).toBeNull();
+
+      // No new search was fired automatically.
+      expect(searchCalls).toHaveLength(1);
+    });
+
+    it('clears an Inspector selection left over from the old scope', async () => {
+      const result = await searchedWithThreeEvents();
+      act(() => result.current.openInspector(1));
+      expect(result.current.selectedEvent).not.toBeNull();
+
+      act(() => result.current.invalidateSearchForScopeChange());
+      expect(result.current.selectedIndex).toBeNull();
+      expect(result.current.selectedEvent).toBeNull();
+    });
+
+    it('clears context/breadcrumb/original-snapshot state derived from the old scope', async () => {
+      const result = await searchedWithThreeEvents();
+      act(() => result.current.showContext(result.current.searchResult!.events[0]));
+      expect(result.current.breadcrumbLabel).not.toBeNull();
+      expect(result.current.contextRootIdentity).not.toBeNull();
+
+      act(() => result.current.invalidateSearchForScopeChange());
+      expect(result.current.breadcrumbLabel).toBeNull();
+      expect(result.current.contextRootIdentity).toBeNull();
+    });
+
+    it('clears journey/investigation state derived from the old scope', async () => {
+      const result = await renderReady();
+      act(() => result.current.openJourney('traceId', 'trace-old-scope'));
+      await waitFor(() => expect(journeyCalls).toHaveLength(1));
+      journeyCalls[0].resolve(
+        jsonResponse({
+          events: [eventWithMessage('related')],
+          counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await waitFor(() => expect(result.current.journeyResult).not.toBeNull());
+
+      act(() => result.current.invalidateSearchForScopeChange());
+      expect(result.current.journeyQuery).toBeNull();
+      expect(result.current.journeyResult).toBeNull();
+      expect(result.current.journeyError).toBeNull();
+    });
+  });
 });
