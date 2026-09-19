@@ -89,6 +89,16 @@ public class LogLineParser {
   }
 
   /**
+   * Applies the active classification rules to an already-parsed event —
+   * the deferred second half of {@link #parseUnclassified}. See that
+   * method's javadoc for why deferring this past the non-tag {@code
+   * EventFilters} checks is safe.
+   */
+  public CanonicalLogEvent classify(CanonicalLogEvent event) {
+    return classifier.classify(event);
+  }
+
+  /**
    * Owner mission "Service Filter, Docker Performance, and Verified
    * Default Mapping" §C review recovery — exposes {@link
    * FieldMappingProfileService#generation} through this class (every
@@ -132,7 +142,26 @@ public class LogLineParser {
     return classifier.classify(parseUnclassified(line, serviceSourceHint, scope));
   }
 
-  private CanonicalLogEvent parseUnclassified(String line, String serviceSourceHint, MappingScopeKey scope) {
+  /**
+   * Owner mission SEARCH_LATENCY_INVESTIGATION_AND_SAFE_OPTIMIZATION —
+   * field-mapping resolution only, deliberately withholding classification
+   * ({@link #classify}) so a caller can reject an event on every {@code
+   * EventFilters} condition EXCEPT tags (time range, severity, text,
+   * traceId, ...) before ever paying classification's cost, then classify
+   * only the survivors. Every field {@link com.logexplorer.core.classify.FieldRef}
+   * can address (message, service, severity, logger, ..., {@code extra.*},
+   * {@code mdc.*}) is already fully resolved on the returned event —
+   * classification's result is provably identical whether it runs now or
+   * later, since none of those fields come from adapter enrichment
+   * (sourceId, containerId, pod, ...) either; only {@link
+   * CanonicalLogEvent#tags()}/{@code classifications} are still absent
+   * until {@link #classify} runs. Never call this without either calling
+   * {@link #classify} on the result before returning it to a caller that
+   * displays tags, or discarding the event outright — a `LogSource` that
+   * forgets to classify a kept event would silently break the Tags column
+   * (CLAUDE.md §4) and the tags filter for that event.
+   */
+  public CanonicalLogEvent parseUnclassified(String line, String serviceSourceHint, MappingScopeKey scope) {
     if (line == null) {
       return malformed(null, serviceSourceHint);
     }

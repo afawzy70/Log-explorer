@@ -641,7 +641,7 @@ public class DirectPodLogProvider {
         // exactly for a search whose events all resolve to the session's
         // one currently-selected project.
         MappingScopeKey scope = MappingScopeKey.of(SOURCE_ID, attempt.target().namespace());
-        CanonicalLogEvent event = parser.parse(content, serviceHint, scope).toBuilder()
+        CanonicalLogEvent unclassified = parser.parseUnclassified(content, serviceHint, scope).toBuilder()
             .sourceId(SOURCE_ID)
             .namespace(attempt.target().namespace())
             .pod(attempt.target().podName())
@@ -649,8 +649,14 @@ public class DirectPodLogProvider {
             .sourceTimestamp(sourceTimestamp)
             .contextTargetProof(contextTargetProof)
             .build();
-        if (EventFilters.matches(event, request)) {
-          parsed.add(new ParsedEvent(event, attempt.target(), sequence));
+        // SEARCH_LATENCY_INVESTIGATION_AND_SAFE_OPTIMIZATION — classify
+        // only survivors of every non-tag filter; see DockerLogSource's
+        // matching comment for why this is provably equivalent.
+        if (EventFilters.matchesExceptTags(unclassified, request)) {
+          CanonicalLogEvent classified = parser.classify(unclassified);
+          if (EventFilters.tagsMatch(classified, request)) {
+            parsed.add(new ParsedEvent(classified, attempt.target(), sequence));
+          }
         }
         sequence++;
       }

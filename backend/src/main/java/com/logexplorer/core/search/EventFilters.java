@@ -40,6 +40,24 @@ public final class EventFilters {
   }
 
   public static boolean matches(CanonicalLogEvent event, SearchRequest request) {
+    return matchesExceptTags(event, request) && tagsMatch(event, request);
+  }
+
+  /**
+   * Owner mission SEARCH_LATENCY_INVESTIGATION_AND_SAFE_OPTIMIZATION — every
+   * {@link #matches} condition EXCEPT the tags check, so a caller can reject
+   * an event using only its cheap, already-parsed fields (time range,
+   * severity, text, structured fields, the DSL query) before ever running
+   * classification ({@code core.classify.EventClassifier}), which is the
+   * only thing {@link CanonicalLogEvent#tags()} ever depends on. Splitting
+   * this out changes nothing about which events a search returns — {@link
+   * #matches} is defined as exactly {@code matchesExceptTags && tagsMatch},
+   * identical to its own previous single-method body — it only lets a
+   * caller choose to classify strictly fewer events (every one this returns
+   * {@code false} for was never going to be returned regardless of its
+   * tags).
+   */
+  public static boolean matchesExceptTags(CanonicalLogEvent event, SearchRequest request) {
     // Malformed lines have no parsed timestamp by definition (LogLineParser
     // never fabricates one). Excluding them from every time-bounded search
     // would silently drop them from virtually all real usage - the
@@ -162,13 +180,22 @@ public final class EventFilters {
     if (!fieldMatches(filters.deviceIp(), raw.deviceIp())) {
       return false;
     }
-    // Owner mission "Event Classification, Extraction, and Portable Rules" -
-    // ANY selected tag. Classification already ran in LogLineParser, so the
-    // event carries its runtime tags here; tags never exist at the source.
-    if (!request.tags().isEmpty() && event.tags().stream().noneMatch(request.tags()::contains)) {
-      return false;
-    }
     return QueryEvaluator.evaluate(request.query(), event);
+  }
+
+  /**
+   * Owner mission "Event Classification, Extraction, and Portable Rules" -
+   * ANY selected tag. Classification already ran (by the time a caller
+   * checks this — see {@link #matchesExceptTags}'s own javadoc for why it
+   * is safe to defer classification until after every other condition
+   * passes), so the event carries its runtime tags here; tags never exist
+   * at the source. An empty {@code request.tags()} always matches (no tag
+   * restriction requested), so a caller with no tag filter never needs to
+   * call this at all if it wants to skip classification entirely for
+   * events it will discard anyway — see {@code DockerLogSource#searchBlocking}.
+   */
+  public static boolean tagsMatch(CanonicalLogEvent event, SearchRequest request) {
+    return request.tags().isEmpty() || event.tags().stream().anyMatch(request.tags()::contains);
   }
 
   private static boolean fieldMatches(String requested, String actual) {

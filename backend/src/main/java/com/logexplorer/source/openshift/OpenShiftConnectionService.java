@@ -66,6 +66,9 @@ public class OpenShiftConnectionService {
     }
 
     String proxyDisplay = client.proxyFor(command.server()).map(ProxyRoute::display).orElse(null);
+    String attemptId = OpenShiftConnectDiagnostics.newAttemptId();
+    long startNanos = System.nanoTime();
+    OpenShiftConnectDiagnostics.connectStarted(attemptId);
 
     return discoverProjectsOrNamespaces(
             command.server(), command.token(), command.certificateAuthorityPath())
@@ -84,7 +87,12 @@ public class OpenShiftConnectionService {
             session.markExpired();
           }
           return e;
-        });
+        })
+        .doOnSuccess(result -> OpenShiftConnectDiagnostics.connectSucceeded(
+            attemptId, OpenShiftConnectDiagnostics.millisSince(startNanos)))
+        .doOnError(error -> OpenShiftConnectDiagnostics.connectFailed(
+            attemptId, OpenShiftConnectDiagnostics.millisSince(startNanos), error))
+        .contextWrite(ctx -> OpenShiftConnectDiagnostics.withAttemptId(ctx, attemptId));
   }
 
   /**

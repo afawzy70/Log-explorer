@@ -383,16 +383,25 @@ public class DockerLogSource implements LogSource {
     // Docker's own receive timestamp, containerId as a stable tiebreaker
     // for equal timestamps (never left to HTTP-response arrival order).
     Comparator<Instant> nativeOrder = forward ? Comparator.naturalOrder() : Comparator.reverseOrder();
+    long sortStartNanos = System.nanoTime();
     merged.sort(
         Comparator.<ContainerLine, Instant>comparing(cl -> cl.line().dockerTimestamp(), Comparator.nullsLast(nativeOrder))
             .thenComparing(cl -> cl.container().getId()));
+    long sortMillis = Duration.ofNanos(System.nanoTime() - sortStartNanos).toMillis();
 
+    // SEARCH_LATENCY_INVESTIGATION_AND_SAFE_OPTIMIZATION Phase 2 - safe
+    // diagnostic timing for the CPU-bound parse+classify+filter phase,
+    // extending the same debug-log pattern readAllContainersInParallel
+    // already established for the I/O phase. Counts and durations only -
+    // never a log line, query value, or any field from `request`/an event.
+    long pipelineStartNanos = System.nanoTime();
+    int classifiedCount = 0;
     List<CanonicalLogEvent> events = new ArrayList<>(merged.size());
     for (ContainerLine cl : merged) {
       Map<String, String> labels = cl.container().getLabels();
       // Project-Scoped Schema Scan mission §2/§8 - see emitFollowedLine's matching comment.
       MappingScopeKey scope = MappingScopeKey.of(id(), ComposeLabels.project(labels));
-      CanonicalLogEvent parsed = parser.parse(cl.line().content(), ComposeLabels.service(labels), scope);
+      CanonicalLogEvent parsed = parser.parseUnclassified(cl.line().content(), ComposeLabels.service(labels), scope);
       CanonicalLogEvent enriched = parsed.toBuilder()
           .sourceId(id())
           .composeProject(ComposeLabels.project(labels))
@@ -411,10 +420,30 @@ public class DockerLogSource implements LogSource {
       // filters, ...) that the Docker API itself has no way to push down -
       // real gap found while extracting EventFilters: this adapter
       // previously applied none of these at all.
-      if (EventFilters.matches(enriched, request)) {
-        events.add(enriched);
+      //
+      // SEARCH_LATENCY_INVESTIGATION_AND_SAFE_OPTIMIZATION — classification
+      // (parser.classify) is deliberately deferred until AFTER every
+      // non-tag condition passes: it is the single most expensive part of
+      // this per-line loop (measured ~40% added over parse-only in
+      // SearchPipelinePerformanceTest with a realistic 10-rule set), and an
+      // event rejected by time range/severity/text/traceId/... was never
+      // going to be returned regardless of its tags, so classifying it
+      // first was pure waste. See EventFilters#matchesExceptTags/#tagsMatch
+      // and LogLineParser#parseUnclassified for why this changes nothing
+      // about which events are returned or what tags they carry.
+      if (EventFilters.matchesExceptTags(enriched, request)) {
+        CanonicalLogEvent classified = parser.classify(enriched);
+        classifiedCount++;
+        if (EventFilters.tagsMatch(classified, request)) {
+          events.add(classified);
+        }
       }
     }
+    log.debug(
+        "Docker historical search pipeline: {} raw line(s) merged/sorted in {} ms, {} classified (of {}), "
+            + "{} returned in {} ms",
+        merged.size(), sortMillis, classifiedCount, merged.size(), events.size(),
+        Duration.ofNanos(System.nanoTime() - pipelineStartNanos).toMillis());
     return events;
   }
 
