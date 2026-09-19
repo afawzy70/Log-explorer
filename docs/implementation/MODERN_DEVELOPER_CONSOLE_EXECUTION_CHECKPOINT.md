@@ -2208,3 +2208,88 @@ MERGE_AUTHORIZED=NO
 PR_61_STATE=OPEN, DRAFT, NOT_MERGED
 NEXT_ACTION=CHATGPT_OWNER_SOURCE_PARITY_RECOVERY_REVIEW
 ```
+
+## LATEST_MAIN_INTEGRATION — controlled integration of main's PR #62/#63/#64
+
+`MISSION=PR61_CONTROLLED_LATEST_MAIN_INTEGRATION` — integrates the backend work
+that accumulated on `main` while PR #61 was in progress (PR #63 first-search
+warmup, PR #62 deferred-classification search performance, PR #64 OpenShift
+large-response/buffer-lifecycle fix) into `ux/v2-modern-developer-console`.
+Not a redesign, not a new feature, not a re-audit, not permission to merge.
+Full detail: `docs/verification/PR61_LATEST_MAIN_INTEGRATION_VERIFICATION.md`.
+
+- **Startup gate**: `PR61_HEAD=4a4e307`, `MAIN_HEAD=af609c8`, ahead 80/behind
+  3, merge-base `6e71af8` — all matched the mission's authoritative values.
+  A pre-existing, session-predating dirty worktree (~180 modified evidence
+  PNGs) was stashed (not discarded) to get a clean tree before merging.
+- **Integration**: `git merge origin/main --no-ff`, no force-push, no
+  history rewrite. **Zero conflicts** — PR #61 and main's 3 incoming
+  commits touched entirely disjoint files (main's diff is backend-only;
+  notably neither `OpenShiftLogSource.java` nor
+  `ClassificationRuleService.java` were touched by main). Merge commit
+  `047097b68df1015f5965d3eecdf144a755f6b4a4`.
+- **Post-merge contract check**: all 16 required invariants (A-P) verified
+  directly against the integrated source — Modern Developer Console intact,
+  Source Experience Parity hierarchy and scope-invalidation lifecycle
+  intact (`invalidateSearchForScopeChange` survived unmodified since main
+  never touched `useSearchState.ts`), OpenShift health guidance still names
+  Search not Settings (main never touched `OpenShiftLogSource.java`), PR #64
+  buffer-lifecycle/PR #62 classification-optimization/PR #63 warmup all
+  present and passing, D40 still the production color model, A1b still not
+  implemented, no DB/cache/retention introduced.
+- **Targeted collision-area tests** (before full regression): OpenShift +
+  PR #64 buffer-lifecycle backend (214/214), classification + PR #62/#63
+  search-perf + Docker backend (192/192), scope-invalidation + OpenShift
+  scope-select frontend unit (71/71), Live stale-scope + Inspector/
+  Investigation/Toolbar/Shell frontend unit (173/173), Source Experience
+  Parity + Live + OpenShift/Docker proxy E2E (28/28 + 1 `NOT_AVAILABLE`
+  skip). Zero failures, no test weakened.
+- **Full regression**: typecheck PASS, backend 1459/1459, frontend unit
+  1177/1177, production build PASS.
+- **Full E2E — one transient finding per clean run, both root-caused and
+  cleared, neither in code this merge touched**: run 1 (backend not yet
+  restarted after the targeted gate) had 1 failure in a masking/Settings
+  security test, traced to leaked shared-singleton OpenShift proxy backend
+  state from an earlier targeted run — confirmed cleared on both an
+  isolated file rerun (26/26) and a full clean-backend rerun. That clean
+  rerun (run 2) had a *different* single failure, a Live "Clear" timing
+  race against a continuously-ticking real fixture stream under heavy
+  2-worker contention late in a 16+ minute run — confirmed non-reproducible
+  in isolation (10/10). Both classified `ENVIRONMENTAL`, consistent with
+  this repo's existing documented Live-timing CI finding
+  (`SOURCE_EXPERIENCE_PARITY_VERIFICATION.md`'s `OWNER_REVIEW_RECOVERY_1`).
+  No test modified, skipped, or weakened to obtain a green result.
+- **Performance regression check**: no new benchmark invented; PR #62/#63's
+  own existing verification docs remain the baseline. Confirmed the
+  optimized code paths are present unmodified and their own tests
+  (`SearchPipelinePerformanceTest`, full backend suite) pass on the
+  integrated tree. `PERFORMANCE_REGRESSION_FOUND=NO`.
+- `docs/governance/OWNER_REQUIREMENTS_REGISTER.md` read, left unmodified —
+  integration mechanics introduced no new owner requirement;
+  `UNTRACKED_OWNER_REQUIREMENTS=0` holds.
+
+```
+MISSION=PR61_CONTROLLED_LATEST_MAIN_INTEGRATION
+START_PR61_HEAD=4a4e3073e2c730170d040811aa3129d604895fdc
+INTEGRATED_MAIN_HEAD=af609c8190f6d71e65964a85378783b2c10bc89b
+MERGE_COMMIT=047097b68df1015f5965d3eecdf144a755f6b4a4
+INTEGRATION_METHOD=git merge origin/main --no-ff
+FORCE_PUSH_USED=NO
+CONFLICTS_FOUND=0
+PR62_PRESERVED=YES
+PR63_PRESERVED=YES
+PR64_PRESERVED=YES
+MODERN_DEVELOPER_CONSOLE_PRESERVED=YES
+SOURCE_EXPERIENCE_PARITY_PRESERVED=YES
+OPENSHIFT_SCOPE_INVALIDATION_PRESERVED=YES
+OPENSHIFT_HEALTH_GUIDANCE_SEARCH_NOT_SETTINGS=YES
+D40_PRESERVED=YES
+A1B_IMPLEMENTED=NO
+LOCAL_FULL_REGRESSION=PASS
+PERFORMANCE_REGRESSION_FOUND=NO
+REAL_OPENSHIFT_VALIDATION=NOT_AVAILABLE
+UNTRACKED_OWNER_REQUIREMENTS=0
+MERGE_AUTHORIZED=NO
+PR_61_STATE=OPEN, DRAFT, NOT_MERGED
+NEXT_ACTION=CHATGPT_OWNER_POST_INTEGRATION_REVIEW
+```
