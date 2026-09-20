@@ -85,6 +85,10 @@ jobs:
           if ($exitCode -eq 0) { Write-Host '##[error] expected a non-zero exit code for an invalid -ProxyUrl'; exit 1 }
           if ($restored -ne 'http://pre-existing-sentinel:9999') { Write-Host "##[error] pre-existing HTTP_PROXY was not left untouched (got '$restored')"; exit 1 }
           Write-Host 'OK: invalid -ProxyUrl was rejected with a non-zero exit code and no environment side effect'
+          # build-jar.ps1's own (expected, correct) non-zero exit code above is still sitting in
+          # $LASTEXITCODE - GitHub Actions' pwsh shell fails the step on a non-zero $LASTEXITCODE at exit,
+          # even though every assertion here passed, so this explicit success exit is required.
+          exit 0
 
       - name: 'Windows only: build-jar.ps1 applies a supplied proxy, and restores the environment regardless of the build outcome'
         if: runner.os == 'Windows'
@@ -110,6 +114,9 @@ jobs:
           if ($env:MAVEN_OPTS -ne '-DpreExistingSentinel=1') { Write-Host "##[error] MAVEN_OPTS was not restored (got '$env:MAVEN_OPTS')"; exit 1 }
           if ($env:NO_PROXY) { Write-Host "##[error] NO_PROXY should have been removed (was never set before), got '$env:NO_PROXY'"; exit 1 }
           Write-Host 'OK: the supplied proxy was applied (confirmed via the script''s own log) and every touched environment value was restored'
+          # As above: build-jar.ps1's own exit code (whatever it happened to be) is still sitting in
+          # $LASTEXITCODE, and GitHub Actions' pwsh shell would otherwise fail this step on that alone.
+          exit 0
 
       # The real build - identical to what a developer runs locally. Windows uses the native PowerShell
       # script (no Git Bash/WSL/Docker); Linux/macOS keep using the existing Bash script.
