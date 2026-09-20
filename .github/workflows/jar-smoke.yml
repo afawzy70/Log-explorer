@@ -102,7 +102,10 @@ jobs:
           # warm cache). What it DOES assert: the script's own log line proves the supplied proxy was
           # genuinely recognized and applied (not silently ignored), and every proxy-related environment
           # variable this run touched is restored to its pre-existing value no matter what happened.
-          $output = & .\scripts\build-jar.ps1 -ProxyUrl 'http://127.0.0.1:1' -NoProxy 'localhost,127.0.0.1' -OutputDir (Join-Path $env:RUNNER_TEMP 'proxy-negative-test') 2>&1 | Out-String
+          # *>&1 (not just 2>&1) is required here: build-jar.ps1's own progress messages use Write-Host,
+          # which writes to the Information stream (6), not the success/output stream - a plain 2>&1
+          # (redirecting only the error stream) would silently never capture them into $output at all.
+          $output = & .\scripts\build-jar.ps1 -ProxyUrl 'http://127.0.0.1:1' -NoProxy 'localhost,127.0.0.1' -OutputDir (Join-Path $env:RUNNER_TEMP 'proxy-negative-test') *>&1 | Out-String
           $exitCode = $LASTEXITCODE
           Write-Host "build exit code with a deliberately unreachable proxy: $exitCode (informational only)"
           if ($output -notmatch [regex]::Escape('Using proxy for this build only: http://127.0.0.1:1')) {
