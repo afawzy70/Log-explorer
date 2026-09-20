@@ -83,14 +83,6 @@ export default function App() {
   // Context.Provider it renders itself, only one an ancestor renders, so
   // this thin outer component exists purely to put the Provider above
   // AppContent (Legacy Remediation Slice 8).
-  //
-  // Modern Developer Console, Wave 1 Foundations: `useTheme` sets
-  // `data-theme` on `<html>` from the persisted appearance preference
-  // (system by default). Side-effect only tonight - no component reads
-  // `[data-theme='dark']` yet except the additive `tokensV2.css` custom
-  // properties, so this call changes no rendered pixel until a later
-  // slice restyles a surface against the v2 tokens.
-  useTheme();
   return (
     <ShortcutRegistryProvider>
       <AppContent />
@@ -101,6 +93,16 @@ export default function App() {
 function AppContent() {
   const state = useSearchState();
   const live = useLiveTail();
+  /**
+   * Modern Developer Console, Wave 1 Foundations: `useTheme` sets `data-theme` on `<html>` from the persisted
+   * appearance preference (system by default). PR61_OWNER_MANUAL_USABILITY_AND_CLASSIFICATION_RECOVERY - dark
+   * theme itself is already implemented and complete (56/57 production stylesheets consume `tokensV2.css`'s
+   * dark block; `DARK_THEME_AUDIT_COMPLETE=YES`, docs/verification/visual-fidelity-final-closure/) - what was
+   * missing was any UI control to actually choose it: this hook's own `setPreference`/`preference` were called
+   * and then discarded, so the app only ever followed the OS setting. Now threaded into `SettingsWorkspace`,
+   * the one real gap the usability review found here.
+   */
+  const theme = useTheme();
   // OS-1F §6/§8 - lifted here (not owned by Shell or Toolbar individually)
   // so both share the exact same OpenShift scope truth: Shell's
   // ScopeTrail displays it, Toolbar gates Search/Live on it, and
@@ -262,6 +264,8 @@ function AppContent() {
                 openShiftScope={openShiftScopeState.scope}
                 onOpenShiftScopeChanged={openShiftScopeState.refresh}
                 onClose={state.closeSettingsWorkspace}
+                themePreference={theme.preference}
+                onThemePreferenceChanged={theme.setPreference}
               />
             </Suspense>
           ) : state.mappingWorkspaceOpen ? (
@@ -274,6 +278,8 @@ function AppContent() {
                 profileError={state.fieldMappingProfileError}
                 onProfileChanged={() => state.refreshFieldMappingProfile(mappingProject)}
                 onClose={state.closeMappingWorkspace}
+                onOpenSettings={state.openSettingsWorkspace}
+                onOpenClassificationRules={state.openClassificationWorkspace}
               />
             </Suspense>
           ) : state.classificationWorkspaceOpen ? (

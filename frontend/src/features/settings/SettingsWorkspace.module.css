@@ -139,6 +139,39 @@
   margin-bottom: 0;
 }
 
+/*
+ * PR61_OWNER_MANUAL_USABILITY_AND_CLASSIFICATION_RECOVERY - byte-for-byte the same radio-group rules as
+ * OpenShiftSettingsPanel.module.css's own `.sectionLabel`/`.radioGroup`/`.radioOption` (that established
+ * convention, not a parallel one).
+ */
+.sectionLabel {
+  font: var(--v2-text-caps, var(--v2-text-meta));
+  letter-spacing: var(--v2-tracking-caps, 0.02em);
+  text-transform: uppercase;
+  color: var(--v2-ink-3);
+  padding: 0;
+  margin: 0 0 var(--space-2);
+}
+
+.radioGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.radioOption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font: var(--v2-text-body);
+  color: var(--v2-ink-1);
+  cursor: pointer;
+}
+
+.radioOption input[type='radio'] {
+  flex-shrink: 0;
+}
+
 @media (max-width: 768px) {
   .body {
     grid-template-columns: minmax(0, 1fr);

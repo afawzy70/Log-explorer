@@ -174,4 +174,45 @@ class PatternDetectorTest {
       assertThat(compiled.test(ANCHOR)).isTrue();
     }
   }
+
+  /**
+   * Synthetic data shaped like the owner-observed defect (PR61_OWNER_MANUAL_USABILITY_AND_CLASSIFICATION_
+   * RECOVERY §22): request method, URL, response code, response body - never real owner/customer log content.
+   * `Request:` anchors a run of variable tokens (method, then URL, matching this class's own documented
+   * "reached by skipping the variables in between" shape), then `Response:`/`Body:` anchor their own values.
+   */
+  private static String httpCallLine(String method, String path, int code, String body) {
+    return "Request: " + method + " https://example.invalid" + path + " Response: " + code + " Body: " + body;
+  }
+
+  private static List<String> httpCallSample() {
+    List<String> values = new ArrayList<>();
+    String[] methods = {"POST", "GET", "POST", "PUT", "GET"};
+    String[] paths = {"/api/orders", "/api/accounts", "/api/refunds", "/api/customers", "/api/payments"};
+    int[] codes = {201, 200, 201, 204, 200};
+    String[] bodies = {"{\"status\":\"ok\"}", "{\"status\":\"ok\"}", "{\"status\":\"created\"}",
+        "{\"status\":\"ok\"}", "{\"status\":\"ok\"}"};
+    for (int i = 0; i < 11; i++) {
+      values.add(httpCallLine(methods[i % 5], paths[i % 5], codes[i % 5], bodies[i % 5]));
+    }
+    for (int i = 0; i < 15; i++) {
+      values.add("Unrelated worker heartbeat tick=" + i);
+    }
+    return values;
+  }
+
+  @Test
+  void everySuggestedRegexExtractionAlreadyCompilesBeforeItIsEverOffered() {
+    String anchor = httpCallLine("POST", "/api/orders", 201, "{\"status\":\"ok\"}");
+    DetectionResult result = detector.detect("message", anchor, httpCallSample(), 200);
+
+    assertThat(result.status()).isEqualTo(DetectionResult.Status.SUGGESTED);
+    assertThat(result.suggestedExtractions()).as("owner-observed shape (method/URL/code/body) yields real suggestions").isNotEmpty();
+    // The mission's own core invariant (§11 ASSISTED_SUGGESTION_VALIDITY): a suggestion this method already
+    // returned must already be compilable, unconditionally - never validated for the first time by the frontend
+    // or by a later Test-step round trip.
+    for (DetectionResult.SuggestedExtraction suggested : result.suggestedExtractions()) {
+      compiler.compileExtraction(suggested.definition());
+    }
+  }
 }

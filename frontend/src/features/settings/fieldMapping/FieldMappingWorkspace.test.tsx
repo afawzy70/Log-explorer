@@ -76,6 +76,8 @@ function scanResult(overrides: Partial<SchemaScanResponse> = {}): SchemaScanResp
 function renderWorkspace(overrides: Partial<Parameters<typeof FieldMappingWorkspace>[0]> = {}) {
   const onProfileChanged = vi.fn();
   const onClose = vi.fn();
+  const onOpenSettings = vi.fn();
+  const onOpenClassificationRules = vi.fn();
   const utils = render(
     <FieldMappingWorkspace
       sourceId="fixture"
@@ -85,10 +87,12 @@ function renderWorkspace(overrides: Partial<Parameters<typeof FieldMappingWorksp
       profileError={null}
       onProfileChanged={onProfileChanged}
       onClose={onClose}
+      onOpenSettings={onOpenSettings}
+      onOpenClassificationRules={onOpenClassificationRules}
       {...overrides}
     />,
   );
-  return { ...utils, onProfileChanged, onClose };
+  return { ...utils, onProfileChanged, onClose, onOpenSettings, onOpenClassificationRules };
 }
 
 async function runScan(user: ReturnType<typeof userEvent.setup>) {
@@ -351,6 +355,8 @@ describe('FieldMappingWorkspace', () => {
           profileError={null}
           onProfileChanged={onProfileChanged}
           onClose={vi.fn()}
+          onOpenSettings={vi.fn()}
+          onOpenClassificationRules={vi.fn()}
         />,
       );
 
@@ -378,6 +384,8 @@ describe('FieldMappingWorkspace', () => {
           profileError={null}
           onProfileChanged={onProfileChanged}
           onClose={vi.fn()}
+          onOpenSettings={vi.fn()}
+          onOpenClassificationRules={vi.fn()}
         />,
       );
 
@@ -562,6 +570,52 @@ describe('FieldMappingWorkspace', () => {
     const { container } = renderWorkspace();
     await runScan(user);
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  // PR61_OWNER_MANUAL_USABILITY_AND_CLASSIFICATION_RECOVERY §4D - this workspace previously had only
+  // "back to search", the one real navigation asymmetry the audit found against its sibling
+  // ClassificationRulesWorkspace (which already had a breadcrumb + the full Settings nav sidebar).
+  describe('Settings navigation parity with ClassificationRulesWorkspace', () => {
+    it('shows a breadcrumb back to Settings, and the current section named as active', () => {
+      renderWorkspace();
+      const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+      expect(within(breadcrumb).getByRole('button', { name: 'Settings' })).toBeInTheDocument();
+      expect(within(breadcrumb).getByText('Field mapping')).toHaveAttribute('aria-current', 'page');
+    });
+
+    it('clicking the Settings breadcrumb calls onOpenSettings', async () => {
+      const user = userEvent.setup();
+      const { onOpenSettings } = renderWorkspace();
+      await user.click(screen.getByRole('button', { name: 'Settings' }));
+      expect(onOpenSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers the full Settings section list, "Field mapping" marked current', () => {
+      renderWorkspace();
+      const nav = screen.getByRole('navigation', { name: 'Settings sections' });
+      for (const label of ['Sources & connections', 'Privacy & masking', 'Field mapping', 'Classification rules', 'Keyboard shortcuts']) {
+        expect(within(nav).getByRole('button', { name: label })).toBeInTheDocument();
+      }
+      expect(within(nav).getByRole('button', { name: 'Field mapping' })).toHaveAttribute('aria-current', 'page');
+    });
+
+    it('the Settings-nav "Classification rules" item goes straight there - not through Settings first', async () => {
+      const user = userEvent.setup();
+      const { onOpenClassificationRules, onOpenSettings } = renderWorkspace();
+      await user.click(screen.getByRole('button', { name: 'Classification rules' }));
+      expect(onOpenClassificationRules).toHaveBeenCalledTimes(1);
+      expect(onOpenSettings).not.toHaveBeenCalled();
+    });
+
+    it('every other Settings-nav item (Sources, Privacy, Keyboard shortcuts) opens Settings itself', async () => {
+      const user = userEvent.setup();
+      for (const label of ['Sources & connections', 'Privacy & masking', 'Keyboard shortcuts']) {
+        const { onOpenSettings, unmount } = renderWorkspace();
+        await user.click(screen.getByRole('button', { name: label }));
+        expect(onOpenSettings).toHaveBeenCalledTimes(1);
+        unmount();
+      }
+    });
   });
 });
 

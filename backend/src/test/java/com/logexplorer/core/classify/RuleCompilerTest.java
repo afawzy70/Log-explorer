@@ -143,6 +143,79 @@ class RuleCompilerTest {
     assertThat(named.extractions().get(0).groupIndex()).isEqualTo(2);
   }
 
+  /**
+   * PR61_OWNER_MANUAL_USABILITY_AND_CLASSIFICATION_RECOVERY - B01/B03-B09: every group-resolution case the
+   * extraction step's own "Capture group (advanced)" helper text now describes, proven directly against {@link
+   * RuleCompiler}. B02 (omitted group + a named capture matching the extraction's own name) is already covered
+   * above ({@code (x)=(?P<code>\d+)}); B09/B10 (invalid/unsupported RE2 syntax) are already covered by {@link
+   * #invalidRegexIsRejectedAtValidationWithItsPath()} and {@link
+   * #lookaroundAndBackreferencesAreRejectedAsUnsupportedNotRunOnAnUnsafeEngine()}.
+   */
+  @Test
+  void groupResolutionMatchesEveryDocumentedCase() {
+    RuleCondition any = condition("message", MatcherType.CONTAINS, "x");
+
+    // B01 - a single unnamed capture, group omitted -> auto-resolves to group 1.
+    CompiledRule singleUnnamed = compiler.compile(rule("r1", "t", MatchMode.ALL, List.of(any),
+        List.of(regex("value", "Response:\\s*(\\d+)"))));
+    assertThat(singleUnnamed.extractions().get(0).groupIndex()).isEqualTo(1);
+
+    // B03 - an explicit, existing named group, different from the extraction's own name.
+    ExtractionDefinition explicitNamed = new ExtractionDefinition("value", null, "message", ExtractionType.REGEX,
+        "Response:\\s*(?P<code>\\d+)", "code", null, null);
+    CompiledRule named = compiler.compile(rule("r1", "t", MatchMode.ALL, List.of(any), List.of(explicitNamed)));
+    assertThat(named.extractions().get(0).groupIndex()).isEqualTo(1);
+
+    // B04 - an explicit, valid numeric group (the expression's second capture).
+    ExtractionDefinition explicitNumeric = new ExtractionDefinition("value", null, "message", ExtractionType.REGEX,
+        "(GET|POST)\\s+(\\S+)", "2", null, null);
+    CompiledRule numeric = compiler.compile(rule("r1", "t", MatchMode.ALL, List.of(any), List.of(explicitNumeric)));
+    assertThat(numeric.extractions().get(0).groupIndex()).isEqualTo(2);
+
+    // B05 - an explicit group name that does not exist in the expression is rejected, never silently converted
+    // to group 1 - the exact owner-observed shape and the exact message text the mission cites.
+    ExtractionDefinition nonexistentNamed = new ExtractionDefinition("url", null, "message", ExtractionType.REGEX,
+        "Request:\\s*(.*?)(?:\\r?\\n|$)", "url", null, null);
+    assertThatThrownBy(() -> compiler.compile(rule("r1", "t", MatchMode.ALL, List.of(any), List.of(nonexistentNamed))))
+        .isInstanceOf(RuleValidationException.class)
+        .satisfies(e -> assertThat(((RuleValidationException) e).errors())
+            .anySatisfy(error -> {
+              assertThat(error.path()).isEqualTo("extractions[0].group");
+              assertThat(error.message()).isEqualTo("The expression has no group with that name");
+            }));
+
+    // B06 - an explicit numeric group past the expression's actual capture count.
+    ExtractionDefinition outOfRange = new ExtractionDefinition("value", null, "message", ExtractionType.REGEX,
+        "Response:\\s*(\\d+)", "2", null, null);
+    assertThatThrownBy(() -> compiler.compile(rule("r1", "t", MatchMode.ALL, List.of(any), List.of(outOfRange))))
+        .isInstanceOf(RuleValidationException.class)
+        .satisfies(e -> assertThat(((RuleValidationException) e).errors())
+            .anySatisfy(error -> {
+              assertThat(error.path()).isEqualTo("extractions[0].group");
+              assertThat(error.message()).isEqualTo("Group index must be between 1 and 1");
+            }));
+
+    // B07 - multiple captures, no named match: rejected with its own exact ambiguity message.
+    assertThatThrownBy(() -> compiler.compile(rule("r1", "t", MatchMode.ALL, List.of(any),
+        List.of(regex("value", "(\\d+)-(\\d+)")))))
+        .isInstanceOf(RuleValidationException.class)
+        .satisfies(e -> assertThat(((RuleValidationException) e).errors())
+            .anySatisfy(error -> {
+              assertThat(error.path()).isEqualTo("extractions[0].group");
+              assertThat(error.message()).isEqualTo("The expression has several groups; name the group to extract");
+            }));
+
+    // B08 - zero captures: rejected with its own exact message.
+    assertThatThrownBy(() -> compiler.compile(rule("r1", "t", MatchMode.ALL, List.of(any),
+        List.of(regex("value", "Response:\\s*\\d+")))))
+        .isInstanceOf(RuleValidationException.class)
+        .satisfies(e -> assertThat(((RuleValidationException) e).errors())
+            .anySatisfy(error -> {
+              assertThat(error.path()).isEqualTo("extractions[0].expression");
+              assertThat(error.message()).contains("needs a capture group");
+            }));
+  }
+
   @Test
   void tagsAreNormalizedAndValidated() {
     ClassificationRule mixed = new ClassificationRule("r1", "Rule", null, List.of(" Middleware ", "middleware", "External-API"),

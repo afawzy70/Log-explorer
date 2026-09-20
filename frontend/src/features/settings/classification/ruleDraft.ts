@@ -181,6 +181,36 @@ export function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+/**
+ * Mirrors `RuleCompiler.EXTRACTION_NAME` (backend/.../RuleCompiler.java) — UX feedback only, so a user sees a
+ * problem before the round trip, not a second authority: the server still validates every save/test/suggest
+ * call, and this constant only ever needs to track that one backend pattern, never invent new rules of its own.
+ */
+export const EXTRACTION_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
+
+export const EXTRACTION_NAME_HELP = 'Use 1-40 letters, digits, or underscores, starting with a letter.';
+
+/**
+ * A deterministic, readable machine name from free text - "Request Method" -> "requestMethod", "URL" -> "url".
+ * Never applied silently to what a user typed (CLAUDE.md §1: "Never silently reinterpret a user's rule") - only
+ * ever offered as a one-click suggestion next to an inline validation message. Returns '' when nothing
+ * lettered/digited survives, so a caller can fall back to the original text rather than accepting an empty name.
+ */
+export function toMachineName(input: string): string {
+  const words = input
+    .trim()
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean);
+  if (words.length === 0) {
+    return '';
+  }
+  const camel = words
+    .map((w, i) => (i === 0 ? w.charAt(0).toLowerCase() + w.slice(1).toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()))
+    .join('');
+  const name = camel.replace(/^[^A-Za-z]+/, '');
+  return name.slice(0, 40);
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024) {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;

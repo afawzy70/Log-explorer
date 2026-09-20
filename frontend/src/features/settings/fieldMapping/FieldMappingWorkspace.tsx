@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../../shared/ui/Button';
 import { Icon } from '../../../shared/ui/Icon';
 import { VisuallyHidden } from '../../../shared/ui/VisuallyHidden';
+import { SettingsNav } from '../SettingsNav';
 import {
   fetchFieldMappingSchemaScan,
   markFieldMappingNeedsChange,
@@ -44,6 +45,15 @@ export interface FieldMappingWorkspaceProps {
   onProfileChanged: () => void;
   /** Owner mission "Mapping Verification and Investigation Workspace" - returns to whatever was on screen before this workspace was opened, mirroring `JourneyView`'s "← Back to search results" pattern. */
   onClose: () => void;
+  /**
+   * PR61_OWNER_MANUAL_USABILITY_AND_CLASSIFICATION_RECOVERY - this workspace previously had only "back to
+   * search", unlike its sibling `ClassificationRulesWorkspace`, which already offers a breadcrumb back to
+   * Settings plus the full `SettingsNav` sidebar to jump directly to any other section. Bringing Field Mapping
+   * to the same navigation as its sibling, not inventing a new pattern - both are the exact same
+   * `state.openSettingsWorkspace`/`state.openClassificationWorkspace` functions `App.tsx` already owns.
+   */
+  onOpenSettings: () => void;
+  onOpenClassificationRules: () => void;
 }
 
 const DEFAULT_SCAN_MAX_EVENTS = 200;
@@ -109,6 +119,8 @@ export function FieldMappingWorkspace({
   profileError,
   onProfileChanged,
   onClose,
+  onOpenSettings,
+  onOpenClassificationRules,
 }: FieldMappingWorkspaceProps) {
   const headingId = useId();
   const datalistId = useId();
@@ -419,20 +431,52 @@ export function FieldMappingWorkspace({
   return (
     <div className={styles.wrapper} data-testid="field-mapping-workspace">
       <div className={styles.header}>
-        <Button variant="ghost" onClick={onClose}>
-          ← Back to search results
-        </Button>
-        <h1 id={headingId} className={styles.title}>
-          Log Schema &amp; Field Mapping Verification
-        </h1>
-        {profile ? (
-          <span className={profile.searchReady ? styles.readinessOk : styles.readinessBlocked}>
-            {profile.searchReady
-              ? 'Search ready.'
-              : 'Search is disabled — configure and validate log field mapping before searching this source.'}
-          </span>
-        ) : null}
+        <nav aria-label="Breadcrumb" className={styles.breadcrumb}>
+          <ol className={styles.breadcrumbList}>
+            <li>
+              <button type="button" className={styles.breadcrumbLink} onClick={onOpenSettings}>
+                Settings
+              </button>
+            </li>
+            <li aria-hidden="true" className={styles.breadcrumbSep}>
+              /
+            </li>
+            <li>
+              <span aria-current="page">Field mapping</span>
+            </li>
+          </ol>
+        </nav>
+        <div className={styles.headerRow}>
+          <Button variant="ghost" onClick={onClose}>
+            ← Back to search results
+          </Button>
+          <h1 id={headingId} className={styles.title}>
+            Log Schema &amp; Field Mapping Verification
+          </h1>
+          {profile ? (
+            <span className={profile.searchReady ? styles.readinessOk : styles.readinessBlocked}>
+              {profile.searchReady
+                ? 'Search ready.'
+                : 'Search is disabled — configure and validate log field mapping before searching this source.'}
+            </span>
+          ) : null}
+        </div>
       </div>
+      <div className={styles.settingsBody}>
+        <SettingsNav
+          activeId="mapping"
+          onSelect={(id) => {
+            if (id === 'mapping') {
+              return;
+            }
+            if (id === 'classification') {
+              onOpenClassificationRules();
+              return;
+            }
+            onOpenSettings();
+          }}
+        />
+        <div className={styles.settingsContent}>
       <p className={styles.hint}>
         Map each canonical field to the real JSON path(s) your source uses, then verify it against real evidence.
         Search is blocked until an edited mapping is validated and saved — the built-in default mapping always stays
@@ -737,6 +781,8 @@ export function FieldMappingWorkspace({
       ) : (
         <p role="status">Loading…</p>
       )}
+        </div>
+      </div>
     </div>
   );
 }

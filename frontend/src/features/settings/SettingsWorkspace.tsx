@@ -7,6 +7,7 @@ import { KeyboardShortcutsHelp } from '../../app/KeyboardShortcutsHelp';
 import { SettingsNav } from './SettingsNav';
 import type { SearchState } from '../../app/useSearchState';
 import type { OpenShiftScopeSummary } from '../../shared/api/types';
+import type { ThemePreference } from '../../shared/theme/useTheme';
 import styles from './SettingsWorkspace.module.css';
 
 export interface SettingsWorkspaceProps {
@@ -15,6 +16,15 @@ export interface SettingsWorkspaceProps {
   openShiftScope: OpenShiftScopeSummary | null;
   onOpenShiftScopeChanged: () => void;
   onClose: () => void;
+  /**
+   * PR61_OWNER_MANUAL_USABILITY_AND_CLASSIFICATION_RECOVERY - dark theme itself was already implemented and
+   * complete; the missing piece was any UI control to choose it (`useTheme`'s own `setPreference` was called
+   * and discarded). `App.tsx` owns the one `useTheme()` instance for the whole app, passed through narrowly
+   * (matching this component's existing `openShiftScope`/`onOpenShiftScopeChanged` convention) rather than
+   * this workspace calling the hook a second time.
+   */
+  themePreference: ThemePreference;
+  onThemePreferenceChanged: (preference: ThemePreference) => void;
 }
 
 /*
@@ -39,7 +49,14 @@ export interface SettingsWorkspaceProps {
  * (`state.openMappingWorkspace`/`state.openClassificationWorkspace`, already mutually exclusive with this
  * one - see `useSearchState.ts`) - B6.2 does not touch either of those workspaces' own content.
  */
-export function SettingsWorkspace({ state, openShiftScope, onOpenShiftScopeChanged, onClose }: SettingsWorkspaceProps) {
+export function SettingsWorkspace({
+  state,
+  openShiftScope,
+  onOpenShiftScopeChanged,
+  onClose,
+  themePreference,
+  onThemePreferenceChanged,
+}: SettingsWorkspaceProps) {
   // DRIFT-016 remediation - "active" section for the shared nav's own highlight, tracked from whichever
   // section last received a scroll-into-view (defaults to the first, "sources"). Purely a visual affordance;
   // every section is always in the DOM and reachable regardless of this value.
@@ -141,8 +158,65 @@ export function SettingsWorkspace({ state, openShiftScope, onOpenShiftScopeChang
               <KeyboardShortcutsHelp />
             </div>
           </section>
+
+          <AppearanceSection themePreference={themePreference} onThemePreferenceChanged={onThemePreferenceChanged} />
         </div>
       </div>
     </div>
+  );
+}
+
+export interface AppearanceSectionProps {
+  themePreference: ThemePreference;
+  onThemePreferenceChanged: (preference: ThemePreference) => void;
+}
+
+const THEME_OPTIONS = [
+  { value: 'system', label: 'Match system' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+] as const;
+
+/**
+ * PR61_OWNER_MANUAL_USABILITY_AND_CLASSIFICATION_RECOVERY - the one real gap the usability review found:
+ * dark theme itself is already implemented and complete, but nothing in the UI let a user actually choose it
+ * (`useTheme`'s own `setPreference` was called and its result discarded). Extracted as its own small
+ * component (not inlined in `SettingsWorkspace`) so it is directly unit-testable without the large
+ * `SearchState` mock every other section here depends on.
+ *
+ * <p>Not in {@link SETTINGS_NAV_SECTIONS}: that list is shared with `ClassificationRulesWorkspace`/
+ * `FieldMappingWorkspace`'s cross-navigation to a DIFFERENT top-level workspace, and this section lives on
+ * this same Settings page - no navigation needed to reach it. Reusing the exact same section pattern
+ * (id/aria-labelledby/h2) as every section above keeps it discoverable and consistent, without a nav entry
+ * it does not need.
+ */
+export function AppearanceSection({ themePreference, onThemePreferenceChanged }: AppearanceSectionProps) {
+  return (
+    <section id="settings-appearance" className={styles.section} aria-labelledby="settings-appearance-heading">
+      <h2 id="settings-appearance-heading" className={styles.sectionHeading}>
+        Appearance
+      </h2>
+      <p className={styles.sectionHint}>
+        Choose how Log Explorer looks. "Match system" follows this device's own light/dark setting automatically,
+        and stays in sync with it while this preference is selected.
+      </p>
+      <fieldset className={styles.sectionRow}>
+        <legend className={styles.sectionLabel}>Theme</legend>
+        <div className={styles.radioGroup}>
+          {THEME_OPTIONS.map((option) => (
+            <label key={option.value} className={styles.radioOption}>
+              <input
+                type="radio"
+                name="theme-preference"
+                value={option.value}
+                checked={themePreference === option.value}
+                onChange={() => onThemePreferenceChanged(option.value)}
+              />
+              {option.label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+    </section>
   );
 }

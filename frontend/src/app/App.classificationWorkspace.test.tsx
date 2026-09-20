@@ -93,7 +93,11 @@ describe('App - Classification rules workspace takeover', () => {
     await waitFor(() => expect(screen.getByTestId('field-mapping-workspace')).toBeInTheDocument());
     expect(screen.queryByTestId('classification-rules-workspace')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /^settings$/i }));
+    // PR61_OWNER_MANUAL_USABILITY_AND_CLASSIFICATION_RECOVERY - FieldMappingWorkspace now has its own
+    // breadcrumb "Settings" link (the same navigation-parity fix ClassificationRulesWorkspace already had),
+    // which shares its accessible name with Shell's persistent top-level trigger; scope to the page header
+    // for the same reason as the "Field mapping" click just above.
+    await user.click(within(screen.getByRole('banner')).getByRole('button', { name: /^settings$/i }));
     await waitFor(() => expect(screen.getByTestId('settings-workspace')).toBeInTheDocument());
     expect(screen.queryByTestId('field-mapping-workspace')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Manage classification rules' }));
