@@ -5,6 +5,10 @@ Get productive in about 10 minutes. For more detail on any step, see the
 
 ## 1. Install / start Log Explorer
 
+- **Standalone jar (recommended for most local use):** `java -jar
+  log-explorer-<version>.jar`, then open <http://localhost:3434>. See the
+  root [`README.md`'s "Quick start — standalone JAR"](../../README.md#quick-start--standalone-jar-recommended)
+  section for requirements, OpenShift certificate setup, and troubleshooting.
 - **Desktop app (Windows or macOS):** run the installer, then launch Log
   Explorer like any other application. It opens in your default browser.
 - **From the repository (developers):** follow `docs/RUN_GUIDE.md`.

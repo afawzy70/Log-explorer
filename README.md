@@ -121,10 +121,144 @@ desktop/    Windows standalone desktop app (WebView2 launcher + packaging) - see
 tools/      Standalone verification-harness components (demo log generator, mock Loki)
 docs/       Requirements handover, run guide, security notes, architecture/integration docs, per-slice verification reports
 deploy/     OpenShift deployment manifests (Deployment, Service, ConfigMap, ServiceAccount)
-scripts/    Deterministic verification scripts (smoke test, offline image export/import) - Bash (.sh) and PowerShell (.ps1) versions of each
+scripts/    Deterministic verification scripts (smoke test, offline image export/import, standalone-jar build + packaged-jar smoke test) - Bash (.sh) and PowerShell (.ps1) versions of each, where both exist
 ```
 
-## Quick start — Docker (recommended)
+## Quick start — standalone JAR (recommended)
+
+The whole application — frontend and backend — ships as **one runnable
+Spring Boot jar**. Java is the only thing you need installed; there is no
+separate frontend server, no separate backend process, and no Docker
+requirement to run it.
+
+### 1. Requirements
+
+- **Java 21 or newer** ([Temurin](https://adoptium.net/) is the tested
+  distribution).
+- **OpenShift access** (cluster URL, and a way to run `oc login` or get its
+  output from someone who can) — only if you intend to connect to a real
+  OpenShift source. Not needed for the bundled Fixture demo data.
+- **Company network / VPN** — only if your OpenShift cluster requires one to
+  reach it; not needed to start the app itself.
+- **The jar itself**: this repository does not (yet) publish a standalone
+  jar as a GitHub Release asset — only the Windows/macOS desktop installers
+  are published that way (see [Windows desktop distribution](#windows-desktop-distribution)
+  below). Build it yourself from a checkout with one command:
+  ```bash
+  ./scripts/build-jar.sh
+  ```
+  This produces `dist-jar/log-explorer-<version>.jar`. It needs Node.js and
+  npm *only for this build step* — never afterward. If your team publishes
+  built jars somewhere internal (an artifact repository, a CI build
+  artifact from the `JAR Smoke` workflow), get it from there instead.
+- Verify your installed Java version: `java -version` — the first line must
+  say `21` or higher.
+
+### 2. Export the OpenShift certificate (only if your cluster uses a private/internal CA)
+
+Skip this whole section if `java -jar` already connects to your OpenShift
+cluster without a certificate error — most public-CA clusters need nothing
+extra. If you do see a TLS/certificate error (see
+[Troubleshooting](#6-basic-troubleshooting) below), export the cluster's
+certificate once, from a Windows browser (Edge or Chrome):
+
+1. Open your OpenShift console or API URL in the browser (the same
+   `https://api.<your-cluster>...` address you'd pass to `oc login`).
+2. Click the padlock icon in the address bar → **Connection is secure** →
+   **Certificate is valid** (Chrome/Edge both use this same flow).
+3. In the certificate viewer, open the **Details** tab, select the
+   **root/issuing CA** certificate in the hierarchy shown, then
+   **Copy to File…** (Windows certificate export wizard).
+4. Choose **Base-64 encoded X.509 (.CER)**, and save it somewhere you can
+   find again, e.g. `C:\Users\<you>\Downloads\openshift-ca.cer`.
+
+### 3. Import the OpenShift certificate
+
+Import it into the truststore of the **same Java installation** that will
+run the jar:
+
+```powershell
+keytool -importcert -alias openshift-ca -file "C:\Users\<you>\Downloads\openshift-ca.cer" -keystore "%JAVA_HOME%\lib\security\cacerts" -storepass changeit
+```
+
+(Linux/macOS: `-file ~/Downloads/openshift-ca.cer -keystore "$JAVA_HOME/lib/security/cacerts"`.)
+
+- When prompted `Trust this certificate? [no]:`, type **yes** and press
+  Enter to confirm the import.
+- Verify it took effect:
+  ```powershell
+  keytool -list -alias openshift-ca -keystore "%JAVA_HOME%\lib\security\cacerts" -storepass changeit
+  ```
+  This should print the certificate's fingerprint, not an error.
+- If the command fails with something like *"Access is denied"* or
+  *"keystore was tampered with"*, run the terminal **as Administrator**
+  (Windows) or with `sudo` (Linux/macOS) — the default `cacerts` file is
+  usually not writable by a normal user.
+- `changeit` is the JDK's well-known default `cacerts` password, not a
+  secret — never a real credential. This never disables TLS verification
+  or relaxes hostname checking; it only adds one trusted issuer, exactly
+  the same effect real browsers get from your OS's own certificate store.
+- Alternative, no-`keytool` option: if you'd rather not touch the JVM's own
+  truststore, you can instead add `--certificate-authority=<path-to-the-
+  exported-.cer-file>` directly to the `oc login` command you paste into
+  Log Explorer's own OpenShift connection form (see step 4 below) — the
+  backend reads that one file as an extra trusted CA for that connection
+  only. The `keytool` import above is the more durable, one-time fix and
+  is what the rest of this guide assumes.
+
+### 4. Run the application
+
+```bash
+java -jar log-explorer-<version>.jar
+```
+
+- Open **<http://localhost:3434>** — 3434 is the default port.
+- **Different port**: set `SERVER_PORT` before starting, e.g.
+  `SERVER_PORT=8080 java -jar log-explorer-<version>.jar` (PowerShell:
+  `$env:SERVER_PORT=8080; java -jar log-explorer-<version>.jar`).
+- **Stop it**: close the terminal window, or press `Ctrl+C` in it — the
+  backend shuts down gracefully.
+- **Data and configuration**: classification rules and other local state
+  are written under `./data` next to wherever you ran the jar from, unless
+  you set `LOGEXPLORER_DATA_DIR` to somewhere else. Nothing is written
+  until you actually save something (e.g. your first classification rule).
+- **Connecting to OpenShift / authenticating**: click **OpenShift** in the
+  app's own top-right corner and paste your `oc login` command (the app
+  reads `--server`/`--token`/`--certificate-authority` out of it — it never
+  runs `oc` itself, and the token is held in memory only, never written to
+  disk). Full detail: [`docs/user-guide/USER_GUIDE_EN.md` §5](docs/user-guide/USER_GUIDE_EN.md#5-openshift--connecting-and-using-it).
+
+### 5. Upgrade to the latest version
+
+1. Stop the running application (`Ctrl+C`, or close its window).
+2. Obtain or build the new jar (`./scripts/build-jar.sh` again, from an
+   updated checkout, or your team's own distribution point).
+3. Replace the old `log-explorer-<old-version>.jar` file with the new one.
+4. Run it the same way: `java -jar log-explorer-<new-version>.jar`.
+5. **Local data is preserved** as long as you run the new jar from the same
+   working directory (or keep the same `LOGEXPLORER_DATA_DIR`) — the data
+   location is derived from where you run the jar, never from its filename
+   or version, so classification rules and other local state carry over
+   automatically. (Verified directly against `application.yml`'s own
+   `LOGEXPLORER_DATA_DIR`-derived path — not assumed.)
+
+### 6. Basic troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `'java' is not recognized` / `java: command not found` | Install [Temurin 21](https://adoptium.net/) and ensure it's on your `PATH`; reopen your terminal afterward. |
+| Unsupported Java version | Run `java -version`; it must report `21` or higher. Older JDKs cannot run this jar. |
+| `Port 3434 was already in use` (or similar) | Start with a different port: `SERVER_PORT=8080 java -jar log-explorer-<version>.jar`. |
+| OpenShift certificate/trust error | Re-check the export/import steps above, then re-verify with `keytool -list -alias openshift-ca -keystore "%JAVA_HOME%\lib\security\cacerts" -storepass changeit`. Never work around this by disabling TLS verification — this application has no such option, by design. |
+| Invalid or expired OpenShift token | Re-run `oc login` (or ask whoever manages cluster access for a fresh command) and paste the new command into the OpenShift connection form again. |
+| The app URL doesn't open in the browser | Confirm the terminal shows a "Started LogExplorerApplication" line (the backend is actually up), that you're using `http://`, not `https://`, and that nothing else (a firewall, another local app) is blocking the port. |
+
+This is the primary, fully self-contained way to run Log Explorer locally.
+Docker Compose (below) remains available as a separate, optional deployment
+mode — it is never required to run the jar above, and the jar is never
+required to use Docker Compose.
+
+## Docker Compose (optional)
 
 Requires Docker Engine with Compose v2 (the `docker compose` subcommand).
 No local Java or Node install needed — the whole build happens inside the
@@ -225,6 +359,12 @@ classification rules in `%LOCALAPPDATA%\LogExplorer\data`
 | Backend bind address | `127.0.0.1` (the application's own default) | `127.0.0.1` for the Windows desktop app; `0.0.0.0` *inside* the container for Docker/OpenShift, with the host-side/Service boundary (not the process itself) scoping actual reachability - see `docker-compose.yml`'s own comment |
 
 ## Run locally (without Docker)
+
+This is the **source/development** workflow — two live-reloading dev
+servers from a checkout of this repository. If you just want to *run* the
+application (no source checkout, no rebuilding on every change), use the
+[standalone jar](#quick-start--standalone-jar-recommended) above instead;
+that jar is what this exact frontend+backend pair build into.
 
 Requires **Java 21** ([Temurin](https://adoptium.net/) works well on all
 three platforms) and **Node.js 20+**. Two terminals — the frontend dev

@@ -13,7 +13,7 @@ import {
 } from '../results/columnMapping';
 import { colorForService } from '../journey/serviceColor';
 import { LiveSeverityFilter } from './LiveSeverityFilter';
-import { ALL_SEVERITY_LEVEL_IDS } from '../search/severityLevels';
+import { ALL_SEVERITY_LEVEL_IDS, isAllLevelsSelected } from '../search/severityLevels';
 import { VISIBLE_CAP } from './liveTailTypes';
 import type { LiveTailHandle } from './useLiveTail';
 import type { LogEvent } from '../../shared/api/types';
@@ -87,8 +87,13 @@ export function LiveTailPanel({ live, sourceDisplayName, onStart }: LiveTailPane
 
   const filteredEvents = useMemo(() => {
     const text = filterText.trim().toLowerCase();
+    // Every offered level selected == no restriction: skip the severity check entirely rather than
+    // matching against the known id list, so an event with a missing or unrecognized severity (e.g. a
+    // genuine "FATAL") is never hidden while the user has deselected nothing (see severityLevels.ts's
+    // isAllLevelsSelected doc comment - the same reasoning Search's buildRequestBody applies).
+    const restrictBySeverity = !isAllLevelsSelected(filterLevels);
     return live.visibleEvents.filter((event) => {
-      if (event.severity && !filterLevels.includes(event.severity.toUpperCase())) {
+      if (restrictBySeverity && event.severity && !filterLevels.includes(event.severity.toUpperCase())) {
         return false;
       }
       if (text && !(event.message ?? '').toLowerCase().includes(text)) {

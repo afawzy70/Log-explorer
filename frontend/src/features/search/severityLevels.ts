@@ -52,9 +52,35 @@ export const SEVERITY_LEVELS: SeverityLevelDef[] = [
   },
 ];
 
-/** "default INFO/WARN/ERROR (no TRACE/DEBUG noise)" - IMPLEMENTATION_PLAN.md "Phase F" scope item 4. */
-export const DEFAULT_SEVERITY_LEVELS: string[] = ['INFO', 'WARN', 'ERROR'];
-
 export const ALL_SEVERITY_LEVEL_IDS: string[] = SEVERITY_LEVELS.map((l) => l.id);
 
+/**
+ * Owner requirement (docs/governance/OWNER_REQUIREMENTS_REGISTER.md #30): every level selected by
+ * default, on fresh load and on Reset/Clear all - supersedes IMPLEMENTATION_PLAN.md "Phase F" scope
+ * item 4's own deliberate INFO/WARN/ERROR default (TRACE/DEBUG excluded as noise). Kept as its own named
+ * export, not an inline reference to ALL_SEVERITY_LEVEL_IDS, so a caller reads "the default" rather than
+ * "the full set" even though the two are equal today.
+ */
+export const DEFAULT_SEVERITY_LEVELS: string[] = ALL_SEVERITY_LEVEL_IDS;
+
 export const ERRORS_ONLY_LEVELS: string[] = ['ERROR'];
+
+/** Set-equality for a level-id list, order-independent. Single shared definition - previously duplicated locally in ActiveFilters.tsx. */
+export function sameLevelSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  const setB = new Set(b);
+  return a.every((level) => setB.has(level));
+}
+
+/**
+ * True when `levels` represents "every level selected" - i.e. no real restriction. Used to decide
+ * whether to omit the level filter from the outgoing search request (so the backend's own
+ * already-correct "empty levels = no restriction" behaviour applies, which also never excludes an
+ * event with a missing or unrecognized severity - see EventFilters.matchesExceptTags) and, for Live
+ * tail's local display filter, whether to skip severity filtering entirely.
+ */
+export function isAllLevelsSelected(levels: string[]): boolean {
+  return sameLevelSet(levels, ALL_SEVERITY_LEVEL_IDS);
+}

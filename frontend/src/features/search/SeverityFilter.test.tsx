@@ -18,12 +18,15 @@ async function openPopover(user: ReturnType<typeof userEvent.setup>) {
 describe('SeverityFilter', () => {
   describe('the trigger', () => {
     it('states the active set in words, truthfully computed from the selection - never colour/shape alone', () => {
-      render(<SeverityFilter selected={DEFAULT_SEVERITY_LEVELS} onChange={vi.fn()} />);
+      // A genuine partial selection, not "the default" - PR61_DEFAULT_LOG_LEVELS_SINGLE_JAR_AND_USAGE_DOCS
+      // made every level selected the default, so this test names an explicit subset instead; the
+      // default-is-now-"All" case is covered by the next test, which already exercises ALL_SEVERITY_LEVEL_IDS.
+      render(<SeverityFilter selected={['INFO', 'WARN', 'ERROR']} onChange={vi.fn()} />);
       const trigger = screen.getByRole('button', { name: 'Severity: Info, Warn, Error' });
       expect(trigger).toHaveTextContent('Info, Warn, Error');
     });
 
-    it('reads "All" when every level is selected, "Errors only" when just ERROR is, "None" when none are', () => {
+    it('reads "All" when every level is selected (the default), "Errors only" when just ERROR is, "None" when none are', () => {
       const { rerender } = render(<SeverityFilter selected={ALL_SEVERITY_LEVEL_IDS} onChange={vi.fn()} />);
       expect(screen.getByRole('button', { name: 'Severity: All' })).toBeInTheDocument();
 

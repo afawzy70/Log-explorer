@@ -415,6 +415,38 @@ describe('LiveTailPanel', () => {
       expect(screen.getByText('an error line')).toBeInTheDocument();
     });
 
+    it('defaults to every level selected, so a fresh Live session and Search agree', async () => {
+      // PR61_DEFAULT_LOG_LEVELS_SINGLE_JAR_AND_USAGE_DOCS - Live already defaulted its own filterLevels
+      // state to ALL_SEVERITY_LEVEL_IDS before this mission; this test makes that parity with Search's
+      // now-all-selected default explicit and regression-proof, since a future edit to either default
+      // independently would otherwise go unnoticed.
+      renderPanel('live', {
+        visibleEvents: [
+          event({ message: 'a trace line', severity: 'TRACE' }),
+          event({ message: 'a debug line', severity: 'DEBUG' }),
+          event({ message: 'an error line', severity: 'ERROR' }),
+        ],
+      });
+      expect(screen.getByText('a trace line')).toBeInTheDocument();
+      expect(screen.getByText('a debug line')).toBeInTheDocument();
+      expect(screen.getByText('an error line')).toBeInTheDocument();
+    });
+
+    it('never hides an event with a missing or unrecognized severity while every level is selected', async () => {
+      // Mirrors Search's buildRequestBody fix: "all levels selected" must mean "no restriction," so a
+      // genuine but unlisted severity (e.g. FATAL, not one of SEVERITY_LEVELS' five known ids) or a
+      // missing severity is never silently dropped just because the display filter happens to compare
+      // against a known-id allow-list.
+      renderPanel('live', {
+        visibleEvents: [
+          event({ message: 'a fatal line', severity: 'FATAL' }),
+          event({ message: 'no severity at all', severity: null }),
+        ],
+      });
+      expect(screen.getByText('a fatal line')).toBeInTheDocument();
+      expect(screen.getByText('no severity at all')).toBeInTheDocument();
+    });
+
     it('LiveSeverityFilter never fires a search - purely local/display filtering', async () => {
       const user = userEvent.setup();
       const { live } = renderPanel('live', { visibleEvents: [event()] });

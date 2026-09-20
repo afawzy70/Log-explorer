@@ -1,6 +1,6 @@
 import { ALL_ADVANCED_FILTER_FIELDS } from './advancedFilterFields';
 import type { AdvancedFilterValues } from './advancedFilterFields';
-import { DEFAULT_SEVERITY_LEVELS, SEVERITY_LEVELS } from './severityLevels';
+import { DEFAULT_SEVERITY_LEVELS, SEVERITY_LEVELS, sameLevelSet } from './severityLevels';
 import styles from './ActiveFilters.module.css';
 
 export interface ActiveFiltersProps {
@@ -25,14 +25,6 @@ export interface ActiveFiltersProps {
   selectedTags?: string[];
   onRemoveTag?: (tag: string) => void;
   onClearAll: () => void;
-}
-
-function sameLevelSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-  const setB = new Set(b);
-  return a.every((level) => setB.has(level));
 }
 
 /** "Info, Warn, Error" - severity order, never selection order (matches `SeverityFilter`'s own display convention). */

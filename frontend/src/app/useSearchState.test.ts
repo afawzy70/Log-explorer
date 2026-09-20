@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { eventIdentity, useSearchState } from './useSearchState';
 import { EMPTY_QUERY_PLAN } from '../shared/api/testFixtures';
 import { CUSTOM_RANGE_ID } from '../shared/time/presets';
+import { ALL_SEVERITY_LEVEL_IDS } from '../features/search/severityLevels';
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -627,6 +628,32 @@ describe('useSearchState', () => {
       expect(result.current.selectedServices).toEqual(['audit']);
     });
 
+    it('restoreOriginalSearch restores an explicit, non-default level selection made before the detour', async () => {
+      // PR61_DEFAULT_LOG_LEVELS_SINGLE_JAR_AND_USAGE_DOCS - a level selection the investigator made on
+      // purpose (narrowing away from the "every level selected" default) must survive a Show Surroundings
+      // detour and back, exactly like serviceFilterMode/selectedServices above - never silently widened
+      // back to the default on return.
+      const result = await searchedWithThreeEvents();
+      act(() => result.current.setSelectedLevels(['ERROR']));
+      const rootEvent = result.current.searchResult!.events[0];
+
+      act(() => result.current.showContext(rootEvent));
+      await waitFor(() => expect(contextCalls).toHaveLength(1));
+      contextCalls[0].resolve(
+        jsonResponse({
+          events: [eventWithMessage('surrounding')],
+          counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await waitFor(() => expect(result.current.searchResult?.events[0].message).toBe('surrounding'));
+
+      expect(result.current.selectedLevels).toEqual(['ERROR']);
+
+      act(() => result.current.restoreOriginalSearch());
+      expect(result.current.selectedLevels).toEqual(['ERROR']);
+    });
+
     it('restoreOriginalSearch clears contextRootIdentity and restores the pristine, never-sorted original result', async () => {
       const result = await searchedWithThreeEvents();
       const originalOrder = result.current.searchResult!.events.map((e) => e.message);
@@ -852,7 +879,7 @@ describe('useSearchState', () => {
 
       expect(result.current.searchText).toBe('');
       expect(result.current.selectedServices).toEqual([]);
-      expect(result.current.selectedLevels).toEqual(['INFO', 'WARN', 'ERROR']);
+      expect(result.current.selectedLevels).toEqual(ALL_SEVERITY_LEVEL_IDS);
       expect(result.current.advancedFilters.traceId).toBe('');
       expect(result.current.queryState.mode).toBe('guided');
       expect(result.current.queryState.text).toBe('');
@@ -878,6 +905,65 @@ describe('useSearchState', () => {
 
       act(() => result.current.clearAllFilters());
       expect(result.current.serviceFilterMode).toBe('INCLUDE');
+    });
+  });
+
+  describe('default log levels (PR61_DEFAULT_LOG_LEVELS_SINGLE_JAR_AND_USAGE_DOCS)', () => {
+    it('starts a fresh app state with every level selected', async () => {
+      const result = await renderReady();
+      expect(result.current.selectedLevels).toEqual(ALL_SEVERITY_LEVEL_IDS);
+    });
+
+    it('a manual, narrower selection survives a rerender/refetch - nothing resets it back to the default', async () => {
+      const result = await renderReady();
+      act(() => result.current.setSelectedLevels(['ERROR']));
+
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      searchCalls[0].resolve(
+        jsonResponse({
+          events: [eventWithMessage('first')],
+          counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
+
+      // The search that just completed, and any rerender it caused, must not have reset the manual choice.
+      expect(result.current.selectedLevels).toEqual(['ERROR']);
+    });
+
+    it('omits the level filter from the outgoing request while every level is selected (the default) - the UI state and the effective query agree: no restriction', async () => {
+      const result = await renderReady();
+
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      const body = JSON.parse(searchCalls[0].body);
+      expect(body.levels).toBeUndefined();
+      searchCalls[0].resolve(
+        jsonResponse({
+          events: [],
+          counts: { estimatedTotal: null, returned: 0, visible: 0, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+    });
+
+    it('sends the explicit level list once the investigator narrows the selection', async () => {
+      const result = await renderReady();
+      act(() => result.current.setSelectedLevels(['ERROR']));
+
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      const body = JSON.parse(searchCalls[0].body);
+      expect(body.levels).toEqual(['ERROR']);
+      searchCalls[0].resolve(
+        jsonResponse({
+          events: [],
+          counts: { estimatedTotal: null, returned: 0, visible: 0, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
     });
   });
 

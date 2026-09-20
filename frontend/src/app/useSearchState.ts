@@ -24,7 +24,7 @@ import type {
   SourceHealthDetail,
   SourceInfo,
 } from '../shared/api/types';
-import { DEFAULT_SEVERITY_LEVELS } from '../features/search/severityLevels';
+import { DEFAULT_SEVERITY_LEVELS, isAllLevelsSelected } from '../features/search/severityLevels';
 import { emptyAdvancedFilterValues } from '../features/search/advancedFilterFields';
 import type { AdvancedFilterValues } from '../features/search/advancedFilterFields';
 import type { DetectableIdField } from '../features/search/idDetection';
@@ -792,7 +792,11 @@ export function useSearchState() {
         end: effectiveTimeRange.end,
         services: selectedServices,
         serviceFilterMode,
-        levels: selectedLevels,
+        // Every level selected == no restriction: omit the filter entirely so the backend's own
+        // "empty levels" path applies (EventFilters.matchesExceptTags), which never excludes an event
+        // with a missing or unrecognized severity. Sending the full id list explicitly would instead
+        // filter to exactly those known ids, silently dropping e.g. a genuine but unlisted "FATAL" event.
+        levels: isAllLevelsSelected(selectedLevels) ? undefined : selectedLevels,
         text: searchText || undefined,
         traceId: advancedFilters.traceId || undefined,
         spanId: advancedFilters.spanId || undefined,

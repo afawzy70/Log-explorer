@@ -34,3 +34,6 @@ desktop/build/
 # .env.example (CLAUDE.md §2 rule 6, "credentials ... never committed").
 .env
 .env.local
+
+# scripts/build-jar.sh's own output (the packaged runnable jar) - always rebuilt, never committed.
+/dist-jar/
