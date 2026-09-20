@@ -203,18 +203,21 @@ function renderWorkspace(props: Partial<Parameters<typeof ClassificationRulesWor
   const onClose = vi.fn();
   const onRulesChanged = vi.fn();
   const buildScope = vi.fn(() => SCOPE);
+  const onOpenMapping = vi.fn();
+  const onOpenSettings = vi.fn();
   const utils = render(
     <ClassificationRulesWorkspace
       sourceEvent={null}
+      origin="settings"
       buildScope={buildScope}
       onRulesChanged={onRulesChanged}
       onClose={onClose}
-      onOpenMapping={vi.fn()}
-      onOpenSettings={vi.fn()}
+      onOpenMapping={onOpenMapping}
+      onOpenSettings={onOpenSettings}
       {...props}
     />,
   );
-  return { ...utils, onClose, onRulesChanged, buildScope };
+  return { ...utils, onClose, onRulesChanged, buildScope, onOpenMapping, onOpenSettings };
 }
 
 type User = ReturnType<typeof userEvent.setup>;
@@ -624,7 +627,7 @@ describe('Rule wizard - create from event', () => {
   const event = fullEvent({ message: MESSAGE });
 
   async function renderFromEvent() {
-    const utils = renderWorkspace({ sourceEvent: event });
+    const utils = renderWorkspace({ sourceEvent: event, origin: 'search' });
     await screen.findByRole('heading', { name: 'Step 1 of 6: Source' });
     return utils;
   }
@@ -895,5 +898,63 @@ describe('Rule wizard - new rule without an event', () => {
     expect(screen.getByText('Detect needs a sample value. Paste one above, or write conditions manually.')).toBeInTheDocument();
     await user.type(screen.getByLabelText('Sample value'), 'MW call /x');
     expect(screen.getByRole('button', { name: 'Detect pattern' })).toBeEnabled();
+  });
+});
+
+// PR61_OWNER_NAVIGATION_RECOVERY_2 - owner-observed defects: Back always returned to Search regardless of
+// where the workspace was actually opened from, the breadcrumb could disagree with it, and every SettingsNav
+// jump from here landed Settings on its default "Sources" section rather than the one actually clicked.
+describe('ClassificationRulesWorkspace - origin-aware Back and Settings-nav target section', () => {
+  it('settings-origin (the default): shows the full breadcrumb, and Back truthfully names Settings', () => {
+    renderWorkspace();
+    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Back to Settings' })).toBeInTheDocument();
+  });
+
+  it('search-origin: no breadcrumb at all (nothing to contradict Back), and Back truthfully names Search results', () => {
+    renderWorkspace({ origin: 'search' });
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Back to Search results' })).toBeInTheDocument();
+  });
+
+  it('the breadcrumb "Settings" link targets the Classification rules section', async () => {
+    const user = userEvent.setup();
+    const { onOpenSettings } = renderWorkspace();
+    await user.click(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('button', { name: 'Settings' }));
+    expect(onOpenSettings).toHaveBeenCalledWith('classification');
+  });
+
+  it('offers the full Settings section list including Appearance, "Classification rules" marked current', async () => {
+    renderWorkspace();
+    const nav = screen.getByRole('navigation', { name: 'Settings sections' });
+    for (const label of ['Sources & connections', 'Privacy & masking', 'Appearance', 'Field mapping', 'Classification rules', 'Keyboard shortcuts']) {
+      expect(within(nav).getByRole('button', { name: label })).toBeInTheDocument();
+    }
+    expect(within(nav).getByRole('button', { name: 'Classification rules' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('the Settings-nav "Field mapping" item goes straight there - not through Settings first', async () => {
+    const user = userEvent.setup();
+    const { onOpenMapping, onOpenSettings } = renderWorkspace();
+    await user.click(screen.getByRole('button', { name: 'Field mapping' }));
+    expect(onOpenMapping).toHaveBeenCalledTimes(1);
+    expect(onOpenSettings).not.toHaveBeenCalled();
+  });
+
+  it('every other Settings-nav item lands deterministically on the section actually clicked', async () => {
+    const user = userEvent.setup();
+    const targets: [string, string][] = [
+      ['Sources & connections', 'sources'],
+      ['Privacy & masking', 'masking'],
+      ['Appearance', 'appearance'],
+      ['Keyboard shortcuts', 'shortcuts'],
+    ];
+    for (const [label, section] of targets) {
+      const { onOpenSettings, unmount } = renderWorkspace();
+      await user.click(screen.getByRole('button', { name: label }));
+      expect(onOpenSettings).toHaveBeenCalledTimes(1);
+      expect(onOpenSettings).toHaveBeenCalledWith(section);
+      unmount();
+    }
   });
 });

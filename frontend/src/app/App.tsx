@@ -264,6 +264,7 @@ function AppContent() {
                 openShiftScope={openShiftScopeState.scope}
                 onOpenShiftScopeChanged={openShiftScopeState.refresh}
                 onClose={state.closeSettingsWorkspace}
+                targetSection={state.settingsTargetSection}
                 themePreference={theme.preference}
                 onThemePreferenceChanged={theme.setPreference}
               />
@@ -278,6 +279,7 @@ function AppContent() {
                 profileError={state.fieldMappingProfileError}
                 onProfileChanged={() => state.refreshFieldMappingProfile(mappingProject)}
                 onClose={state.closeMappingWorkspace}
+                origin={state.mappingWorkspaceOrigin}
                 onOpenSettings={state.openSettingsWorkspace}
                 onOpenClassificationRules={state.openClassificationWorkspace}
               />
@@ -288,6 +290,7 @@ function AppContent() {
                 key={state.classificationWorkspaceKey}
                 sourceEvent={state.classificationWorkspaceEvent}
                 intent={state.classificationWorkspaceIntent}
+                origin={state.classificationWorkspaceOrigin}
                 buildScope={state.buildClassificationSampleScope}
                 onRulesChanged={state.refreshClassificationTags}
                 onClose={state.closeClassificationWorkspace}

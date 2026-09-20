@@ -1363,4 +1363,99 @@ describe('useSearchState', () => {
       expect(result.current.journeyError).toBeNull();
     });
   });
+
+  describe('workspace navigation origin (PR61_OWNER_NAVIGATION_RECOVERY_2)', () => {
+    it('openMappingWorkspace defaults to settings-origin; closing returns to Settings, positioned on Field mapping', async () => {
+      const result = await renderReady();
+      act(() => result.current.openMappingWorkspace());
+      expect(result.current.mappingWorkspaceOpen).toBe(true);
+      expect(result.current.mappingWorkspaceOrigin).toBe('settings');
+
+      act(() => result.current.closeMappingWorkspace());
+      expect(result.current.mappingWorkspaceOpen).toBe(false);
+      expect(result.current.settingsWorkspaceOpen).toBe(true);
+      expect(result.current.settingsTargetSection).toBe('mapping');
+    });
+
+    it('openMappingWorkspace("search") - Shell\'s own header trigger - closing returns to plain Search, not Settings', async () => {
+      const result = await renderReady();
+      act(() => result.current.openMappingWorkspace('search'));
+      expect(result.current.mappingWorkspaceOrigin).toBe('search');
+
+      act(() => result.current.closeMappingWorkspace());
+      expect(result.current.mappingWorkspaceOpen).toBe(false);
+      expect(result.current.settingsWorkspaceOpen).toBe(false);
+    });
+
+    it('openClassificationWorkspace defaults to settings-origin; closing returns to Settings, positioned on Classification rules', async () => {
+      const result = await renderReady();
+      act(() => result.current.openClassificationWorkspace());
+      expect(result.current.classificationWorkspaceOpen).toBe(true);
+      expect(result.current.classificationWorkspaceOrigin).toBe('settings');
+
+      act(() => result.current.closeClassificationWorkspace());
+      expect(result.current.classificationWorkspaceOpen).toBe(false);
+      expect(result.current.settingsWorkspaceOpen).toBe(true);
+      expect(result.current.settingsTargetSection).toBe('classification');
+    });
+
+    it('openSettingsWorkspace lands deterministically on the requested section, not always the default', async () => {
+      const result = await renderReady();
+      act(() => result.current.openSettingsWorkspace('shortcuts'));
+      expect(result.current.settingsWorkspaceOpen).toBe(true);
+      expect(result.current.settingsTargetSection).toBe('shortcuts');
+    });
+
+    it('openSettingsWorkspace with no argument defaults to sources, same as before this mission', async () => {
+      const result = await renderReady();
+      act(() => result.current.openSettingsWorkspace());
+      expect(result.current.settingsTargetSection).toBe('sources');
+    });
+
+    it('the Inspector\'s "Create tag rule from this event" marks search-origin and remembers the selected event, so closing reopens the Inspector on it - never stranding the user on bare Search results', async () => {
+      const result = await renderReady();
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      searchCalls[0].resolve(
+        jsonResponse({
+          events: [eventWithMessage('first'), eventWithMessage('second')],
+          counts: { estimatedTotal: null, returned: 2, visible: 2, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(2));
+
+      act(() => result.current.openInspector(1));
+      expect(result.current.selectedIndex).toBe(1);
+
+      act(() => result.current.openClassificationRuleFromEvent(result.current.searchResult!.events[1]));
+      // Opening the workspace closes the Inspector immediately (existing behavior, unchanged) ...
+      expect(result.current.selectedIndex).toBeNull();
+      expect(result.current.classificationWorkspaceOrigin).toBe('search');
+
+      // ... but closing the workspace restores it, rather than leaving the user on bare Search results.
+      act(() => result.current.closeClassificationWorkspace());
+      expect(result.current.classificationWorkspaceOpen).toBe(false);
+      expect(result.current.settingsWorkspaceOpen).toBe(false);
+      expect(result.current.selectedIndex).toBe(1);
+      expect(result.current.selectedEvent?.message).toBe('second');
+    });
+
+    it('opening the Classification workspace from Settings (not the Inspector) never reopens an Inspector on close - there was nothing to return to', async () => {
+      const result = await renderReady();
+      act(() => result.current.openClassificationWorkspace('settings'));
+      act(() => result.current.closeClassificationWorkspace());
+      expect(result.current.selectedIndex).toBeNull();
+    });
+
+    it('never auto-runs Search on any workspace-navigation transition', async () => {
+      const result = await renderReady();
+      act(() => result.current.openMappingWorkspace());
+      act(() => result.current.closeMappingWorkspace());
+      act(() => result.current.openClassificationWorkspace());
+      act(() => result.current.closeClassificationWorkspace());
+      act(() => result.current.openSettingsWorkspace('appearance'));
+      expect(searchCalls).toHaveLength(0);
+    });
+  });
 });

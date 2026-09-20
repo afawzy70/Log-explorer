@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../../shared/ui/Button';
 import { Icon } from '../../../shared/ui/Icon';
 import { VisuallyHidden } from '../../../shared/ui/VisuallyHidden';
+import { WorkspaceBackButton } from '../../../shared/ui/WorkspaceBackButton';
 import { useDismissableLayer } from '../../../shared/ui/useDismissableLayer';
 import {
   deleteClassificationRule,
@@ -20,7 +21,7 @@ import type {
   LogEvent,
   RuleMatchDto,
 } from '../../../shared/api/types';
-import type { ClassificationWorkspaceIntent } from '../../../app/useSearchState';
+import type { ClassificationWorkspaceIntent, SettingsSectionId, WorkspaceOrigin } from '../../../app/useSearchState';
 import { TagChip, TagCountBadge } from '../../../shared/ui/TagChip';
 import { SettingsNav } from '../SettingsNav';
 import { EDITOR_TITLES, RuleEditor } from './RuleEditor';
@@ -58,15 +59,26 @@ export interface ClassificationRulesWorkspaceProps {
   onRulesChanged?: () => void;
   onClose: () => void;
   /**
+   * PR61_OWNER_NAVIGATION_RECOVERY_2 - where this workspace was opened from, so its own Back button and
+   * breadcrumb can be truthful instead of always assuming Settings (owner-observed defect: "Back" always
+   * returned to Search even when the workspace was entered from Settings, and vice versa). `App.tsx` sets
+   * this from `state.classificationWorkspaceOrigin`, which every `open...` call site already threads through.
+   */
+  origin: WorkspaceOrigin;
+  /**
    * DRIFT-016 remediation - the shared Settings nav rendered here needs to navigate to the other two
    * top-level takeover workspaces it lists (Field mapping directly; Sources & connections/Privacy &
    * masking/Keyboard shortcuts all live inside Settings itself). Both are the exact same
    * `state.openMappingWorkspace`/`state.openSettingsWorkspace` functions `App.tsx` already owns, passed
    * through rather than the whole `SearchState` object, matching this component's existing narrow-props
    * convention.
+   *
+   * <p>PR61_OWNER_NAVIGATION_RECOVERY_2 - `onOpenSettings` now takes the target section (owner-observed
+   * defect: every jump from this workspace's own `SettingsNav` sidebar landed on Settings' default "Sources"
+   * section regardless of which one was actually clicked).
    */
   onOpenMapping: () => void;
-  onOpenSettings: () => void;
+  onOpenSettings: (section?: SettingsSectionId) => void;
 }
 
 type View =
@@ -107,6 +119,7 @@ const STATUS_LABELS: Record<ClassificationRulesState['status'], string> = {
 export function ClassificationRulesWorkspace({
   sourceEvent,
   intent,
+  origin,
   buildScope,
   onRulesChanged,
   onClose,
@@ -218,7 +231,10 @@ export function ClassificationRulesWorkspace({
       clearListMessages();
       setView({ kind: 'list' });
     } else {
-      onOpenSettings();
+      // PR61_OWNER_NAVIGATION_RECOVERY_2 - `id` is one of SettingsNav's own SETTINGS_NAV_SECTIONS ids
+      // ('sources'/'masking'/'appearance'/'shortcuts' here), passed through so Settings lands deterministically
+      // on the one the user actually clicked, not its own default "Sources" section every time.
+      onOpenSettings(id as SettingsSectionId);
     }
   }
 
@@ -656,48 +672,61 @@ export function ClassificationRulesWorkspace({
   const trailSegment =
     view.kind === 'import' ? 'Import' : view.kind === 'editor' ? EDITOR_TITLES[view.mode] : view.kind === 'chooseRule' ? 'Extend rule' : null;
 
+  // PR61_OWNER_NAVIGATION_RECOVERY_2 - owner-observed defect: this breadcrumb and the header's own Back button
+  // used to disagree (a "Settings" crumb was shown even when the workspace was reached from Search, and Back
+  // always said "search results" even when it actually returned to Settings). Both are now driven by the same
+  // `origin` truth, so they can never contradict each other again: a Search-origin visit shows no breadcrumb
+  // at all (Back alone already names the one real ancestor truthfully), a Settings-origin visit keeps the
+  // full breadcrumb, and both destinations always match what closing/backing out of this workspace actually
+  // does.
+  const backDestination = origin === 'settings' ? 'Settings' : 'Search results';
+
   return (
     <div className={listStyles.wrapper} data-testid="classification-rules-workspace">
       <div className={listStyles.header}>
-        <nav aria-label="Breadcrumb" className={listStyles.breadcrumb}>
-          <ol className={listStyles.breadcrumbList}>
-            <li>
-              <button type="button" className={listStyles.breadcrumbLink} onClick={onOpenSettings}>
-                Settings
-              </button>
-            </li>
-            <li aria-hidden="true" className={listStyles.breadcrumbSep}>
-              /
-            </li>
-            <li>
-              {trailSegment ? (
+        {origin === 'settings' ? (
+          <nav aria-label="Breadcrumb" className={listStyles.breadcrumb}>
+            <ol className={listStyles.breadcrumbList}>
+              <li>
                 <button
                   type="button"
                   className={listStyles.breadcrumbLink}
-                  onClick={() => { clearListMessages(); setView({ kind: 'list' }); }}
+                  onClick={() => onOpenSettings('classification')}
                 >
-                  Classification rules
+                  Settings
                 </button>
-              ) : (
-                <span aria-current="page">Classification rules</span>
-              )}
-            </li>
-            {trailSegment ? (
-              <>
-                <li aria-hidden="true" className={listStyles.breadcrumbSep}>
-                  /
-                </li>
-                <li>
-                  <span aria-current="page">{trailSegment}</span>
-                </li>
-              </>
-            ) : null}
-          </ol>
-        </nav>
+              </li>
+              <li aria-hidden="true" className={listStyles.breadcrumbSep}>
+                /
+              </li>
+              <li>
+                {trailSegment ? (
+                  <button
+                    type="button"
+                    className={listStyles.breadcrumbLink}
+                    onClick={() => { clearListMessages(); setView({ kind: 'list' }); }}
+                  >
+                    Classification rules
+                  </button>
+                ) : (
+                  <span aria-current="page">Classification rules</span>
+                )}
+              </li>
+              {trailSegment ? (
+                <>
+                  <li aria-hidden="true" className={listStyles.breadcrumbSep}>
+                    /
+                  </li>
+                  <li>
+                    <span aria-current="page">{trailSegment}</span>
+                  </li>
+                </>
+              ) : null}
+            </ol>
+          </nav>
+        ) : null}
         <div className={listStyles.headerRow}>
-          <Button variant="ghost" onClick={onClose}>
-            ← Back to search results
-          </Button>
+          <WorkspaceBackButton destination={backDestination} onClick={onClose} />
           <h1 id={headingId} ref={headingRef} tabIndex={-1} className={listStyles.title}>
             Classification rules
           </h1>

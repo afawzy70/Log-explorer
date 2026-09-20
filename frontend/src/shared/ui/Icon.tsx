@@ -59,6 +59,7 @@ import {
   SlidersHorizontal,
   Split,
   Square,
+  SunMoon,
   Tag,
   Tags,
   Timer,
@@ -142,6 +143,13 @@ const ICONS = {
   'sliders-horizontal': SlidersHorizontal,
   split: Split,
   square: Square,
+  /*
+   * PR61_OWNER_NAVIGATION_RECOVERY_2 - the one deliberate addition outside the design's own curated icon set
+   * (see this map's own doc comment): the approved design prototype never depicted a runtime theme control at
+   * all (its own `?theme=dark` is a design-preview URL param, not a UI element), so there was never an
+   * `I('sun-moon', ...)` call to match - this is a genuinely new capability, not a drift from the design.
+   */
+  'sun-moon': SunMoon,
   tag: Tag,
   tags: Tags,
   timer: Timer,

@@ -150,6 +150,17 @@ interface SearchSnapshot {
 /** Why the classification workspace was opened - see `classificationWorkspaceIntent`. */
 export type ClassificationWorkspaceIntent = 'createRule' | 'addExtraction' | null;
 
+/**
+ * PR61_OWNER_NAVIGATION_RECOVERY_2 - where a full-takeover workspace (Field Mapping, Classification Rules)
+ * was entered from, so its own "Back" can truthfully return there instead of always assuming Search. `search`
+ * covers Shell's own persistent header trigger and the Inspector's "Create tag rule"/"Add extraction" actions;
+ * `settings` covers Settings' own inline buttons and either workspace's shared `SettingsNav` sidebar jump.
+ */
+export type WorkspaceOrigin = 'search' | 'settings';
+
+/** The Settings page's own section ids (`SettingsNav.tsx`'s `SETTINGS_NAV_SECTIONS`) - what `openSettingsWorkspace` can deterministically land on. */
+export type SettingsSectionId = 'sources' | 'masking' | 'appearance' | 'mapping' | 'classification' | 'shortcuts';
+
 export function useSearchState() {
   const [sources, setSources] = useState<SourceInfo[]>([]);
   const [sourcesLoading, setSourcesLoading] = useState(true);
@@ -404,6 +415,8 @@ export function useSearchState() {
    * - this workspace has no per-open query/result of its own to preserve.
    */
   const [mappingWorkspaceOpen, setMappingWorkspaceOpen] = useState(false);
+  /** PR61_OWNER_NAVIGATION_RECOVERY_2 - see {@link WorkspaceOrigin}; decides where `closeMappingWorkspace` returns to. */
+  const [mappingWorkspaceOrigin, setMappingWorkspaceOrigin] = useState<WorkspaceOrigin>('search');
 
   /**
    * Event Classification & Extraction Rules - a second takeover workspace,
@@ -423,6 +436,15 @@ export function useSearchState() {
    */
   const [classificationWorkspaceIntent, setClassificationWorkspaceIntent] =
     useState<ClassificationWorkspaceIntent>(null);
+  /** PR61_OWNER_NAVIGATION_RECOVERY_2 - see {@link WorkspaceOrigin}; decides where `closeClassificationWorkspace` returns to. */
+  const [classificationWorkspaceOrigin, setClassificationWorkspaceOrigin] = useState<WorkspaceOrigin>('settings');
+  /**
+   * Set only by the Inspector's own "Create tag rule"/"Add extraction" actions (which close the Inspector to
+   * open this workspace - `openClassificationRuleFromEvent`/`openClassificationExtractionFromEvent` below), so
+   * a search-origin close can reopen the Inspector on the same event rather than leaving the user on bare
+   * Search results, which would silently lose where they were.
+   */
+  const [classificationReturnInspectorIndex, setClassificationReturnInspectorIndex] = useState<number | null>(null);
 
   /**
    * B2 (Session 4) - the consolidated Settings entry point (COMPONENT_INVENTORY.md's `app/Shell.tsx`
@@ -431,38 +453,78 @@ export function useSearchState() {
    * classification workspaces, and each of those closes it in turn.
    */
   const [settingsWorkspaceOpen, setSettingsWorkspaceOpen] = useState(false);
+  /** PR61_OWNER_NAVIGATION_RECOVERY_2 - which section `SettingsWorkspace` should render as active/in view on arrival; see {@link SettingsSectionId}. */
+  const [settingsTargetSection, setSettingsTargetSection] = useState<SettingsSectionId>('sources');
 
-  const openMappingWorkspace = useCallback(() => {
+  /**
+   * PR61_OWNER_NAVIGATION_RECOVERY_2 - the single Settings entry point, now deterministic about which section
+   * it lands on (owner-observed defect: every caller landed on the default "Sources" section regardless of
+   * where the user actually asked to go - a plain click-based `SettingsNav` highlight inside `SettingsWorkspace`
+   * itself is preserved for navigating BETWEEN sections once already there; this is only about the section
+   * Settings first renders as active when it is (re)opened).
+   */
+  const openSettingsWorkspace = useCallback((targetSection: SettingsSectionId = 'sources') => {
+    setMappingWorkspaceOpen(false);
+    setClassificationWorkspaceOpen(false);
+    setClassificationWorkspaceEvent(null);
+    setClassificationWorkspaceIntent(null);
+    setSettingsTargetSection(targetSection);
+    setSettingsWorkspaceOpen(true);
+  }, []);
+  const closeSettingsWorkspace = useCallback(() => setSettingsWorkspaceOpen(false), []);
+
+  /**
+   * PR61_OWNER_NAVIGATION_RECOVERY_2 - `origin` defaults to `'settings'` because every caller except Shell's
+   * own persistent header trigger reaches this through Settings/a sibling workspace's own `SettingsNav`
+   * sidebar (both already "I am browsing Settings" contexts); Shell's header button is the one call site that
+   * explicitly passes `'search'`.
+   */
+  const openMappingWorkspace = useCallback((origin: WorkspaceOrigin = 'settings') => {
     setClassificationWorkspaceOpen(false);
     setClassificationWorkspaceEvent(null);
     setClassificationWorkspaceIntent(null);
     setSettingsWorkspaceOpen(false);
+    setMappingWorkspaceOrigin(origin);
     setMappingWorkspaceOpen(true);
   }, []);
-  const closeMappingWorkspace = useCallback(() => setMappingWorkspaceOpen(false), []);
+  /** Returns to Settings (positioned back on the Field Mapping section) if that is where this was opened from; otherwise plain Search, untouched. */
+  const closeMappingWorkspace = useCallback(() => {
+    setMappingWorkspaceOpen(false);
+    if (mappingWorkspaceOrigin === 'settings') {
+      openSettingsWorkspace('mapping');
+    }
+  }, [mappingWorkspaceOrigin, openSettingsWorkspace]);
 
-  const openClassificationWorkspace = useCallback(() => {
+  /** Same `origin` default and reasoning as {@link openMappingWorkspace}. */
+  const openClassificationWorkspace = useCallback((origin: WorkspaceOrigin = 'settings') => {
     setMappingWorkspaceOpen(false);
     setSettingsWorkspaceOpen(false);
     setClassificationWorkspaceEvent(null);
     setClassificationWorkspaceIntent(null);
+    setClassificationWorkspaceOrigin(origin);
+    setClassificationReturnInspectorIndex(null);
     setClassificationWorkspaceKey((k) => k + 1);
     setClassificationWorkspaceOpen(true);
   }, []);
+  /**
+   * Returns to Settings (positioned back on the Classification rules section) if that is where this was
+   * opened from; a search-origin close instead reopens the Inspector on the same event when the workspace was
+   * reached from there (`classificationReturnInspectorIndex`), or leaves plain Search alone otherwise - never
+   * auto-runs Search, never touches any other Search state.
+   */
   const closeClassificationWorkspace = useCallback(() => {
     setClassificationWorkspaceOpen(false);
     setClassificationWorkspaceEvent(null);
     setClassificationWorkspaceIntent(null);
-  }, []);
-
-  const openSettingsWorkspace = useCallback(() => {
-    setMappingWorkspaceOpen(false);
-    setClassificationWorkspaceOpen(false);
-    setClassificationWorkspaceEvent(null);
-    setClassificationWorkspaceIntent(null);
-    setSettingsWorkspaceOpen(true);
-  }, []);
-  const closeSettingsWorkspace = useCallback(() => setSettingsWorkspaceOpen(false), []);
+    if (classificationWorkspaceOrigin === 'settings') {
+      openSettingsWorkspace('classification');
+      return;
+    }
+    if (classificationReturnInspectorIndex != null) {
+      setSelectedIndex(classificationReturnInspectorIndex);
+      setClassificationReturnInspectorIndex(null);
+    }
+  }, [classificationWorkspaceOrigin, classificationReturnInspectorIndex, openSettingsWorkspace]);
 
   const refreshClassificationTags = useCallback(() => {
     fetchClassificationRules()
@@ -984,33 +1046,44 @@ export function useSearchState() {
     focusRestoreRef.current = null;
   }, []);
 
-  /** "Create tag rule from this event" - closes the inspector and opens the classification workspace in create-from-event mode. */
+  /**
+   * "Create tag rule from this event" - closes the inspector and opens the classification workspace in
+   * create-from-event mode. PR61_OWNER_NAVIGATION_RECOVERY_2 - remembers which event's Inspector was open
+   * (`classificationReturnInspectorIndex`) and marks the origin `'search'`, so `closeClassificationWorkspace`
+   * can truthfully reopen the Inspector on the same event on the way back, instead of stranding the user on
+   * bare Search results.
+   */
   const openClassificationRuleFromEvent = useCallback((event: LogEvent) => {
+    setClassificationReturnInspectorIndex(selectedIndex);
     setSelectedIndex(null);
     focusRestoreRef.current = null;
     setMappingWorkspaceOpen(false);
     setSettingsWorkspaceOpen(false);
     setClassificationWorkspaceEvent(event);
     setClassificationWorkspaceIntent('createRule');
+    setClassificationWorkspaceOrigin('search');
     setClassificationWorkspaceKey((k) => k + 1);
     setClassificationWorkspaceOpen(true);
-  }, []);
+  }, [selectedIndex]);
 
   /**
    * "Add extraction from this event" - the event is already classified, so this extends one of the rules that
    * matched it rather than authoring a new one. The workspace asks which rule when more than one matched, and
-   * never mutates a rule without an explicit Save.
+   * never mutates a rule without an explicit Save. Same origin/return-index handling as
+   * {@link openClassificationRuleFromEvent}.
    */
   const openClassificationExtractionFromEvent = useCallback((event: LogEvent) => {
+    setClassificationReturnInspectorIndex(selectedIndex);
     setSelectedIndex(null);
     focusRestoreRef.current = null;
     setMappingWorkspaceOpen(false);
     setSettingsWorkspaceOpen(false);
     setClassificationWorkspaceEvent(event);
     setClassificationWorkspaceIntent('addExtraction');
+    setClassificationWorkspaceOrigin('search');
     setClassificationWorkspaceKey((k) => k + 1);
     setClassificationWorkspaceOpen(true);
-  }, []);
+  }, [selectedIndex]);
 
   const selectPreviousEvent = useCallback(() => {
     setSelectedIndex((prev) => (prev != null && prev > 0 ? prev - 1 : prev));
@@ -1388,15 +1461,18 @@ export function useSearchState() {
     fieldMappingSearchReady: fieldMappingProfile?.searchReady === true,
     refreshFieldMappingProfile,
     mappingWorkspaceOpen,
+    mappingWorkspaceOrigin,
     openMappingWorkspace,
     closeMappingWorkspace,
     settingsWorkspaceOpen,
+    settingsTargetSection,
     openSettingsWorkspace,
     closeSettingsWorkspace,
     classificationWorkspaceOpen,
     classificationWorkspaceEvent,
     classificationWorkspaceIntent,
     classificationWorkspaceKey,
+    classificationWorkspaceOrigin,
     openClassificationExtractionFromEvent,
     openClassificationWorkspace,
     openClassificationRuleFromEvent,

@@ -105,8 +105,12 @@ describe('App - Classification rules workspace takeover', () => {
     expect(screen.queryByTestId('field-mapping-workspace')).not.toBeInTheDocument();
     expect(screen.queryByTestId('settings-workspace')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /back to search results/i }));
+    // PR61_OWNER_NAVIGATION_RECOVERY_2 - this whole visit reached Classification rules from Settings, so its
+    // own Back must truthfully return to Settings, not silently drop the user all the way out to Search (the
+    // exact owner-observed defect this mission fixed - the button's own accessible name says so too: "Back to
+    // Settings", not "Back to search results").
+    await user.click(screen.getByRole('button', { name: 'Back to Settings' }));
     await waitFor(() => expect(screen.queryByTestId('classification-rules-workspace')).not.toBeInTheDocument());
-    expect(screen.getByText(/run a search to see results/i)).toBeInTheDocument();
+    expect(screen.getByTestId('settings-workspace')).toBeInTheDocument();
   });
 });

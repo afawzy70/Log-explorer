@@ -9,7 +9,7 @@ to merge.
 
 ```
 START_HEAD=d32bca83c47ab6b9631d4ebbedd2dc05a42b5fc4
-END_HEAD=<recorded at push, see FINAL_REPORT>
+END_HEAD=0e70771bcf791c1b2b42e8fb9080e821bfb39fac
 ```
 
 ## Startup gate
@@ -348,3 +348,336 @@ weakened, no source/OpenShift-session authority change, Source Experience
 Parity not redesigned, latest `main` not integrated, PR64 not manually
 re-integrated, nothing deployed to port 80, `sofra-caddy-1` untouched,
 PR #61 not merged.
+
+---
+
+# OWNER_NAVIGATION_RECOVERY_2
+
+Mission: `PR61_OWNER_NAVIGATION_RECOVERY_2`. A post-mission independent
+review (ChatGPT Owner) inspected the actual production source at the
+`PR61_OWNER_MANUAL_USABILITY_AND_CLASSIFICATION_RECOVERY` head above and
+found that mission's own statement — "Settings' own discoverability,
+information architecture, current-location clarity... were already
+correct" — was true for Settings' own internal structure, but did **not**
+cover three further, genuinely still-present owner-observed defects the
+prior mission's scope had not reached: `ClassificationRulesWorkspace`'s and
+`FieldMappingWorkspace`'s own outer "Back" always returned to Search
+regardless of where the workspace was actually opened from; Settings'
+"Keyboard shortcuts" section rendered the compact header popover trigger
+instead of real content; and every jump from either workspace's own
+`SettingsNav` sidebar landed Settings on its default "Sources" section
+rather than the one actually clicked. This section records that recovery.
+The sections above are preserved unedited as the historical record of
+their own mission — they were accurate about what that mission covered;
+this one covers what it did not.
+
+```
+START_HEAD=0e70771bcf791c1b2b42e8fb9080e821bfb39fac
+END_HEAD=<recorded at push, see FINAL_REPORT>
+```
+
+## Confirmed remaining defects and their root causes
+
+**1. Classification/Field Mapping "Back" ignored where the workspace was
+opened from.** `ClassificationRulesWorkspace`'s and `FieldMappingWorkspace`'s
+own outer Back button always called `onClose` (`state.closeClassificationWorkspace`/
+`state.closeMappingWorkspace`), and those functions always did exactly one
+thing — close the workspace, returning to Search — regardless of whether
+the workspace was reached from Settings, from Shell's own persistent
+header trigger, or from the Inspector. `Settings → Manage classification
+rules → Back` genuinely returned to Search, not Settings, confirmed
+directly against the production source before any fix.
+
+**2. Settings' "Keyboard shortcuts" section rendered the wrong
+component.** `SettingsWorkspace.tsx` rendered `<KeyboardShortcutsHelp />`
+directly — the same compact `⌨` trigger + absolutely-positioned popover
+Shell's own header already uses — inside its own inline section. Reaching
+real shortcut content from Settings still required clicking a small icon
+button to open a floating panel; Settings' own page never showed the
+content itself.
+
+**3. Every `SettingsNav` sidebar jump from Classification/Field Mapping
+landed on Settings' default section.** Both workspaces' own
+`selectSettingsSection`/inline nav handler called `onOpenSettings()` with
+no argument for every section other than "mapping"/"classification", and
+`openSettingsWorkspace`/`SettingsWorkspace` had no concept of a requested
+target section at all — `activeSectionId` always initialized to `'sources'`.
+`Classification sidebar → Keyboard shortcuts` opened Settings, but always
+on "Sources & connections".
+
+Back and the breadcrumb could also visibly disagree with each other (a
+"Settings" breadcrumb crumb shown while Back said "search results", or
+vice versa) — a direct instance of the owner's own "Back is not clear" report.
+
+## The fix: one coherent origin/target-section contract
+
+Per the mission's own preference for "one small explicit workspace
+navigation/origin contract" over scattered booleans:
+
+```ts
+export type WorkspaceOrigin = 'search' | 'settings';
+export type SettingsSectionId = 'sources' | 'masking' | 'appearance' | 'mapping' | 'classification' | 'shortcuts';
+```
+
+(`frontend/src/app/useSearchState.ts`.) Every place that can open Field
+Mapping or Classification Rules now states its origin explicitly at the
+call site (`openMappingWorkspace(origin)`/`openClassificationWorkspace(origin)`,
+defaulting to `'settings'` since every caller except Shell's own header
+trigger already reaches these through a Settings-family context; Shell's
+own button is the one explicit `'search'`). `closeMappingWorkspace`/
+`closeClassificationWorkspace` read that origin and either call
+`openSettingsWorkspace(<the section that workspace corresponds to>)` or
+fall through to a plain close (Search). `openSettingsWorkspace` now takes
+an optional target section (default `'sources'`, unchanged for every
+caller that never had one to give), stored as `settingsTargetSection` and
+threaded into `SettingsWorkspace` as a `targetSection` prop that seeds its
+own `activeSectionId` and scrolls to it on mount — deterministic, no
+`setTimeout`, no scroll-timing guesswork.
+
+**The Inspector case (N04/N22) needed one more piece**: "Create tag rule
+from this event"/"Add extraction from this event" already closed the
+Inspector (`setSelectedIndex(null)`) before opening Classification Rules.
+A new `classificationReturnInspectorIndex` remembers which event's
+Inspector was open at that moment; `closeClassificationWorkspace`, when
+the origin is `'search'` and that index is set, calls `setSelectedIndex`
+directly to reopen the Inspector on the exact same event — never
+stranding the user on bare Search results, never touching any other
+Search state (results, filters, source, scope, time range, query are all
+untouched by this whole round trip — proven by `useSearchState.test.ts`'s
+own new coverage and a real-backend E2E test).
+
+**Back button grammar (defect 3's second half)**: a new shared
+`WorkspaceBackButton` (`frontend/src/shared/ui/WorkspaceBackButton.tsx`) is
+now the one Back-button implementation for Settings, Field Mapping, and
+Classification Rules — a real `arrow-left` icon (already in `Icon.tsx`'s
+curated set), never icon-only, `destination` text supplied by the caller
+from the same origin truth above (`"Settings"` / `"Search results"`), and
+an `aria-label` of `"Back to <destination>"` (more informative for
+assistive tech than the bare destination alone, and incidentally exactly
+what disambiguates it from a same-page breadcrumb link to that same
+destination in tests and in practice). The breadcrumb itself is now
+conditionally rendered — a search-origin visit shows **no** breadcrumb at
+all (nothing to contradict a Back button that already truthfully names
+the one real ancestor), a settings-origin visit keeps the existing full
+breadcrumb, and its own "Settings" link now also targets the correct
+section (`onOpenSettings('classification')`/`onOpenSettings('mapping')`),
+matching what Back does.
+
+**Keyboard shortcuts (defect 2)**: `KeyboardShortcutsHelp.tsx`'s own pure
+grouping computation was extracted unchanged into a new
+`useShortcutGroups()` hook, and its group/list/row markup into a new
+`ShortcutGroupList` presentational component — both already existed as the
+correct, single, registry-derived source of truth; only the JSX around
+them was ever popover-specific. `KeyboardShortcutsHelp` (the header
+trigger) is now a thin wrapper: trigger button + dialog chrome +
+`<ShortcutGroupList grouped={useShortcutGroups()} />`, behaviorally
+identical to before. A new `KeyboardShortcutsInline` component is: heading
++ the same `<ShortcutGroupList grouped={useShortcutGroups()} />`, no
+trigger, no dialog, no dismiss layer — what `SettingsWorkspace` now
+renders in its own "Keyboard shortcuts" section. Exactly one source of
+shortcut truth; two presentations.
+
+**Appearance in the shared nav**: `SETTINGS_NAV_SECTIONS` now includes
+`{ id: 'appearance', icon: 'sun-moon', label: 'Appearance' }`, positioned
+after "Privacy & masking" (a cross-cutting, source-independent preference
+belongs with the others like it, not after the source-scoped Field
+mapping/Classification rules sections). `SettingsWorkspace`'s own
+`<AppearanceSection>` moved to the matching position in its JSX. `sun-moon`
+(from `lucide-react`) is the one deliberate addition outside `Icon.tsx`'s
+own design-curated set — documented in place: the approved design
+prototype never depicted a runtime theme control at all (its own
+`?theme=dark` is a design-preview URL parameter, not a UI element), so
+there was never a design-approved icon to match.
+
+## A real, pre-existing accessibility defect found and recorded (not fixed — out of scope)
+
+While writing this mission's own new `SettingsWorkspace.test.tsx` (the
+first test file to ever render the full `SettingsWorkspace` and check it
+with axe — no such file existed before), a genuine, **pre-existing**
+`landmark-unique` violation was found: `PrivacyMaskingSettingsPanel.tsx`
+renders its own `<section aria-labelledby={headingId}>` one level inside
+`SettingsWorkspace`'s own identically-purposed `#settings-masking`
+section, and both resolve to the accessible name "Privacy & masking" —
+two same-named landmarks, which axe flags. Confirmed unrelated to this
+mission: neither `PrivacyMaskingSettingsPanel.tsx` nor its nesting was
+touched here, and no prior test ever exercised a full `SettingsWorkspace`
+render against axe to have caught it. Per this mission's own "record it,
+do not expand scope automatically" instruction, this is recorded here and
+left unfixed; this mission's own axe checks are scoped to the sections it
+actually touched (Appearance, Keyboard shortcuts) rather than the whole
+page, so this pre-existing issue does not appear as a false "new
+violation" in this recovery's own evidence.
+
+## Nested Classification navigation (N06/N07) — already correct, verified unchanged
+
+`RuleEditor`'s own `onCancel`/Import's own cancel/apply handlers already
+called `setView({ kind: 'list' })` — internal navigation back to the rule
+list, never all the way out to Settings/Search — unchanged by this
+mission. What was missing was only the OUTER Back (defect 1 above); with
+that fixed, `Settings → Classification → New rule → Cancel → list →
+Back → Settings` now works end to end, proven by a real-backend E2E test
+(`N06/N21` below) rather than assumed from the unchanged internal code
+alone.
+
+## Tests
+
+**Frontend unit** (`useSearchState.test.ts`, `SettingsWorkspace.test.tsx`
+— new; `ClassificationRulesWorkspace.test.tsx`, `FieldMappingWorkspace.test.tsx`,
+`App.classificationWorkspace.test.tsx` — extended):
+- The full origin/target-section contract at the hook level: default
+  origins, explicit `'search'`, `closeMappingWorkspace`/
+  `closeClassificationWorkspace` landing on the correct Settings section,
+  `openSettingsWorkspace` defaulting and targeting correctly, the
+  Inspector-restore path (open → close → Inspector reopens on the same
+  event, with the pre-existing "opened from Settings never reopens an
+  Inspector" case also proven), and an explicit "no workspace-navigation
+  transition ever calls Search" assertion.
+- `SettingsWorkspace` lands deterministically on every requested section
+  (not just the default); Appearance is listed and reachable; Keyboard
+  shortcuts renders real inline content (a fixture shortcut, proving the
+  extraction/rendering pipeline itself, the same pattern
+  `KeyboardShortcutsHelp.test.tsx` already used for the popover) with no
+  trigger/dialog present; Back always names "Search results" (Settings'
+  own destination never varies).
+- `ClassificationRulesWorkspace`/`FieldMappingWorkspace`: settings-origin
+  shows the breadcrumb and a truthful "Back to Settings"; search-origin
+  shows no breadcrumb and "Back to Search results"; the breadcrumb's own
+  "Settings" link and every `SettingsNav` sidebar item now assert the
+  *specific* target-section argument, not just that `onOpenSettings` was
+  called; Appearance is present in both workspaces' own section list
+  (previously missing from those assertions too).
+- One existing test's own assertion encoded the exact bug being fixed
+  (`App.classificationWorkspace.test.tsx`'s "opens from Settings..." test
+  expected Back to strand the user on Search) — corrected, not weakened,
+  to assert the new, correct behavior, with an explanatory comment.
+- Full frontend unit suite: **1220/1220 PASS** (97 files; was 1203 after
+  the prior mission's own additions). One transient failure was observed
+  once during a full-suite run and did not reproduce on an immediate
+  isolated re-run or a second full-suite run — consistent with local
+  machine load after many consecutive heavy suite runs this session, not
+  a real defect (CLAUDE.md verification honesty: reported, not hidden).
+
+**Test-environment fix, not a test weakening**: jsdom does not implement
+`Element.scrollIntoView` at all — a well-known jsdom gap, not specific to
+any component here — first exposed by `SettingsWorkspace`'s own new
+mount-time "scroll to the requested section" effect (a pre-existing,
+never-previously-exercised call in `selectSection` had the same latent
+gap). Fixed once, in `frontend/src/test/setup.ts`, with a no-op stub —
+environment infrastructure, not a change to any test's own assertions.
+
+**Backend**: not touched by this mission. `RuleCompilerTest`/
+`PatternDetectorTest` (the prior mission's extraction-recovery coverage)
+re-run and still pass unmodified: **26/26 PASS**. Full backend suite
+unaffected (no backend file in this mission's diff).
+
+**E2E** (new `pr61-owner-navigation-recovery-2.spec.ts`, 24 tests mapped
+to the mission's own N01-N28 matrix):
+- N02/N03: `Settings → Classification/Field Mapping → Back → Settings`.
+- N04/N22: `Inspector → Classification → Back` reopens the Inspector on
+  the exact same event (message content asserted, not merely "a dialog
+  is open").
+- N05: Shell's own header "Field mapping" trigger → Back → Search, not
+  Settings.
+- N06/N21: `Settings → Classification → New rule → Cancel` returns to the
+  list (not Search), the outer Back still reaches Settings, and the
+  original Search result row count is provably unchanged throughout the
+  whole round trip.
+- N08-N13/N17: every `SettingsNav` sidebar item from both workspaces lands
+  Settings deterministically on the section actually clicked (scoped to
+  each section's own outer heading id, since `PrivacyMaskingSettingsPanel`'s
+  pre-existing nested duplicate heading — see above — would otherwise make
+  a bare heading-text query ambiguous); Appearance listed.
+- N14-N16: Settings shows real inline shortcut content with no
+  trigger/dialog present; the header's own compact popover still opens
+  and closes correctly.
+- N18/N19: Dark/Light still apply `data-theme` immediately from Settings'
+  relocated Appearance section.
+- N23: zero `/api/v1/logs/search` requests across a full Settings ↔
+  Classification navigation round trip.
+- N24: Back's accessible name is asserted to flip correctly between
+  "Back to Settings" and "Back to Search results" as the same two
+  workspaces are entered from different origins in the same test.
+- N25-N27: no page-level horizontal overflow at 390px for Settings
+  navigation (with the new inline shortcuts content present), and for
+  both workspaces' own Back/nav, each confirmed still reachable at that
+  width.
+- N28: a fully keyboard-only walk (Tab/focus + Enter, no mouse) into and
+  back out of Settings, Field Mapping, and Classification Rules in one
+  continuous session.
+- All 24 new tests: **PASS**, repeated (2x) with 0 flakes.
+- 7 minimal synthetic evidence screenshots captured to
+  `docs/verification/PR61_NAV_RECOVERY_2_EVIDENCE/` per the mission's own
+  explicit list (Settings/Keyboard shortcuts inline; Settings/Appearance;
+  Classification from Settings with "Back to Settings"; Classification
+  from Search with "Back to Search results"; Field Mapping from Settings
+  with "Back to Settings"; 390px Settings navigation; 390px Classification
+  navigation) — visually reviewed, not just asserted: the Appearance
+  section renders in its correct position with all three theme choices,
+  Keyboard shortcuts renders full grouped content with the header's own
+  compact trigger still present and separate, and the two Classification
+  screenshots show visibly different Back-button text and breadcrumb
+  presence matching their different origins.
+- Full E2E suite re-run fresh: see `FINAL_REPORT` for the exact count.
+
+**Pre-existing E2E tests that needed a correction, not a behavior change**:
+a full-suite run (the mandatory local regression gate, not just this
+mission's own new spec file) surfaced two categories of pre-existing E2E
+test breakage, both caused by this mission's own intentional, correct
+behavior changes rather than by any defect in them:
+- `classification-rules.spec.ts` and `pr61-owner-usability-recovery.spec.ts`
+  had several places that opened Classification Rules or Field Mapping
+  from Settings and then asserted the OLD, unconditional
+  `/back to search results/i` button — exactly the defect-1/defect-3
+  behavior this mission fixes. Corrected to the new, truthful two-step
+  return (`Back to Settings`, then Settings' own `Back to Search results`)
+  everywhere the workspace was genuinely entered from Settings, and left
+  unchanged everywhere it was genuinely entered from Search/Inspector
+  (where `Back to Search results` was already, and remains, correct).
+  `pr61-owner-usability-recovery.spec.ts`'s own Field-Mapping-breadcrumb
+  tests were opening the workspace via Shell's header trigger
+  (search-origin, correctly has no breadcrumb by this mission's own
+  design) while asserting the breadcrumb was present — switched to open
+  via Settings' own "Log schema & field mapping" button instead, matching
+  what those tests actually intend to prove (parity with Classification
+  Rules' settings-origin breadcrumb).
+- `phase-legacy-slice3-docker-settings.spec.ts` used a bare
+  `page.locator('dl')` to find the Docker connection summary list.
+  Making Keyboard shortcuts genuinely inline (defect 2's fix) means
+  Settings' own DOM now always contains several more `<dl>` elements (one
+  per shortcut group) whenever it is open, so the previously-unique
+  locator became ambiguous (5 matches). Scoped to
+  `page.getByTestId('docker-settings-panel').locator('dl')` — the summary
+  list's own actual container, unchanged by this mission — rather than
+  narrowing what the test asserts.
+
+None of these were weakened: each now asserts the same real user-facing
+fact it always did, just naming the correct real element for it. All
+affected files pass after the fix (re-verified in isolation and as part
+of the full suite; see `FINAL_REPORT`).
+
+## Accessibility
+
+0 new axe violations across every touched/new component (scoped
+appropriately where a pre-existing, unrelated violation exists — see
+above). Keyboard-only operability of every new/changed control verified
+directly, not only via automated checks: `WorkspaceBackButton` and every
+`SettingsNav`/breadcrumb item are real `<button>`s (native semantics,
+keyboard-operable by default); the Appearance radios (unchanged from the
+prior mission) remain a native `<input type="radio">` group; a full
+keyboard-only E2E walk (N28) proves entering and leaving all three
+Settings-related workspaces with Tab/Enter alone.
+
+## What this mission did not do
+
+Did not redo the extraction/Classification-Rule work from
+`PR61_OWNER_MANUAL_USABILITY_AND_CLASSIFICATION_RECOVERY` — preserved and
+re-verified unchanged (backend `RuleCompilerTest`/`PatternDetectorTest`
+26/26; the prior mission's own frontend extraction tests all still pass
+as part of the full 1220/1220 unit suite). Did not reopen the Impeccable
+visual audit. D40 unchanged. A1b not implemented. D8/Loki not
+implemented. No database/cache/retention. Source Experience Parity
+untouched (no file under `frontend/src/features/search/openshift/`,
+`useSearchState.ts`'s scope-invalidation logic, or any Inspector/
+Investigation/Live component was modified). Latest `main` not integrated;
+PR64 not manually re-integrated. Nothing deployed to port 80;
+`sofra-caddy-1` untouched. PR #61 not merged; Draft status not removed.

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../../shared/ui/Button';
 import { Icon } from '../../../shared/ui/Icon';
 import { VisuallyHidden } from '../../../shared/ui/VisuallyHidden';
+import { WorkspaceBackButton } from '../../../shared/ui/WorkspaceBackButton';
 import { SettingsNav } from '../SettingsNav';
 import {
   fetchFieldMappingSchemaScan,
@@ -20,6 +21,7 @@ import type {
   FieldVerificationStatus,
   SchemaScanResponse,
 } from '../../../shared/api/types';
+import type { SettingsSectionId, WorkspaceOrigin } from '../../../app/useSearchState';
 import styles from './FieldMappingWorkspace.module.css';
 
 export interface FieldMappingWorkspaceProps {
@@ -46,13 +48,25 @@ export interface FieldMappingWorkspaceProps {
   /** Owner mission "Mapping Verification and Investigation Workspace" - returns to whatever was on screen before this workspace was opened, mirroring `JourneyView`'s "← Back to search results" pattern. */
   onClose: () => void;
   /**
+   * PR61_OWNER_NAVIGATION_RECOVERY_2 - where this workspace was opened from (Shell's header trigger vs.
+   * Settings/a sibling workspace's own `SettingsNav`), so Back and the breadcrumb can be truthful instead of
+   * always assuming Search (owner-observed defect: "Back to search results" was shown unconditionally, even
+   * when the workspace was actually reached from Settings). `App.tsx` sets this from
+   * `state.mappingWorkspaceOrigin`, which every `open...` call site already threads through.
+   */
+  origin: WorkspaceOrigin;
+  /**
    * PR61_OWNER_MANUAL_USABILITY_AND_CLASSIFICATION_RECOVERY - this workspace previously had only "back to
    * search", unlike its sibling `ClassificationRulesWorkspace`, which already offers a breadcrumb back to
    * Settings plus the full `SettingsNav` sidebar to jump directly to any other section. Bringing Field Mapping
    * to the same navigation as its sibling, not inventing a new pattern - both are the exact same
    * `state.openSettingsWorkspace`/`state.openClassificationWorkspace` functions `App.tsx` already owns.
+   *
+   * <p>PR61_OWNER_NAVIGATION_RECOVERY_2 - `onOpenSettings` now takes the target section (owner-observed
+   * defect: every jump from this workspace's own `SettingsNav` sidebar landed on Settings' default "Sources"
+   * section regardless of which one was actually clicked).
    */
-  onOpenSettings: () => void;
+  onOpenSettings: (section?: SettingsSectionId) => void;
   onOpenClassificationRules: () => void;
 }
 
@@ -119,6 +133,7 @@ export function FieldMappingWorkspace({
   profileError,
   onProfileChanged,
   onClose,
+  origin,
   onOpenSettings,
   onOpenClassificationRules,
 }: FieldMappingWorkspaceProps) {
@@ -428,28 +443,34 @@ export function FieldMappingWorkspace({
     return true;
   });
 
+  // PR61_OWNER_NAVIGATION_RECOVERY_2 - same reasoning as ClassificationRulesWorkspace's own: breadcrumb and
+  // Back must never disagree, so both are driven by the same `origin` truth. A Search-origin visit (Shell's
+  // own header trigger) shows no breadcrumb at all - Back alone already names the one real ancestor
+  // truthfully - and a Settings-origin visit keeps the full breadcrumb.
+  const backDestination = origin === 'settings' ? 'Settings' : 'Search results';
+
   return (
     <div className={styles.wrapper} data-testid="field-mapping-workspace">
       <div className={styles.header}>
-        <nav aria-label="Breadcrumb" className={styles.breadcrumb}>
-          <ol className={styles.breadcrumbList}>
-            <li>
-              <button type="button" className={styles.breadcrumbLink} onClick={onOpenSettings}>
-                Settings
-              </button>
-            </li>
-            <li aria-hidden="true" className={styles.breadcrumbSep}>
-              /
-            </li>
-            <li>
-              <span aria-current="page">Field mapping</span>
-            </li>
-          </ol>
-        </nav>
+        {origin === 'settings' ? (
+          <nav aria-label="Breadcrumb" className={styles.breadcrumb}>
+            <ol className={styles.breadcrumbList}>
+              <li>
+                <button type="button" className={styles.breadcrumbLink} onClick={() => onOpenSettings('mapping')}>
+                  Settings
+                </button>
+              </li>
+              <li aria-hidden="true" className={styles.breadcrumbSep}>
+                /
+              </li>
+              <li>
+                <span aria-current="page">Field mapping</span>
+              </li>
+            </ol>
+          </nav>
+        ) : null}
         <div className={styles.headerRow}>
-          <Button variant="ghost" onClick={onClose}>
-            ← Back to search results
-          </Button>
+          <WorkspaceBackButton destination={backDestination} onClick={onClose} />
           <h1 id={headingId} className={styles.title}>
             Log Schema &amp; Field Mapping Verification
           </h1>
@@ -473,7 +494,7 @@ export function FieldMappingWorkspace({
               onOpenClassificationRules();
               return;
             }
-            onOpenSettings();
+            onOpenSettings(id as SettingsSectionId);
           }}
         />
         <div className={styles.settingsContent}>

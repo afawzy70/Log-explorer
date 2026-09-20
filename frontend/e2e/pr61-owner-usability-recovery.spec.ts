@@ -59,9 +59,13 @@ test.describe('PR61 usability recovery - Appearance control', () => {
 
 test.describe('PR61 usability recovery - Field Mapping navigation parity', () => {
   async function openFieldMapping(page: import('@playwright/test').Page) {
-    // The Shell header's own direct "Field mapping" button (Shell.tsx) - not Settings' own SettingsNav item of
-    // the same name, which only scrolls within Settings itself and never reaches this separate workspace.
-    await page.getByRole('button', { name: /^field mapping$/i }).click();
+    // Opened via Settings' own "Log schema & field mapping" button (settings-origin) - this describe
+    // block's own purpose is proving breadcrumb-to-Settings/Settings-nav parity with Classification Rules,
+    // and PR61_OWNER_NAVIGATION_RECOVERY_2 made that breadcrumb origin-aware: it only renders when the
+    // workspace was actually reached from Settings. Shell's separate persistent header trigger opens with
+    // search-origin instead (no breadcrumb by design - there is no Settings ancestor to name truthfully);
+    // that path is covered by pr61-owner-navigation-recovery-2.spec.ts's own N05.
+    await openSettingsSection(page, /log schema & field mapping/i);
     await expect(page.getByTestId('field-mapping-workspace')).toBeVisible();
   }
 
@@ -114,16 +118,17 @@ test.describe('PR61 usability recovery - light/dark on touched surfaces (mission
    * app's own dark-theme completion already rests on.
    */
   test('the new breadcrumb and Settings nav stay legible in dark theme, not the same colour as their background', async ({ page }) => {
-    const openFieldMappingFromHeader = () =>
-      page.getByRole('banner').getByRole('button', { name: /^field mapping$/i }).click();
     await page.goto('/');
-    await openFieldMappingFromHeader();
+    // Settings-origin (not Shell's separate header trigger) - the breadcrumb this test inspects only
+    // renders when Field Mapping was reached from Settings; see the "Field Mapping navigation parity"
+    // describe block's own openFieldMapping comment above for why.
+    await openSettingsSection(page, /log schema & field mapping/i);
     await expect(page.getByTestId('field-mapping-workspace')).toBeVisible();
     // Set the preference through Settings itself, the real documented path, then return here.
     await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('button', { name: 'Settings' }).click();
     await page.getByRole('radio', { name: 'Dark' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-    await openFieldMappingFromHeader();
+    await openSettingsSection(page, /log schema & field mapping/i);
     await expect(page.getByTestId('field-mapping-workspace')).toBeVisible();
 
     const breadcrumbLink = page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('button', { name: 'Settings' });

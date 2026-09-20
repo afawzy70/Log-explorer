@@ -181,6 +181,10 @@ test('create a tag rule from an event, detect, test, save, classify, export, del
   await expect(page.getByText('No classification rules yet.')).toBeVisible();
 
   // 20: classification disappears after re-search.
+  // This workspace was entered from Settings (step 18's openSettingsSection), so PR61_OWNER_NAVIGATION_
+  // RECOVERY_2's origin-aware Back truthfully returns to Settings first, then Settings' own (always
+  // Search-bound) Back returns to Search results - not a single jump straight to Search as before that fix.
+  await page.getByRole('button', { name: /back to settings/i }).click();
   await page.getByRole('button', { name: /back to search results/i }).click();
   // The tag filter is still active: with the rule gone no event carries the tag, so the backend truthfully returns none.
   const emptyTagged = page.waitForResponse((response) => response.url().includes('/api/v1/logs/search'));
@@ -203,6 +207,8 @@ test('create a tag rule from an event, detect, test, save, classify, export, del
   await expect(page.getByText(/Added\s*1/)).toBeVisible();
 
   // 24-25: re-run search; classification and extraction are restored.
+  // Entered from Settings again (step 21's openSettingsSection) - same two-step origin-aware return as step 20.
+  await page.getByRole('button', { name: /back to settings/i }).click();
   await page.getByRole('button', { name: /back to search results/i }).click();
   await runSearch(page, 'Make webhook call to');
   const restored = await openInspectorOnRow(page, /Make webhook call to/);
@@ -424,6 +430,8 @@ test('the owner reproduction: scoped detect and test, assisted extraction, visib
   await page.getByRole('button', { name: 'Delete API middleware' }).click();
   await page.getByRole('button', { name: 'Delete rule' }).click();
   await expect(page.getByText('No classification rules yet.')).toBeVisible();
+  // Entered from Settings (line 418's openSettingsSection) - origin-aware Back returns to Settings first.
+  await page.getByRole('button', { name: /back to settings/i }).click();
   await page.getByRole('button', { name: /back to search results/i }).click();
   await runSearch(page, QUERY);
   await expect(apiLogsRow(page).locator('[data-tag-color]')).toHaveCount(0);
@@ -434,6 +442,7 @@ test('the owner reproduction: scoped detect and test, assisted extraction, visib
   await expect(page.getByLabel('Rules in this pack')).toBeVisible();
   await page.getByRole('button', { name: /apply/i }).click();
   await expect(page.getByText(/Added\s*1/)).toBeVisible();
+  await page.getByRole('button', { name: /back to settings/i }).click();
   await page.getByRole('button', { name: /back to search results/i }).click();
   await runSearch(page, QUERY);
   await expect(apiLogsRow(page).locator('[data-tag-color="BLUE"]').first()).toBeVisible();

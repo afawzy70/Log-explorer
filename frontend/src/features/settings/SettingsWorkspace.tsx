@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '../../shared/ui/Button';
+import { WorkspaceBackButton } from '../../shared/ui/WorkspaceBackButton';
 import { DockerSettingsPanel } from './DockerSettingsPanel';
 import { OpenShiftSettingsPanel } from './OpenShiftSettingsPanel';
 import { PrivacyMaskingSettingsPanel } from './PrivacyMaskingSettingsPanel';
-import { KeyboardShortcutsHelp } from '../../app/KeyboardShortcutsHelp';
+import { KeyboardShortcutsInline } from '../../app/KeyboardShortcutsHelp';
 import { SettingsNav } from './SettingsNav';
-import type { SearchState } from '../../app/useSearchState';
+import type { SearchState, SettingsSectionId } from '../../app/useSearchState';
 import type { OpenShiftScopeSummary } from '../../shared/api/types';
 import type { ThemePreference } from '../../shared/theme/useTheme';
 import styles from './SettingsWorkspace.module.css';
@@ -16,6 +17,13 @@ export interface SettingsWorkspaceProps {
   openShiftScope: OpenShiftScopeSummary | null;
   onOpenShiftScopeChanged: () => void;
   onClose: () => void;
+  /**
+   * PR61_OWNER_NAVIGATION_RECOVERY_2 - which section to render as active/in view when this workspace mounts
+   * (owner-observed defect: every caller previously landed on the default "Sources" section regardless of
+   * where the user actually asked to go). Defaults are the caller's concern (`openSettingsWorkspace`'s own
+   * default), not this component's.
+   */
+  targetSection: SettingsSectionId;
   /**
    * PR61_OWNER_MANUAL_USABILITY_AND_CLASSIFICATION_RECOVERY - dark theme itself was already implemented and
    * complete; the missing piece was any UI control to choose it (`useTheme`'s own `setPreference` was called
@@ -54,13 +62,24 @@ export function SettingsWorkspace({
   openShiftScope,
   onOpenShiftScopeChanged,
   onClose,
+  targetSection,
   themePreference,
   onThemePreferenceChanged,
 }: SettingsWorkspaceProps) {
   // DRIFT-016 remediation - "active" section for the shared nav's own highlight, tracked from whichever
-  // section last received a scroll-into-view (defaults to the first, "sources"). Purely a visual affordance;
-  // every section is always in the DOM and reachable regardless of this value.
-  const [activeSectionId, setActiveSectionId] = useState('sources');
+  // section last received a scroll-into-view. PR61_OWNER_NAVIGATION_RECOVERY_2 - now seeded from the caller's
+  // own `targetSection` instead of always "sources", so arriving here from e.g. "Classification sidebar ->
+  // Keyboard shortcuts" actually lands on Keyboard shortcuts. Every section is still always in the DOM and
+  // reachable regardless of this value - it is a visual affordance, not a router.
+  const [activeSectionId, setActiveSectionId] = useState<string>(targetSection);
+
+  // This component remounts on every open (App.tsx's mutually-exclusive workspace ternary), so this effect
+  // running once per mount is exactly "scroll to where the caller asked to land" - not a route-change effect
+  // that would need to guard against re-firing while already open.
+  useEffect(() => {
+    document.getElementById(`settings-${targetSection}`)?.scrollIntoView({ block: 'start' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function selectSection(id: string) {
     setActiveSectionId(id);
@@ -70,9 +89,8 @@ export function SettingsWorkspace({
   return (
     <div className={styles.wrapper} data-testid="settings-workspace">
       <div className={styles.header}>
-        <Button variant="ghost" onClick={onClose}>
-          ← Back to search results
-        </Button>
+        {/* Settings is always entered directly (Shell's own header button) - its Back destination never varies. */}
+        <WorkspaceBackButton destination="Search results" onClick={onClose} />
         <h1 className={styles.title}>Settings</h1>
       </div>
       <div className={styles.body}>
@@ -103,6 +121,8 @@ export function SettingsWorkspace({
             </div>
           </section>
 
+          <AppearanceSection themePreference={themePreference} onThemePreferenceChanged={onThemePreferenceChanged} />
+
           <section id="settings-mapping" className={styles.section} aria-labelledby="settings-mapping-heading">
             <h2 id="settings-mapping-heading" className={styles.sectionHeading}>
               Field mapping
@@ -119,7 +139,7 @@ export function SettingsWorkspace({
               </p>
             ) : null}
             <div className={styles.sectionRow}>
-              <Button variant="secondary" onClick={state.openMappingWorkspace}>
+              <Button variant="secondary" onClick={() => state.openMappingWorkspace('settings')}>
                 Log schema &amp; field mapping
               </Button>
             </div>
@@ -144,7 +164,7 @@ export function SettingsWorkspace({
              * "Log schema & field mapping" button above already used against its "Field mapping" nav item.
              */}
             <div className={styles.sectionRow}>
-              <Button variant="secondary" onClick={state.openClassificationWorkspace}>
+              <Button variant="secondary" onClick={() => state.openClassificationWorkspace('settings')}>
                 Manage classification rules
               </Button>
             </div>
@@ -154,12 +174,15 @@ export function SettingsWorkspace({
             <h2 id="settings-shortcuts-heading" className={styles.sectionHeading}>
               Keyboard shortcuts
             </h2>
-            <div className={styles.sectionRow}>
-              <KeyboardShortcutsHelp />
-            </div>
+            {/*
+             * PR61_OWNER_NAVIGATION_RECOVERY_2 - owner-observed defect: this rendered the compact HEADER
+             * popover trigger (a tiny keyboard-icon button that had to be clicked to reveal anything), not
+             * real Settings content. `KeyboardShortcutsInline` shares the exact same registry-derived group
+             * data as the header's own popover (`useShortcutGroups()`/`ShortcutGroupList` - see
+             * `KeyboardShortcutsHelp.tsx`) and renders it directly, inline, with no trigger and no dialog.
+             */}
+            <KeyboardShortcutsInline />
           </section>
-
-          <AppearanceSection themePreference={themePreference} onThemePreferenceChanged={onThemePreferenceChanged} />
         </div>
       </div>
     </div>
@@ -178,17 +201,16 @@ const THEME_OPTIONS = [
 ] as const;
 
 /**
- * PR61_OWNER_MANUAL_USABILITY_AND_CLASSIFICATION_RECOVERY - the one real gap the usability review found:
- * dark theme itself is already implemented and complete, but nothing in the UI let a user actually choose it
+ * PR61_OWNER_MANUAL_USABILITY_AND_CLASSIFICATION_RECOVERY - the one real gap that usability review found:
+ * dark theme itself was already implemented and complete, but nothing in the UI let a user actually choose it
  * (`useTheme`'s own `setPreference` was called and its result discarded). Extracted as its own small
  * component (not inlined in `SettingsWorkspace`) so it is directly unit-testable without the large
  * `SearchState` mock every other section here depends on.
  *
- * <p>Not in {@link SETTINGS_NAV_SECTIONS}: that list is shared with `ClassificationRulesWorkspace`/
- * `FieldMappingWorkspace`'s cross-navigation to a DIFFERENT top-level workspace, and this section lives on
- * this same Settings page - no navigation needed to reach it. Reusing the exact same section pattern
- * (id/aria-labelledby/h2) as every section above keeps it discoverable and consistent, without a nav entry
- * it does not need.
+ * <p>PR61_OWNER_NAVIGATION_RECOVERY_2 - now also in {@link SETTINGS_NAV_SECTIONS} (`'appearance'`), reachable
+ * directly from `ClassificationRulesWorkspace`'s/`FieldMappingWorkspace`'s own `SettingsNav` sidebar, landing
+ * here deterministically via `openSettingsWorkspace('appearance')` - not the click-based same-page scroll
+ * alone the section id still also supports for in-page navigation once already here.
  */
 export function AppearanceSection({ themePreference, onThemePreferenceChanged }: AppearanceSectionProps) {
   return (

@@ -87,6 +87,7 @@ function renderWorkspace(overrides: Partial<Parameters<typeof FieldMappingWorksp
       profileError={null}
       onProfileChanged={onProfileChanged}
       onClose={onClose}
+      origin="settings"
       onOpenSettings={onOpenSettings}
       onOpenClassificationRules={onOpenClassificationRules}
       {...overrides}
@@ -151,10 +152,18 @@ describe('FieldMappingWorkspace', () => {
     void onClose;
   });
 
-  it('the Back button calls onClose', async () => {
+  it('the Back button calls onClose, naming the true destination (Settings, by default here)', async () => {
     const user = userEvent.setup();
     const { onClose } = renderWorkspace();
-    await user.click(screen.getByRole('button', { name: /back to search results/i }));
+    await user.click(screen.getByRole('button', { name: 'Back to Settings' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('the Back button names Search results instead when opened from there', async () => {
+    const user = userEvent.setup();
+    const { onClose } = renderWorkspace({ origin: 'search' });
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Back to Search results' }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -355,6 +364,7 @@ describe('FieldMappingWorkspace', () => {
           profileError={null}
           onProfileChanged={onProfileChanged}
           onClose={vi.fn()}
+          origin="settings"
           onOpenSettings={vi.fn()}
           onOpenClassificationRules={vi.fn()}
         />,
@@ -384,6 +394,7 @@ describe('FieldMappingWorkspace', () => {
           profileError={null}
           onProfileChanged={onProfileChanged}
           onClose={vi.fn()}
+          origin="settings"
           onOpenSettings={vi.fn()}
           onOpenClassificationRules={vi.fn()}
         />,
@@ -583,17 +594,18 @@ describe('FieldMappingWorkspace', () => {
       expect(within(breadcrumb).getByText('Field mapping')).toHaveAttribute('aria-current', 'page');
     });
 
-    it('clicking the Settings breadcrumb calls onOpenSettings', async () => {
+    it('clicking the Settings breadcrumb calls onOpenSettings, targeting the Field mapping section (PR61_OWNER_NAVIGATION_RECOVERY_2)', async () => {
       const user = userEvent.setup();
       const { onOpenSettings } = renderWorkspace();
       await user.click(screen.getByRole('button', { name: 'Settings' }));
       expect(onOpenSettings).toHaveBeenCalledTimes(1);
+      expect(onOpenSettings).toHaveBeenCalledWith('mapping');
     });
 
-    it('offers the full Settings section list, "Field mapping" marked current', () => {
+    it('offers the full Settings section list including Appearance, "Field mapping" marked current', () => {
       renderWorkspace();
       const nav = screen.getByRole('navigation', { name: 'Settings sections' });
-      for (const label of ['Sources & connections', 'Privacy & masking', 'Field mapping', 'Classification rules', 'Keyboard shortcuts']) {
+      for (const label of ['Sources & connections', 'Privacy & masking', 'Appearance', 'Field mapping', 'Classification rules', 'Keyboard shortcuts']) {
         expect(within(nav).getByRole('button', { name: label })).toBeInTheDocument();
       }
       expect(within(nav).getByRole('button', { name: 'Field mapping' })).toHaveAttribute('aria-current', 'page');
@@ -607,12 +619,19 @@ describe('FieldMappingWorkspace', () => {
       expect(onOpenSettings).not.toHaveBeenCalled();
     });
 
-    it('every other Settings-nav item (Sources, Privacy, Keyboard shortcuts) opens Settings itself', async () => {
+    it('every other Settings-nav item lands deterministically on the section actually clicked (PR61_OWNER_NAVIGATION_RECOVERY_2)', async () => {
       const user = userEvent.setup();
-      for (const label of ['Sources & connections', 'Privacy & masking', 'Keyboard shortcuts']) {
+      const targets: [string, string][] = [
+        ['Sources & connections', 'sources'],
+        ['Privacy & masking', 'masking'],
+        ['Appearance', 'appearance'],
+        ['Keyboard shortcuts', 'shortcuts'],
+      ];
+      for (const [label, section] of targets) {
         const { onOpenSettings, unmount } = renderWorkspace();
         await user.click(screen.getByRole('button', { name: label }));
         expect(onOpenSettings).toHaveBeenCalledTimes(1);
+        expect(onOpenSettings).toHaveBeenCalledWith(section);
         unmount();
       }
     });

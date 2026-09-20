@@ -68,7 +68,7 @@ test.describe('Legacy Remediation Slice 3 — Docker connection/settings workspa
 
   test('2. local configuration summary shows Mode: Local with no host/port', async ({ page }) => {
     await openDockerSettings(page);
-    const summary = page.locator('dl');
+    const summary = page.getByTestId('docker-settings-panel').locator('dl');
     await expect(summary).toContainText('Local');
     await expect(page.getByText('Host', { exact: true })).not.toBeVisible();
   });
@@ -89,7 +89,7 @@ test.describe('Legacy Remediation Slice 3 — Docker connection/settings workspa
     );
     await openDockerSettings(page);
 
-    const summary = page.locator('dl');
+    const summary = page.getByTestId('docker-settings-panel').locator('dl');
     await expect(summary).toContainText('Remote');
     await expect(summary).toContainText('203.0.113.20');
     await expect(summary).toContainText('9999');
@@ -98,7 +98,7 @@ test.describe('Legacy Remediation Slice 3 — Docker connection/settings workspa
 
   test('5. TLS off is shown as Disabled', async ({ page }) => {
     await openDockerSettings(page);
-    await expect(page.locator('dl')).toContainText('Disabled');
+    await expect(page.getByTestId('docker-settings-panel').locator('dl')).toContainText('Disabled');
   });
 
   test('6. TLS on shows a safe certificate-profile representation (a filesystem path field), never certificate contents', async ({ page }) => {
@@ -116,7 +116,7 @@ test.describe('Legacy Remediation Slice 3 — Docker connection/settings workspa
       }),
     );
     await openDockerSettings(page);
-    await expect(page.locator('dl')).toContainText('Enabled');
+    await expect(page.getByTestId('docker-settings-panel').locator('dl')).toContainText('Enabled');
 
     // The Test Connection form's own TLS checkbox is prefilled from the
     // summary - toggling it reveals only a *path* field, never a

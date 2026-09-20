@@ -44,24 +44,15 @@ const GROUP_ORDER = ['Search & filters', 'Results & inspector', 'Live', 'Help'];
  * shortcut (`help.open`), dogfooding the same registry every other
  * binding uses, rather than its own separate `document` listener.
  */
-export function KeyboardShortcutsHelp() {
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const popover = usePopoverTrigger();
-  const headingId = useId();
-
-  useDismissableLayer(wrapperRef, popover.isOpen, popover.close);
-
-  useShortcut({
-    id: 'help.open',
-    keys: '?',
-    description: 'Open this shortcuts help',
-    group: 'Help',
-    test: (e) => e.key === '?',
-    onTrigger: () => popover.open(),
-  });
-
+/**
+ * PR61_OWNER_NAVIGATION_RECOVERY_2 - the pure grouping computation, unchanged from what previously lived
+ * inline in {@link KeyboardShortcutsHelp}, extracted so both that popover AND {@link KeyboardShortcutsInline}
+ * (Settings' own full content) read the exact same live registry - one source of shortcut truth, never a
+ * second, manually-duplicated list.
+ */
+export function useShortcutGroups(): { group: string; entries: ShortcutEntry[] }[] {
   const registered = useRegisteredShortcuts();
-  const grouped = useMemo(() => {
+  return useMemo(() => {
     const byGroup = new Map<string, ShortcutEntry[]>();
     for (const def of registered) {
       const entries = byGroup.get(def.group) ?? [];
@@ -78,6 +69,46 @@ export function KeyboardShortcutsHelp() {
       entries: group === 'Results & inspector' ? [...SCOPED_SHORTCUTS, ...byGroup.get(group)!] : byGroup.get(group)!,
     }));
   }, [registered]);
+}
+
+/** The grouped `<dl>` markup itself - shared by the popover panel and the inline Settings rendering below. */
+export function ShortcutGroupList({ grouped }: { grouped: { group: string; entries: ShortcutEntry[] }[] }) {
+  return (
+    <>
+      {grouped.map(({ group, entries }) => (
+        <div key={group} className={styles.group}>
+          <p className={styles.groupTitle}>{group}</p>
+          <dl className={styles.list}>
+            {entries.map((s) => (
+              <div key={s.keys} className={styles.row}>
+                <dt className={styles.keys}>{s.keys}</dt>
+                <dd className={styles.description}>{s.description}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ))}
+    </>
+  );
+}
+
+export function KeyboardShortcutsHelp() {
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const popover = usePopoverTrigger();
+  const headingId = useId();
+
+  useDismissableLayer(wrapperRef, popover.isOpen, popover.close);
+
+  useShortcut({
+    id: 'help.open',
+    keys: '?',
+    description: 'Open this shortcuts help',
+    group: 'Help',
+    test: (e) => e.key === '?',
+    onTrigger: () => popover.open(),
+  });
+
+  const grouped = useShortcutGroups();
 
   return (
     <div ref={wrapperRef} className={styles.wrapper}>
@@ -98,19 +129,7 @@ export function KeyboardShortcutsHelp() {
           <h2 id={headingId} className={styles.heading}>
             Keyboard shortcuts
           </h2>
-          {grouped.map(({ group, entries }) => (
-            <div key={group} className={styles.group}>
-              <p className={styles.groupTitle}>{group}</p>
-              <dl className={styles.list}>
-                {entries.map((s) => (
-                  <div key={s.keys} className={styles.row}>
-                    <dt className={styles.keys}>{s.keys}</dt>
-                    <dd className={styles.description}>{s.description}</dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          ))}
+          <ShortcutGroupList grouped={grouped} />
           <div className={styles.actions}>
             <Button variant="primary" onClick={popover.close}>
               Close
@@ -118,6 +137,24 @@ export function KeyboardShortcutsHelp() {
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * PR61_OWNER_NAVIGATION_RECOVERY_2 - Settings' own full, inline shortcut reference (owner-observed defect:
+ * Settings previously rendered the compact HEADER trigger, so its actual content was hidden behind a tiny
+ * keyboard-icon click). No trigger, no dialog, no dismiss layer - just the heading and the same
+ * `ShortcutGroupList` the header popover renders, reading the exact same live registry via
+ * {@link useShortcutGroups}. `styles.inline`/`styles.inlineHeading` reuse the popover panel's own group/list/
+ * row typography (`KeyboardShortcutsHelp.module.css`'s `.group`/`.list`/`.row`/etc. are shared, not
+ * duplicated) with page-level, non-popover framing.
+ */
+export function KeyboardShortcutsInline() {
+  const grouped = useShortcutGroups();
+  return (
+    <div className={styles.inline}>
+      <ShortcutGroupList grouped={grouped} />
     </div>
   );
 }

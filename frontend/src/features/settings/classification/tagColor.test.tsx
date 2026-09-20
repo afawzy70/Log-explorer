@@ -115,6 +115,7 @@ function renderWorkspace() {
   const utils = render(
     <ClassificationRulesWorkspace
       sourceEvent={null}
+      origin="settings"
       buildScope={buildScope}
       onRulesChanged={onRulesChanged}
       onClose={onClose}

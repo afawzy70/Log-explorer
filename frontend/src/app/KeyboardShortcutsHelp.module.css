@@ -97,3 +97,29 @@
   border-top: var(--v2-bw) solid var(--v2-line);
   padding-top: var(--space-3);
 }
+
+/*
+ * PR61_OWNER_NAVIGATION_RECOVERY_2 - Settings' own inline rendering (`KeyboardShortcutsInline`). Reuses
+ * `.group`/`.groupTitle`/`.list`/`.row`/`.keys`/`.description` above unchanged; this class only replaces
+ * `.panel`'s popover-specific properties (absolute position, border, shadow, fixed width, scroll clamp) with
+ * plain page flow - Settings' own page scrolls, this never needs its own.
+ */
+.inline {
+  color: var(--v2-ink-1);
+}
+
+/* `.keys`' fixed 130px min-width can crowd a long description at narrow widths inside the popover's own
+   340px-wide, horizontally-unconstrained-by-the-page panel; the inline rendering sits directly in Settings'
+   own page width instead, so `.row` stacks and `.keys` drops its min-width the same way this app's other
+   label/value rows already collapse under the shared 767px breakpoint. */
+@media (max-width: 767px) {
+  .inline .row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+
+  .inline .keys {
+    min-width: 0;
+  }
+}

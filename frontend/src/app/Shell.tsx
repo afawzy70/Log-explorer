@@ -188,7 +188,11 @@ export function Shell({ state, openShiftScope, liveModeActive }: ShellProps) {
        * buttons, only consolidating the THREE settings popovers
        * (Privacy & masking/Docker/OpenShift) plus Classification rules.
        */}
-      <button type="button" className={styles.mappingWorkspaceTrigger} onClick={state.openMappingWorkspace}>
+      <button
+        type="button"
+        className={styles.mappingWorkspaceTrigger}
+        onClick={() => state.openMappingWorkspace('search')}
+      >
         <Icon name="scan-search" size="sm" />
         Field mapping
       </button>
@@ -199,7 +203,7 @@ export function Shell({ state, openShiftScope, liveModeActive }: ShellProps) {
        * `SettingsWorkspace` behind this one button - see that component's own doc comment for exactly how
        * each still-unmodified panel is reached from there.
        */}
-      <button type="button" className={styles.mappingWorkspaceTrigger} onClick={state.openSettingsWorkspace}>
+      <button type="button" className={styles.mappingWorkspaceTrigger} onClick={() => state.openSettingsWorkspace()}>
         <Icon name="settings" size="sm" />
         Settings
       </button>
