@@ -2708,3 +2708,24 @@ requirements, none previously tracked in this register.
 ```
 UNTRACKED_OWNER_REQUIREMENTS=0
 ```
+
+---
+
+## 31. Native Windows PowerShell JAR build script, with per-execution proxy configuration
+
+Mission `PR61_NATIVE_POWERSHELL_JAR_BUILD_WITH_PROXY`, branch `ux/v2-modern-developer-console` (PR #61,
+draft), continuing from head `edb3b52c8fd10ff92f9b6d059cdf4997e3a8de62`.
+
+> "Provide a native Windows PowerShell script for building the standalone JAR, with per-execution proxy
+> and no-proxy configuration."
+
+| ID | Description | Status | Evidence | Notes |
+|---|---|---|---|---|
+| DLJ-5 | A native Windows PowerShell equivalent of `scripts/build-jar.sh` (`scripts/build-jar.ps1`) that requires no Git Bash, WSL, or Docker, reproducing the same repo-root resolution, frontend build, static-resource embedding, clean Maven build, runnable-jar selection (never the `*.jar.original`), and `dist-jar/log-explorer-<version>.jar` output | `IMPLEMENTED` | `scripts/build-jar.ps1`; parsed clean (`[System.Management.Automation.Language.Parser]::ParseFile`) and functionally run locally (frontend build phase, error handling, jar selection/copy logic) via a self-hosted PowerShell 7.4.6 on Linux — the one line this local environment cannot faithfully exercise is `.\mvnw.cmd`'s own real execution (a Windows batch file), proven instead by the mandatory Windows `JAR Smoke` CI job producing a real runnable jar and passing the existing packaged-jar smoke test | `scripts/build-jar.sh` unchanged and re-verified working (bash regression + packaged-jar smoke test both re-run and passed) |
+| DLJ-6 | `-ProxyUrl` and optional `-NoProxy` parameters apply a corporate proxy to the child `npm`/Maven-wrapper processes for this build execution only — process-scoped, never written to any persistent npm/Maven/Windows configuration, original environment values restored in a `finally` block on success or failure, invalid proxy URLs rejected with an actionable error before any build work starts, credentials never logged | `IMPLEMENTED` | `scripts/build-jar.ps1` (`HTTP_PROXY`/`HTTPS_PROXY`/`http_proxy`/`https_proxy`/`NO_PROXY`/`no_proxy` env vars + `MAVEN_OPTS` `-Dhttp(s).proxyHost/proxyPort`/`-Dhttp.nonProxyHosts`, an explicit case-sensitive `Dictionary` for the original-value snapshot, `Get-MaskedProxyUrl` stripping any userinfo before logging); locally verified: invalid-URL rejection (fast, no env mutation), env capture/apply/restore across both a case-uppercase and a case-lowercase pre-existing variable, credential-masking (a `user:pass@` URL never appeared in log output), the `-NoProxy`-without-`-ProxyUrl` no-op path, and the no-proxy-arguments path; a real corporate proxy was not available to prove genuine network traffic passes through it — recorded as `BLOCKED` for that one specific claim, not assumed | A real bug was found and fixed during this verification: a plain `@{}` PowerShell hashtable does case-INSENSITIVE key lookup by default, silently colliding the `HTTP_PROXY`/`http_proxy` (and `HTTPS_PROXY`/`https_proxy`) entries into one — harmless on Windows (where they are the same variable), but a genuine bug in principle, fixed with an explicit ordinal `Dictionary[string,string]` |
+| DLJ-7 | The mandatory Windows `JAR Smoke` CI job builds via `scripts/build-jar.ps1`, not Bash, then runs the existing packaged-jar smoke test; Linux/macOS keep using `scripts/build-jar.sh` unchanged | `IMPLEMENTED` | `.github/workflows/jar-smoke.yml` — Windows-only build step now `.\scripts\build-jar.ps1`; two additional Windows-only CI steps assert invalid-proxy rejection and proxy-apply/environment-restoration for real, in CI, using a deliberately unreachable `127.0.0.1:1` proxy (no real corporate proxy needed) | See `FINAL_REPORT` for the exact CI run evidence at the final pushed head |
+| DLJ-8 | README's canonical JAR build section documents the Windows PowerShell command, the proxy/no-proxy examples, and the constraints (run from repo root, Java 21 + Node/npm to build only, output in `dist-jar/`, no Git Bash/WSL needed, running the jar still needs only Java 21) — without duplicating or contradicting the existing OpenShift certificate/JAR-execution instructions | `IMPLEMENTED` | `README.md` §"Quick start — standalone JAR (recommended)" → Requirements | No new section added — extended the existing DLJ-3 section in place |
+
+```
+UNTRACKED_OWNER_REQUIREMENTS=0
+```

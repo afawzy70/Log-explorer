@@ -143,14 +143,34 @@ requirement to run it.
 - **The jar itself**: this repository does not (yet) publish a standalone
   jar as a GitHub Release asset — only the Windows/macOS desktop installers
   are published that way (see [Windows desktop distribution](#windows-desktop-distribution)
-  below). Build it yourself from a checkout with one command:
+  below). Build it yourself from a checkout, run from the repository root.
+  Java 21 and Node/npm are both required *to build it* (never to run the
+  finished jar — that still needs only Java 21). The jar is always written
+  to `dist-jar/`.
+
+  Windows (PowerShell — no Git Bash or WSL required):
+  ```powershell
+  .\scripts\build-jar.ps1
+  ```
+  Behind a corporate proxy, pass it in for this one build only — it is
+  never written to any persistent npm/Maven/Windows configuration, and only
+  applies to this build's own child processes:
+  ```powershell
+  .\scripts\build-jar.ps1 -ProxyUrl "http://proxy.company.local:8080"
+  ```
+  With an optional no-proxy list:
+  ```powershell
+  .\scripts\build-jar.ps1 -ProxyUrl "http://proxy.company.local:8080" -NoProxy "localhost,127.0.0.1,.company.local"
+  ```
+
+  Linux / macOS:
   ```bash
   ./scripts/build-jar.sh
   ```
-  This produces `dist-jar/log-explorer-<version>.jar`. It needs Node.js and
-  npm *only for this build step* — never afterward. If your team publishes
-  built jars somewhere internal (an artifact repository, a CI build
-  artifact from the `JAR Smoke` workflow), get it from there instead.
+
+  Either way, this produces `dist-jar/log-explorer-<version>.jar`. If your
+  team publishes built jars somewhere internal (an artifact repository, a CI
+  build artifact from the `JAR Smoke` workflow), get it from there instead.
 - Verify your installed Java version: `java -version` — the first line must
   say `21` or higher.
 
