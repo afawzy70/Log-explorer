@@ -103,11 +103,47 @@ export function buildRequestFlowIdentifiers(event: LogEvent): RequestFlowIdentif
   return candidates.filter((c) => c.value !== '');
 }
 
-/** "Business/error" (HANDOVER.md §16.5) - present only; the formatted exception is handled separately (needs `<pre>`, not a single-line field). */
-export function buildBusinessErrorFields(event: LogEvent): FieldItem[] {
+/**
+ * "Business" (HANDOVER.md §16.5, split from the former combined "Business / error" tab -
+ * LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY, owner decision: error/exception data must never mix
+ * into the business tab). Business-domain fields only - present only.
+ */
+export function buildBusinessFields(event: LogEvent): FieldItem[] {
   return present([
     whenPresent('Business step', event.businessStep),
     whenPresent('UI identifier', event.uiIdentifier),
+  ]);
+}
+
+/** Error tab fields (LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY) - present only; the exception itself is handled separately (needs `<pre>`, not a single-line field). */
+export function buildErrorFields(event: LogEvent): FieldItem[] {
+  return present([
     whenPresent('Error code', event.errorCode, true),
   ]);
+}
+
+/**
+ * An event "contains error information" (LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY) when its
+ * severity is ERROR/FATAL, or it carries a real exception or error code - never fabricated when none of
+ * these is actually present.
+ */
+export function eventHasErrorInfo(event: LogEvent): boolean {
+  const severity = event.severity?.toUpperCase();
+  return severity === 'ERROR' || severity === 'FATAL' || Boolean(event.exception) || Boolean(event.errorCode);
+}
+
+/**
+ * A short, non-fabricated preview of an exception string for Overview's Error Summary: the exception
+ * type/class when the text deterministically looks like Java's own `pkg.Type: message` shape (the exact
+ * shape `testEventFixture.ts`'s own fixture and every real Java stack trace this product parses uses -
+ * `LogLineParser`/`EventMapper` never invent this shape, so detecting it here never invents one either),
+ * and the first line as the message preview otherwise. Never derives a type that is not genuinely there.
+ */
+export function deriveExceptionSummary(exception: string): { exceptionType: string | null; preview: string } {
+  const firstLine = exception.split('\n')[0]?.trim() ?? '';
+  const match = /^([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+):\s*(.*)$/.exec(firstLine);
+  if (match) {
+    return { exceptionType: match[1], preview: match[2] || firstLine };
+  }
+  return { exceptionType: null, preview: firstLine };
 }

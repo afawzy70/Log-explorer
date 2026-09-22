@@ -217,7 +217,7 @@ test.describe('Task 4 - Explain one event', () => {
     await expect(dialog.getByRole('tab', { name: /^overview$/i })).toBeVisible(); // what/when
     await expect(dialog.getByRole('tab', { name: /actor & client/i })).toBeVisible(); // who
     await expect(dialog.getByRole('tab', { name: /request flow/i })).toBeVisible(); // request-flow
-    await expect(dialog.getByRole('tab', { name: /business \/ error/i })).toBeVisible();
+    await expect(dialog.getByRole('tab', { name: /^business$/i })).toBeVisible(); // business (Error is now a separate, conditional tab)
 
     await captureScreenshot(page, 'm', 'task4-explain-one-event-inspector');
 

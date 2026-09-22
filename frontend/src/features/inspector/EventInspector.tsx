@@ -5,7 +5,9 @@ import { InspectorHeader } from './InspectorHeader';
 import { OverviewSection } from './OverviewSection';
 import { ActorClientSection } from './ActorClientSection';
 import { RequestFlowSection } from './RequestFlowSection';
-import { BusinessErrorSection } from './BusinessErrorSection';
+import { BusinessSection } from './BusinessSection';
+import { ErrorSection } from './ErrorSection';
+import { eventHasErrorInfo } from './sections';
 import { AllFieldsSection } from './AllFieldsSection';
 import { InspectorTabs } from './InspectorTabs';
 import type { InspectorTab } from './InspectorTabs';
@@ -41,6 +43,15 @@ export function EventInspector({ state }: { state: SearchState }) {
     }
   }, [event]);
 
+  const [activeTabId, setActiveTabId] = useState('overview');
+  // A newly-selected event (Previous/Next, or opening a different row)
+  // always starts back on Overview - staying on e.g. "Business / error"
+  // while stepping onto an event with no error would either show a stale
+  // tab that no longer exists for this event, or a misleadingly-empty one.
+  useEffect(() => {
+    setActiveTabId('overview');
+  }, [state.selectedIndex]);
+
   /*
    * Pre-closure functional recovery 2 (§A1-§A5) - named conflict per
    * CLAUDE.md §5, superseding the first recovery's own decision below.
@@ -57,46 +68,62 @@ export function EventInspector({ state }: { state: SearchState }) {
    * one sparse) needs the SAME five tabs in the SAME positions on both,
    * so absence-of-a-tab is never mistaken for absence-of-a-feature.
    *
-   * Current, applied decision: all five primary tabs (Overview, Actor &
-   * client, Request flow, Business / error, Technical / all fields) are
-   * ALWAYS present, for every event, with no conditional inclusion logic
-   * at all. Each section component already renders its own honest
-   * `EmptySectionNote` when its own field-builder returns nothing
-   * (`ActorClientSection`/`RequestFlowSection`/`BusinessErrorSection`,
-   * unchanged by this fix) - so this list is now a fixed, five-entry
-   * structural constant, and the "is this section empty" decision lives
-   * entirely inside each section itself, never here. "Trace /
-   * Correlation" remains unified into "Request Flow" (unchanged from the
-   * first recovery): this product's data model has no fields
-   * distinguishing the two.
+   * SUPERSEDED IN PART (LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY,
+   * CLAUDE.md §5 "name the conflict, apply the later decision"): the
+   * "always five fixed tabs, never conditional" rule above still holds
+   * for Overview/Actor & client/Request flow/Business/Technical - but the
+   * owner's later, explicit instruction is that a sixth "Error" tab must
+   * appear ONLY for an event that actually "contains error information"
+   * (`eventHasErrorInfo` - ERROR/FATAL severity, a real exception, or a
+   * real error code), never for every event regardless of content. This
+   * is a deliberate, narrow exception for this one new tab, not a
+   * reversion of the fixed-five-tabs decision for the others: a sparse
+   * event with no error data would otherwise show an Error tab whose only
+   * content is "this event isn't an error," which is a materially
+   * different (and less useful) statement than what the fixed five tabs
+   * already say for missing data - a genuinely empty AND diagnostically
+   * meaningless tab, unlike e.g. Business's honest "no business step" for
+   * an event that legitimately never carries one.
+   *
+   * "Business / error" is also renamed "Business" and no longer shows
+   * error/exception data at all (`BusinessSection`, split from the former
+   * `BusinessErrorSection`) - error data now lives only in Overview's own
+   * Error Summary and this conditional Error tab. "Trace / Correlation"
+   * remains unified into "Request Flow" (unchanged from the first
+   * recovery): this product's data model has no fields distinguishing the two.
    */
   const tabs: InspectorTab[] = useMemo(() => {
     if (!event) return [];
-    return [
-      { id: 'overview', label: 'Overview', content: <OverviewSection event={event} sources={state.sources} /> },
+    const fixedTabs: InspectorTab[] = [
+      {
+        id: 'overview',
+        label: 'Overview',
+        content: (
+          <OverviewSection
+            event={event}
+            sources={state.sources}
+            onViewErrorDetails={() => setActiveTabId('error')}
+          />
+        ),
+      },
       { id: 'actor', label: 'Actor & client', content: <ActorClientSection event={event} /> },
       {
         id: 'requestFlow',
         label: 'Request flow',
         content: <RequestFlowSection event={event} onOpenJourney={state.openJourney} />,
       },
-      { id: 'businessError', label: 'Business / error', content: <BusinessErrorSection event={event} /> },
+      { id: 'business', label: 'Business', content: <BusinessSection event={event} /> },
       {
         id: 'allFields',
         label: 'Technical / all fields',
         content: <AllFieldsSection event={event} sources={state.sources} />,
       },
     ];
+    if (eventHasErrorInfo(event)) {
+      fixedTabs.push({ id: 'error', label: 'Error', content: <ErrorSection event={event} /> });
+    }
+    return fixedTabs;
   }, [event, state.sources, state.openJourney]);
-
-  const [activeTabId, setActiveTabId] = useState('overview');
-  // A newly-selected event (Previous/Next, or opening a different row)
-  // always starts back on Overview - staying on e.g. "Business / error"
-  // while stepping onto an event with no error would either show a stale
-  // tab that no longer exists for this event, or a misleadingly-empty one.
-  useEffect(() => {
-    setActiveTabId('overview');
-  }, [state.selectedIndex]);
 
   // Legacy Remediation Slice 8 - migrated onto the shared shortcut
   // registry (one document listener for the whole app). EventInspector is

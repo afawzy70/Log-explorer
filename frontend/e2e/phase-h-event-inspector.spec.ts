@@ -39,7 +39,11 @@ test('opening the inspector shows every section with real, fully-populated fixtu
   await expect(dialog.getByRole('tab', { name: /^overview$/i })).toBeVisible();
   await expect(dialog.getByRole('tab', { name: /actor & client/i })).toBeVisible();
   await expect(dialog.getByRole('tab', { name: /request flow/i })).toBeVisible();
-  await expect(dialog.getByRole('tab', { name: /business \/ error/i })).toBeVisible();
+  // LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - "Business / error" split into a business-only
+  // "Business" tab (one of the five always-present fixed tabs, asserted here) and a separate,
+  // conditional "Error" tab (present only for an event with real error information - not asserted here,
+  // since this test's own real fixture row is not guaranteed to be an error event either way).
+  await expect(dialog.getByRole('tab', { name: /^business$/i })).toBeVisible();
   await expect(dialog.getByRole('tab', { name: /all fields/i })).toBeVisible();
 
   // DRIFT-008 remediation: Overview no longer shows its own redundant "Overview" heading (the tabpanel is
@@ -251,11 +255,16 @@ test('the resize handle keeps the panel within its documented min/max bounds', a
   await assertNoHorizontalOverflow(page);
 });
 
-test('at the default panel width, all five fixed tabs render on one row - the default was widened from 420px to the design\'s 500px specifically because they used to wrap to two rows', async ({
+test('at the default panel width, every offered tab renders on one row - the default was widened from 420px to the design\'s 500px specifically because they used to wrap to two rows', async ({
   page,
 }) => {
   await runRealSearch(page);
   await setViewport(page, 1920);
+  // LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - row 0 (newest-first real fixture data) may or may
+  // not carry error information, so the true tab count here is 5 (fixed) or 6 (fixed + the conditional
+  // Error tab) - this test asserts the "fits on one row" invariant either way, not an exact count, which
+  // is the actual regression it guards (see useResizablePanel.ts's own real re-measurement for the
+  // worst-case 6-tab scenario, separately confirmed to still fit at 500px).
   await openInspectorOnRow(page, 0);
 
   const handle = page.getByRole('separator', { name: /resize event details panel/i });
@@ -263,7 +272,9 @@ test('at the default panel width, all five fixed tabs render on one row - the de
   expect(width).toBe(500);
 
   const tabs = page.getByRole('tab');
-  await expect(tabs).toHaveCount(5);
+  const tabCount = await tabs.count();
+  expect(tabCount).toBeGreaterThanOrEqual(5);
+  expect(tabCount).toBeLessThanOrEqual(6);
   const tops = new Set((await tabs.evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)))));
   expect(tops.size).toBe(1); // one distinct `top` value - every tab shares one row, none has wrapped below the rest.
 

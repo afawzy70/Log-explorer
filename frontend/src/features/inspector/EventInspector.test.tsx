@@ -151,8 +151,11 @@ describe('EventInspector', () => {
       [/^overview$/i, /when & where/i],
       [/actor & client/i, /actor & client/i],
       [/request flow/i, /request flow/i],
-      [/business \/ error/i, /business \/ error/i],
+      [/^business$/i, /^business$/i],
       [/technical \/ all fields/i, /all fields/i],
+      // LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - fullEvent() has ERROR severity + a real
+      // exception, so the conditional Error tab is present too.
+      [/^error$/i, /^error$/i],
     ];
     for (const [tabName, headingName] of expected) {
       await user.click(within(tablist).getByRole('tab', { name: tabName }));
@@ -176,10 +179,12 @@ describe('EventInspector', () => {
       renderWithRegistry(<EventInspector state={baseState({ selectedEvent: minimal, selectedIndex: 0 })} />);
       const tablist = screen.getByRole('tablist', { name: /event detail sections/i });
 
-      // INSPECTOR_FIXED_PRIMARY_TABS / OVERVIEW_TAB_ALWAYS_PRESENT / etc.
-      for (const name of [/^overview$/i, /actor & client/i, /request flow/i, /business \/ error/i, /technical \/ all fields/i]) {
+      // INSPECTOR_FIXED_PRIMARY_TABS / OVERVIEW_TAB_ALWAYS_PRESENT / etc. - and NO Error tab, since a
+      // sparse event (null severity, no exception, no error code) genuinely has no error information.
+      for (const name of [/^overview$/i, /actor & client/i, /request flow/i, /^business$/i, /technical \/ all fields/i]) {
         expect(within(tablist).getByRole('tab', { name })).toBeInTheDocument();
       }
+      expect(within(tablist).queryByRole('tab', { name: /^error$/i })).not.toBeInTheDocument();
 
       // EMPTY_ACTOR_STATE_VISIBLE
       await user.click(within(tablist).getByRole('tab', { name: /actor & client/i }));
@@ -189,37 +194,38 @@ describe('EventInspector', () => {
       await user.click(within(tablist).getByRole('tab', { name: /request flow/i }));
       expect(screen.getByText(/no journey, correlation, trace, span, or event id on this event/i)).toBeInTheDocument();
 
-      // EMPTY_BUSINESS_ERROR_STATE_VISIBLE
-      await user.click(within(tablist).getByRole('tab', { name: /business \/ error/i }));
-      expect(
-        screen.getByText(/no business step, ui identifier, error code, or exception on this event/i),
-      ).toBeInTheDocument();
+      // EMPTY_BUSINESS_STATE_VISIBLE - Business is business-only now, no mention of error/exception.
+      await user.click(within(tablist).getByRole('tab', { name: /^business$/i }));
+      expect(screen.getByText(/no business step or ui identifier on this event/i)).toBeInTheDocument();
 
       // NO_DATA_FABRICATED - the empty states say only that data is absent, never a guess at why
       expect(screen.queryByText(/failed to log/i)).not.toBeInTheDocument();
     });
 
-    it('a malformed/raw-fallback event still shows all five tabs, with the raw line surfaced in Technical / all fields', async () => {
+    it('a malformed/raw-fallback event still shows all five fixed tabs (no Error tab - a malformed line has no severity), with the raw line surfaced in Technical / all fields', async () => {
       const user = userEvent.setup();
       const malformed = sparseEvent({ malformed: true, rawLine: 'not valid json {{{' });
       renderWithRegistry(<EventInspector state={baseState({ selectedEvent: malformed, selectedIndex: 0 })} />);
       const tablist = screen.getByRole('tablist', { name: /event detail sections/i });
-      for (const name of [/^overview$/i, /actor & client/i, /request flow/i, /business \/ error/i, /technical \/ all fields/i]) {
+      for (const name of [/^overview$/i, /actor & client/i, /request flow/i, /^business$/i, /technical \/ all fields/i]) {
         expect(within(tablist).getByRole('tab', { name })).toBeInTheDocument();
       }
+      expect(within(tablist).queryByRole('tab', { name: /^error$/i })).not.toBeInTheDocument();
       await user.click(within(tablist).getByRole('tab', { name: /technical \/ all fields/i }));
       // Appears at least in the raw JSON dump, and typically also as the
       // canonical "Message" field's own displayed fallback value.
       expect(screen.getAllByText(/not valid json/i).length).toBeGreaterThan(0);
     });
 
-    it('switching between a fully-populated event and a sparse event never changes which tabs are offered - only which are empty', () => {
+    it('switching between a fully-populated event and a sparse event never changes the five FIXED tabs offered - only which are empty (the conditional Error tab is covered separately below)', () => {
+      const tabNames = [/^overview$/i, /actor & client/i, /request flow/i, /^business$/i, /technical \/ all fields/i];
       const { rerender } = renderWithRegistry(
         <EventInspector state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0 })} />,
       );
-      const tabNames = [/^overview$/i, /actor & client/i, /request flow/i, /business \/ error/i, /technical \/ all fields/i];
       const tablistFull = screen.getByRole('tablist', { name: /event detail sections/i });
-      const fullTabCount = within(tablistFull).getAllByRole('tab').length;
+      for (const name of tabNames) {
+        expect(within(tablistFull).getByRole('tab', { name })).toBeInTheDocument();
+      }
 
       rerender(
         <ShortcutRegistryProvider>
@@ -227,11 +233,35 @@ describe('EventInspector', () => {
         </ShortcutRegistryProvider>,
       );
       const tablistSparse = screen.getByRole('tablist', { name: /event detail sections/i });
-      // EVENT_CHANGE_DOES_NOT_CHANGE_TAB_SET
-      expect(within(tablistSparse).getAllByRole('tab')).toHaveLength(fullTabCount);
+      // EVENT_CHANGE_DOES_NOT_CHANGE_THE_FIXED_TAB_SET
       for (const name of tabNames) {
         expect(within(tablistSparse).getByRole('tab', { name })).toBeInTheDocument();
       }
+    });
+
+    // LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - the one deliberate exception to the fixed-tab-set
+    // rule above: the Error tab genuinely appears/disappears based on event content (see
+    // EventInspector.tsx's own doc comment naming this conflict explicitly).
+    it('the Error tab appears for an event with error information and disappears for one without, safely (falls back to Overview, never crashes)', async () => {
+      const user = userEvent.setup();
+      const { rerender } = renderWithRegistry(
+        <EventInspector state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0 })} />,
+      );
+      const tablistError = screen.getByRole('tablist', { name: /event detail sections/i });
+      expect(within(tablistError).getByRole('tab', { name: /^error$/i })).toBeInTheDocument();
+      await user.click(within(tablistError).getByRole('tab', { name: /^error$/i }));
+      expect(screen.getByRole('tab', { name: /^error$/i })).toHaveAttribute('aria-selected', 'true');
+
+      rerender(
+        <ShortcutRegistryProvider>
+          <EventInspector state={baseState({ selectedEvent: sparseEvent(), selectedIndex: 1 })} />
+        </ShortcutRegistryProvider>,
+      );
+      const tablistNoError = screen.getByRole('tablist', { name: /event detail sections/i });
+      expect(within(tablistNoError).queryByRole('tab', { name: /^error$/i })).not.toBeInTheDocument();
+      // Falls back to Overview - the reset-on-navigation effect, or InspectorTabs' own
+      // activeTabId-not-found fallback, either way never leaves the panel on a nonexistent tab.
+      expect(screen.getByRole('tab', { name: /^overview$/i })).toHaveAttribute('aria-selected', 'true');
     });
 
     it('an event missing only actor/client data still shows every other tab with its real content', async () => {
@@ -266,7 +296,7 @@ describe('EventInspector', () => {
       expect(screen.getByText(/no journey, correlation, trace, span, or event id on this event/i)).toBeInTheDocument();
     });
 
-    it('an event missing only business/error data still shows the Business / error tab with an honest empty state', async () => {
+    it('an event missing business/error field data still shows an honest empty state on Business; ERROR severity alone still shows the Error tab with its own honest empty state', async () => {
       const user = userEvent.setup();
       const noBusinessError = fullEvent({
         businessStep: null,
@@ -276,10 +306,13 @@ describe('EventInspector', () => {
       });
       renderWithRegistry(<EventInspector state={baseState({ selectedEvent: noBusinessError, selectedIndex: 0 })} />);
       const tablist = screen.getByRole('tablist', { name: /event detail sections/i });
-      await user.click(within(tablist).getByRole('tab', { name: /business \/ error/i }));
-      expect(
-        screen.getByText(/no business step, ui identifier, error code, or exception on this event/i),
-      ).toBeInTheDocument();
+      await user.click(within(tablist).getByRole('tab', { name: /^business$/i }));
+      expect(screen.getByText(/no business step or ui identifier on this event/i)).toBeInTheDocument();
+
+      // fullEvent()'s own severity is still ERROR, so the Error tab is still present - with its own
+      // truthful "severity indicates an error, but no exception/error code payload" empty state.
+      await user.click(within(tablist).getByRole('tab', { name: /^error$/i }));
+      expect(screen.getByText(/carries no exception or error code payload/i)).toBeInTheDocument();
     });
 
     it('unknown/custom fields are preserved and reachable from Technical / all fields regardless of primary-section content', async () => {
@@ -307,7 +340,9 @@ describe('EventInspector', () => {
     await user.keyboard('{ArrowLeft}');
     expect(within(tablist).getByRole('tab', { name: /^overview$/i })).toHaveFocus();
     await user.keyboard('{End}');
-    expect(within(tablist).getByRole('tab', { name: /technical \/ all fields/i })).toHaveFocus();
+    // fullEvent() has ERROR severity + a real exception, so the conditional Error tab is the true last
+    // tab now (6th), not Technical / all fields (5th).
+    expect(within(tablist).getByRole('tab', { name: /^error$/i })).toHaveFocus();
     await user.keyboard('{Home}');
     expect(within(tablist).getByRole('tab', { name: /^overview$/i })).toHaveFocus();
   });
@@ -470,13 +505,13 @@ describe('EventInspector', () => {
       exception: 'java.lang.RuntimeException: Authorization: Bearer [REDACTED]\n\tat com.example.Foo.bar(Foo.java:1)',
     });
 
-    it('the Business/error section renders the redacted exception as plain text, never the original', async () => {
+    it('the Error section renders the redacted exception as plain text, never the original', async () => {
       const user = userEvent.setup();
       renderWithRegistry(<EventInspector state={baseState({ selectedEvent: redactedEvent, selectedIndex: 0 })} />);
-      // Pre-closure functional recovery (§4): Business/error is now its own
-      // tab, not always in the DOM - switch to it first.
-      await user.click(screen.getByRole('tab', { name: /business \/ error/i }));
-      const section = screen.getByRole('heading', { name: /business \/ error/i }).closest('section')!;
+      // LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - the exception now lives in the conditional
+      // Error tab (redactedEvent has ERROR severity + a real exception), not the old combined tab.
+      await user.click(screen.getByRole('tab', { name: /^error$/i }));
+      const section = screen.getByRole('heading', { name: /^error$/i }).closest('section')!;
       expect(within(section).getByText(/Authorization: Bearer \[REDACTED\]/)).toBeInTheDocument();
       expect(section.textContent).not.toMatch(/Bearer ey[A-Za-z0-9]/); // no raw-looking token survives
     });
@@ -540,10 +575,10 @@ describe('EventInspector - event classification', () => {
     expect(openClassificationRuleFromEvent).toHaveBeenCalledWith(event);
   });
 
-  it('shows the Classification section inside Overview for a classified event while keeping exactly five tabs', () => {
+  it('shows the Classification section inside Overview for a classified event while keeping exactly six tabs (five fixed + the conditional Error tab, since classified is a fullEvent() with ERROR severity)', () => {
     renderWithRegistry(<EventInspector state={baseState({ selectedEvent: classified, selectedIndex: 0 })} />);
     const tablist = screen.getByRole('tablist', { name: /event detail sections/i });
-    expect(within(tablist).getAllByRole('tab')).toHaveLength(5);
+    expect(within(tablist).getAllByRole('tab')).toHaveLength(6);
     expect(screen.getByRole('heading', { name: 'Classification' })).toBeInTheDocument();
     expect(screen.getByText('MIDDLEWARE')).toBeInTheDocument();
     expect(screen.getByText('/accounts')).toBeInTheDocument();
@@ -552,7 +587,7 @@ describe('EventInspector - event classification', () => {
   it('shows no Classification section when the event has no classifications', () => {
     renderWithRegistry(<EventInspector state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0 })} />);
     const tablist = screen.getByRole('tablist', { name: /event detail sections/i });
-    expect(within(tablist).getAllByRole('tab')).toHaveLength(5);
+    expect(within(tablist).getAllByRole('tab')).toHaveLength(6);
     expect(screen.queryByRole('heading', { name: 'Classification' })).not.toBeInTheDocument();
   });
 });

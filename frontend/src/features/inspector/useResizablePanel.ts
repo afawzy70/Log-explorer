@@ -5,9 +5,13 @@ export const MAX_PANEL_WIDTH = 720;
 /**
  * Modern Developer Console (B1) `--v2-w-inspector`: 500px is not an
  * arbitrary preference - measured in the real running app, the five
- * fixed tabs (Overview, Actor & client, Request flow, Business / error,
+ * fixed tabs (Overview, Actor & client, Request flow, Business,
  * Technical / all fields) wrap onto two rows at the previous 420px
- * default, and fit on one row at 500px.
+ * default, and fit on one row at 500px. LIVE_TIME_INSPECTOR_AND_
+ * DOCUMENTATION_RECOVERY re-verified this still holds for the worst
+ * case (all six tabs, including the conditional Error tab, on a real
+ * error event) - real rendered measurement, tablist scrollWidth ===
+ * clientWidth at 500px, no wrap.
  */
 const DEFAULT_PANEL_WIDTH = 500;
 

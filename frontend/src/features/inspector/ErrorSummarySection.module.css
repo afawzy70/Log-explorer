@@ -1,0 +1,42 @@
+/*
+ * LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - a clearly identifiable, bordered/tinted box (never
+ * color alone: the heading text and field labels already say "error" in words), placed near the top of
+ * Overview per the owner's own requirement. Reuses the same danger tokens BusinessErrorSection's old
+ * `.exception` rule already used, so this introduces no new color outside the approved semantic set.
+ */
+.section {
+  margin: 0 0 var(--space-4) 0;
+  padding: var(--space-3);
+  border: var(--v2-bw) solid var(--v2-danger);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-danger-tint);
+}
+
+.heading {
+  margin: 0 0 var(--space-2) 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--v2-danger);
+}
+
+/*
+ * The preview is line-aware (real newlines preserved, `pre-wrap`), never squeezed into a single-line
+ * field - but bounded to a few lines' height so it reads as a preview, not a duplicate of the full
+ * stack trace the Error tab itself renders. `overflow-wrap: anywhere` matches OverviewSection's own
+ * `.message` rule, so a single very long unbroken line still never causes horizontal overflow.
+ */
+.preview {
+  margin: var(--space-2) 0 var(--space-3) 0;
+  padding: 0;
+  background: none;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--v2-danger);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 4.5em;
+  overflow-y: auto;
+}
