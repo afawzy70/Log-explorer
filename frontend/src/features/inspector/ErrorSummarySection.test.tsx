@@ -33,6 +33,24 @@ describe('ErrorSummarySection', () => {
     expect(screen.queryByText('Exception type')).not.toBeInTheDocument();
   });
 
+  // PR65_OWNER_REVIEW_DOCUMENTATION_AND_ERROR_EDGE_RECOVERY - whitespace-only exception/error code must
+  // not produce a blank "Error code" field or a blank preview <pre>, even though the tab itself still
+  // exists (ERROR severity alone is real error information).
+  it('ERROR severity with whitespace-only exception and error code: no blank error code field, no blank preview', () => {
+    render(<ErrorSummarySection event={sparseEvent({ severity: 'ERROR', exception: '  ', errorCode: '\t' })} onViewErrorDetails={vi.fn()} />);
+    expect(screen.getByText('ERROR')).toBeInTheDocument();
+    expect(screen.queryByText('Error code')).not.toBeInTheDocument();
+    expect(screen.queryByText('Exception type')).not.toBeInTheDocument();
+    expect(document.querySelector('pre')).not.toBeInTheDocument();
+  });
+
+  it('renders nothing for a non-error event with whitespace-only exception and error code', () => {
+    const { container } = render(
+      <ErrorSummarySection event={sparseEvent({ severity: 'INFO', exception: '   ', errorCode: ' ' })} onViewErrorDetails={vi.fn()} />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it('"View full error details" switches to the Error tab via the supplied callback', async () => {
     const user = userEvent.setup();
     const onViewErrorDetails = vi.fn();

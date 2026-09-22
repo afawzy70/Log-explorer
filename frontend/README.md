@@ -79,23 +79,42 @@ rules" below) — it is in-memory for the life of the page.
 
 ## Results table (`src/features/results/`)
 
-`ResultsTable.tsx` renders the fixed seven-column layout (Time, Level,
-Service, What happened, User/Customer, Correlation/Trace, Actions) from
-`columnRegistry.ts`'s single authoritative column definition list — a
-column's visibility/order/density comes from `tablePreferences.ts` (see
-"Safe preferences" below). `gapDetection.ts` computes missing-time-range
-markers between consecutive **already-fetched** rows entirely client-side
-— there is no backend concept of a "gap" (see the backend guide's own
-note on this).
+`ResultsTable.tsx` renders the fixed eight-column layout (Time, Level,
+Service, What happened, Tags, User/Customer, Correlation/Trace, Actions)
+from `columnRegistry.tsx`'s single authoritative column definition list —
+a column's visibility/order/density comes from `tablePreferences.ts` (see
+"Safe preferences" below). Tags renders one compact chip plus a `+n`
+counter, with the full tag list in the cell's accessible name. `gapDetection.ts`
+computes missing-time-range markers between consecutive **already-fetched**
+rows entirely client-side — there is no backend concept of a "gap" (see the
+backend guide's own note on this).
 
 ## Event inspector (`src/features/inspector/`)
 
-`EventInspector.tsx` composes five sections (`OverviewSection`,
-`ActorClientSection`, `RequestFlowSection`, `BusinessErrorSection`,
-`AllFieldsSection`) plus a raw-JSON disclosure. It is always mounted (so
-its keyboard shortcuts are always registered — see below) but renders
-`null` when nothing is selected. `useResizablePanel.ts` owns the panel's
-width, in memory only.
+`EventInspector.tsx` composes five stable baseline tabs (`OverviewSection`,
+`ActorClientSection`, `RequestFlowSection`, `BusinessSection`,
+`AllFieldsSection`) plus a sixth, conditional `ErrorSection` tab that only
+appears when `eventHasErrorInfo(event)` is true (ERROR/FATAL severity, or a
+real — non-whitespace-only — exception or error code; see `sections.ts`'s
+`hasMeaningfulText`). `BusinessSection` holds business-domain fields only
+(business step, UI identifier) — never exception/stack-trace content, which
+was the old combined "Business / error" tab's problem. `OverviewSection`
+also renders `ErrorSummarySection` near the top for an error event
+(severity, error code, exception type/message where available, a readable
+preview) with a "View full error details" action that switches to the Error
+tab; it renders nothing for a non-error event. `ErrorSection` itself holds
+the full, readable, preserved-whitespace exception/stack trace plus a
+redaction-safe Copy action, and a truthful empty state when severity alone
+(ERROR/FATAL) indicates an error but no exception/error-code payload
+exists. `InspectorTabs`' own "fall back to the first tab when the active id
+no longer matches" behavior is what makes the conditional Error tab safe to
+add/remove when switching between events. The five baseline tabs are always
+present regardless of content, unlike the Error tab — this is a deliberate,
+named, narrow exception (see `EventInspector.tsx`'s own doc comment) to
+that "always present" rule. `EventInspector` is always mounted (so its
+keyboard shortcuts are always registered — see below) but renders `null`
+when nothing is selected. `useResizablePanel.ts` owns the panel's width, in
+memory only.
 
 ## Context (`RequestFlowSection` → `useSearchState#showContext`)
 
@@ -161,7 +180,7 @@ The **only** browser-persistence call site in the whole frontend
 hidden-column ids, and density. Versioned and defensively validated on
 every load (`sanitizeTablePreferences`): a missing/wrong version, non-
 object input, malformed JSON, unknown/duplicate column ids, or an
-"everything hidden" result all fail safely back to the seven-column
+"everything hidden" result all fail safely back to the eight-column
 default rather than ever breaking startup or silently corrupting the
 table. **Never add a second persistence store without very good reason**
 — if you need a new safe, non-sensitive UI preference, prefer extending

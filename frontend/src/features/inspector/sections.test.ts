@@ -7,6 +7,7 @@ import {
   buildRequestFlowIdentifiers,
   deriveExceptionSummary,
   eventHasErrorInfo,
+  hasMeaningfulText,
 } from './sections';
 import { fullEvent, sparseEvent } from './testEventFixture';
 
@@ -141,6 +142,11 @@ describe('buildErrorFields', () => {
   it('a sparse event produces no rows', () => {
     expect(buildErrorFields(sparseEvent())).toEqual([]);
   });
+
+  // PR65_OWNER_REVIEW_DOCUMENTATION_AND_ERROR_EDGE_RECOVERY
+  it('a whitespace-only error code produces no rows - it is not real error information', () => {
+    expect(buildErrorFields(sparseEvent({ errorCode: '   ' }))).toEqual([]);
+  });
 });
 
 describe('eventHasErrorInfo', () => {
@@ -170,6 +176,31 @@ describe('eventHasErrorInfo', () => {
 
   it('a full event (ERROR + exception + errorCode) is true', () => {
     expect(eventHasErrorInfo(fullEvent())).toBe(true);
+  });
+
+  // PR65_OWNER_REVIEW_DOCUMENTATION_AND_ERROR_EDGE_RECOVERY - `"   "` is truthy but carries no real
+  // information; it must not manufacture error info that isn't actually there.
+  it('is false for a non-error event with a whitespace-only exception and error code', () => {
+    expect(eventHasErrorInfo(sparseEvent({ severity: 'INFO', exception: '   ', errorCode: '\t\n ' }))).toBe(false);
+  });
+
+  it('is true for ERROR severity even when exception and error code are both whitespace-only', () => {
+    expect(eventHasErrorInfo(sparseEvent({ severity: 'ERROR', exception: '  ', errorCode: ' ' }))).toBe(true);
+  });
+});
+
+describe('hasMeaningfulText', () => {
+  it('is false for null, undefined, empty string and whitespace-only strings', () => {
+    expect(hasMeaningfulText(null)).toBe(false);
+    expect(hasMeaningfulText(undefined)).toBe(false);
+    expect(hasMeaningfulText('')).toBe(false);
+    expect(hasMeaningfulText('   ')).toBe(false);
+    expect(hasMeaningfulText('\t\n  ')).toBe(false);
+  });
+
+  it('is true for any non-blank text', () => {
+    expect(hasMeaningfulText('ERR_X')).toBe(true);
+    expect(hasMeaningfulText('  ERR_X  ')).toBe(true);
   });
 });
 

@@ -315,6 +315,16 @@ describe('EventInspector', () => {
       expect(screen.getByText(/carries no exception or error code payload/i)).toBeInTheDocument();
     });
 
+    // PR65_OWNER_REVIEW_DOCUMENTATION_AND_ERROR_EDGE_RECOVERY - a whitespace-only exception/error code
+    // is truthy but not real error information; a non-error event carrying only whitespace in those
+    // fields must not manufacture an Error tab.
+    it('a non-error (INFO) event with whitespace-only exception and error code shows no Error tab at all', () => {
+      const whitespaceOnly = sparseEvent({ severity: 'INFO', exception: '   ', errorCode: '\t' });
+      renderWithRegistry(<EventInspector state={baseState({ selectedEvent: whitespaceOnly, selectedIndex: 0 })} />);
+      const tablist = screen.getByRole('tablist', { name: /event detail sections/i });
+      expect(within(tablist).queryByRole('tab', { name: /^error$/i })).not.toBeInTheDocument();
+    });
+
     it('unknown/custom fields are preserved and reachable from Technical / all fields regardless of primary-section content', async () => {
       const user = userEvent.setup();
       const withUnknown = sparseEvent({ unknownTopLevelFields: { veryCustomField: 'unusual-value' } });

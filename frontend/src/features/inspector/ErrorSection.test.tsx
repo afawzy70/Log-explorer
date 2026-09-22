@@ -39,6 +39,25 @@ describe('ErrorSection', () => {
     expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument();
   });
 
+  // PR65_OWNER_REVIEW_DOCUMENTATION_AND_ERROR_EDGE_RECOVERY - whitespace-only exception/error code is
+  // truthy but not real error information. ERROR severity alone still earns the tab (severity itself is
+  // real error information), but it must show the same truthful empty state as no-payload-at-all: no
+  // empty <pre>, no meaningless Copy button, no blank "Error code" field.
+  it('ERROR severity with whitespace-only exception and error code: the same truthful empty state, no empty <pre>, no Copy button', () => {
+    render(<ErrorSection event={sparseEvent({ severity: 'ERROR', exception: '   ', errorCode: '\t\n ' })} />);
+    expect(screen.getByText(/carries no exception or error code payload/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument();
+    expect(document.querySelector('pre')).not.toBeInTheDocument();
+    expect(screen.queryByText('Error code')).not.toBeInTheDocument();
+  });
+
+  it('a non-blank exception with its own leading/trailing whitespace is rendered byte-for-byte, never trimmed', () => {
+    const paddedException = '  java.lang.RuntimeException: padded\n\tat com.example.Foo.bar(Foo.java:1)  ';
+    render(<ErrorSection event={sparseEvent({ severity: 'ERROR', exception: paddedException })} />);
+    const pre = screen.getByText((_, el) => el?.tagName === 'PRE' && el.textContent === paddedException);
+    expect(pre).toBeInTheDocument();
+  });
+
   it('an exception present on a non-ERROR severity (e.g. WARN) still renders the exception content', () => {
     render(<ErrorSection event={sparseEvent({ severity: 'WARN', exception: 'java.lang.IllegalStateException: retrying' })} />);
     expect(screen.getByText('java.lang.IllegalStateException')).toBeInTheDocument();

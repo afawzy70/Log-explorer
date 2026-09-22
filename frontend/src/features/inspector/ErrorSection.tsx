@@ -2,7 +2,7 @@ import type { LogEvent } from '../../shared/api/types';
 import { Button } from '../../shared/ui/Button';
 import { FieldList } from '../../shared/ui/FieldList';
 import { copyToClipboard } from '../../shared/browser/clipboard';
-import { buildErrorFields, deriveExceptionSummary } from './sections';
+import { buildErrorFields, deriveExceptionSummary, hasMeaningfulText } from './sections';
 import { EmptySectionNote, InspectorSection } from './InspectorSection';
 import styles from './ErrorSection.module.css';
 
@@ -17,9 +17,11 @@ import styles from './ErrorSection.module.css';
  */
 export function ErrorSection({ event }: { event: LogEvent }) {
   const fields = buildErrorFields(event);
-  const summary = event.exception ? deriveExceptionSummary(event.exception) : null;
+  const { exception } = event;
+  const hasException = hasMeaningfulText(exception);
+  const summary = hasException ? deriveExceptionSummary(exception) : null;
 
-  if (fields.length === 0 && !event.exception) {
+  if (fields.length === 0 && !hasException) {
     // Severity alone (ERROR/FATAL, no exception payload) is exactly why this tab exists at all - a
     // truthful explanation, never an invented stack trace.
     return (
@@ -38,15 +40,15 @@ export function ErrorSection({ event }: { event: LogEvent }) {
       {summary?.exceptionType ? (
         <FieldList items={[{ label: 'Exception type', value: summary.exceptionType, monospace: true }]} />
       ) : null}
-      {event.exception ? (
+      {hasException ? (
         <>
           <div className={styles.exceptionHeader}>
             <h3 className={styles.exceptionHeading}>Exception</h3>
-            <Button variant="ghost" onClick={() => void copyToClipboard(event.exception!)}>
+            <Button variant="ghost" onClick={() => void copyToClipboard(exception!)}>
               Copy
             </Button>
           </div>
-          <pre className={styles.exception}>{event.exception}</pre>
+          <pre className={styles.exception}>{exception}</pre>
         </>
       ) : null}
     </InspectorSection>

@@ -21,6 +21,22 @@ function present<T>(items: (T | null)[]): T[] {
 }
 
 /**
+ * A value like `"   "` is truthy but is not real information (PR65_OWNER_REVIEW_DOCUMENTATION_AND_ERROR_EDGE_RECOVERY):
+ * a whitespace-only exception or error code must not manufacture a misleading Error tab, an empty
+ * exception preview, an empty `<pre>` block, or a meaningless Copy button. Trimming is used ONLY to
+ * decide presence here - callers must keep displaying the original, untrimmed value (a stack trace's own
+ * leading/trailing whitespace is part of its formatting and must never be altered).
+ */
+export function hasMeaningfulText(value: string | null | undefined): value is string {
+  return value != null && value.trim().length > 0;
+}
+
+/** Like `whenPresent`, but for fields where whitespace-only text must not count as present (error fields only - see `hasMeaningfulText`). */
+function whenMeaningful(label: string, value: string | null | undefined, monospace = false): FieldItem | null {
+  return hasMeaningfulText(value) ? { label, value, monospace } : null;
+}
+
+/**
  * "Overview (what/when/where)" (HANDOVER.md §16.2). `sources` resolves
  * `event.sourceId` to its display name when the source is still in the
  * currently-loaded list; falls back to the raw id otherwise (a source can
@@ -118,18 +134,19 @@ export function buildBusinessFields(event: LogEvent): FieldItem[] {
 /** Error tab fields (LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY) - present only; the exception itself is handled separately (needs `<pre>`, not a single-line field). */
 export function buildErrorFields(event: LogEvent): FieldItem[] {
   return present([
-    whenPresent('Error code', event.errorCode, true),
+    whenMeaningful('Error code', event.errorCode, true),
   ]);
 }
 
 /**
  * An event "contains error information" (LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY) when its
- * severity is ERROR/FATAL, or it carries a real exception or error code - never fabricated when none of
- * these is actually present.
+ * severity is ERROR/FATAL, or it carries a real (non-whitespace-only, see `hasMeaningfulText` -
+ * PR65_OWNER_REVIEW_DOCUMENTATION_AND_ERROR_EDGE_RECOVERY) exception or error code - never fabricated
+ * when none of these is actually present.
  */
 export function eventHasErrorInfo(event: LogEvent): boolean {
   const severity = event.severity?.toUpperCase();
-  return severity === 'ERROR' || severity === 'FATAL' || Boolean(event.exception) || Boolean(event.errorCode);
+  return severity === 'ERROR' || severity === 'FATAL' || hasMeaningfulText(event.exception) || hasMeaningfulText(event.errorCode);
 }
 
 /**

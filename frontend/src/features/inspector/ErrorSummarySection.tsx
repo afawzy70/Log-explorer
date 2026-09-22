@@ -2,7 +2,7 @@ import type { LogEvent } from '../../shared/api/types';
 import { Button } from '../../shared/ui/Button';
 import { FieldList } from '../../shared/ui/FieldList';
 import type { FieldItem } from '../../shared/ui/FieldList';
-import { deriveExceptionSummary, eventHasErrorInfo } from './sections';
+import { deriveExceptionSummary, eventHasErrorInfo, hasMeaningfulText } from './sections';
 import styles from './ErrorSummarySection.module.css';
 
 /**
@@ -22,10 +22,10 @@ export function ErrorSummarySection({ event, onViewErrorDetails }: { event: LogE
   if (event.severity) {
     fields.push({ label: 'Severity', value: event.severity });
   }
-  if (event.errorCode) {
+  if (hasMeaningfulText(event.errorCode)) {
     fields.push({ label: 'Error code', value: event.errorCode, monospace: true });
   }
-  const summary = event.exception ? deriveExceptionSummary(event.exception) : null;
+  const summary = hasMeaningfulText(event.exception) ? deriveExceptionSummary(event.exception) : null;
   if (summary?.exceptionType) {
     fields.push({ label: 'Exception type', value: summary.exceptionType, monospace: true });
   }

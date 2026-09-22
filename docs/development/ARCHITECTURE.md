@@ -135,7 +135,7 @@ constructed, not in this pipeline.
 
 ## Deployment architecture
 
-Three shapes, one backend, one frontend build:
+Five shapes, one backend, one frontend build:
 
 ```mermaid
 flowchart TB
@@ -149,16 +149,62 @@ flowchart TB
         Route/Service --> Pod["Pod (0.0.0.0:3434)"]
         Pod --> AppJar2["app.jar\n(same image)"]
     end
+    subgraph standalone["Standalone JAR"]
+        direction LR
+        Browser["Any local browser"] --> Process["java -jar\n(single local process, 127.0.0.1:3434 default)"]
+    end
     subgraph windows["Windows desktop"]
         direction LR
         WebView2 --> Launcher["LogExplorerLauncher.exe"]
         Launcher --> AppJar3["app.jar\n(same backend, bundled JRE, 127.0.0.1:3434)"]
     end
+    subgraph macos["macOS desktop"]
+        direction LR
+        SystemBrowser["System default browser"] --> LauncherMac["launcher-macos\n(menu-bar app, bundled JRE)"]
+        LauncherMac --> AppJar4["app.jar\n(same backend, 127.0.0.1:3434)"]
+    end
 ```
 
-The backend jar is identical across all three — packaging differs, the
-application does not. See "Docker architecture" and "Windows desktop
+The backend jar is identical across all five — packaging differs, the
+application does not. See "Docker architecture", "Standalone JAR
+architecture", "Windows desktop architecture", and "macOS desktop
 architecture" below for what's specific to each.
+
+### Standalone JAR architecture
+
+`scripts/build-jar.sh` embeds the same Vite production build used by
+every other packaging form into Spring Boot's static resources
+(`backend/src/main/resources/static/`, populated only during this build,
+never committed) and packages one runnable Spring Boot fat jar,
+`log-explorer-<version>.jar` — the same backend/frontend code the Docker
+image, OpenShift deployment, and both desktop launchers all run, with no
+packaging-specific code path. Running it is a single local process:
+
+```bash
+java -jar log-explorer-<version>.jar
+```
+
+- **Runtime prerequisite: Java 21 only.** Node/npm are needed solely at
+  *build time*, to produce the embedded frontend bundle — the jar itself
+  has no Node/npm dependency once built (verified for real by
+  `scripts/jar-packaged-smoke-test.sh`, which runs the jar from a clean
+  directory containing nothing but the jar itself and asserts no Node
+  process is ever involved).
+- **Default loopback address/port**: `SERVER_ADDRESS`/`SERVER_PORT`
+  default to `127.0.0.1:3434`, the same default every other packaging
+  form uses — a same-machine deployment unless the operator explicitly
+  overrides the bind address.
+- **No application database.** Like every other shape, sources are
+  queried live; the only server-side persistence is the same
+  file-backed classification-rules/field-mapping configuration store
+  used everywhere else (`LOGEXPLORER_DATA_DIR`, default a local
+  `./data` directory next to the jar).
+- **Local source connectivity and security boundaries are unchanged**
+  from any other packaging form: the same masking boundary, the same
+  read-only Docker/OpenShift access, the same TLS-verification rule for
+  OpenShift/Loki (see [Security Notes](../SECURITY_NOTES.md)). The jar
+  itself adds no new network-exposed surface beyond the one HTTP
+  listener already common to every shape.
 
 ### Docker architecture
 
@@ -228,3 +274,43 @@ on a Windows GitHub Actions runner
 for the actual result. Per-user runtime data (backend logs, the WebView2
 profile) lives under `%LOCALAPPDATA%\LogExplorer\`, never inside the
 installed program directory.
+
+### macOS desktop architecture
+
+The macOS launcher (`desktop/launcher-macos`, plain Java, zero
+dependencies beyond the JDK) is a deliberate v1 design that differs from
+Windows: rather than embedding a native WebView shell, it starts the same
+bundled backend jar and opens the system's default browser to it, with a
+menu-bar (`SystemTray`) icon offering "Open Log Explorer" and "Quit".
+Same product, same backend, same API, same masking/security behavior as
+every other shape — only the desktop "chrome" differs. Embedding a native
+`WKWebView` shell (matching the Windows experience) is tracked as a
+`FUTURE_IMPROVEMENT` in
+[`docs/verification/REL_1_DESKTOP_RELEASE_READINESS_REPORT.md`](../verification/REL_1_DESKTOP_RELEASE_READINESS_REPORT.md)
+§9, not silently dropped.
+
+Packaging: `scripts/build-desktop-macos.sh` builds the frontend, the
+backend jar, a custom `jlink` runtime, and the launcher module, then uses
+`jpackage` to produce a `.app` bundle inside a `.dmg`
+(`desktop/build-macos/dmg/LogExplorer-<version>-macos-<arch>.dmg`). It
+runs in `DEV_UNSIGNED_MODE` by default — no Apple Developer account or
+signing credentials required, producing a working but **unsigned** build
+(macOS Gatekeeper requires an explicit right-click → Open the first time,
+which is expected, not a defect). An opt-in `RELEASE_GRADE_MODE`
+(`--mode release`) exists for an operator who holds real Apple signing
+credentials; it fails loudly if those credentials are missing rather than
+silently falling back to unsigned, and reports notarization honestly
+(attempted only when the notarization credentials are also present, never
+claimed otherwise). This repository does not claim any release build has
+actually been signed or notarized — see
+[`docs/development/BUILD_DESKTOP.md`](BUILD_DESKTOP.md#macos) for the
+full, exact mode-by-mode behavior. Per-user runtime data (backend logs,
+classification-rules/field-mapping store) lives under `~/Library/Application
+Support/LogExplorer/`, never inside the `.app` bundle — verified by
+`desktop/packaging-macos/packaged-smoke-test.sh`, which mounts the real
+DMG, launches the real app, exercises a real API call, confirms no orphan
+backend process survives quitting, and confirms the data directory
+survives removing the bundle (a macOS app's "uninstall" is deleting the
+bundle; there is no separate uninstaller). This is exactly what
+`.github/workflows/macos-desktop.yml` runs on a real `macos-latest` CI
+runner.
