@@ -54,6 +54,60 @@ for (const zoom of ZOOM_LEVELS) {
   });
 }
 
+/*
+ * LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - real regression coverage for a real bug: the Time
+ * column's own fixed width did not budget enough room for its own formatter's guaranteed
+ * "<date>, <time>.<ms> <AM/PM>" output once the severity-mark gutter and cell padding were subtracted,
+ * so `overflow: hidden` silently clipped the tail (milliseconds/AM-PM) on every row - found via a real
+ * rendered measurement (`scrollWidth` vs `clientWidth`), not assumed from the CSS alone. Asserts the
+ * DOM-level invariant directly, at every required width and zoom level, not just a screenshot.
+ */
+for (const width of REQUIRED_WIDTHS) {
+  test(`Time column shows the complete timestamp with no clipping at ${width}px`, async ({ page }) => {
+    await runRealSearch(page);
+    await setViewport(page, width);
+
+    const timeCells = page.locator('td[class*="timeCell"]');
+    const count = await timeCells.count();
+    expect(count).toBeGreaterThan(0);
+    for (let i = 0; i < count; i++) {
+      const cell = timeCells.nth(i);
+      const { clientWidth, scrollWidth, text } = await cell.evaluate((el) => ({
+        clientWidth: el.clientWidth,
+        scrollWidth: el.scrollWidth,
+        text: el.textContent ?? '',
+      }));
+      expect(scrollWidth, `Time cell #${i} ("${text}") is clipped: scrollWidth ${scrollWidth} > clientWidth ${clientWidth}`).toBeLessThanOrEqual(clientWidth);
+      // Missing/invalid timestamps render the established empty placeholder; every other value shows a
+      // calendar date, hh:mm:ss, and exactly three millisecond digits (CLAUDE.md §4 "Time shows date +
+      // time + milliseconds").
+      if (text.trim() !== '—') {
+        expect(text).toMatch(/\d{1,2}:\d{2}:\d{2}\.\d{3}/);
+      }
+    }
+  });
+}
+
+for (const zoom of ZOOM_LEVELS) {
+  test(`Time column shows the complete timestamp with no clipping at ${zoom}% zoom`, async ({ page }) => {
+    await runRealSearch(page);
+    await setViewport(page, 1280);
+    await setZoom(page, zoom);
+
+    const timeCells = page.locator('td[class*="timeCell"]');
+    const count = await timeCells.count();
+    expect(count).toBeGreaterThan(0);
+    for (let i = 0; i < count; i++) {
+      const cell = timeCells.nth(i);
+      const { clientWidth, scrollWidth } = await cell.evaluate((el) => ({
+        clientWidth: el.clientWidth,
+        scrollWidth: el.scrollWidth,
+      }));
+      expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+    }
+  });
+}
+
 test('compact density (the default, D1) rows measure close to the design\'s 28px target, not 36-37px, without shrinking the Actions hit target', async ({
   page,
 }) => {
