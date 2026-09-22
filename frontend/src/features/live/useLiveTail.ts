@@ -17,6 +17,13 @@ interface StartArgs {
   services: string[];
   /** UX-R3 §19 — request-scoped Docker Compose project selection; a project switch always calls `exit()` before Live could ever be (re)started under the new scope (see `App.tsx`), so this is never silently reused across projects. */
   composeProject?: string;
+  /**
+   * LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY — Search's own INCLUDE/EXCLUDE service-selection
+   * mode, threaded into Live so it can no longer silently reinterpret an EXCLUDE selection as INCLUDE
+   * (a real scoping gap: Live previously never sent this at all). Omitted/`'INCLUDE'` matches every
+   * prior caller's behavior unchanged.
+   */
+  serviceFilterMode?: 'INCLUDE' | 'EXCLUDE';
 }
 
 function reconnectDelayMs(attempt: number): number {
@@ -190,6 +197,9 @@ export function useLiveTail() {
       if (args.composeProject) {
         params.set('composeProject', args.composeProject);
       }
+      if (args.serviceFilterMode === 'EXCLUDE') {
+        params.set('serviceFilterMode', 'EXCLUDE');
+      }
       // Search values never appear in the URL (CLAUDE.md §2 rule 4) -
       // live tail's own scope never accepts one to begin with; only the
       // non-sensitive sourceId/services/composeProject ever reach this
@@ -313,7 +323,7 @@ export function useLiveTail() {
   );
 
   const start = useCallback(
-    (sourceId: string, services: string[], composeProject?: string) => {
+    (sourceId: string, services: string[], composeProject?: string, serviceFilterMode?: 'INCLUDE' | 'EXCLUDE') => {
       // A fresh session invalidates every callback/timer from whatever
       // came before (double-Start included - the previous session's own
       // EventSource/timers become no-ops via the session guard, and are
@@ -343,7 +353,7 @@ export function useLiveTail() {
       setSourceStatus(NOMINAL_SOURCE_STATUS);
       setConnectionState('connecting');
 
-      const args: StartArgs = { sourceId, services, composeProject };
+      const args: StartArgs = { sourceId, services, composeProject, serviceFilterMode };
       lastStartRef.current = args;
       flushIntervalRef.current = setInterval(() => flush(mySession), BATCH_FLUSH_MS);
       connect(mySession, args);
@@ -354,7 +364,12 @@ export function useLiveTail() {
   /** Manual recovery from the terminal `'failed'` state (mission: "Terminal failure should offer Retry without requiring page refresh") - a genuinely fresh session, not a continuation. */
   const retry = useCallback(() => {
     if (lastStartRef.current) {
-      start(lastStartRef.current.sourceId, lastStartRef.current.services, lastStartRef.current.composeProject);
+      start(
+        lastStartRef.current.sourceId,
+        lastStartRef.current.services,
+        lastStartRef.current.composeProject,
+        lastStartRef.current.serviceFilterMode,
+      );
     }
   }, [start]);
 

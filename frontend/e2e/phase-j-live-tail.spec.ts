@@ -98,6 +98,36 @@ test('clicking Live immediately streams real, masked events from the fixture sou
   }
 });
 
+/*
+ * LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - a real scoping gap found and fixed: Live previously
+ * never sent Search's own EXCLUDE service-filter mode at all, so the backend always resolved the
+ * selected services as an INCLUDE list regardless of what the investigator had actually chosen. This
+ * proves, in a real browser against the real backend, that starting Live with EXCLUDE mode active still
+ * connects and streams cleanly (the frontend->backend wiring works end to end) - the container-state
+ * root cause itself (a stopped Docker container silently selected as a follow target) is proven
+ * separately against a real, isolated Docker container in DockerLogSourceTest and via direct API
+ * verification, since the Fixture source this E2E suite runs against has no container-state concept.
+ */
+test('starting Live with an EXCLUDE service filter active still connects and streams cleanly', async ({ page }) => {
+  await selectFixtureSource(page);
+  await page.getByRole('button', { name: /^search$/i }).click();
+  await expect(page.getByRole('table')).toBeVisible({ timeout: 10_000 });
+
+  await page.getByRole('button', { name: /all services/i }).click();
+  await page.getByRole('button', { name: 'Exclude selected' }).click();
+  const servicesGroup = page.getByRole('group', { name: 'Services' });
+  const firstService = servicesGroup.getByRole('checkbox').first();
+  await firstService.check();
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('button', { name: /^live$/i }).click();
+
+  const panel = panelOf(page);
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole('status')).toHaveText(/^live$/i, { timeout: 5_000 });
+  await expect(panel.locator('tbody tr').first()).toBeVisible({ timeout: 5_000 });
+});
+
 test('Pause diverts new events into a buffered count without changing the visible list; Resume flushes them', async ({
   page,
 }) => {
@@ -210,4 +240,27 @@ test('the disclaimer that live tail is not a complete historical record is alway
   await selectFixtureSource(page);
   await page.getByRole('button', { name: /^live$/i }).click();
   await expect(page.getByText(/not a complete historical record/i)).toBeVisible();
+});
+
+// LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - the same clipping bug as Results' own Time column
+// (`phase-g-results-table.spec.ts`) existed here too (`.colTime` was 172px, `.timeText` needed ~203px) -
+// real DOM-level proof, not a screenshot, that Live's own Time cell now shows the complete value.
+test('Time column shows the complete timestamp with no clipping in Live', async ({ page }) => {
+  await selectFixtureSource(page);
+  await page.getByRole('button', { name: /^live$/i }).click();
+  await expect(panelOf(page).locator('tbody tr').first()).toBeVisible({ timeout: 5_000 });
+
+  const timeTexts = panelOf(page).locator('[class*="timeText"]');
+  await expect(timeTexts.first()).toBeVisible();
+  const count = await timeTexts.count();
+  for (let i = 0; i < count; i++) {
+    const el = timeTexts.nth(i);
+    const { clientWidth, scrollWidth, text } = await el.evaluate((node) => ({
+      clientWidth: node.clientWidth,
+      scrollWidth: node.scrollWidth,
+      text: node.textContent ?? '',
+    }));
+    expect(scrollWidth, `Live time cell #${i} ("${text}") is clipped`).toBeLessThanOrEqual(clientWidth);
+    expect(text).toMatch(/\d{1,2}:\d{2}:\d{2}\.\d{3}/);
+  }
 });

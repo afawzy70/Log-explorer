@@ -266,7 +266,21 @@ public class DockerLogSource implements LogSource {
   public Flux<CanonicalLogEvent> follow(FollowRequest request) {
     return Mono.fromCallable(() -> {
           checkRemoteHostIfNeeded();
-          return relevantContainers(client.listContainers(true), request.services(), request.composeProject());
+          List<Container> candidates = relevantContainers(
+              client.listContainers(true), request.services(), request.serviceFilterMode(), request.composeProject());
+          // LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - real root cause found: relevantContainers
+          // (shared with Search, where a STOPPED container's own historical logs are correctly still
+          // readable) never filtered by container state, and listContainers(true) includes stopped/
+          // exited containers - so a stale exited container that still carries the requested service's
+          // Compose label was silently selected as a live-tail target. Its DockerFollowCallback opens
+          // and completes almost instantly (nothing to follow), and if it was the only match, the whole
+          // merged Flux completed right away - the live status/heartbeat channel deliberately keeps the
+          // SSE connection open regardless (see LiveTailService), so the browser just saw a nominally
+          // "Live" connection that could structurally never deliver an event. A follow target only makes
+          // sense for a container that is actually running right now; this filter is intentionally
+          // applied ONLY on the follow path, never on relevantContainers itself (search must keep
+          // reading a stopped container's own already-written log lines).
+          return candidates.stream().filter(c -> "running".equalsIgnoreCase(c.getState())).toList();
         })
         .subscribeOn(Schedulers.boundedElastic())
         .flatMapMany(containers -> Flux.<CanonicalLogEvent>create(

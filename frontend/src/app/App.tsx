@@ -241,7 +241,13 @@ function AppContent() {
               onOpenShiftScopeChanged={handleOpenShiftScopeChangedFromSearch}
               onStartLive={
                 state.selectedSourceId
-                  ? () => live.start(state.selectedSourceId!, state.selectedServices, state.selectedComposeProject ?? undefined)
+                  ? () =>
+                      live.start(
+                        state.selectedSourceId!,
+                        state.selectedServices,
+                        state.selectedComposeProject ?? undefined,
+                        state.serviceFilterMode,
+                      )
                   : undefined
               }
             />
@@ -305,7 +311,12 @@ function AppContent() {
                 sourceDisplayName={state.selectedSource?.displayName ?? state.selectedSourceId ?? ''}
                 onStart={() =>
                   state.selectedSourceId &&
-                  live.start(state.selectedSourceId, state.selectedServices, state.selectedComposeProject ?? undefined)
+                  live.start(
+                    state.selectedSourceId,
+                    state.selectedServices,
+                    state.selectedComposeProject ?? undefined,
+                    state.serviceFilterMode,
+                  )
                 }
               />
             </Suspense>

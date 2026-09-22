@@ -20,6 +20,7 @@ import com.logexplorer.config.SourcesProperties;
 import com.logexplorer.core.guard.ConcurrencyGuard;
 import com.logexplorer.core.guard.SearchGuardrails;
 import com.logexplorer.core.model.CanonicalLogEvent;
+import com.logexplorer.core.model.FollowRequest;
 import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.SearchResult;
 import com.logexplorer.core.model.ServiceInfo;
@@ -1058,6 +1059,58 @@ class DockerLogSourceTest {
 
     verify(mockClient, org.mockito.Mockito.timeout(2000)).followLogs(eq("c1"), any());
     verify(mockClient, never()).followLogs(eq("c2"), any());
+  }
+
+  /**
+   * LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - the real root cause behind "historical search
+   * returns events but Live delivers nothing": {@code relevantContainers} (shared with Search, where a
+   * stopped container's own already-written log lines are correctly still readable) never filtered by
+   * container state, and {@code listContainers(true)} includes stopped/exited containers - so a stale
+   * exited container still carrying the requested service's Compose label was silently selected as a
+   * live-tail target, opened and completed its follow callback almost instantly, and (if it was the
+   * only match) ended the whole stream with zero events, no error. A follow target must be a container
+   * that is actually running right now.
+   */
+  @Test
+  void followNeverSelectsAStoppedContainerAsAFollowTarget() {
+    Container runningGateway = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    Container staleExitedGateway = container("c2", "proj-gateway-0", "proj", "gateway", "exited");
+    when(mockClient.listContainers(true)).thenReturn(List.of(runningGateway, staleExitedGateway));
+    when(mockClient.followLogs(any(), any())).thenAnswer(invocation -> invocation.getArgument(1));
+
+    source.follow(new FollowRequest("local-docker", List.of("gateway"))).subscribe();
+
+    verify(mockClient, org.mockito.Mockito.timeout(2000)).followLogs(eq("c1"), any());
+    verify(mockClient, never()).followLogs(eq("c2"), any());
+  }
+
+  @Test
+  void followCompletesWithoutEverAttemptingAFollowWhenTheOnlyMatchingContainerIsStopped() {
+    Container staleExitedGateway = container("c1", "proj-gateway-0", "proj", "gateway", "exited");
+    when(mockClient.listContainers(true)).thenReturn(List.of(staleExitedGateway));
+
+    java.util.List<CanonicalLogEvent> received = source
+        .follow(new FollowRequest("local-docker", List.of("gateway")))
+        .collectList()
+        .block(java.time.Duration.ofSeconds(2));
+
+    assertThat(received).isEmpty();
+    verify(mockClient, never()).followLogs(any(), any());
+  }
+
+  @Test
+  void followRespectsExcludeServiceFilterMode() {
+    Container gateway = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    Container accounts = container("c2", "proj-accounts-1", "proj", "accounts-api", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(gateway, accounts));
+    when(mockClient.followLogs(any(), any())).thenAnswer(invocation -> invocation.getArgument(1));
+
+    source.follow(new FollowRequest(
+            "local-docker", List.of("gateway"), SearchRequest.ServiceFilterMode.EXCLUDE, null))
+        .subscribe();
+
+    verify(mockClient, org.mockito.Mockito.timeout(2000)).followLogs(eq("c2"), any());
+    verify(mockClient, never()).followLogs(eq("c1"), any());
   }
 
   @Test

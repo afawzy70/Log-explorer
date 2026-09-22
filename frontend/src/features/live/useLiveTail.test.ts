@@ -173,6 +173,43 @@ describe('useLiveTail (Legacy Remediation Slice 5)', () => {
       act(() => result.current.retry());
       expect(latestMockEventSource().url).toContain('composeProject=project-a');
     });
+
+    // LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - a real scoping gap: Live previously never sent
+    // Search's own EXCLUDE service-filter mode at all, always resolving the same service list as
+    // INCLUDE on the backend regardless of what the investigator had actually chosen.
+    it('threads EXCLUDE serviceFilterMode into the URL when supplied', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('local-docker', ['gateway'], undefined, 'EXCLUDE'));
+      expect(latestMockEventSource().url).toContain('serviceFilterMode=EXCLUDE');
+    });
+
+    it('omits serviceFilterMode for the default INCLUDE mode - unchanged wire shape from before this fix', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('local-docker', ['gateway'], undefined, 'INCLUDE'));
+      expect(latestMockEventSource().url).not.toContain('serviceFilterMode=');
+    });
+
+    it('omits serviceFilterMode when not supplied at all', () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('local-docker', ['gateway']));
+      expect(latestMockEventSource().url).not.toContain('serviceFilterMode=');
+    });
+
+    it('retry() after a terminal failure re-starts with the exact same serviceFilterMode, never silently dropping it', async () => {
+      const { result } = renderHook(() => useLiveTail());
+      act(() => result.current.start('local-docker', ['gateway'], undefined, 'EXCLUDE'));
+      act(() => latestMockEventSource().emitOpen());
+
+      for (let i = 0; i < RECONNECT_MAX_ATTEMPTS; i++) {
+        act(() => latestMockEventSource().emitError());
+        await act(() => vi.runOnlyPendingTimersAsync());
+      }
+      act(() => latestMockEventSource().emitError());
+      expect(result.current.connectionState).toBe('failed');
+
+      act(() => result.current.retry());
+      expect(latestMockEventSource().url).toContain('serviceFilterMode=EXCLUDE');
+    });
   });
 
   describe('duplicate Start prevention (session/generation identity)', () => {

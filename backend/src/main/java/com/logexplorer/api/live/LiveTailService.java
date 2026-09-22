@@ -7,6 +7,7 @@ import com.logexplorer.core.guard.GuardrailViolationException.Reason;
 import com.logexplorer.core.guard.LiveTailGuard;
 import com.logexplorer.core.model.FollowRequest;
 import com.logexplorer.core.model.LiveSourceStatus;
+import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.source.LogSource;
 import com.logexplorer.source.LogSourceRegistry;
 import java.time.Duration;
@@ -52,11 +53,21 @@ public class LiveTailService {
   }
 
   public Flux<ServerSentEvent<Object>> follow(String sourceId, List<String> services) {
-    return follow(sourceId, services, null);
+    return follow(sourceId, services, null, null);
   }
 
   /** UX-R3 §9/§19 — {@code composeProject} threads the same request-scoped Compose boundary Search/Context/Journey already carry into Live. */
   public Flux<ServerSentEvent<Object>> follow(String sourceId, List<String> services, String composeProject) {
+    return follow(sourceId, services, composeProject, null);
+  }
+
+  /**
+   * LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY — {@code serviceFilterMode} threads Search's own
+   * INCLUDE/EXCLUDE service-selection semantics into Live, which previously always resolved as INCLUDE
+   * regardless of what the investigator had actually chosen.
+   */
+  public Flux<ServerSentEvent<Object>> follow(
+      String sourceId, List<String> services, String composeProject, SearchRequest.ServiceFilterMode serviceFilterMode) {
     return Flux.defer(() -> {
       LogSource source = registry.require(sourceId);
       if (!source.capabilities().liveTail()) {
@@ -64,7 +75,7 @@ public class LiveTailService {
             Reason.LIVE_TAIL_NOT_SUPPORTED, "Live tail is not supported for source " + sourceId);
       }
 
-      FollowRequest request = new FollowRequest(sourceId, services, composeProject);
+      FollowRequest request = new FollowRequest(sourceId, services, serviceFilterMode, composeProject);
       return source.followWithStatus(request).flatMapMany(result -> {
         AtomicLong droppedCount = new AtomicLong();
         // OS-1E — the most recent CURRENT snapshot from this exact

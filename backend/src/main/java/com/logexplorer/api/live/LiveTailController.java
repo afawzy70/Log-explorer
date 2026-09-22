@@ -1,6 +1,8 @@
 package com.logexplorer.api.live;
 
+import com.logexplorer.core.model.SearchRequest;
 import java.util.List;
+import java.util.Locale;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,10 +36,23 @@ public class LiveTailController {
   public Flux<ServerSentEvent<Object>> live(
       @RequestParam String sourceId,
       @RequestParam(required = false) String services,
-      @RequestParam(required = false) String composeProject) {
+      @RequestParam(required = false) String composeProject,
+      @RequestParam(required = false) String serviceFilterMode) {
     List<String> serviceList = services == null || services.isBlank()
         ? List.of()
         : List.of(services.split(","));
-    return service.follow(sourceId, serviceList, composeProject);
+    return service.follow(sourceId, serviceList, composeProject, parseServiceFilterMode(serviceFilterMode));
+  }
+
+  /** Same lenient parse as {@code RequestMapper}'s own - an unrecognized/blank value falls back to INCLUDE. */
+  private SearchRequest.ServiceFilterMode parseServiceFilterMode(String raw) {
+    if (raw == null || raw.isBlank()) {
+      return null;
+    }
+    try {
+      return SearchRequest.ServiceFilterMode.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
   }
 }

@@ -6,6 +6,7 @@ import com.logexplorer.core.mask.MaskingPolicyService;
 import com.logexplorer.core.mask.ProtectedField;
 import com.logexplorer.core.model.CanonicalLogEvent;
 import com.logexplorer.core.model.RawSensitiveFields;
+import com.logexplorer.core.model.SearchRequest;
 import com.logexplorer.core.model.SourceCapabilities;
 import com.logexplorer.source.StubLogSource;
 import java.time.Duration;
@@ -64,6 +65,9 @@ class LiveTailControllerTest {
   @Autowired
   private MaskingPolicyService maskingPolicy;
 
+  @Autowired
+  private StubLogSource liveCapableTestSource;
+
   @AfterEach
   void resetMaskingPolicy() {
     maskingPolicy.resetToDefaults();
@@ -114,6 +118,35 @@ class LiveTailControllerTest {
         .returnResult()
         .getResponseBody();
     assertThat(body).contains("LIVE_TAIL_NOT_SUPPORTED");
+  }
+
+  @Test
+  void serviceFilterModeQueryParamReachesTheFollowRequest() {
+    // LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - previously the controller never accepted this
+    // param at all, so Live always resolved services as INCLUDE regardless of what the investigator had
+    // actually chosen for Search's own EXCLUDE mode.
+    webTestClient.get()
+        .uri("/api/v1/logs/live?sourceId=live-capable-source&services=gateway&serviceFilterMode=EXCLUDE")
+        .accept(MediaType.TEXT_EVENT_STREAM)
+        .exchange()
+        .expectStatus().isOk();
+
+    assertThat(liveCapableTestSource.lastFollowRequest).isNotNull();
+    assertThat(liveCapableTestSource.lastFollowRequest.serviceFilterMode())
+        .isEqualTo(SearchRequest.ServiceFilterMode.EXCLUDE);
+  }
+
+  @Test
+  void omittedServiceFilterModeDefaultsToInclude() {
+    webTestClient.get()
+        .uri("/api/v1/logs/live?sourceId=live-capable-source")
+        .accept(MediaType.TEXT_EVENT_STREAM)
+        .exchange()
+        .expectStatus().isOk();
+
+    assertThat(liveCapableTestSource.lastFollowRequest).isNotNull();
+    assertThat(liveCapableTestSource.lastFollowRequest.serviceFilterMode())
+        .isEqualTo(SearchRequest.ServiceFilterMode.INCLUDE);
   }
 
   @Test
