@@ -1,3 +1,11 @@
+/*
+ * B7 (Session 10) - full v2 tokens for the whole app-shell header. Previously deliberately deferred (Session
+ * 4's own comment on `.workspaceTrail` below, and `Toolbar.module.css`'s matching comment): re-theming the
+ * header alone, while `SourceHealthBadge`/`KeyboardShortcutsHelp` - its own children - stayed v1, would have
+ * produced v2 text on a still-v1 background. Both children were recomposed to v2 in this same pass (see their
+ * own module files), so the header and everything inside it now move together as one coherent unit - the
+ * condition Session 4's comment named as the actual blocker no longer holds.
+ */
 .header {
   display: flex;
   align-items: center;
@@ -11,8 +19,9 @@
   flex-wrap: wrap;
   gap: var(--space-4);
   padding: var(--space-3) var(--space-4);
-  border-bottom: var(--border-width) solid var(--color-border);
-  background: var(--color-bg-raised);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
+  background: var(--v2-surface-bar);
+  color: var(--v2-ink-1);
 }
 
 .title {
@@ -22,34 +31,57 @@
 }
 
 .sourceName {
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
   font-size: var(--font-size-sm);
 }
 
 .scopeSeparator {
   margin: 0 var(--space-2);
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
 }
 
 .scopeProject {
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--v2-ink-1);
 }
 
 .spacer {
   flex: 1;
 }
 
-/* Matches the other settings triggers' own visual language (Docker/OpenShift/Privacy panels) - this one opens a full page (`FieldMappingWorkspace`) instead of a popover. */
+/* B2 (Session 4) - the workspace trail (COMPONENT_INVENTORY.md's `app/Shell.tsx` "a workspace trail (Search > Trace) is added"). */
+.workspaceTrail {
+  display: flex;
+  align-items: center;
+  font-size: var(--font-size-xs);
+  color: var(--v2-ink-2);
+}
+
+.workspaceTrail [aria-current='page'] {
+  color: var(--v2-ink-1);
+  font-weight: 600;
+}
+
+.trailSeparator {
+  margin: 0 var(--space-1);
+  color: var(--v2-ink-3);
+  vertical-align: -2px;
+}
+
+/* Matches the other settings triggers' own visual language - this one opens a full page instead of a popover. */
 .mappingWorkspaceTrigger {
-  border: var(--border-width) solid var(--color-border);
-  background: var(--color-bg-raised);
-  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: var(--v2-bw) solid var(--v2-line);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
+  border-radius: var(--v2-r-md);
   padding: var(--space-2) var(--space-3);
   font-size: var(--font-size-sm);
   cursor: pointer;
 }
 
 .mappingWorkspaceTrigger:hover {
-  background: var(--color-bg-hover);
+  background: var(--v2-hover);
 }

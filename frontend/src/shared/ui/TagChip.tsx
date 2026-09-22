@@ -15,20 +15,44 @@ const COLOR_CLASS: Record<TagColor, string> = {
 export interface TagChipProps {
   tag: string;
   color?: TagColor | null;
-  /** Rendered instead of the tag name (for the "+2" overflow chip), which still needs its own accessible label. */
+  /** Rendered instead of the tag name (e.g. the colour picker's swatch labels - "Blue", "Purple" - which still need their own accessible label). Overflow counts use `TagCountBadge` below, never this prop. */
   label?: string;
   title?: string;
 }
 
 /**
- * One classification tag. The tag text is always rendered - colour is identity only and never the sole signal
- * (CLAUDE.md §7), so the chip stays meaningful without colour vision, in forced-colours mode, and in print.
+ * One classification tag - B1 chip grammar (tinted pill + hue dot + neutral text,
+ * `DESIGN_SYSTEM.md` §22.2/§22.11 A4): the dot is drawn by `.chip::before` in CSS,
+ * carrying no accessible content of its own. The tag text is always rendered -
+ * colour is identity only and never the sole signal (CLAUDE.md §7), so the chip
+ * stays meaningful without colour vision, in forced-colours mode, and in print.
  */
 export function TagChip({ tag, color, label, title }: TagChipProps) {
   const className = `${styles.chip} ${COLOR_CLASS[color ?? 'GRAY'] ?? styles.gray}`;
   return (
     <span className={className} title={title ?? tag} data-tag-color={color ?? 'GRAY'}>
-      {label ?? tag}
+      <span className={styles.text}>{label ?? tag}</span>
+    </span>
+  );
+}
+
+export interface TagCountBadgeProps {
+  count: number;
+  title?: string;
+}
+
+/**
+ * The "+N" overflow counter for a truncated tag list (e.g. the Results table's
+ * Tags column, `columnRegistry.tsx`). Deliberately NOT a coloured `TagChip`
+ * (§22.11 A3 - a prior defect this restyle corrects): it counts identities, it
+ * is not one, so it stays neutral - `data-tag-color` is intentionally absent,
+ * distinguishing it from a real tag chip for anything (a test, an assistive
+ * technology heuristic) that keys off that attribute.
+ */
+export function TagCountBadge({ count, title }: TagCountBadgeProps) {
+  return (
+    <span className={styles.countBadge} title={title}>
+      {`+${count}`}
     </span>
   );
 }

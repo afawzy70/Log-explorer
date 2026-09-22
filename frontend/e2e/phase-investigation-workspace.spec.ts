@@ -57,7 +57,13 @@ test('View Span opens a real bounded span timeline, rooted on the event it was l
   await expect(page.getByRole('heading', { name: /span:/i })).toBeVisible();
   await expect(page.getByRole('dialog', { name: /event details/i })).not.toBeVisible();
   // Root anchoring + position indicator (owner mission - "Selected event: N of M").
-  await expect(page.getByText(/selected event: \d+ of \d+/i)).toBeVisible();
+  // B5 RECOMPOSE - "Selected event" (the stat-row label) and its value ("N of M") are now adjacent
+  // sibling spans (InvestigationStatRow's own grammar), not one combined "Selected event: N of M" string.
+  // The timeline plot's own trigger flag repeats "Selected event" as its own label too (real text, not
+  // colour alone) - the stat row renders first in the DOM, so .first() is the stat-row's own label.
+  const selectedEventLabel = page.getByText('Selected event').first();
+  await expect(selectedEventLabel).toBeVisible();
+  await expect(selectedEventLabel.locator('xpath=following-sibling::*[1]')).toHaveText(/\d+ of \d+/i);
   await expect(page.locator('[aria-current="location"]')).toBeVisible();
 
   await captureScreenshot(page, 'investigation-workspace', 'view-span-timeline');
@@ -87,7 +93,13 @@ test('Find same Correlation opens a real bounded correlation timeline, rooted on
   expect(opened, 'expected at least one fixture event with a correlationId').toBe(true);
 
   await expect(page.getByRole('heading', { name: /correlation:/i })).toBeVisible();
-  await expect(page.getByText(/selected event: \d+ of \d+/i)).toBeVisible();
+  // B5 RECOMPOSE - "Selected event" (the stat-row label) and its value ("N of M") are now adjacent
+  // sibling spans (InvestigationStatRow's own grammar), not one combined "Selected event: N of M" string.
+  // The timeline plot's own trigger flag repeats "Selected event" as its own label too (real text, not
+  // colour alone) - the stat row renders first in the DOM, so .first() is the stat-row's own label.
+  const selectedEventLabel = page.getByText('Selected event').first();
+  await expect(selectedEventLabel).toBeVisible();
+  await expect(selectedEventLabel.locator('xpath=following-sibling::*[1]')).toHaveText(/\d+ of \d+/i);
 
   await captureScreenshot(page, 'investigation-workspace', 'find-same-correlation-timeline');
 });
@@ -103,8 +115,10 @@ test('Show Surroundings launched from inside a Trace view, then Back to Trace, r
   await idCell.getByRole('button').click();
   await expect(page.getByRole('heading', { name: /trace:/i })).toBeVisible();
 
+  // B5 RECOMPOSE - the card list's own listitems are gone (`JourneyEntryRow` -> `SequenceTable`, a real
+  // <table>); row count is now every real event row in the sequence table body.
   const journeyView = page.getByTestId('journey-view');
-  const eventCountBefore = await journeyView.getByRole('listitem').count();
+  const eventCountBefore = await journeyView.locator('table tbody tr').count();
 
   // Launch Surroundings from the root entry inside the Trace view.
   await journeyView.getByRole('button', { name: /^show surroundings$/i }).first().click();
@@ -121,7 +135,7 @@ test('Show Surroundings launched from inside a Trace view, then Back to Trace, r
   // The same Trace view is restored, not plain search - same title, same event count.
   await expect(page.getByRole('heading', { name: /trace:/i })).toBeVisible();
   await expect(page.getByText(traceIdValue, { exact: false }).first()).toBeVisible();
-  await expect(journeyView.getByRole('listitem')).toHaveCount(eventCountBefore);
+  await expect(journeyView.locator('table tbody tr')).toHaveCount(eventCountBefore);
 
   await captureScreenshot(page, 'investigation-workspace', 'back-to-trace-after-surroundings');
 });

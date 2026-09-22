@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
 import { captureScreenshot, setViewport } from './helpers';
+import { openSettingsSection } from './settings-helpers';
 
 const PHASE = 'UX_R3_EVIDENCE';
 
@@ -72,20 +73,19 @@ async function alwaysFailLiveConnections(page: Page) {
 test.describe('UX-R3 AFTER evidence - real rendered UI, post-redesign', () => {
   test('A/B/C: Docker Settings - Local, Remote, Connection name field, masking panel', async ({ page }) => {
     await gotoFixture(page);
-    await page.getByRole('button', { name: /docker settings/i }).click();
-    await expect(page.getByRole('dialog', { name: /docker connection/i })).toBeVisible();
+    await openSettingsSection(page, /docker settings/i);
+    await expect(page.getByTestId('docker-settings-panel')).toBeVisible();
     await captureScreenshot(page, PHASE, 'AFTER-A-docker-settings-local');
 
     await page.getByLabel('Mode').selectOption('REMOTE');
     await captureScreenshot(page, PHASE, 'AFTER-B-docker-settings-remote-with-connection-name-field');
-    await page.getByRole('button', { name: 'Close' }).click();
 
     // Pre-closure functional recovery (PCFR-2): the masking-policy panel
     // moved OUT of Docker Settings into its own global, source-independent
     // "Privacy & masking" panel - it is a global concern, not specific to
     // Docker (§C/D). Assert it's genuinely there, not just in a screenshot.
-    await page.getByRole('button', { name: /privacy & masking/i }).click();
-    await expect(page.getByRole('dialog', { name: /privacy & masking/i })).toBeVisible();
+    await openSettingsSection(page, /privacy & masking/i);
+    await expect(page.getByTestId('privacy-masking-settings-panel')).toBeVisible();
     await expect(page.getByText(/^CIF$/)).toBeVisible();
     await expect(page.getByRole('button', { name: /reveal|unmask|copy/i })).toHaveCount(0);
   });
@@ -138,11 +138,15 @@ test.describe('UX-R3 AFTER evidence - real rendered UI, post-redesign', () => {
     // Wait for the panel's own status badge (role=status), never the
     // toolbar's always-visible "Live" button - the BEFORE spec's flaky
     // wait condition matched the wrong element; fixed here.
-    await expect(page.getByTestId('live-tail-panel').getByRole('status')).toHaveText(/^LIVE$/, { timeout: 10_000 });
+    // B7 (Session 10) - badge text moved to sentence case ("Live"/"Paused"/
+    // "Reconnecting"), matching the sentence-case convention already used
+    // elsewhere in the console (Field Mapping, Settings, Classification
+    // import); case-insensitive so this assertion tracks intent, not casing.
+    await expect(page.getByTestId('live-tail-panel').getByRole('status')).toHaveText(/^live$/i, { timeout: 10_000 });
     await captureScreenshot(page, PHASE, 'AFTER-H-live-active');
 
     await page.getByRole('button', { name: /^pause$/i }).click();
-    await expect(page.getByTestId('live-tail-panel').getByRole('status')).toHaveText(/^PAUSED$/);
+    await expect(page.getByTestId('live-tail-panel').getByRole('status')).toHaveText(/^paused$/i);
     await captureScreenshot(page, PHASE, 'AFTER-I-live-paused-distinct-badge');
 
     await page.getByRole('button', { name: /back to search results/i }).click();
@@ -154,7 +158,7 @@ test.describe('UX-R3 AFTER evidence - real rendered UI, post-redesign', () => {
     await gotoFixture(page);
     await alwaysFailLiveConnections(page);
     await page.getByRole('button', { name: /^live$/i }).click();
-    await expect(page.getByTestId('live-tail-panel').getByRole('status')).toHaveText(/^RECONNECTING/, { timeout: 10_000 });
+    await expect(page.getByTestId('live-tail-panel').getByRole('status')).toHaveText(/^reconnecting/i, { timeout: 10_000 });
     await captureScreenshot(page, PHASE, 'AFTER-J-live-reconnecting');
   });
 
@@ -162,7 +166,7 @@ test.describe('UX-R3 AFTER evidence - real rendered UI, post-redesign', () => {
     await gotoFixture(page);
     await setViewport(page, 390, 844);
     await captureScreenshot(page, PHASE, 'AFTER-L-narrow-search');
-    await page.getByRole('button', { name: /docker settings/i }).click();
+    await openSettingsSection(page, /docker settings/i);
     await captureScreenshot(page, PHASE, 'AFTER-M-narrow-settings');
   });
 });

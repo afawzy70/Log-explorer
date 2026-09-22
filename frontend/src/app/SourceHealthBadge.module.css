@@ -1,3 +1,10 @@
+/*
+ * B7 (Session 10) - full v2 tokens. This badge lives inside `Shell.module.css`'s `.header`, itself
+ * recomposed to v2 in this same pass, so the two move together (no still-v1 sibling left depending on
+ * either). Fixed a pre-existing bug found while recomposing: `.detailsTrigger:hover`/`.capabilityAvailable`
+ * referenced `--color-text-primary`, a token that has never existed in `tokens.css` (the real name is
+ * `--color-text`) - both silently fell back to `inherit`. Now both correctly resolve to `--v2-ink-1`.
+ */
 .wrapper {
   position: relative;
   display: inline-block;
@@ -8,21 +15,21 @@
   align-items: center;
   gap: var(--space-1);
   font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
 }
 
 .detailsTrigger {
   border: none;
   background: none;
   cursor: pointer;
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
   font-size: var(--font-size-xs);
   padding: 0 2px;
   line-height: 1;
 }
 
 .detailsTrigger:hover {
-  color: var(--color-text-primary);
+  color: var(--v2-ink-1);
 }
 
 /* Legacy Remediation Slice 6 - progressive disclosure, not a settings screen: a small anchored panel, opened locally from already-fetched data (never a new health check). */
@@ -33,11 +40,12 @@
   z-index: 20;
   margin-top: var(--space-1);
   width: 260px;
-  background: var(--color-bg-raised);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  background: var(--v2-surface-raised);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  box-shadow: var(--v2-shadow-pop);
   padding: var(--space-3);
+  color: var(--v2-ink-1);
 }
 
 .detailsList {
@@ -53,7 +61,7 @@
 }
 
 .detailsRow dt {
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
 }
 
 .detailsRow dd {
@@ -66,7 +74,7 @@
 .capabilities {
   margin: 0 0 var(--space-2);
   padding-top: var(--space-2);
-  border-top: var(--border-width) solid var(--color-border);
+  border-top: var(--v2-bw) solid var(--v2-line);
 }
 
 .warningsTitle,
@@ -74,14 +82,14 @@
   margin: 0 0 var(--space-1);
   font-size: var(--font-size-xs);
   font-weight: 600;
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
 }
 
 .warningsList {
   margin: 0;
   padding-left: var(--space-4);
   font-size: var(--font-size-xs);
-  color: var(--color-severity-warn);
+  color: var(--v2-warning);
 }
 
 .capabilitiesList {
@@ -95,11 +103,11 @@
 }
 
 .capabilityAvailable {
-  color: var(--color-text-primary);
+  color: var(--v2-ink-1);
 }
 
 .capabilityUnavailable {
-  color: var(--color-text-tertiary);
+  color: var(--v2-ink-3);
 }
 
 .detailsActions {
@@ -115,17 +123,17 @@
 }
 
 .up {
-  background: var(--color-severity-info);
+  background: var(--v2-sev-info-mark);
 }
 
 .down {
-  background: var(--color-severity-error);
+  background: var(--v2-sev-error-mark);
 }
 
 .degraded {
-  background: var(--color-severity-warn);
+  background: var(--v2-sev-warn-mark);
 }
 
 .unknown {
-  background: var(--color-text-tertiary);
+  background: var(--v2-ink-3);
 }

@@ -2,15 +2,12 @@ import { Button } from '../shared/ui/Button';
 import { SourceSelect } from '../features/search/SourceSelect';
 import { ComposeProjectSelect } from '../features/search/ComposeProjectSelect';
 import { ServiceMultiSelect } from '../features/search/ServiceMultiSelect';
+import { OpenShiftScopeSelect } from '../features/search/openshift/OpenShiftScopeSelect';
+import type { OpenShiftScopeChangeLevel } from '../features/search/openshift/useOpenShiftScopeEditor';
 import { TimeRangeControl } from '../features/timerange/TimeRangeControl';
-import { getTimeRangeDisplayLabel } from '../features/timerange/label';
 import { SeverityFilter } from '../features/search/SeverityFilter';
 import { UniversalSearch } from '../features/search/UniversalSearch';
 import { AdvancedFilters } from '../features/search/AdvancedFilters';
-import { ActiveFilters } from '../features/search/ActiveFilters';
-import { DEFAULT_SEVERITY_LEVELS } from '../features/search/severityLevels';
-import type { AdvancedFilterValues } from '../features/search/advancedFilterFields';
-import { defaultTimeRange } from './useSearchState';
 import type { SearchState } from './useSearchState';
 import type { OpenShiftScopeSummary } from '../shared/api/types';
 import styles from './Toolbar.module.css';
@@ -31,6 +28,14 @@ export interface ToolbarProps {
    * only explained after the fact.
    */
   openShiftScope?: OpenShiftScopeSummary | null;
+  /**
+   * SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT / TARGETED_RECOVERY_1 - fires after a successful
+   * Project/Workload/Pod/Container selection made from THIS toolbar's own `OpenShiftScopeSelect`.
+   * `App.tsx`'s handler re-reads the authoritative OpenShift scope, invalidates any stale search/
+   * investigation results left over from the old scope, and reconciles source health for a Project change.
+   * Undefined only in tests/stories that render `Toolbar` without ever selecting OpenShift as the source.
+   */
+  onOpenShiftScopeChanged?: (level: OpenShiftScopeChangeLevel) => void;
 }
 
 /**
@@ -47,10 +52,21 @@ export interface ToolbarProps {
  * `AdvancedFilters`' own drawer, under More filters, so Search stays the
  * single strongest primary action in this row.
  */
-export function Toolbar({ state, onStartLive, openShiftScope }: ToolbarProps) {
+export function Toolbar({ state, onStartLive, openShiftScope, onOpenShiftScopeChanged }: ToolbarProps) {
   const liveTailSupported = state.selectedSource?.capabilities.liveTail ?? false;
   const rawLogQlSupported = state.selectedSource?.capabilities.rawLogQL ?? false;
   const composeProjectScopingSupported = state.selectedSource?.capabilities.composeProjectScoping ?? false;
+  // SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - capability-driven, not a source-id check: OpenShift already
+  // declares `serviceDiscovery=false` (`OpenShiftLogSource.java`), so Docker's Service selector - which implies
+  // a capability OpenShift genuinely doesn't have - is gated the same way `ComposeProjectSelect` already is.
+  const serviceDiscoverySupported = state.selectedSource?.capabilities.serviceDiscovery ?? false;
+  // SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - OpenShift Workload is the UX-equivalent of Docker Service
+  // (owner requirements register §28); this toolbar renders one scope-selection family or the other for a
+  // given source, never both, and never Docker's Service selector as if it were OpenShift's scope control
+  // (there is no `serviceDiscovery`-style capability flag for "has OpenShift-shaped scope" today, so this
+  // mirrors the existing `sourceId === 'openshift'` routing already used to pick between
+  // `DockerSettingsPanel`/`OpenShiftSettingsPanel` in Settings, rather than inventing a new one).
+  const isOpenShift = state.selectedSourceId === 'openshift';
   // OS-1F §8 - only a genuinely CONNECTED OpenShift session with no
   // Project/Namespace yet selected blocks Search/Live; `openShiftScope`
   // is `null` both when OpenShift isn't selected and before the first
@@ -67,31 +83,21 @@ export function Toolbar({ state, onStartLive, openShiftScope }: ToolbarProps) {
   const mappingNotReady = state.fieldMappingSearchReady !== true;
   const MAPPING_NOT_READY_MESSAGE = 'Configure and validate log field mapping before searching this source.';
 
-  function removeAdvancedField(key: keyof AdvancedFilterValues) {
-    state.applyAdvancedFilters({ ...state.advancedFilters, text: state.searchText, [key]: '' });
-  }
-
-  function removeTag(tag: string) {
-    state.setSelectedTags(state.selectedTags.filter((t) => t !== tag));
-  }
-
-  function removeService(service: string) {
-    state.setSelectedServices(state.selectedServices.filter((s) => s !== service));
-  }
-
   return (
-    <div>
-      <div className={styles.toolbar}>
-        <SourceSelect sources={state.sources} selectedId={state.selectedSourceId} onChange={state.setSelectedSourceId} />
-        {composeProjectScopingSupported ? (
-          <ComposeProjectSelect
-            projects={state.composeProjects}
-            selected={state.selectedComposeProject}
-            loading={state.composeProjectsLoading}
-            error={state.composeProjectsError}
-            onChange={state.setSelectedComposeProject}
-          />
-        ) : null}
+    <div className={styles.toolbar}>
+      <SourceSelect sources={state.sources} selectedId={state.selectedSourceId} onChange={state.setSelectedSourceId} />
+      {composeProjectScopingSupported ? (
+        <ComposeProjectSelect
+          projects={state.composeProjects}
+          selected={state.selectedComposeProject}
+          loading={state.composeProjectsLoading}
+          error={state.composeProjectsError}
+          onChange={state.setSelectedComposeProject}
+        />
+      ) : null}
+      {isOpenShift ? (
+        <OpenShiftScopeSelect scope={openShiftScope ?? null} onScopeChanged={onOpenShiftScopeChanged ?? (() => {})} />
+      ) : serviceDiscoverySupported ? (
         <ServiceMultiSelect
           services={state.services}
           selected={state.selectedServices}
@@ -99,80 +105,63 @@ export function Toolbar({ state, onStartLive, openShiftScope }: ToolbarProps) {
           mode={state.serviceFilterMode}
           onModeChange={state.setServiceFilterMode}
         />
-        <TimeRangeControl value={state.timeRange} onChange={state.setTimeRange} />
-        <SeverityFilter selected={state.selectedLevels} onChange={state.setSelectedLevels} />
-        <UniversalSearch
-          value={state.searchText}
-          onChange={state.setSearchText}
-          onSubmit={state.runSearch}
-          onApplyDetectedField={state.applyDetectedField}
-        />
+      ) : null}
+      <TimeRangeControl value={state.timeRange} onChange={state.setTimeRange} />
+      <SeverityFilter selected={state.selectedLevels} onChange={state.setSelectedLevels} />
+      <UniversalSearch
+        value={state.searchText}
+        onChange={state.setSearchText}
+        onSubmit={state.runSearch}
+        onApplyDetectedField={state.applyDetectedField}
+      />
+      <Button
+        variant="primary"
+        onClick={() => state.runSearch()}
+        disabled={state.searchLoading || openShiftMissingRequiredScope || mappingNotReady}
+        title={
+          mappingNotReady
+            ? MAPPING_NOT_READY_MESSAGE
+            : openShiftMissingRequiredScope
+              ? `Select ${openShiftScopeHint} to search OpenShift`
+              : undefined
+        }
+      >
+        {state.searchLoading ? 'Searching…' : 'Search'}
+      </Button>
+      {liveTailSupported ? (
+        // Only ever rendered when the active source's own capabilities
+        // say it supports live tail (never assumed, never shown for a
+        // source that can't - CLAUDE.md §4 "Sources and capabilities").
         <Button
-          variant="primary"
-          onClick={() => state.runSearch()}
-          disabled={state.searchLoading || openShiftMissingRequiredScope || mappingNotReady}
-          title={
-            mappingNotReady
-              ? MAPPING_NOT_READY_MESSAGE
-              : openShiftMissingRequiredScope
-                ? `Select ${openShiftScopeHint} to search OpenShift`
-                : undefined
-          }
+          variant="secondary"
+          onClick={onStartLive}
+          disabled={!onStartLive || !state.selectedSourceId || openShiftMissingRequiredScope}
+          title={openShiftMissingRequiredScope ? `Select ${openShiftScopeHint} to start Live` : undefined}
         >
-          {state.searchLoading ? 'Searching…' : 'Search'}
+          Live
         </Button>
-        {liveTailSupported ? (
-          // Only ever rendered when the active source's own capabilities
-          // say it supports live tail (never assumed, never shown for a
-          // source that can't - CLAUDE.md §4 "Sources and capabilities").
-          <Button
-            variant="secondary"
-            onClick={onStartLive}
-            disabled={!onStartLive || !state.selectedSourceId || openShiftMissingRequiredScope}
-            title={openShiftMissingRequiredScope ? `Select ${openShiftScopeHint} to start Live` : undefined}
-          >
-            Live
-          </Button>
-        ) : null}
-        {mappingNotReady ? (
-          <span className={styles.scopeRequiredHint} role="status">
-            {MAPPING_NOT_READY_MESSAGE}
-          </span>
-        ) : openShiftMissingRequiredScope ? (
-          <span className={styles.scopeRequiredHint} role="status">
-            Select {openShiftScopeHint} to search OpenShift
-          </span>
-        ) : null}
-        <AdvancedFilters
-          values={{ ...state.advancedFilters, text: state.searchText }}
-          onApply={state.applyAdvancedFilters}
-          queryState={state.queryState}
-          onApplyQuery={state.applyQuery}
-          rawLogQlSupported={rawLogQlSupported}
-          availableTags={state.classificationTags}
-          availableTagsError={state.classificationTagsError}
-          selectedTags={state.selectedTags}
-          onApplyTags={state.setSelectedTags}
-          onOpen={state.refreshClassificationTags}
-        />
-      </div>
-      <div className={styles.activeFiltersRow}>
-        <ActiveFilters
-          timeRangeLabel={getTimeRangeDisplayLabel(state.timeRange)}
-          onRemoveTimeRange={() => state.setTimeRange(defaultTimeRange())}
-          selectedLevels={state.selectedLevels}
-          onRemoveSeverity={() => state.setSelectedLevels(DEFAULT_SEVERITY_LEVELS)}
-          selectedServices={state.selectedServices}
-          onRemoveService={removeService}
-          serviceFilterMode={state.serviceFilterMode}
-          onClearServices={() => state.setSelectedServices([])}
-          advancedValues={{ ...state.advancedFilters, text: state.searchText }}
-          onRemoveAdvancedField={removeAdvancedField}
-          selectedTags={state.selectedTags}
-          onRemoveTag={removeTag}
-          onClearAll={state.clearAllFilters}
-        />
-      </div>
+      ) : null}
+      {mappingNotReady ? (
+        <span className={styles.scopeRequiredHint} role="status">
+          {MAPPING_NOT_READY_MESSAGE}
+        </span>
+      ) : openShiftMissingRequiredScope ? (
+        <span className={styles.scopeRequiredHint} role="status">
+          Select {openShiftScopeHint} to search OpenShift
+        </span>
+      ) : null}
+      <AdvancedFilters
+        values={{ ...state.advancedFilters, text: state.searchText }}
+        onApply={state.applyAdvancedFilters}
+        queryState={state.queryState}
+        onApplyQuery={state.applyQuery}
+        rawLogQlSupported={rawLogQlSupported}
+        availableTags={state.classificationTags}
+        availableTagsError={state.classificationTagsError}
+        selectedTags={state.selectedTags}
+        onApplyTags={state.setSelectedTags}
+        onOpen={state.refreshClassificationTags}
+      />
     </div>
   );
 }

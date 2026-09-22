@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { assertNoHorizontalOverflow, captureScreenshot } from './helpers';
 import { inspectorAllTabsText, openInspectorTab } from './inspector-helpers';
+import { openSettingsSection } from './settings-helpers';
 
 /*
  * IMPLEMENTATION_PLAN.md "Phase M" - HANDOVER.md §27's six scripted
@@ -47,7 +48,8 @@ test.describe('Task 1 - What failed recently?', () => {
     await page.getByLabel(/^end$/i).fill(fmt(now));
     await page.getByRole('button', { name: /^apply$/i }).click();
 
-    // "Errors only"
+    // "Errors only" - B2 (Session 4): now behind the Severity field trigger's popover.
+    await page.getByRole('button', { name: /^severity:/i }).click();
     await page.getByRole('button', { name: /errors only/i }).click();
 
     // "run"
@@ -89,8 +91,8 @@ test.describe('Task 2 - What happened for a user/customer?', () => {
     // owner-facing workflow: Privacy & masking -> check a field). Reset
     // to the fresh default at the end so this shared-singleton backend
     // policy never leaks into a later test in the same run.
-    await page.getByRole('button', { name: /privacy & masking/i }).click();
-    const maskingDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+    await openSettingsSection(page, /privacy & masking/i);
+    const maskingDialog = page.getByTestId('privacy-masking-settings-panel');
     await expect(maskingDialog).toBeVisible();
     const userNameCheckbox = maskingDialog.getByLabel('Username');
     const customerIdCheckbox = maskingDialog.getByLabel('Customer ID');
@@ -100,7 +102,9 @@ test.describe('Task 2 - What happened for a user/customer?', () => {
     if (!(await customerIdCheckbox.isChecked())) {
       await customerIdCheckbox.click();
     }
-    await page.getByRole('button', { name: /^close$/i }).click();
+    // B6.2 (Session 7) - Privacy & masking is no longer a popover with its own "Close" - only the
+    // consolidated Settings workspace itself (a full-page takeover) needs closing.
+    await page.getByRole('button', { name: /back to search results/i }).click();
 
     await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
 
@@ -139,8 +143,8 @@ test.describe('Task 2 - What happened for a user/customer?', () => {
     // Restore the fresh default (unmasked) so this shared-singleton
     // backend policy never leaks into a later test in the same run.
     await page.keyboard.press('Escape'); // close the Inspector dialog first
-    await page.getByRole('button', { name: /privacy & masking/i }).click();
-    const cleanupDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+    await openSettingsSection(page, /privacy & masking/i);
+    const cleanupDialog = page.getByTestId('privacy-masking-settings-panel');
     await expect(cleanupDialog).toBeVisible();
     if (await cleanupDialog.getByLabel('Username').isChecked()) {
       await cleanupDialog.getByLabel('Username').click();
@@ -148,7 +152,6 @@ test.describe('Task 2 - What happened for a user/customer?', () => {
     if (await cleanupDialog.getByLabel('Customer ID').isChecked()) {
       await cleanupDialog.getByLabel('Customer ID').click();
     }
-    await page.getByRole('button', { name: /^close$/i }).click();
   });
 });
 
@@ -263,7 +266,7 @@ test.describe('Task 5 - Monitor live logs', () => {
     await expect(panel).toBeVisible();
 
     await expect(panel.getByRole('status')).toHaveText(/^live$/i, { timeout: 5_000 });
-    await expect(panel.locator('[class*="list"] li').first()).toBeVisible({ timeout: 5_000 });
+    await expect(panel.locator('tbody tr').first()).toBeVisible({ timeout: 5_000 });
     await captureScreenshot(page, 'm', 'task5-live-tail-following');
 
     await panel.getByRole('button', { name: /^pause$/i }).click();
@@ -325,7 +328,13 @@ test.describe('Task 6 - Failure states', () => {
     // the service multi-select must not silently claim "0 services" as if
     // it asked and got none; the honest behavior is to not offer the
     // control's discovery-backed state at all for a source that can't.
-    await expect(page.getByRole('button', { name: /all services/i })).toBeVisible();
+    //
+    // SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - this assertion previously checked the opposite of what this
+    // test's own name/comment describe (a pre-existing mismatch: `ServiceMultiSelect` rendered unconditionally
+    // for every source until this mission gated it by the `serviceDiscovery` capability). OpenShift's own
+    // scope-equivalent control (Project/Workload/Pod/Container) replaces it in the same toolbar position -
+    // Docker's Service selector is genuinely omitted, not shown with a fabricated "0 services" state.
+    await expect(page.getByRole('button', { name: /all services/i })).not.toBeVisible();
   });
 
   test('no results - a real, narrow query against real fixture data', async ({ page }) => {

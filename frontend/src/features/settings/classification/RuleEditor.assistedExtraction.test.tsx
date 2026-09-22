@@ -9,6 +9,7 @@ import {
   suggestClassificationExtractions,
   testClassificationRule,
   updateClassificationRule,
+  validateClassificationRule,
 } from '../../../shared/api/client';
 import type {
   ClassificationRule,
@@ -37,6 +38,7 @@ vi.mock('../../../shared/api/client', async () => {
     detectClassificationPattern: vi.fn(),
     suggestClassificationExtractions: vi.fn(),
     testClassificationRule: vi.fn(),
+    validateClassificationRule: vi.fn(),
   };
 });
 
@@ -45,6 +47,7 @@ const mockCreate = vi.mocked(createClassificationRule);
 const mockUpdate = vi.mocked(updateClassificationRule);
 const mockTest = vi.mocked(testClassificationRule);
 const mockDetect = vi.mocked(detectClassificationPattern);
+const mockValidate = vi.mocked(validateClassificationRule);
 
 const MESSAGE = 'MW call /accounts took 120ms';
 const EVENT = fullEvent({ message: MESSAGE });
@@ -176,10 +179,21 @@ async function settled() {
 }
 
 beforeEach(() => {
-  for (const m of [mockSuggest, mockCreate, mockUpdate, mockTest, mockDetect]) {
+  for (const m of [mockSuggest, mockCreate, mockUpdate, mockTest, mockDetect, mockValidate]) {
     m.mockReset();
   }
   mockSuggest.mockResolvedValue(suggestionResult());
+  mockValidate.mockResolvedValue({ valid: true, errors: [] });
+  mockTest.mockResolvedValue({
+    sampledEvents: 0,
+    matched: 0,
+    notMatched: 0,
+    sampleLimitReached: false,
+    extractionCoverage: [],
+    matchedPreview: [],
+    nearMissPreview: [],
+    reviewNote: '',
+  });
 });
 
 describe('RuleEditor - assisted extraction: asking for suggestions', () => {
@@ -236,9 +250,17 @@ describe('RuleEditor - assisted extraction: the suggestion list', () => {
     expect(within(items[1]).getByText('Duration')).toBeInTheDocument();
     expect(within(items[1]).getByText('Found in 40 / 40')).toBeInTheDocument();
     expect(within(items[0]).getByLabelText('Output name')).toHaveValue('endpoint');
+
+    // §22.11 A6 - a visual coverage bar alongside the text, decorative (never the only signal - the text above
+    // already states the same number). 38/40 = 95%, 40/40 = 100%.
+    const fill0 = items[0].querySelector('[class*="coverageBarFill"]') as HTMLElement;
+    const fill1 = items[1].querySelector('[class*="coverageBarFill"]') as HTMLElement;
+    expect(fill0.style.width).toBe('95%');
+    expect(fill1.style.width).toBe('100%');
+    expect(items[0].querySelector('[class*="coverageBar"][aria-hidden="true"]')).toBeInTheDocument();
   });
 
-  it('"Add n selected values" moves exactly the ticked suggestions into the rule as confirmed values, renamed and marked sensitive as the user set them', async () => {
+  it('"Add n selected values" moves exactly the ticked suggestions into the rule, renamed and marked sensitive as the user set them', async () => {
     const user = userEvent.setup();
     renderEditor();
     await settled();
@@ -255,16 +277,28 @@ describe('RuleEditor - assisted extraction: the suggestion list', () => {
 
     await user.click(screen.getByRole('button', { name: 'Add 1 selected value' }));
 
-    // The ticked one became a confirmed value of the rule, under its new name.
-    const confirmed = screen.getByRole('group', { name: 'Endpoint (confirmed)' });
-    expect(within(confirmed).getByLabelText('Name')).toHaveValue('target');
-    expect(within(confirmed).getByRole('checkbox', { name: 'Never show this value' })).toBeChecked();
+    // PR61_OWNER_MANUAL_USABILITY_AND_CLASSIFICATION_RECOVERY: a rename means this specific definition was never
+    // itself re-validated by the server, so it must not claim "(confirmed)" merely for having been selected and
+    // renamed (mission §21 - "the user selected this suggestion" is not "the extraction definition is valid").
+    const added = screen.getByRole('group', { name: 'Endpoint' });
+    expect(screen.queryByRole('group', { name: 'Endpoint (confirmed)' })).not.toBeInTheDocument();
+    expect(within(added).getByLabelText('Name')).toHaveValue('target');
+    expect(within(added).getByRole('checkbox', { name: 'Never show this value' })).toBeChecked();
 
     // The unticked one was not added, and is still on offer.
     expect(screen.queryByRole('group', { name: 'Duration (confirmed)' })).not.toBeInTheDocument();
     expect(within(suggestionList()).getAllByRole('listitem')).toHaveLength(1);
     expect(within(suggestionList()).getByText('Duration')).toBeInTheDocument();
     expect(screen.getByText('Already extracted by this rule: target.')).toBeInTheDocument();
+  });
+
+  it('accepting a suggestion UNRENAMED does show "(confirmed)" - the server already compiled exactly this definition before offering it', async () => {
+    const user = userEvent.setup();
+    renderEditor();
+    await settled();
+    await user.click(screen.getByRole('button', { name: 'Add 2 selected values' }));
+    expect(screen.getByRole('group', { name: 'Endpoint (confirmed)' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Duration (confirmed)' })).toBeInTheDocument();
   });
 
   it('Add is disabled when nothing is ticked, so the button can never claim to add zero values', async () => {
@@ -358,7 +392,7 @@ describe('RuleEditor - assisted extraction: nothing could be suggested', () => {
     expect(within(group).getByRole('button', { name: /Advanced: how this value is read/ })).toHaveAttribute('aria-expanded', 'true');
     expect(within(group).getByLabelText('Expression')).toHaveValue('');
     expect(within(group).getByLabelText('Method')).toHaveValue('REGEX');
-    expect(within(group).getByText('RE2 syntax with a named group, e.g. (?P<name>...).')).toBeInTheDocument();
+    expect(within(group).getByText(/RE2 syntax, for example/)).toBeInTheDocument();
 
     await user.selectOptions(within(group).getByLabelText('Method'), 'JSON_POINTER');
     expect(within(group).getByText('A JSON pointer starting with "/".')).toBeInTheDocument();
@@ -389,7 +423,7 @@ describe('RuleEditor - assisted extraction: regex stays behind the disclosure', 
     expect(disclosure).toHaveAttribute('aria-expanded', 'false');
     expect(within(group).queryByLabelText('Expression')).not.toBeInTheDocument();
     expect(within(group).queryByLabelText('Method')).not.toBeInTheDocument();
-    expect(within(group).queryByLabelText('Group (optional)')).not.toBeInTheDocument();
+    expect(within(group).queryByLabelText('Capture group (advanced)')).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue('MW call (?P<endpoint>\\S+)')).not.toBeInTheDocument();
     // The plain-language fields stay visible throughout - only the syntax is folded away.
     expect(within(group).getByLabelText('Name')).toHaveValue('endpoint');
@@ -422,5 +456,124 @@ describe('RuleEditor - assisted extraction: accessibility', () => {
     const { container } = renderEditor();
     await settled();
     expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+// PR61_OWNER_MANUAL_USABILITY_AND_CLASSIFICATION_RECOVERY - real owner manual testing found assisted/confirmed
+// extractions could reach Test structurally invalid, with the wizard offering no explanation beyond a raw
+// `extractions[0].group` path once already on Test. Root cause: no structural check ran before that step change,
+// "(confirmed)" was shown for any non-empty name regardless of validity, and "Group (optional)" carried no
+// explanation of when it is actually needed. Fixed without touching backend semantics - RuleCompiler already
+// resolves an omitted group correctly; see RuleCompilerTest/PatternDetectorTest for that contract's own coverage.
+describe('RuleEditor - Capture group (advanced): reframed, and irrelevant to JSON_POINTER', () => {
+  it('explains the normal blank case, under its new name', async () => {
+    const user = userEvent.setup();
+    mockSuggest.mockResolvedValue(NO_SUGGESTION);
+    renderEditor();
+    await settled();
+    await user.click(screen.getByRole('button', { name: 'Add extraction manually' }));
+    const group = screen.getByRole('group', { name: 'Extraction 1' });
+    expect(within(group).getByLabelText('Capture group (advanced)')).toBeInTheDocument();
+    expect(
+      within(group).getByText(
+        /Usually leave this blank.*Log Explorer automatically uses the only captured value/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('is hidden entirely for JSON_POINTER, which never used it', async () => {
+    const user = userEvent.setup();
+    mockSuggest.mockResolvedValue(NO_SUGGESTION);
+    renderEditor();
+    await settled();
+    await user.click(screen.getByRole('button', { name: 'Add extraction manually' }));
+    const group = screen.getByRole('group', { name: 'Extraction 1' });
+    expect(within(group).getByLabelText('Capture group (advanced)')).toBeInTheDocument();
+    await user.selectOptions(within(group).getByLabelText('Method'), 'JSON_POINTER');
+    expect(within(group).queryByLabelText('Capture group (advanced)')).not.toBeInTheDocument();
+  });
+});
+
+describe('RuleEditor - "confirmed" reflects real server validity, not just a non-empty name', () => {
+  it('a manually-typed extraction never claims "(confirmed)", however its Name field is filled in', async () => {
+    const user = userEvent.setup();
+    mockSuggest.mockResolvedValue(NO_SUGGESTION);
+    renderEditor();
+    await settled();
+    await user.click(screen.getByRole('button', { name: 'Add extraction manually' }));
+    const group = screen.getByRole('group', { name: 'Extraction 1' });
+    await user.type(within(group).getByLabelText('Name'), 'manualValue');
+    expect(screen.queryByRole('group', { name: 'manualValue (confirmed)' })).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'manualValue' })).toBeInTheDocument();
+  });
+});
+
+describe('RuleEditor - Preview values checks structure first (mission §18-§21)', () => {
+  it('a structurally valid draft advances to Test and runs it, exactly as before', async () => {
+    const user = userEvent.setup();
+    renderEditor();
+    await settled();
+    await user.click(screen.getByRole('button', { name: 'Add 2 selected values' }));
+    await user.click(screen.getByRole('button', { name: 'Preview values' }));
+    await waitFor(() => expect(mockValidate).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole('heading', { name: 'Step 4 of 5: Test' })).toBeInTheDocument();
+    await waitFor(() => expect(mockTest).toHaveBeenCalledTimes(1));
+  });
+
+  it('a structurally invalid extraction keeps the user on Extraction - never strands them on Test with only a technical path', async () => {
+    const user = userEvent.setup();
+    mockSuggest.mockResolvedValue(NO_SUGGESTION);
+    renderEditor();
+    await settled();
+    await user.click(screen.getByRole('button', { name: 'Add extraction manually' }));
+    const group = screen.getByRole('group', { name: 'Extraction 1' });
+    await user.type(within(group).getByLabelText('Name'), 'responseBody');
+    await user.type(within(group).getByLabelText('Expression'), 'Response:\\s*(\\d+)');
+    await user.type(within(group).getByLabelText('Capture group (advanced)'), 'responseBody');
+    mockValidate.mockResolvedValue({
+      valid: false,
+      errors: [{ path: 'extractions[0].group', message: 'The expression has no group with that name' }],
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Preview values' }));
+    await waitFor(() => expect(mockValidate).toHaveBeenCalledTimes(1));
+
+    // Still on Extraction, not Test - the whole point of the fix.
+    expect(screen.getByRole('heading', { name: 'Step 3 of 5: Extraction' })).toBeInTheDocument();
+    expect(mockTest).not.toHaveBeenCalled();
+    // The human message is shown, anchored on the actual extraction/field - not merely the raw path.
+    expect(within(group).getByText('The expression has no group with that name')).toBeInTheDocument();
+    // Advanced was opened automatically so the offending field is actually visible, and it now holds focus.
+    expect(within(group).getByRole('button', { name: /Advanced: how this value is read/ })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    await waitFor(() => expect(within(group).getByLabelText('Capture group (advanced)')).toHaveFocus());
+  });
+
+  it('correcting the field and checking again clears the stale error', async () => {
+    const user = userEvent.setup();
+    mockSuggest.mockResolvedValue(NO_SUGGESTION);
+    renderEditor();
+    await settled();
+    await user.click(screen.getByRole('button', { name: 'Add extraction manually' }));
+    const group = screen.getByRole('group', { name: 'Extraction 1' });
+    await user.type(within(group).getByLabelText('Name'), 'responseBody');
+    await user.type(within(group).getByLabelText('Expression'), 'Response:\\s*(?P<responseBody>\\d+)');
+    mockValidate.mockResolvedValueOnce({
+      valid: false,
+      errors: [{ path: 'extractions[0].group', message: 'The expression has no group with that name' }],
+    });
+    await user.type(within(group).getByLabelText('Capture group (advanced)'), 'wrongName');
+    await user.click(screen.getByRole('button', { name: 'Preview values' }));
+    await waitFor(() => expect(within(group).getByText('The expression has no group with that name')).toBeInTheDocument());
+
+    await user.clear(within(group).getByLabelText('Capture group (advanced)'));
+    mockValidate.mockResolvedValueOnce({ valid: true, errors: [] });
+    await user.click(screen.getByRole('button', { name: 'Preview values' }));
+    await waitFor(() => expect(mockValidate).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole('heading', { name: 'Step 4 of 5: Test' })).toBeInTheDocument();
+    // No leftover technical-path banner from the earlier failed check.
+    expect(screen.queryByText('The expression has no group with that name')).not.toBeInTheDocument();
   });
 });

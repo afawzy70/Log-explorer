@@ -1,3 +1,4 @@
+/* B7 (Session 10) - full v2 tokens, part of the Toolbar-family closure. */
 .wrapper {
   position: relative;
   display: inline-block;
@@ -7,9 +8,10 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-raised);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
   padding: var(--space-2) var(--space-3);
   font-size: var(--font-size-sm);
   cursor: pointer;
@@ -17,7 +19,7 @@
 }
 
 .trigger:hover {
-  background: var(--color-bg-hover);
+  background: var(--v2-hover);
 }
 
 .triggerLabel {
@@ -27,7 +29,7 @@
 }
 
 .triggerZone {
-  color: var(--color-text-tertiary);
+  color: var(--v2-ink-3);
   font-size: var(--font-size-xs);
 }
 
@@ -36,10 +38,11 @@
   top: calc(100% + var(--space-2));
   left: 0;
   z-index: 20;
-  background: var(--color-bg-raised);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-lg);
+  box-shadow: var(--v2-shadow-pop);
   padding: var(--space-2);
   min-width: 200px;
 }
@@ -50,25 +53,25 @@
   text-align: left;
   border: none;
   background: transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--v2-r-sm);
   padding: var(--space-2) var(--space-3);
   font-size: var(--font-size-sm);
   cursor: pointer;
-  color: var(--color-text);
+  color: var(--v2-ink-1);
 }
 
 .menuItem:hover {
-  background: var(--color-bg-hover);
+  background: var(--v2-hover);
 }
 
 .menuItem[aria-current='true'] {
-  background: var(--color-accent-bg);
-  color: var(--color-accent);
+  background: var(--v2-accent-tint);
+  color: var(--v2-accent-ink);
   font-weight: 600;
 }
 
 .divider {
-  height: var(--border-width);
-  background: var(--color-border);
+  height: var(--v2-bw);
+  background: var(--v2-line);
   margin: var(--space-2) 0;
 }

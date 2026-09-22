@@ -31,7 +31,10 @@ import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, set
 async function gotoFixture(page: Page) {
   await page.goto('/');
   await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
+  // B2 (Session 4) - the level chips now live behind the Severity field trigger's popover.
+  await page.getByRole('button', { name: /^severity:/i }).click();
   await page.getByRole('button', { name: /^all$/i }).click(); // severity: All
+  await page.keyboard.press('Escape');
 }
 
 async function search(page: Page) {
@@ -147,7 +150,10 @@ test.describe('UI Parity Acceleration Pass', () => {
   test('10. keyboard navigation and help: Ctrl+Enter runs search, "/" focuses search, ArrowDown moves row focus, "?" opens help, Escape dismisses it', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
+    // B2 (Session 4) - the level chips now live behind the Severity field trigger's popover.
+    await page.getByRole('button', { name: /^severity:/i }).click();
     await page.getByRole('button', { name: /^all$/i }).click();
+    await page.keyboard.press('Escape');
 
     await page.keyboard.press('Control+Enter');
     await expect(page.getByRole('table')).toBeVisible({ timeout: 10_000 });
@@ -177,11 +183,11 @@ test.describe('UI Parity Acceleration Pass', () => {
     await expect(panel).toBeVisible();
     await expect(panel.getByRole('status')).toHaveText(/^live$/i, { timeout: 10_000 });
 
-    await expect.poll(async () => panel.locator('li').count(), { timeout: 15_000 }).toBeGreaterThan(0);
+    await expect.poll(async () => panel.locator('tbody tr').count(), { timeout: 15_000 }).toBeGreaterThan(0);
     await captureScreenshot(page, 'ui-parity', 'live-state');
 
     await page.getByRole('button', { name: /^clear$/i }).click();
-    await expect(panel.locator('li')).toHaveCount(0);
+    await expect(panel.locator('tbody tr')).toHaveCount(0);
     // Still connected - the state label never reverted to "Not started".
     await expect(panel.getByRole('status')).toHaveText(/^live$/i);
   });

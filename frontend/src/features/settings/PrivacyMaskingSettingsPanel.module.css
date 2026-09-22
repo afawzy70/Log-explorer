@@ -1,85 +1,172 @@
-.wrapper {
-  position: relative;
-  display: inline-block;
-}
-
-.trigger {
-  border: var(--border-width) solid var(--color-border);
-  background: var(--color-bg-raised);
-  border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-}
-
-.trigger:hover {
-  background: var(--color-bg-hover);
-}
-
+/*
+ * B6.2 (Session 7) - RECOMPOSED from a trigger-button popover (v1 tokens) into a persistent inline section
+ * (full v2 tokens), matching DockerSettingsPanel.module.css's own identical rationale.
+ */
 .panel {
-  position: absolute;
-  top: calc(100% + var(--space-2));
-  right: 0;
-  z-index: 20;
-  background: var(--color-bg-raised);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
-  padding: var(--space-4);
-  width: 340px;
-  max-width: calc(100vw - var(--space-6));
-  max-height: min(600px, 80vh);
-  overflow-y: auto;
+  background: var(--v2-surface-work);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  margin-bottom: var(--space-4);
+  max-width: 900px;
 }
 
-.heading {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  margin: 0 0 var(--space-2);
-}
-
-.hint {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-  margin: 0 0 var(--space-3);
-}
-
-.fieldList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.fieldRow {
+.panelHead {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: var(--font-size-sm);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: var(--v2-bw) solid var(--v2-line-subtle);
+  flex-wrap: wrap;
 }
 
-/* Never color-only: the warning below is text + an explicit glyph, not a color change on the checkbox itself. */
-.warning {
-  margin: var(--space-3) 0 0;
-  padding: var(--space-2) var(--space-3);
-  border: var(--border-width) solid var(--color-warning, var(--color-border));
-  border-radius: var(--radius-sm);
-  background: var(--color-warning-bg, var(--color-bg-hover));
-  font-size: var(--font-size-xs);
-  color: var(--color-text);
+.heading {
+  margin: 0;
+  font: var(--v2-text-body-strong);
+  color: var(--v2-ink-1);
+}
+
+.scopeTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 var(--space-2);
+  border-radius: var(--v2-r-xs);
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
+  background: var(--v2-neutral-tint);
+}
+
+.scopeTagGlobal {
+  color: var(--v2-accent-ink);
+  background: var(--v2-accent-tint);
+}
+
+.roTag {
+  margin-left: auto;
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-3);
+}
+
+.banner {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  padding: var(--space-2) var(--space-4);
+  margin: 0;
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-1);
+  background: var(--v2-warning-tint);
+  border-bottom: var(--v2-bw) solid var(--v2-line-subtle);
+}
+
+.panelBody {
+  padding: 0;
+}
+
+.hint {
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-3);
+  margin: 0;
+  padding: var(--space-3) var(--space-4) 0;
 }
 
 .error {
-  color: var(--color-danger);
-  font-size: var(--font-size-sm);
+  color: var(--v2-danger);
+  font: var(--v2-text-body);
+  margin: var(--space-2) var(--space-4) 0;
 }
 
-.actions {
-  margin-top: var(--space-3);
+.switchRow {
+  display: grid;
+  grid-template-columns: 140px auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-top: var(--v2-bw) solid var(--v2-line-subtle);
+}
+
+.switchLabel {
+  font: var(--v2-text-body-strong);
+  color: var(--v2-ink-1);
+}
+
+.switchDesc {
+  color: var(--v2-ink-3);
+  font: var(--v2-text-meta);
+  grid-column: 1 / -1;
+}
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font: var(--v2-text-label);
+  color: var(--v2-ink-2);
+}
+
+.switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.track {
+  width: 32px;
+  height: 18px;
+  border-radius: var(--v2-r-full);
+  background: var(--v2-line-strong);
+  position: relative;
+  transition: background-color var(--v2-dur-fast) ease;
+  flex: none;
+}
+
+.track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--v2-surface-work);
+  transition: transform var(--v2-dur-fast) ease;
+}
+
+.switch[aria-checked='true'] .track {
+  background: var(--v2-accent);
+}
+
+.switch[aria-checked='true'] .track::after {
+  transform: translateX(14px);
+}
+
+.word {
+  min-width: 56px;
+  text-align: left;
+}
+
+.footNote {
   display: flex;
-  justify-content: flex-end;
-  border-top: var(--border-width) solid var(--color-border);
-  padding-top: var(--space-3);
+  gap: var(--space-2);
+  align-items: flex-start;
+  padding: var(--space-3) var(--space-4);
+  margin: 0;
+  border-top: var(--v2-bw) solid var(--v2-line-subtle);
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-3);
+}
+
+@media (max-width: 480px) {
+  .switchRow {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+  }
+
+  .switchDesc {
+    grid-column: 1;
+  }
 }

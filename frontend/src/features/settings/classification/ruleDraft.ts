@@ -154,12 +154,22 @@ export function toWritableRule(rule: ClassificationRule, keepId = true): Classif
   return out;
 }
 
-/** Errors whose path is `root` itself or indexes into it (`conditions[0].value`, `conditions.0.value`, `conditions/0`). */
+/**
+ * Errors whose path is `root` itself or indexes into it (`conditions[0].value`, `conditions.0.value`,
+ * `conditions/0`).
+ *
+ * <p>One field, `displayColor`, is a documented exception (owner mission §22.11 A2, D36): a same-tag/different-
+ * colour conflict is checked across the WHOLE rule list (`TagColorPolicy`), not this one rule alone, so the
+ * server's real path is `rules[N].displayColor` even when saving a single rule - verified against the running
+ * backend (`POST /classification-rules` with a colour already claimed by another rule returns exactly
+ * `{"path":"rules[1].displayColor", ...}`, never bare `"displayColor"`). Every other field's own validation stays
+ * rule-scoped and returns a bare path, so the optional `rules[N].` prefix below is accepted, never required.
+ */
 export function errorsAt(errors: RuleValidationError[], root: string, index?: number): RuleValidationError[] {
   const escaped = root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const pattern =
     index == null
-      ? new RegExp(`^/?${escaped}($|[.[/])`)
+      ? new RegExp(`^/?(?:rules\\[\\d+\\]\\.)?${escaped}($|[.[/])`)
       : new RegExp(`^/?${escaped}(\\[${index}\\]|[./]${index})($|[.[/])`);
   return errors.filter((e) => pattern.test(e.path));
 }
@@ -169,6 +179,36 @@ export function errorMessage(error: unknown, fallback: string): string {
     return error.problem.detail ?? error.problem.title ?? error.message;
   }
   return error instanceof Error ? error.message : fallback;
+}
+
+/**
+ * Mirrors `RuleCompiler.EXTRACTION_NAME` (backend/.../RuleCompiler.java) — UX feedback only, so a user sees a
+ * problem before the round trip, not a second authority: the server still validates every save/test/suggest
+ * call, and this constant only ever needs to track that one backend pattern, never invent new rules of its own.
+ */
+export const EXTRACTION_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
+
+export const EXTRACTION_NAME_HELP = 'Use 1-40 letters, digits, or underscores, starting with a letter.';
+
+/**
+ * A deterministic, readable machine name from free text - "Request Method" -> "requestMethod", "URL" -> "url".
+ * Never applied silently to what a user typed (CLAUDE.md §1: "Never silently reinterpret a user's rule") - only
+ * ever offered as a one-click suggestion next to an inline validation message. Returns '' when nothing
+ * lettered/digited survives, so a caller can fall back to the original text rather than accepting an empty name.
+ */
+export function toMachineName(input: string): string {
+  const words = input
+    .trim()
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean);
+  if (words.length === 0) {
+    return '';
+  }
+  const camel = words
+    .map((w, i) => (i === 0 ? w.charAt(0).toLowerCase() + w.slice(1).toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()))
+    .join('');
+  const name = camel.replace(/^[^A-Za-z]+/, '');
+  return name.slice(0, 40);
 }
 
 export function formatBytes(bytes: number): string {

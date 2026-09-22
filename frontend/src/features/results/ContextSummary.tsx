@@ -3,6 +3,8 @@ import type { CommittedTimeRange } from '../timerange/types';
 import { formatInterval } from '../../shared/time/interval';
 import { localZoneLabel, formatUtcTimestamp } from '../inspector/timestampFormat';
 import { countDistinctServices } from '../journey/journeyFields';
+import { InvestigationStatRow } from '../journey/InvestigationStatRow';
+import type { StatEntry } from '../journey/InvestigationStatRow';
 import { detectGaps, formatGapDuration } from './gapDetection';
 import type { GapMarker } from './gapDetection';
 import { eventIdentity } from '../../app/useSearchState';
@@ -76,54 +78,32 @@ export function ContextSummary({
       ? Date.parse(timestamped[timestamped.length - 1].timestamp) - Date.parse(timestamped[0].timestamp)
       : null;
 
+  const stats: StatEntry[] = [
+    { key: 'events', label: 'Events', value: events.length },
+    { key: 'services', label: 'Services', value: serviceCount },
+    { key: 'errors', label: 'Errors', value: errorCount, variant: 'danger' },
+    { key: 'warnings', label: 'Warnings', value: warnCount, variant: 'warn' },
+    { key: 'window', label: 'Window', value: '60 seconds (±30s)' },
+  ];
+  if (observedSpanMs != null) {
+    stats.push({ key: 'span', label: 'Observed span', value: observedSpanMs === 0 ? '0s' : formatGapDuration(observedSpanMs), mono: true });
+  }
+  if (range) {
+    stats.push({
+      key: 'range',
+      label: 'Range',
+      value: `${formatInterval(range.start, range.end)} (${localZoneLabel(range.start)})`,
+      mono: true,
+    });
+  }
+  if (source) {
+    stats.push({ key: 'source', label: 'Source', value: source });
+  }
+  stats.push({ key: 'gaps', label: 'Gaps', value: resolvedGaps.length });
+
   return (
     <div className={styles.wrapper} role="note" aria-label="Surrounding-context summary">
-      <dl className={styles.stats}>
-        <div className={styles.stat}>
-          <dt>Events</dt>
-          <dd>{events.length}</dd>
-        </div>
-        <div className={styles.stat}>
-          <dt>Services</dt>
-          <dd>{serviceCount}</dd>
-        </div>
-        <div className={styles.stat}>
-          <dt>Errors</dt>
-          <dd>{errorCount}</dd>
-        </div>
-        <div className={styles.stat}>
-          <dt>Warnings</dt>
-          <dd>{warnCount}</dd>
-        </div>
-        <div className={styles.stat}>
-          <dt>Window</dt>
-          <dd>60 seconds (±30s)</dd>
-        </div>
-        {observedSpanMs != null ? (
-          <div className={styles.stat}>
-            <dt>Observed span</dt>
-            <dd>{observedSpanMs === 0 ? '0s' : formatGapDuration(observedSpanMs)}</dd>
-          </div>
-        ) : null}
-        {range ? (
-          <div className={styles.stat}>
-            <dt>Range</dt>
-            <dd>
-              {formatInterval(range.start, range.end)} ({localZoneLabel(range.start)})
-            </dd>
-          </div>
-        ) : null}
-        {source ? (
-          <div className={styles.stat}>
-            <dt>Source</dt>
-            <dd>{source}</dd>
-          </div>
-        ) : null}
-        <div className={styles.stat}>
-          <dt>Gaps</dt>
-          <dd>{resolvedGaps.length}</dd>
-        </div>
-      </dl>
+      <InvestigationStatRow stats={stats} />
 
       {counts?.truncated ? (
         <p className={styles.incompleteNotice} role="status">

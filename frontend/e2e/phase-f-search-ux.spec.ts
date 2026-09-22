@@ -15,7 +15,9 @@ import { assertNoHorizontalOverflow, assertNoOverlap, captureScreenshot, setView
 
 const REQUIRED_WIDTHS = [1920, 1440, 1280, 1024, 768, 390];
 const DIALOG_SELECTOR = '[role="dialog"][aria-label="Custom time range"]';
-const SEVERITY_SELECTOR = '[role="group"][aria-label="Severity"]';
+// B2 (Session 4) - the level chips now live behind this field trigger's popover (SeverityFilter's own
+// RECOMPOSE); the trigger itself, always in the DOM, is what a competing popover could actually overlap.
+const SEVERITY_SELECTOR = 'button[aria-label^="Severity:"]';
 
 async function openCustomRangePopover(page: import('@playwright/test').Page) {
   // Exact name, not a substring match: the ActiveFilters "remove time

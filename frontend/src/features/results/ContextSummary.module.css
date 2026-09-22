@@ -1,66 +1,44 @@
+/*
+ * B5 Investigation - full v2 semantic tokens (this surface, like the rest of `features/journey/`, has no
+ * unstyled v1 sibling to mismatch against). The stat list itself moved to the shared `InvestigationStatRow`
+ * (`journey/InvestigationStatRow.module.css`) - this file now only owns the notices/gaps-list/disclaimer that
+ * follow it, each with its own distinct, separately-tested copy.
+ */
 .wrapper {
-  border: var(--border-width) solid var(--color-border);
-  background: var(--color-bg-raised);
-  border-radius: var(--radius-md);
-  padding: var(--space-3) var(--space-4);
-  margin-bottom: var(--space-3);
-}
-
-.stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-5);
-  margin: 0 0 var(--space-2);
-}
-
-.stat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.stat dt {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-
-.stat dd {
-  margin: 0;
-  font-size: var(--font-size-sm);
-  font-weight: 600;
+  background: var(--v2-surface-work);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
 }
 
 .incompleteNotice {
-  margin: 0 0 var(--space-2);
-  font-size: var(--font-size-xs);
+  margin: 0;
+  padding: var(--space-2) var(--space-4) 0;
+  font: var(--v2-text-meta);
   font-weight: 600;
-  color: var(--color-severity-warn);
+  color: var(--v2-warning);
 }
 
 .gapsList {
-  margin: 0 0 var(--space-2);
-  padding-top: var(--space-2);
-  border-top: var(--border-width) solid var(--color-border);
+  margin: 0;
+  padding: var(--space-2) var(--space-4) 0;
 }
 
 .gapsListTitle {
   margin: 0 0 var(--space-1);
-  font-size: var(--font-size-xs);
+  font: var(--v2-text-meta);
   font-weight: 600;
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
 }
 
 .gapsList ul {
   margin: 0;
   padding-left: var(--space-4);
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-2);
 }
 
 .disclaimer {
   margin: 0;
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  padding: var(--space-2) var(--space-4) var(--space-2);
+  font: var(--v2-text-meta);
+  color: var(--v2-ink-3);
 }

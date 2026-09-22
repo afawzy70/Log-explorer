@@ -4,66 +4,25 @@
  * information-dense enterprise tool - one restrained accent, semantic
  * severity colors (never color alone - see SeverityFilter/SeverityBadge
  * for the accompanying icon/text).
+ *
+ * Session 11 (Stage 6, safe legacy cleanup) - this file's own v1 `--color-*` palette (background/
+ * text/accent/severity/tag/protected/danger, ~49 declarations) and its now-equally-dead
+ * `--radius-*`/`--border-width`/`--shadow-sm`/`--shadow-md` were removed here. Proven dead, not
+ * assumed: a repo-wide grep of every `.css`/`.tsx`/`.ts` file (production and test) found zero
+ * remaining consumers of any of them - Stage 2's dark-theme completion had already migrated every
+ * real consumer to the `--v2-*` system in `tokensV2.css`. Two genuine exceptions were found and fixed
+ * (not silently deleted alongside the rest): this file's own global `:focus-visible` fallback rule
+ * below (used `--color-focus-ring`, moved to `--v2-focus`), and `EventInspector.module.css`'s overlay
+ * shadow (used `--shadow-md`, moved to `--v2-shadow-pop`). `--font-*`/`--space-*`/`--motion-fast`
+ * below remain genuinely, heavily used (re-confirmed via the same grep) and are unchanged -
+ * unversioned, theme-neutral primitives shared by both the legacy and v2 systems alike, not part of
+ * the retired v1 color system. `--motion-base` (defined below) is also currently unused, but was left
+ * in place rather than removed: unlike the retired color palette, it isn't part of a superseded
+ * system, just one small, plausible, reasonable primitive nothing happens to reach for yet - a
+ * different, lower-priority category of "unused" than the color tokens above.
  */
 
 :root {
-  /* Color - light theme (required; dark theme only if complete, not attempted this phase) */
-  --color-bg: #ffffff;
-  --color-bg-canvas: #f7f8fa;
-  --color-bg-raised: #ffffff;
-  --color-bg-hover: #f0f2f5;
-  --color-bg-selected: #eaf1fe;
-  --color-border: #d8dce3;
-  --color-border-strong: #b7bdc9;
-  --color-text: #1a1d23;
-  --color-text-secondary: #5b6270;
-  --color-text-tertiary: #868d99;
-  --color-text-inverse: #ffffff;
-  --color-accent: #2359d1;
-  --color-accent-hover: #1a48ad;
-  --color-accent-bg: #eaf1fe;
-  --color-focus-ring: #2359d1;
-
-  --color-severity-error: #b3261e;
-  --color-severity-error-bg: #fdecea;
-  --color-severity-warn: #8a5a00;
-  --color-severity-warn-bg: #fff6e0;
-  --color-severity-info: #1a5e9a;
-  --color-severity-info-bg: #e8f2fc;
-  --color-severity-debug: #5b6270;
-  --color-severity-debug-bg: #f0f2f5;
-  --color-severity-trace: #7a5ba6;
-  --color-severity-trace-bg: #f3edfb;
-
-  /*
-   * Classification tag palette (owner mission "Classification real search scope, assisted extraction, and visual
-   * tagging"). One controlled semantic entry per name - the server persists "BLUE", never a CSS value. Colour is
-   * identity only, never severity or outcome, and never the only signal: a chip always carries its tag text.
-   * Every foreground/background pair below is >= 5.5:1, so the text passes WCAG AA on its own chip.
-   */
-  --color-tag-gray: #4a5160;
-  --color-tag-gray-bg: #eef0f3;
-  --color-tag-blue: #1b4fb8;
-  --color-tag-blue-bg: #e8f0fe;
-  --color-tag-cyan: #0f5c6b;
-  --color-tag-cyan-bg: #e3f4f7;
-  --color-tag-green: #1f6b3a;
-  --color-tag-green-bg: #e7f5ec;
-  --color-tag-amber: #7a5300;
-  --color-tag-amber-bg: #fdf3dc;
-  --color-tag-orange: #9a4a12;
-  --color-tag-orange-bg: #fdeee2;
-  --color-tag-red: #b3261e;
-  --color-tag-red-bg: #fdecea;
-  --color-tag-purple: #6a3fa0;
-  --color-tag-purple-bg: #f3edfb;
-
-  --color-protected: #5b6270;
-  --color-protected-bg: #f0f2f5;
-
-  --color-danger: #b3261e;
-  --color-danger-bg: #fdecea;
-
   /* Typography */
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
@@ -83,14 +42,6 @@
   --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
-
-  /* Radius / border / shadow */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
-  --border-width: 1px;
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
-  --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.12);
 
   /* Motion */
   --motion-fast: 120ms;
@@ -114,18 +65,41 @@ body,
   height: 100%;
 }
 
+/*
+ * B7 (Session 10) - the page canvas itself stayed on v1 `--color-bg-canvas`/
+ * `--color-text` even after `useTheme` began setting `data-theme` on `<html>`
+ * (v1 has zero dark-theme overrides anywhere, confirmed by grep), so the
+ * entire app rendered on a light canvas under `data-theme="dark"` regardless
+ * of how many individual panels were themselves already recomposed - measured
+ * directly: `document.body`'s computed background stayed `rgb(247, 248, 250)`
+ * (the light `--color-bg-canvas` value) with `data-theme="dark"` confirmed
+ * set on `<html>` and `--v2-bg-app` correctly resolving to its dark value.
+ * `--v2-bg-app`/`--v2-ink-1` are the same base pair every v2 panel already
+ * paints its own background with (e.g. `LiveTailPanel.module.css`'s
+ * `.wrapper`), so this is the one token swap that makes the underlying
+ * canvas consistent with every panel already sitting on top of it, not a
+ * new visual language for the page root.
+ */
 body {
   margin: 0;
-  background: var(--color-bg-canvas);
-  color: var(--color-text);
+  background: var(--v2-bg-app);
+  color: var(--v2-ink-1);
   font-family: var(--font-sans);
   font-size: var(--font-size-base);
   line-height: var(--line-height-base);
   -webkit-font-smoothing: antialiased;
 }
 
+/*
+ * Session 11 (Stage 6) - global fallback, moved from v1 --color-focus-ring (light-only, no dark
+ * override) to --v2-focus: this is the ONE genuine self-consumption tokens.css's own v1 --color-*
+ * block had (confirmed by grep - every other v1 color token has zero consumers anywhere), so it was a
+ * real, currently-active V2_MIGRATION_GAP, not dead code - any element relying on this global
+ * fallback (rather than its own more-specific :focus-visible rule) would have painted a light-blue
+ * ring with no dark-theme adjustment.
+ */
 :focus-visible {
-  outline: 2px solid var(--color-focus-ring);
+  outline: 2px solid var(--v2-focus);
   outline-offset: 2px;
 }
 

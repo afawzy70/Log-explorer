@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
@@ -8,6 +8,10 @@ import { emptyAdvancedFilterValues } from '../features/search/advancedFilterFiel
 import { emptyQueryAuthoringState } from '../features/search/QueryBuilder';
 import { DEFAULT_SEVERITY_LEVELS } from '../features/search/severityLevels';
 import { DEFAULT_PRESET_ID } from '../shared/time/presets';
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+}
 
 function baseState(overrides: Partial<SearchState> = {}): SearchState {
   const caps = {
@@ -53,6 +57,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     health: null,
     healthLoading: false,
     retryHealth: vi.fn(),
+    invalidateSearchForScopeChange: vi.fn(),
     searchResult: null,
     searchLoading: false,
     loadingMore: false,
@@ -87,8 +92,13 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     fieldMappingSearchReady: true,
     refreshFieldMappingProfile: vi.fn(),
     mappingWorkspaceOpen: false,
+    mappingWorkspaceOrigin: 'search',
     openMappingWorkspace: vi.fn(),
     closeMappingWorkspace: vi.fn(),
+    settingsWorkspaceOpen: false,
+    settingsTargetSection: 'sources',
+    openSettingsWorkspace: vi.fn(),
+    closeSettingsWorkspace: vi.fn(),
     selectedTags: [],
     setSelectedTags: vi.fn(),
     classificationTags: null,
@@ -98,6 +108,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     classificationWorkspaceOpen: false,
     classificationWorkspaceEvent: null,
     classificationWorkspaceIntent: null,
+    classificationWorkspaceOrigin: 'settings',
     openClassificationExtractionFromEvent: vi.fn(),
     classificationWorkspaceKey: 0,
     openClassificationWorkspace: vi.fn(),
@@ -117,7 +128,9 @@ describe('Toolbar', () => {
     // range" chip button (UX-R1 §3) also mentions "Last 1 day" in its own
     // accessible name, so a loose regex would now match two buttons.
     const timeRange = screen.getByRole('button', { name: 'Last 1 day' });
-    const severityGroup = screen.getByRole('group', { name: /severity/i });
+    // B2 (Session 4) - the level chips now live behind this field trigger's popover (SeverityFilter's own
+    // RECOMPOSE), not an always-present `role="group"` - the trigger itself is what's always in the DOM.
+    const severityTrigger = screen.getByRole('button', { name: /^severity:/i });
     const search = screen.getByRole('textbox', { name: /search messages/i });
     const searchButton = screen.getByRole('button', { name: /^search$/i });
     const moreFilters = screen.getByRole('button', { name: /^more filters/i });
@@ -129,8 +142,8 @@ describe('Toolbar', () => {
 
     expect(position(source)).toBeLessThan(position(service));
     expect(position(service)).toBeLessThan(position(timeRange));
-    expect(position(timeRange)).toBeLessThan(position(severityGroup));
-    expect(position(severityGroup)).toBeLessThan(position(search));
+    expect(position(timeRange)).toBeLessThan(position(severityTrigger));
+    expect(position(severityTrigger)).toBeLessThan(position(search));
     expect(position(search)).toBeLessThan(position(searchButton));
     expect(position(searchButton)).toBeLessThan(position(moreFilters));
   });
@@ -257,6 +270,48 @@ describe('Toolbar - OpenShift Project/Namespace required for Search/Live (OS-1F 
       ...overrides,
     });
   }
+
+  // SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - owner requirements register §28: OpenShift Workload is the
+  // UX-equivalent scope level to Docker Service, rendered in the exact toolbar position Docker's Service
+  // selector would occupy - never both, never Docker's own selector implying a capability OpenShift doesn't
+  // have (`serviceDiscovery=false`).
+  describe('SOURCE_EXPERIENCE_PARITY_DOCKER_OPENSHIFT - scope control family per source', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('shows the OpenShift Project scope control, never Docker\'s Service selector, when OpenShift is the selected source', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() =>
+          Promise.resolve(
+            jsonResponse({
+              state: 'CONNECTED',
+              connectionName: null,
+              server: 'api.example.com:6443',
+              username: 'developer',
+              projectCount: 1,
+              projects: ['payments'],
+              selectedProject: null,
+              tlsVerified: true,
+              usingPrivateCa: false,
+              proxy: null,
+              projectApi: 'PROJECTS',
+            }),
+          ),
+        ),
+      );
+      render(<Toolbar state={openShiftState()} openShiftScope={null} />);
+
+      expect(await screen.findByRole('combobox', { name: /^project$/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /all services/i })).not.toBeInTheDocument();
+    });
+
+    it("shows Docker's Service selector, never an OpenShift Project control, when a Docker-shaped source is selected", () => {
+      render(<Toolbar state={baseState()} />);
+
+      expect(screen.getByRole('button', { name: /all services/i })).toBeInTheDocument();
+      expect(screen.queryByRole('combobox', { name: /^project$/i })).not.toBeInTheDocument();
+    });
+  });
 
   it('disables Search and Live, with a visible reason, when connected but no Project/Namespace is selected', () => {
     render(

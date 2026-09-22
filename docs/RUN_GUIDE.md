@@ -1,10 +1,15 @@
-# Run Guide — Log Explorer
+# Run Guide — Log Explorer (Docker Compose)
 
 IMPLEMENTATION_PLAN.md "Phase K" deliverable. Every command below was
 actually run against this repository during Phase K's own verification
 (see `docs/verification/PHASE_K_REPORT.md` for the full session log,
 including two real bugs the exact commands here surfaced and how they
 were fixed) — nothing here is aspirational.
+
+This guide covers the **Docker Compose** deployment mode specifically — an
+optional, separate way to run Log Explorer. For the primary, simplest local
+run (just Java, no Docker, no `docker compose` profiles), see the root
+[`README.md`'s "Quick start — standalone JAR"](../README.md#quick-start--standalone-jar-recommended) section instead.
 
 ## Requirements
 

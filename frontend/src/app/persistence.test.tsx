@@ -97,8 +97,15 @@ describe('persistence: nothing ever written to localStorage/sessionStorage/the U
     await user.click(screen.getByRole('button', { name: 'Last 1 day' }));
     await user.click(screen.getByRole('menuitemradio', { name: /last 1 hour/i }));
 
-    // Severity: toggle a level.
+    // Severity: toggle a level. B2 (Session 4) - the level chips now live
+    // behind the Severity field trigger's popover. A plain string `name`
+    // already matches exactly in Testing Library, so this doesn't collide
+    // with the trigger's own aria-label ("Severity: Info, Warn, Error").
+    await user.click(screen.getByRole('button', { name: /^severity:/i }));
     await user.click(screen.getByRole('button', { name: 'Warn' }));
+    // The popover stays open after a toggle (multi-select, no draft/Apply
+    // step) - close it explicitly before interacting with the rest of the page.
+    await user.keyboard('{Escape}');
 
     // Universal search: type a sensitive-looking free-text value.
     await user.type(screen.getByRole('textbox', { name: /search messages/i }), SENTINEL_TEXT);

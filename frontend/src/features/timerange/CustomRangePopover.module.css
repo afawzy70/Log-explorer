@@ -1,4 +1,6 @@
 /*
+ * B7 (Session 10) - full v2 tokens, part of the Toolbar-family closure.
+ *
  * Deliberately normal flow, never `position: absolute` (CLAUDE.md §4:
  * "The editor must not overlap severity"). An absolutely positioned
  * popover paints at a fixed offset no matter how much room is actually
@@ -13,10 +15,11 @@
  */
 .popover {
   margin-top: var(--space-2);
-  background: var(--color-bg-raised);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-lg);
+  box-shadow: var(--v2-shadow-pop);
   padding: var(--space-4);
   /*
    * A real (not `max-content`) width, so `.fields`' own `flex-wrap` below
@@ -54,21 +57,23 @@
 .field label {
   font-size: var(--font-size-xs);
   font-weight: 600;
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
 }
 
 .field input {
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-sm);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
   padding: var(--space-2);
   font-size: var(--font-size-sm);
 }
 
 .error {
   margin-top: var(--space-3);
-  color: var(--color-danger);
-  background: var(--color-danger-bg);
-  border-radius: var(--radius-sm);
+  color: var(--v2-danger);
+  background: var(--v2-danger-tint);
+  border-radius: var(--v2-r-sm);
   padding: var(--space-2) var(--space-3);
   font-size: var(--font-size-sm);
 }

@@ -1,17 +1,19 @@
+/* B7 (Session 10) - full v2 tokens, part of the Inspector-body closure. */
 .searchLabel {
   display: block;
   margin-bottom: var(--space-1);
   font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
 }
 
 .search {
   width: 100%;
   margin-bottom: var(--space-3);
   padding: var(--space-2) var(--space-3);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-raised);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
   font-size: var(--font-size-sm);
 }
 
@@ -25,7 +27,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--color-text-tertiary);
+  color: var(--v2-ink-3);
 }
 
 .rawJson {
@@ -35,14 +37,15 @@
 .rawJson summary {
   cursor: pointer;
   font-size: var(--font-size-sm);
-  color: var(--color-accent);
+  color: var(--v2-accent-ink);
 }
 
 .rawJsonBody {
   margin-top: var(--space-2);
   padding: var(--space-3);
-  background: var(--color-bg-canvas);
-  border-radius: var(--radius-md);
+  background: var(--v2-surface-sunken);
+  color: var(--v2-ink-1);
+  border-radius: var(--v2-r-md);
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   white-space: pre-wrap;

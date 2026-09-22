@@ -1,11 +1,12 @@
+/* B7 (Session 10) - full v2 tokens; rendered directly inside Shell's now-v2 `.header`. */
 .badge {
   display: inline-flex;
   align-items: center;
   padding: 1px var(--space-2);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-hover);
-  color: var(--color-text-secondary);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-sm);
+  background: var(--v2-surface-sunken);
+  color: var(--v2-ink-2);
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   font-weight: 600;

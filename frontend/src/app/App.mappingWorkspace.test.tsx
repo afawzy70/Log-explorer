@@ -77,7 +77,9 @@ describe('App - Mapping Verification workspace as a dedicated page', () => {
     await waitFor(() => expect(screen.getByRole('combobox', { name: /source/i })).toHaveValue('fixture'));
     expect(screen.getByText(/run a search to see results/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /log schema & field mapping/i }));
+    // B2 (Session 4) - the top-level Shell trigger's label shortened to "Field mapping" (Shell.tsx's own
+    // comment has the full rationale); FieldMappingWorkspace's own heading is unchanged.
+    await user.click(screen.getByRole('button', { name: /^field mapping$/i }));
 
     await waitFor(() => expect(screen.getByTestId('field-mapping-workspace')).toBeInTheDocument());
     expect(screen.getByRole('heading', { name: /log schema & field mapping verification/i })).toBeInTheDocument();

@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { assertNoHorizontalOverflow, assertNoOverlap, captureScreenshot, setViewport, setZoom } from './helpers';
 import { inspectorAllTabsText, openInspectorTab } from './inspector-helpers';
+import { openSettingsSection } from './settings-helpers';
 
 /*
  * Browser checks (the gate) - IMPLEMENTATION_PLAN.md "Phase H": "Inspector
@@ -41,7 +42,10 @@ test('opening the inspector shows every section with real, fully-populated fixtu
   await expect(dialog.getByRole('tab', { name: /business \/ error/i })).toBeVisible();
   await expect(dialog.getByRole('tab', { name: /all fields/i })).toBeVisible();
 
-  await expect(dialog.getByRole('heading', { name: /^overview$/i })).toBeVisible();
+  // DRIFT-008 remediation: Overview no longer shows its own redundant "Overview" heading (the tabpanel is
+  // already named "Overview" via aria-labelledby to the tab itself) - it shows the "When & where"
+  // sub-heading over its grouped fields instead.
+  await expect(dialog.getByRole('heading', { name: /when & where/i })).toBeVisible();
 
   // Real fixture events always have every protected field populated -
   // "Protected / masked" must be visible, never a raw value - somewhere
@@ -63,15 +67,17 @@ test('masked fields in the inspector always look masked, never raw - real backen
   // shared-singleton backend policy never leaks into a later test.
   await page.goto('/');
   const protectedLabels = ['CIF', 'Username', 'Customer ID', 'Device ID', 'Device IP'];
-  await page.getByRole('button', { name: /privacy & masking/i }).click();
-  const maskingDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+  await openSettingsSection(page, /privacy & masking/i);
+  const maskingDialog = page.getByTestId('privacy-masking-settings-panel');
   await expect(maskingDialog).toBeVisible();
   for (const label of protectedLabels) {
     if (!(await maskingDialog.getByLabel(label).isChecked())) {
       await maskingDialog.getByLabel(label).click();
     }
   }
-  await page.getByRole('button', { name: /^close$/i }).click();
+  // B6.2 (Session 7) - Privacy & masking is no longer a popover with its own "Close" - only the
+  // consolidated Settings workspace itself needs closing.
+  await page.getByRole('button', { name: /back to search results/i }).click();
 
   await runRealSearch(page);
   await openInspectorOnRow(page, 0);
@@ -85,15 +91,14 @@ test('masked fields in the inspector always look masked, never raw - real backen
   // Restore the fresh default (unmasked) so this shared-singleton
   // backend policy never leaks into a later test in the same run.
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: /privacy & masking/i }).click();
-  const cleanupDialog = page.getByRole('dialog', { name: /privacy & masking/i });
+  await openSettingsSection(page, /privacy & masking/i);
+  const cleanupDialog = page.getByTestId('privacy-masking-settings-panel');
   await expect(cleanupDialog).toBeVisible();
   for (const label of protectedLabels) {
     if (await cleanupDialog.getByLabel(label).isChecked()) {
       await cleanupDialog.getByLabel(label).click();
     }
   }
-  await page.getByRole('button', { name: /^close$/i }).click();
 });
 
 test('the selected row stays visually identifiable while the inspector is open', async ({ page }) => {
@@ -165,6 +170,9 @@ test('View details is always available in the row actions menu, never disabled',
   await expect(page.getByRole('menuitem', { name: /view details/i })).toBeVisible();
 });
 
+// B4 (Session 3) - the design's own 1365px breakpoint was tried and reverted (EventInspector.module.css's
+// own comment has the full rationale: it put the default Playwright/common-laptop 1280px viewport into
+// overlay mode, breaking interaction with a row underneath the now-overlaid panel). 1024px kept.
 const WIDE_WIDTHS = [1920, 1440, 1280];
 const NARROW_WIDTHS = [1024, 768, 390];
 
@@ -176,7 +184,7 @@ for (const width of WIDE_WIDTHS) {
 
     // Compares the visible/clipped results area, not the raw `<table>`
     // element - the table is deliberately wider than its scroll container
-    // (`min-width: 900px`, horizontally scrollable), so its own
+    // (`min-width: 1266px`, horizontally scrollable), so its own
     // unclipped bounding box legitimately extends further right than
     // what's actually painted; that's not an overlap with the panel.
     await assertNoOverlap(page, '[data-testid="results-scroll-wrapper"]', '[role="dialog"][aria-label="Event details"]');
@@ -194,14 +202,14 @@ for (const width of NARROW_WIDTHS) {
     await assertNoHorizontalOverflow(page);
     await captureScreenshot(page, 'h', `inspector-${width}px`);
 
-    if (width > 420) {
+    if (width > 520) {
       // The backdrop is real and dismisses the panel - proves this is a
       // genuine overlay/sheet, not just a squeezed panel. Only checked
-      // where the panel (capped at 420px) leaves a visible backdrop area
-      // to click - at 390px the sheet legitimately fills the whole
-      // viewport (a real full-screen-sheet UX, not a bug), so there is no
-      // "outside" pixel; Escape and the Close button (covered elsewhere)
-      // are that width's dismissal path.
+      // where the panel (capped at 520px, B4 Session 3) leaves a visible
+      // backdrop area to click - at 390px the sheet legitimately fills the
+      // whole viewport (a real full-screen-sheet UX, not a bug), so there
+      // is no "outside" pixel; Escape and the Close button (covered
+      // elsewhere) are that width's dismissal path.
       await page.mouse.click(5, 5);
       await expect(page.getByRole('dialog', { name: /event details/i })).not.toBeVisible();
     }
@@ -239,6 +247,25 @@ test('the resize handle keeps the panel within its documented min/max bounds', a
   }
   const maxWidth = await handle.getAttribute('aria-valuenow');
   expect(Number(maxWidth)).toBeLessThanOrEqual(720);
+
+  await assertNoHorizontalOverflow(page);
+});
+
+test('at the default panel width, all five fixed tabs render on one row - the default was widened from 420px to the design\'s 500px specifically because they used to wrap to two rows', async ({
+  page,
+}) => {
+  await runRealSearch(page);
+  await setViewport(page, 1920);
+  await openInspectorOnRow(page, 0);
+
+  const handle = page.getByRole('separator', { name: /resize event details panel/i });
+  const width = Number(await handle.getAttribute('aria-valuenow'));
+  expect(width).toBe(500);
+
+  const tabs = page.getByRole('tab');
+  await expect(tabs).toHaveCount(5);
+  const tops = new Set((await tabs.evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)))));
+  expect(tops.size).toBe(1); // one distinct `top` value - every tab shares one row, none has wrapped below the rest.
 
   await assertNoHorizontalOverflow(page);
 });

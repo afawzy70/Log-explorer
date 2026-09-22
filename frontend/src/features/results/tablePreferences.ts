@@ -31,7 +31,10 @@ export function defaultTablePreferences(): TablePreferences {
   return {
     columnOrder: [...DEFAULT_COLUMN_ORDER],
     hiddenColumnIds: [...DEFAULT_HIDDEN_COLUMN_IDS],
-    density: 'comfortable',
+    // Modern Developer Console (B1 "Instrument Neutral") owner decision D1:
+    // compact (28px rows) is the default; comfortable stays available and
+    // is never removed as an option.
+    density: 'compact',
   };
 }
 
@@ -119,7 +122,12 @@ export function sanitizeTablePreferences(raw: unknown): TablePreferences {
       return defaultTablePreferences();
     }
 
-    const density: TableDensity = obj.density === 'compact' ? 'compact' : 'comfortable';
+    // Validates against both real values explicitly (never a catch-all on
+    // one of them) - an invalid or missing density falls back to the
+    // single source of truth in `defaultTablePreferences`, so this can
+    // never drift from it if the default ever changes again.
+    const density: TableDensity =
+      obj.density === 'compact' || obj.density === 'comfortable' ? obj.density : defaultTablePreferences().density;
 
     return { columnOrder, hiddenColumnIds, density };
   } catch {

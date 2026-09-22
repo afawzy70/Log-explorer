@@ -10,7 +10,20 @@
 }
 
 .lazyFallback {
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
   padding: var(--space-6) 0;
   text-align: center;
+}
+
+/*
+ * B5 Investigation - "Edit search" temporarily reveals the real `Toolbar` above an investigation view; this
+ * row lets the investigator explicitly collapse back to the compact `InvestigationScopeBar` once done, rather
+ * than only ever expanding.
+ */
+.editSearchDoneRow {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px var(--space-4);
+  background: var(--v2-surface-bar);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
 }

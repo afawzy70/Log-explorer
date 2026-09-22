@@ -136,6 +136,26 @@ class EventFiltersTest {
   }
 
   @Test
+  void emptyLevelsMeansNoRestrictionAndNeverExcludesAnUnrecognizedSeverity() {
+    // PR61_DEFAULT_LOG_LEVELS_SINGLE_JAR_AND_USAGE_DOCS - "all levels selected" must behave exactly
+    // like "no level restriction," including for a genuine but unlisted severity value (e.g. a
+    // "FATAL" logger level the frontend's own known SEVERITY_LEVELS list doesn't enumerate). The
+    // frontend now omits `levels` entirely when every offered level is selected (useSearchState.ts's
+    // buildRequestBody), relying on this already-correct backend behavior rather than sending the
+    // explicit known-id list, which would silently drop exactly this case.
+    CanonicalLogEvent unrecognizedSeverity = baseEvent().severity("FATAL").build();
+    assertThat(EventFilters.matches(unrecognizedSeverity, baseRequest().build())).isTrue(); // levels() defaults to empty - no restriction
+    assertThat(EventFilters.matches(unrecognizedSeverity, baseRequest().levels(List.of()).build())).isTrue();
+
+    // Contrast: an explicit, non-empty level list (even the full known set) still excludes it - this
+    // is exactly why "all selected" must be sent as an omitted/empty filter, never as the explicit id list.
+    assertThat(EventFilters.matches(
+        unrecognizedSeverity,
+        baseRequest().levels(List.of("TRACE", "DEBUG", "INFO", "WARN", "ERROR")).build()))
+        .isFalse();
+  }
+
+  @Test
   void filtersByTextAgainstMessageCaseInsensitively() {
     assertThat(EventFilters.matches(baseEvent().build(), baseRequest().text("HELLO").build())).isTrue();
     assertThat(EventFilters.matches(baseEvent().build(), baseRequest().text("nope").build())).isFalse();

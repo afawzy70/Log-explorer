@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { ResultsTable } from './ResultsTable';
+import { DEFAULT_COLUMN_ORDER } from './columnRegistry';
 import { eventIdentity } from '../../app/useSearchState';
 import type { LogEvent } from '../../shared/api/types';
 
@@ -73,8 +74,8 @@ describe('ResultsTable', () => {
       'Service',
       'What happened',
       'Tags',
-      'User/Customer',
-      'Correlation/Trace',
+      'User / Customer',
+      'Correlation / Trace',
       'Actions',
     ]);
   });
@@ -84,6 +85,43 @@ describe('ResultsTable', () => {
     expect(container.querySelectorAll('table')).toHaveLength(1);
     expect(container.querySelectorAll('colgroup')).toHaveLength(1);
     expect(container.querySelectorAll('col')).toHaveLength(8);
+  });
+
+  /*
+   * A8 / COMPONENT_INVENTORY.md's ResultsTable.tsx RESTYLE entry ("identity columns narrow when the
+   * Inspector opens"). Only Tags declares a `narrowWidth` - every other column's `<col>` width is
+   * unaffected by `inspectorOpen`.
+   */
+  describe('inspectorOpen - Tags column narrows when the Inspector is docked (A8)', () => {
+    function tagsColWidth(container: HTMLElement): string {
+      const cols = Array.from(container.querySelectorAll('colgroup col'));
+      const tagsIndex = DEFAULT_COLUMN_ORDER.indexOf('tags');
+      return (cols[tagsIndex] as HTMLElement).style.width;
+    }
+
+    it('Tags keeps its normal width when the Inspector is closed (the default)', () => {
+      const { container } = render(<ResultsTable events={[event()]} />);
+      expect(tagsColWidth(container)).toBe('150px');
+    });
+
+    it('Tags narrows to 132px when inspectorOpen is true', () => {
+      const { container } = render(<ResultsTable events={[event()]} inspectorOpen />);
+      expect(tagsColWidth(container)).toBe('132px');
+    });
+
+    it('every other column keeps its own width regardless of inspectorOpen', () => {
+      const { container: closed } = render(<ResultsTable events={[event()]} />);
+      const { container: open } = render(<ResultsTable events={[event()]} inspectorOpen />);
+      const widths = (c: HTMLElement) => Array.from(c.querySelectorAll('colgroup col')).map((c) => (c as HTMLElement).style.width);
+      const closedWidths = widths(closed);
+      const openWidths = widths(open);
+      const tagsIndex = DEFAULT_COLUMN_ORDER.indexOf('tags');
+      closedWidths.forEach((w, i) => {
+        if (i !== tagsIndex) {
+          expect(openWidths[i]).toBe(w);
+        }
+      });
+    });
   });
 
   it('renders one <tr> per event, each with exactly eight <td> cells (no second action row)', () => {
@@ -272,8 +310,8 @@ describe('ResultsTable', () => {
         'Level',
         'Service',
         'What happened',
-        'User/Customer',
-        'Correlation/Trace',
+        'User / Customer',
+        'Correlation / Trace',
         'Logger',
         'Actions',
       ]);
@@ -293,7 +331,7 @@ describe('ResultsTable', () => {
         />,
       );
       const headers = screen.getAllByRole('columnheader').map((h) => headerLabel(h));
-      expect(headers).toEqual(['Time', 'Level', 'What happened', 'User/Customer', 'Correlation/Trace', 'Actions']);
+      expect(headers).toEqual(['Time', 'Level', 'What happened', 'User / Customer', 'Correlation / Trace', 'Actions']);
     });
 
     it('reordering columnOrder changes header and cell order together, so rows still correspond correctly to headers', () => {
@@ -413,6 +451,69 @@ describe('ResultsTable', () => {
       expect(row.className).toMatch(/selected/i);
       expect(row.className).toMatch(/contextRoot/i);
       expect(row).toHaveAttribute('aria-current', 'location');
+    });
+
+    /*
+     * Session 3 - the combined SELECTED x ROOT state model (ResultsTable.module.css's own comment on
+     * `.selectedRow`/`.contextRootRow` has the full rationale): selection and root each own a
+     * non-competing visual channel, so all four combinations are genuinely, independently legible, not
+     * just class-name presence. `.rootMarker` (the ring around the Time cell's severity mark) is the one
+     * piece of DOM structure unique to root, injected only into the `time` column's own `<td>` - these
+     * tests assert its presence/absence tracks `isContextRoot` exactly, for all four states.
+     */
+    describe('the four SELECTED x ROOT combinations', () => {
+      function timeCellOf(row: Element): Element {
+        return row.querySelector('[class*="timeCell"]')!;
+      }
+
+      it('UNSELECTED_NON_ROOT: neither class, no root marker', () => {
+        const e = event({ message: 'plain' });
+        const { container } = render(<ResultsTable events={[e]} />);
+        const row = container.querySelector('tbody tr')!;
+        expect(row.className).not.toMatch(/selected/i);
+        expect(row.className).not.toMatch(/contextRoot/i);
+        expect(timeCellOf(row).querySelector('[class*="rootMarker"]')).toBeNull();
+      });
+
+      it('SELECTED_NON_ROOT: selectedRow only, no root marker', () => {
+        const e = event({ message: 'plain' });
+        const { container } = render(<ResultsTable events={[e]} selectedIndex={0} />);
+        const row = container.querySelector('tbody tr')!;
+        expect(row.className).toMatch(/selected/i);
+        expect(row.className).not.toMatch(/contextRoot/i);
+        expect(timeCellOf(row).querySelector('[class*="rootMarker"]')).toBeNull();
+      });
+
+      it('UNSELECTED_ROOT: contextRootRow only, root marker present, aria-current set, not aria-selected', () => {
+        const root = event({ message: 'the root' });
+        const { container } = render(<ResultsTable events={[root]} contextRootIdentity={eventIdentity(root)} />);
+        const row = container.querySelector('tbody tr')!;
+        expect(row.className).not.toMatch(/selected/i);
+        expect(row.className).toMatch(/contextRoot/i);
+        expect(row).toHaveAttribute('aria-current', 'location');
+        expect(row).toHaveAttribute('aria-selected', 'false');
+        const marker = timeCellOf(row).querySelector('[class*="rootMarker"]');
+        expect(marker).not.toBeNull();
+        expect(marker).toHaveAttribute('aria-hidden', 'true');
+      });
+
+      it('SELECTED_ROOT: both classes, root marker present, both aria-current and aria-selected true', () => {
+        const root = event({ message: 'the root, also selected' });
+        const { container } = render(
+          <ResultsTable events={[root]} contextRootIdentity={eventIdentity(root)} selectedIndex={0} />,
+        );
+        const row = container.querySelector('tbody tr')!;
+        expect(row.className).toMatch(/selected/i);
+        expect(row.className).toMatch(/contextRoot/i);
+        expect(row).toHaveAttribute('aria-current', 'location');
+        expect(row).toHaveAttribute('aria-selected', 'true');
+        const marker = timeCellOf(row).querySelector('[class*="rootMarker"]');
+        expect(marker).not.toBeNull();
+        expect(marker).toHaveAttribute('aria-hidden', 'true');
+        // The visually-hidden non-visual label for root still renders even when also selected - neither
+        // state's non-visual cue is dropped when both are true.
+        expect(screen.getByText('Original event you were investigating')).toBeInTheDocument();
+      });
     });
 
     it('OS-1D §9/§40-C - a repeated message+timestamp from a SIBLING CONTAINER in the same pod is never mistaken for the root', () => {

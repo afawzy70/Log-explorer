@@ -60,7 +60,7 @@ describe('ActiveFilters', () => {
     expect(screen.queryByText('connection timeout')).not.toBeInTheDocument();
   });
 
-  it('shows no Severity chip when at the default INFO/WARN/ERROR selection', () => {
+  it('shows no Severity chip when every level is selected (the default)', () => {
     render(<ActiveFilters {...baseProps({ selectedLevels: DEFAULT_SEVERITY_LEVELS })} />);
     expect(screen.queryByText(/^severity:/i)).not.toBeInTheDocument();
   });

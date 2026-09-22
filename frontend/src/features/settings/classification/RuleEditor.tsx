@@ -10,6 +10,7 @@ import {
   suggestClassificationExtractions,
   testClassificationRule,
   updateClassificationRule,
+  validateClassificationRule,
 } from '../../../shared/api/client';
 import type {
   ClassificationRule,
@@ -34,7 +35,10 @@ import { TagChip } from '../../../shared/ui/TagChip';
 import { extractedFieldItem } from '../../inspector/ClassificationSection';
 import { formatUtcTimestamp } from '../../inspector/timestampFormat';
 import { resolveService } from '../../results/columnMapping';
+import { formatInterval } from '../../../shared/time/interval';
 import {
+  EXTRACTION_NAME_HELP,
+  EXTRACTION_NAME_PATTERN,
   MATCHER_LABELS,
   REVISION_CONFLICT_MESSAGE,
   errorMessage,
@@ -43,10 +47,11 @@ import {
   eventFieldValue,
   normalizeTags,
   stringifyFieldValue,
+  toMachineName,
   toWritableRule,
 } from './ruleDraft';
 import type { FieldOption } from './ruleDraft';
-import styles from './ClassificationRulesWorkspace.module.css';
+import styles from './RuleEditor.module.css';
 
 export type EditorMode = 'new' | 'edit' | 'duplicate' | 'fromEvent';
 export type StepId = 'source' | 'detect' | 'classification' | 'extraction' | 'test' | 'save';
@@ -60,7 +65,7 @@ const STEP_LABELS: Record<StepId, string> = {
   save: 'Save',
 };
 
-const EDITOR_TITLES: Record<EditorMode, string> = {
+export const EDITOR_TITLES: Record<EditorMode, string> = {
   new: 'New rule',
   edit: 'Edit rule',
   duplicate: 'Duplicate rule',
@@ -127,6 +132,34 @@ function FieldErrors({ errors }: { errors: RuleValidationError[] }) {
         </p>
       ))}
     </>
+  );
+}
+
+/**
+ * Inline, non-blocking feedback for a machine-name field (extraction Name, suggestion Output name): mirrors the
+ * backend's own format rule so the problem is visible before any round trip, and offers a one-click deterministic
+ * correction - never applied silently (CLAUDE.md §1: "Never silently reinterpret a user's rule"). Renders nothing
+ * for an empty or already-valid value, so it never nags while a field is untouched or already correct.
+ */
+function NameFormatHint({ value, onUseSuggested }: { value: string; onUseSuggested: (name: string) => void }) {
+  const trimmed = value.trim();
+  if (trimmed === '' || EXTRACTION_NAME_PATTERN.test(trimmed)) {
+    return null;
+  }
+  const suggested = toMachineName(trimmed);
+  return (
+    <p className={styles.hint}>
+      {EXTRACTION_NAME_HELP}
+      {suggested && suggested !== trimmed ? (
+        <>
+          {' '}
+          Suggested: <code className={styles.mono}>{suggested}</code>{' '}
+          <Button variant="ghost" onClick={() => onUseSuggested(suggested)}>
+            Use "{suggested}"
+          </Button>
+        </>
+      ) : null}
+    </p>
   );
 }
 
@@ -207,6 +240,10 @@ export function RuleEditor({
     conditions: initialRule.conditions ?? [],
     extractions: initialRule.extractions ?? [],
   }));
+  // Already-saved extractions passed the server's own RuleCompiler when this rule was created/last saved (edit,
+  // duplicate, or a re-open) - legitimately confirmed from the start, not just "selected". Freshly-started rules
+  // (new / fromEvent) begin with none, same as an empty `extractions` array.
+  const initialConfirmedExtractions = new Set(initialRule.extractions ?? []);
   const [tagsText, setTagsText] = useState(() => (initialRule.tags ?? []).join(', '));
   const tags = normalizeTags(tagsText);
   const conditions = draft.conditions;
@@ -233,6 +270,18 @@ export function RuleEditor({
     ]),
   );
 
+  // DRIFT-015 remediation - a compact, read-only note of the search scope Detect/Test/Suggest actually sample
+  // from, since this wizard is a takeover workspace with no Search toolbar visible at all (DRIFT-001 hides it
+  // for every settings-style workspace) - without this, "the current search scope" in the Detect step's own
+  // hint text refers to something the wizard never otherwise shows. Only non-sensitive fields (source id,
+  // Compose project, the time window) are read from the scope - never any of its filter/identifier values.
+  const scopeForNote = buildScope(sourceEvent);
+  const scopeNote = scopeForNote
+    ? [scopeForNote.sourceId, scopeForNote.composeProject, formatInterval(scopeForNote.start, scopeForNote.end)]
+        .filter((part): part is string => Boolean(part))
+        .join(' · ')
+    : null;
+
   // ---- Detect ----
   const [detecting, setDetecting] = useState(false);
   const [detectError, setDetectError] = useState<string | null>(null);
@@ -247,6 +296,43 @@ export function RuleEditor({
   const [extractionSkipped, setExtractionSkipped] = useState(false);
   const [openExtractionDetails, setOpenExtractionDetails] = useState<Record<number, boolean>>({});
   const suggestedOnceRef = useRef(false);
+  /**
+   * Extraction objects the server has already validated unedited: populated only when a suggestion (itself
+   * server-compiled before it was ever offered - PatternDetector.textExtractions) is accepted verbatim. `update
+   * Extraction` always replaces the object at its index with a new one, so an edited extraction is never a member
+   * of this set by construction - no separate "clear on edit" bookkeeping needed. Tracked by object identity, not
+   * index, so add/remove never needs to renumber it.
+   */
+  const [confirmedExtractions, setConfirmedExtractions] = useState<Set<ExtractionDefinition>>(
+    () => initialConfirmedExtractions,
+  );
+  /** Which extraction card/field to move focus to after a structural-validation check finds a problem there. */
+  const [focusExtraction, setFocusExtraction] = useState<{ index: number; field: 'name' | 'group' | 'expression' } | null>(
+    null,
+  );
+  const extractionFieldRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [validatingExtraction, setValidatingExtraction] = useState(false);
+
+  // Moves focus to the first field a structural-validation check found invalid (mission §19: "focus the first
+  // actionable invalid field when appropriate"). Split into two effects deliberately: a field inside "Advanced:
+  // how this value is read" (group/expression) does not exist in the DOM - so has no ref to focus - until the
+  // disclosure state below has actually re-rendered it open; the second effect re-runs once that has happened and
+  // only then finds a real element to focus.
+  useEffect(() => {
+    if (focusExtraction && focusExtraction.field !== 'name') {
+      setOpenExtractionDetails((prev) => ({ ...prev, [focusExtraction.index]: true }));
+    }
+  }, [focusExtraction]);
+  useEffect(() => {
+    if (!focusExtraction) {
+      return;
+    }
+    const el = extractionFieldRefs.current[`${focusExtraction.index}-${focusExtraction.field}`];
+    if (el) {
+      el.focus();
+      setFocusExtraction(null);
+    }
+  }, [focusExtraction, openExtractionDetails]);
 
   // ---- Classification ----
   const [advancedOpen, setAdvancedOpen] = useState(mode === 'edit' || mode === 'duplicate');
@@ -312,11 +398,15 @@ export function RuleEditor({
     if (!detection) {
       return;
     }
+    const suggestedExtractions = detection.suggestedExtractions.map((s) => ({ ...s.definition }));
     updateDraft({
       matchMode: detection.suggestedMatchMode ?? 'ALL',
       conditions: detection.suggestedConditions.map((c) => ({ ...c })),
-      extractions: detection.suggestedExtractions.map((s) => ({ ...s.definition })),
+      extractions: suggestedExtractions,
     });
+    // Copied verbatim from the server's own compiled-before-offered suggestions (PatternDetector.textExtractions),
+    // so - unlike addSelectedSuggestions - there is no user-editable rename step in between to invalidate that.
+    setConfirmedExtractions((prev) => new Set([...prev, ...suggestedExtractions]));
     setSuggestionApplied(true);
   }
 
@@ -382,6 +472,7 @@ export function RuleEditor({
     }
     const existing = new Set(extractions.map((x) => x.name));
     const additions: ExtractionDefinition[] = [];
+    const confirmedAdditions: ExtractionDefinition[] = [];
     for (const s of chosen) {
       const choice = suggestionChoices[s.definition.name];
       const name = (choice?.name ?? s.definition.name).trim() || s.definition.name;
@@ -391,9 +482,19 @@ export function RuleEditor({
       existing.add(name);
       // The output name is the user's to choose, but the capture group is part of the expression the detector
       // built - renaming the value must never repoint it at a group that does not exist.
-      additions.push({ ...s.definition, name, sensitive: choice?.sensitive ?? false });
+      const addition: ExtractionDefinition = { ...s.definition, name, sensitive: choice?.sensitive ?? false };
+      additions.push(addition);
+      // Only an UNRENAMED suggestion is provably still exactly what the server compiled before offering it - a
+      // renamed one may have a new, not-yet-format-checked `name` (mission §21: "confirmed" must never outlive the
+      // proof it rests on), so it starts unconfirmed even though its `group`/`expression` are untouched.
+      if (name === s.definition.name) {
+        confirmedAdditions.push(addition);
+      }
     }
     updateDraft({ extractions: [...extractions, ...additions] });
+    if (confirmedAdditions.length > 0) {
+      setConfirmedExtractions((prev) => new Set([...prev, ...confirmedAdditions]));
+    }
     const adoptedKeys = new Set(chosen.map((s) => s.definition.name));
     setSuggestion((prev) =>
       prev
@@ -415,6 +516,45 @@ export function RuleEditor({
       ],
     });
     setOpenExtractionDetails((prev) => ({ ...prev, [extractions.length]: true }));
+  }
+
+  /**
+   * The extraction step's "Preview values": structurally validates the draft first (the same `RuleCompiler` Test
+   * and Save already use, via the dedicated lightweight `/validate` endpoint - no new validation authority, no
+   * per-keystroke chatter, one call per click) and only advances to the Test step once nothing in it is
+   * structurally invalid. A knowable problem - an unresolved capture group, an invalid machine name - now surfaces
+   * here, on the field that is actually wrong, instead of on Test as a wall of technical paths (mission §19).
+   */
+  function previewValues() {
+    setValidatingExtraction(true);
+    setValidationErrors([]);
+    validateClassificationRule(ruleForSubmit())
+      .then((result) => {
+        if (result.valid) {
+          setStep('test');
+          runTest();
+          return;
+        }
+        setValidationErrors(result.errors);
+        const firstExtractionIndex = extractions.findIndex((_, i) => errorsAt(result.errors, 'extractions', i).length > 0);
+        if (firstExtractionIndex >= 0) {
+          const fieldErrors = errorsAt(result.errors, 'extractions', firstExtractionIndex);
+          const field = fieldErrors.some((e) => /\.group($|[.[])/.test(e.path))
+            ? 'group'
+            : fieldErrors.some((e) => /\.expression($|[.[])/.test(e.path))
+              ? 'expression'
+              : 'name';
+          setFocusExtraction({ index: firstExtractionIndex, field });
+        }
+        // Non-extraction errors (e.g. a condition made invalid since Detect) still belong on Test, where
+        // validationSummary already renders them - only an extraction-scoped problem stays on this step.
+        if (firstExtractionIndex < 0) {
+          setStep('test');
+          runTest();
+        }
+      })
+      .catch((error: unknown) => handleRuleError(error, 'Checking the rule failed', setTestError))
+      .finally(() => setValidatingExtraction(false));
   }
 
   function runTest() {
@@ -589,8 +729,10 @@ export function RuleEditor({
           </>
         )}
         <p className={styles.hint}>
-          Detect samples up to {sampleSize} events from the current search scope (source, project, services, severity and
-          time range) and suggests conditions. It is a suggestion only; nothing is saved.
+          Detect samples up to {sampleSize} events from the current search scope (source, project, time range,
+          services, severity and any search text or ID) and suggests conditions - except a classification tag
+          filter, which is never applied here, so a rule being written can never be evidence for itself. It is a
+          suggestion only; nothing is saved.
         </p>
         {!anchorValue ? (
           <p className={styles.hint} id={`${id}-detect-why`}>
@@ -761,7 +903,9 @@ export function RuleEditor({
           <legend>Tag colour</legend>
           <span id={`${id}-color-help`} className={styles.hint}>
             How these tags are shown in search results and the inspector. Colour is a label, not a severity, and
-            every tag always shows its name. A tag already used by another rule keeps that rule's colour.
+            every tag always shows its name. A tag keeps one colour everywhere: if another rule already uses one of
+            these tags, choosing a different colour here is refused, not silently kept as that rule's colour — the
+            refusal is named below if it happens.
           </span>
           <div className={styles.colorChoices} role="radiogroup" aria-describedby={`${id}-color-help`}>
             {TAG_COLORS.map((color) => (
@@ -984,6 +1128,12 @@ export function RuleEditor({
                         <span className={styles.suggestionName}>{s.definition.label ?? key}</span>
                       </label>
                       <span className={styles.suggestionCoverage}>
+                        <span className={styles.coverageBar} aria-hidden="true">
+                          <span
+                            className={styles.coverageBarFill}
+                            style={{ width: `${s.of > 0 ? Math.round((s.extracted / s.of) * 100) : 0}%` }}
+                          />
+                        </span>
                         Found in {s.extracted} / {s.of}
                       </span>
                       <div className={styles.field}>
@@ -995,6 +1145,10 @@ export function RuleEditor({
                           maxLength={limits.maxExtractionNameLength}
                           onChange={(e) => updateSuggestionChoice(key, { name: e.target.value })}
                           autoComplete="off"
+                        />
+                        <NameFormatHint
+                          value={choice.name}
+                          onUseSuggested={(name) => updateSuggestionChoice(key, { name })}
                         />
                       </div>
                       <label className={styles.checkboxRow}>
@@ -1048,19 +1202,25 @@ export function RuleEditor({
         {extractions.map((x, i) => (
           <fieldset key={i} className={styles.fieldset}>
             <legend className={styles.legend}>
-              {x.name ? `${x.label ?? x.name} (confirmed)` : `Extraction ${i + 1}`}
+              {x.name
+                ? `${x.label ?? x.name}${confirmedExtractions.has(x) ? ' (confirmed)' : ''}`
+                : `Extraction ${i + 1}`}
             </legend>
             <div className={styles.rowGrid}>
               <div className={styles.field}>
                 <label htmlFor={`${id}-x${i}-name`}>Name</label>
                 <input
                   id={`${id}-x${i}-name`}
+                  ref={(el) => {
+                    extractionFieldRefs.current[`${i}-name`] = el;
+                  }}
                   type="text"
                   value={x.name}
                   maxLength={limits.maxExtractionNameLength}
                   onChange={(e) => updateExtraction(i, { name: e.target.value })}
                   autoComplete="off"
                 />
+                <NameFormatHint value={x.name} onUseSuggested={(name) => updateExtraction(i, { name })} />
               </div>
               <div className={styles.field}>
                 <label htmlFor={`${id}-x${i}-label`}>Label</label>
@@ -1125,21 +1285,39 @@ export function RuleEditor({
                       ))}
                     </select>
                   </div>
-                  <div className={styles.field}>
-                    <label htmlFor={`${id}-x${i}-group`}>Group (optional)</label>
-                    <input
-                      id={`${id}-x${i}-group`}
-                      type="text"
-                      value={x.group ?? ''}
-                      onChange={(e) => updateExtraction(i, { group: e.target.value })}
-                      autoComplete="off"
-                    />
-                  </div>
+                  {/*
+                   * `group` is REGEX-only (RuleCompiler.compileExtraction only ever calls resolveGroup on the
+                   * REGEX branch) - showing it for JSON_POINTER was a presentation bug, not a backend semantics
+                   * change (mission §23): the field simply never applied there.
+                   */}
+                  {x.type === 'REGEX' ? (
+                    <div className={styles.field}>
+                      <label htmlFor={`${id}-x${i}-group`}>Capture group (advanced)</label>
+                      <input
+                        id={`${id}-x${i}-group`}
+                        ref={(el) => {
+                          extractionFieldRefs.current[`${i}-group`] = el;
+                        }}
+                        type="text"
+                        value={x.group ?? ''}
+                        onChange={(e) => updateExtraction(i, { group: e.target.value })}
+                        autoComplete="off"
+                        aria-describedby={`${id}-x${i}-group-help`}
+                      />
+                      <span id={`${id}-x${i}-group-help`} className={styles.hint}>
+                        Usually leave this blank - Log Explorer automatically uses the only captured value. Set a
+                        group name or number only when the expression contains more than one captured value.
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
                 <div className={styles.field}>
                   <label htmlFor={`${id}-x${i}-expression`}>Expression</label>
                   <input
                     id={`${id}-x${i}-expression`}
+                    ref={(el) => {
+                      extractionFieldRefs.current[`${i}-expression`] = el;
+                    }}
                     type="text"
                     className={styles.mono}
                     value={x.expression}
@@ -1150,7 +1328,7 @@ export function RuleEditor({
                   <span className={styles.hint}>
                     {x.type === 'JSON_POINTER'
                       ? 'A JSON pointer starting with "/".'
-                      : 'RE2 syntax with a named group, e.g. (?P<name>...).'}
+                      : 'RE2 syntax, for example Response:\\s*(\\d+) - not /Response:\\s*(\\d+)/.'}
                   </span>
                 </div>
               </div>
@@ -1179,13 +1357,8 @@ export function RuleEditor({
               Add extraction manually
             </Button>
           )}
-          <Button
-            onClick={() => {
-              setStep('test');
-              runTest();
-            }}
-          >
-            Preview values
+          <Button onClick={previewValues} disabled={validatingExtraction}>
+            {validatingExtraction ? 'Checking…' : 'Preview values'}
           </Button>
         </div>
       </>
@@ -1320,12 +1493,22 @@ export function RuleEditor({
   }
 
   return (
-    <section aria-labelledby={`${id}-title`} className={styles.section}>
-      <h2 id={`${id}-title`} className={styles.subheading}>
-        {EDITOR_TITLES[mode]}
-        {mode === 'edit' && initialRule.name ? `: ${initialRule.name}` : ''}
-      </h2>
-      <nav aria-label="Rule steps">
+    <section aria-labelledby={`${id}-title`} className={styles.wizard}>
+      {/*
+       * DRIFT-015 remediation - a persistent vertical step list (every step always visible and reachable, not
+       * hidden behind a horizontal row that only shows once scrolled to), matching the design's own rule-
+       * builder/extend-rule sidebar. Free step-jumping is unchanged (still a plain onClick={() => setStep(s)},
+       * no disabled state) - this only changes the list's geometry, never which steps can be reached or when.
+       * Collapses back to the original horizontal row under the existing 767px breakpoint (see the media query
+       * below) rather than forcing a desktop sidebar into a narrow viewport.
+       */}
+      <nav aria-label="Rule steps" className={styles.stepRail}>
+        <p className={styles.stepRailHint}>Every step stays reachable, in any order. Nothing is saved until Save rule.</p>
+        {scopeNote ? (
+          <p className={styles.scopeNote}>
+            Sampling from <span className={styles.mono}>{scopeNote}</span>
+          </p>
+        ) : null}
         <ol className={styles.steps}>
           {steps.map((s, i) => (
             <li key={s}>
@@ -1335,34 +1518,48 @@ export function RuleEditor({
                 aria-current={s === step ? 'step' : undefined}
                 onClick={() => setStep(s)}
               >
+                {/*
+                 * aria-hidden - purely decorative, so the button's accessible name stays exactly "N. Label",
+                 * unchanged from before this recompose (asserted verbatim by several existing tests, e.g.
+                 * getByRole('button', { name: '5. Save' })).
+                 */}
+                <span className={styles.stepBadge} aria-hidden="true">
+                  {i < stepIndex ? '✓' : i + 1}
+                </span>
                 {i + 1}. {STEP_LABELS[s]}
               </button>
             </li>
           ))}
         </ol>
       </nav>
-      <h3 ref={stepHeadingRef} tabIndex={-1} className={styles.stepHeading}>
-        Step {stepIndex + 1} of {steps.length}: {STEP_LABELS[step]}
-      </h3>
-      <datalist id={fieldsListId}>
-        {datalistKeys.map((k) => (
-          <option key={k} value={k} />
-        ))}
-      </datalist>
-      {content}
-      <div className={styles.navRow}>
-        <Button variant="ghost" onClick={onCancel}>
-          Cancel
-        </Button>
-        <div className={styles.buttonRow} style={{ margin: 0 }}>
-          <Button onClick={() => setStep(steps[stepIndex - 1])} disabled={stepIndex <= 0}>
-            Back
+      <div className={styles.wizardMain}>
+        <h2 id={`${id}-title`} className={styles.subheading}>
+          {EDITOR_TITLES[mode]}
+          {mode === 'edit' && initialRule.name ? `: ${initialRule.name}` : ''}
+        </h2>
+        <h3 ref={stepHeadingRef} tabIndex={-1} className={styles.stepHeading}>
+          Step {stepIndex + 1} of {steps.length}: {STEP_LABELS[step]}
+        </h3>
+        <datalist id={fieldsListId}>
+          {datalistKeys.map((k) => (
+            <option key={k} value={k} />
+          ))}
+        </datalist>
+        {content}
+        <div className={styles.navRow}>
+          <Button variant="ghost" onClick={onCancel}>
+            Cancel
           </Button>
-          {stepIndex < steps.length - 1 ? (
-            <Button variant="primary" onClick={() => setStep(steps[stepIndex + 1])}>
-              Next
+          <div className={styles.buttonRow} style={{ margin: 0 }}>
+            <Button onClick={() => setStep(steps[stepIndex - 1])} disabled={stepIndex <= 0}>
+              Back
             </Button>
-          ) : null}
+            {stepIndex < steps.length - 1 ? (
+              <Button variant="primary" onClick={() => setStep(steps[stepIndex + 1])}>
+                Next
+              </Button>
+            ) : null}
+          </div>
         </div>
       </div>
     </section>

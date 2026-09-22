@@ -1,0 +1,150 @@
+name: JAR Smoke
+
+# MISSION=PR61_DEFAULT_LOG_LEVELS_SINGLE_JAR_AND_USAGE_DOCS, extended by PR61_NATIVE_POWERSHELL_JAR_BUILD_
+# WITH_PROXY - real evidence that the single runnable Spring Boot jar actually works from a clean
+# directory with a plain `java -jar`, on the owner's target platform (Windows, mandatory) and, where
+# practical, Linux too. This workflow ORCHESTRATES ONLY, matching windows-desktop.yml's own "CI should
+# orchestrate only" convention - the real build is scripts/build-jar.ps1 (Windows, native PowerShell, no
+# Git Bash/WSL) or scripts/build-jar.sh (Linux/macOS), and the real verification is
+# scripts/jar-packaged-smoke-test.sh - the same repository-owned scripts a developer runs locally;
+# nothing here duplicates their logic.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'scripts/build-jar.sh'
+      - 'scripts/build-jar.ps1'
+      - 'scripts/jar-packaged-smoke-test.sh'
+      - '.github/workflows/jar-smoke.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'scripts/build-jar.sh'
+      - 'scripts/build-jar.ps1'
+      - 'scripts/jar-packaged-smoke-test.sh'
+      - '.github/workflows/jar-smoke.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: jar-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  jar-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows
+          - os: ubuntu-latest
+            name: Linux
+    name: Build and smoke-test the packaged jar (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # PR61_NATIVE_POWERSHELL_JAR_BUILD_WITH_PROXY - two fast, self-contained checks of build-jar.ps1's
+      # own proxy handling, Windows only, before the real build below. Neither depends on a real
+      # corporate proxy (none exists in CI), and neither writes into dist-jar/ (the real build's own
+      # output directory, globbed by the smoke-test step further down): the first proves an invalid
+      # -ProxyUrl is rejected immediately, before any build work starts; the second supplies a
+      # syntactically valid but deliberately unreachable proxy and confirms, from the script's own log,
+      # that the value was genuinely applied - then asserts every proxy-related environment variable this
+      # run touched was restored to its pre-existing value, regardless of whether that build happened to
+      # succeed or fail (which depends on the runner's own npm/Maven cache state and is not asserted on).
+      - name: 'Windows only: build-jar.ps1 rejects an invalid -ProxyUrl before doing any work'
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:HTTP_PROXY = 'http://pre-existing-sentinel:9999'
+          & .\scripts\build-jar.ps1 -ProxyUrl 'not-a-valid-url'
+          $exitCode = $LASTEXITCODE
+          $restored = $env:HTTP_PROXY
+          if ($exitCode -eq 0) { Write-Host '##[error] expected a non-zero exit code for an invalid -ProxyUrl'; exit 1 }
+          if ($restored -ne 'http://pre-existing-sentinel:9999') { Write-Host "##[error] pre-existing HTTP_PROXY was not left untouched (got '$restored')"; exit 1 }
+          Write-Host 'OK: invalid -ProxyUrl was rejected with a non-zero exit code and no environment side effect'
+          # build-jar.ps1's own (expected, correct) non-zero exit code above is still sitting in
+          # $LASTEXITCODE - GitHub Actions' pwsh shell fails the step on a non-zero $LASTEXITCODE at exit,
+          # even though every assertion here passed, so this explicit success exit is required.
+          exit 0
+
+      - name: 'Windows only: build-jar.ps1 applies a supplied proxy, and restores the environment regardless of the build outcome'
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:HTTP_PROXY = 'http://pre-existing-sentinel:9999'
+          $env:MAVEN_OPTS = '-DpreExistingSentinel=1'
+          # 127.0.0.1:1 is a refused port (nothing listens there) - deliberately unreachable, so the
+          # build itself may or may not fail depending on the runner's own npm/Maven cache state, and
+          # this test does not assert on that either way (asserting "must fail" would be flaky against a
+          # warm cache). What it DOES assert: the script's own log line proves the supplied proxy was
+          # genuinely recognized and applied (not silently ignored), and every proxy-related environment
+          # variable this run touched is restored to its pre-existing value no matter what happened.
+          # *>&1 (not just 2>&1) is required here: build-jar.ps1's own progress messages use Write-Host,
+          # which writes to the Information stream (6), not the success/output stream - a plain 2>&1
+          # (redirecting only the error stream) would silently never capture them into $output at all.
+          $output = & .\scripts\build-jar.ps1 -ProxyUrl 'http://127.0.0.1:1' -NoProxy 'localhost,127.0.0.1' -OutputDir (Join-Path $env:RUNNER_TEMP 'proxy-negative-test') *>&1 | Out-String
+          $exitCode = $LASTEXITCODE
+          Write-Host "build exit code with a deliberately unreachable proxy: $exitCode (informational only)"
+          if ($output -notmatch [regex]::Escape('Using proxy for this build only: http://127.0.0.1:1')) {
+            Write-Host '##[error] expected log confirmation that the supplied proxy was applied - not found in output'
+            Write-Host $output
+            exit 1
+          }
+          if ($env:HTTP_PROXY -ne 'http://pre-existing-sentinel:9999') { Write-Host "##[error] HTTP_PROXY was not restored (got '$env:HTTP_PROXY')"; exit 1 }
+          if ($env:MAVEN_OPTS -ne '-DpreExistingSentinel=1') { Write-Host "##[error] MAVEN_OPTS was not restored (got '$env:MAVEN_OPTS')"; exit 1 }
+          if ($env:NO_PROXY) { Write-Host "##[error] NO_PROXY should have been removed (was never set before), got '$env:NO_PROXY'"; exit 1 }
+          Write-Host 'OK: the supplied proxy was applied (confirmed via the script''s own log) and every touched environment value was restored'
+          # As above: build-jar.ps1's own exit code (whatever it happened to be) is still sitting in
+          # $LASTEXITCODE, and GitHub Actions' pwsh shell would otherwise fail this step on that alone.
+          exit 0
+
+      # The real build - identical to what a developer runs locally. Windows uses the native PowerShell
+      # script (no Git Bash/WSL/Docker); Linux/macOS keep using the existing Bash script.
+      - name: 'Build the runnable jar - Windows (scripts/build-jar.ps1)'
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\scripts\build-jar.ps1
+
+      - name: 'Build the runnable jar - Linux/macOS (scripts/build-jar.sh)'
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ./scripts/build-jar.sh
+
+      - name: Packaged-jar smoke test (clean directory -> java -jar -> health -> UI -> API -> shutdown)
+        shell: bash
+        run: |
+          jar="$(find dist-jar -maxdepth 1 -name '*.jar' | head -n1)"
+          echo "Testing: $jar"
+          ./scripts/jar-packaged-smoke-test.sh "$jar"
+
+      - name: Upload the runnable jar (evidence)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: log-explorer-jar-${{ matrix.name }}
+          path: dist-jar/*.jar
+          retention-days: 14
+          if-no-files-found: warn

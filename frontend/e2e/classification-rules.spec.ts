@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { openSettingsSection } from './settings-helpers';
 
 /*
  * Owner mission "Event Classification, Extraction, and Portable Rules" -
@@ -162,7 +163,7 @@ test('create a tag rule from an event, detect, test, save, classify, export, del
   }
 
   // 18: export the rule pack.
-  await page.getByRole('button', { name: 'Classification rules' }).click();
+  await openSettingsSection(page, /^manage classification rules$/i);
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export all' }).click();
   const download = await downloadPromise;
@@ -180,6 +181,10 @@ test('create a tag rule from an event, detect, test, save, classify, export, del
   await expect(page.getByText('No classification rules yet.')).toBeVisible();
 
   // 20: classification disappears after re-search.
+  // This workspace was entered from Settings (step 18's openSettingsSection), so PR61_OWNER_NAVIGATION_
+  // RECOVERY_2's origin-aware Back truthfully returns to Settings first, then Settings' own (always
+  // Search-bound) Back returns to Search results - not a single jump straight to Search as before that fix.
+  await page.getByRole('button', { name: /back to settings/i }).click();
   await page.getByRole('button', { name: /back to search results/i }).click();
   // The tag filter is still active: with the rule gone no event carries the tag, so the backend truthfully returns none.
   const emptyTagged = page.waitForResponse((response) => response.url().includes('/api/v1/logs/search'));
@@ -193,7 +198,7 @@ test('create a tag rule from an event, detect, test, save, classify, export, del
   await page.keyboard.press('Escape');
 
   // 21-23: import the exported pack - preview, then explicit apply.
-  await page.getByRole('button', { name: 'Classification rules' }).click();
+  await openSettingsSection(page, /^manage classification rules$/i);
   await page.getByLabel('Import rules file').setInputFiles(packPath);
   const preview = page.getByLabel('Rules in this pack');
   await expect(preview).toBeVisible();
@@ -202,12 +207,64 @@ test('create a tag rule from an event, detect, test, save, classify, export, del
   await expect(page.getByText(/Added\s*1/)).toBeVisible();
 
   // 24-25: re-run search; classification and extraction are restored.
+  // Entered from Settings again (step 21's openSettingsSection) - same two-step origin-aware return as step 20.
+  await page.getByRole('button', { name: /back to settings/i }).click();
   await page.getByRole('button', { name: /back to search results/i }).click();
   await runSearch(page, 'Make webhook call to');
   const restored = await openInspectorOnRow(page, /Make webhook call to/);
   await expect(restored.dialog.getByText(/^(Tag )?MIDDLEWARE$/)).toBeVisible();
   const restoredCode = restored.message.match(/responseCode=(\d+)/)?.[1];
   await expect(restored.dialog.getByRole('region', { name: /classification/i })).toContainText(restoredCode!);
+});
+
+/*
+ * PR61_OWNER_MANUAL_USABILITY_AND_CLASSIFICATION_RECOVERY (E01-E08) - real owner manual testing found
+ * assisted/confirmed extractions could reach Test structurally invalid, with no explanation beyond a raw
+ * technical path once already there. The fix is the Extraction step's own "Preview values" button (distinct
+ * from the wizard's generic "Next", which the test above uses and which never ran this check): it now
+ * validates the draft server-side first and only advances once nothing in it is structurally invalid. This
+ * test exercises THAT specific button, against the real backend and real fixture data - proving a normal,
+ * unedited, suggestion-derived extraction set (url/responseCode/durationMs, single-capture, server-generated
+ * named groups) needs no manual Capture group intervention to pass.
+ */
+test('Preview values structurally validates a suggestion-derived rule and reaches Test without any manual Group edit', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto('/');
+  await resetRules(page);
+
+  // E01-E03: open Classification Rules from the normal navigation, start a rule from a selected event, detect.
+  await openFixtureSearch(page, 'Make webhook call to');
+  const { dialog: inspector } = await openInspectorOnRow(page, /Make webhook call to/);
+  await inspector.getByRole('button', { name: 'Create tag rule from this event' }).click();
+  await page.getByRole('button', { name: /^next$/i }).click();
+  await page.getByRole('button', { name: /detect pattern/i }).click();
+  await expect(page.getByLabel('Detected pattern')).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'Use this suggestion' }).click();
+  await page.getByRole('button', { name: /^next$/i }).click();
+  await page.getByLabel('Rule name').fill('Preview Values Recovery Check');
+  await page.getByLabel('Tags (comma-separated, required)').fill('middleware');
+  await page.getByRole('button', { name: /^next$/i }).click();
+
+  // E04/E05: the server-generated suggestions are already the rule's extractions here (a real, unedited
+  // acceptance - not a synthetic construction), each with its own "(confirmed)" now honestly meaning the
+  // server already validated exactly this definition.
+  await expect(page.getByRole('group', { name: /url \(confirmed\)/i })).toBeVisible();
+  await expect(page.getByRole('group', { name: /response code \(confirmed\)/i })).toBeVisible();
+
+  // E06/E07: "Preview values" - not "Next" - runs the new structural pre-check and advances on its own once
+  // it passes, with no manual Capture group edit anywhere in this flow.
+  await page.getByRole('button', { name: 'Preview values' }).click();
+  await expect(page.getByRole('heading', { name: /Step \d of \d: Test/ })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('This rule is not valid yet:')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Test rule' }).click();
+  const results = page.getByLabel('Test results');
+  await expect(results).toBeVisible({ timeout: 30_000 });
+  await expect(results).toContainText(/Matched:?\s*[1-9]\d*/);
+
+  // E08: Save remains possible after a valid test.
+  await page.getByRole('button', { name: /^next$/i }).click();
+  await page.getByRole('button', { name: 'Save rule' }).click();
+  await expect(page.getByText('Rule saved. Re-run Search to classify currently loaded results.')).toBeVisible();
 });
 
 /*
@@ -358,7 +415,7 @@ test('the owner reproduction: scoped detect and test, assisted extraction, visib
   await page.keyboard.press('Escape');
 
   // 25. Export: the pack carries the colour, and still no server-side or runtime data.
-  await page.getByRole('button', { name: 'Classification rules' }).click();
+  await openSettingsSection(page, /^manage classification rules$/i);
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export all' }).click();
   const download = await downloadPromise;
@@ -373,16 +430,19 @@ test('the owner reproduction: scoped detect and test, assisted extraction, visib
   await page.getByRole('button', { name: 'Delete API middleware' }).click();
   await page.getByRole('button', { name: 'Delete rule' }).click();
   await expect(page.getByText('No classification rules yet.')).toBeVisible();
+  // Entered from Settings (line 418's openSettingsSection) - origin-aware Back returns to Settings first.
+  await page.getByRole('button', { name: /back to settings/i }).click();
   await page.getByRole('button', { name: /back to search results/i }).click();
   await runSearch(page, QUERY);
   await expect(apiLogsRow(page).locator('[data-tag-color]')).toHaveCount(0);
 
   // 27-30. Import the same pack back: classification, colour and extraction all return.
-  await page.getByRole('button', { name: 'Classification rules' }).click();
+  await openSettingsSection(page, /^manage classification rules$/i);
   await page.getByLabel('Import rules file').setInputFiles(packPath);
   await expect(page.getByLabel('Rules in this pack')).toBeVisible();
   await page.getByRole('button', { name: /apply/i }).click();
   await expect(page.getByText(/Added\s*1/)).toBeVisible();
+  await page.getByRole('button', { name: /back to settings/i }).click();
   await page.getByRole('button', { name: /back to search results/i }).click();
   await runSearch(page, QUERY);
   await expect(apiLogsRow(page).locator('[data-tag-color="BLUE"]').first()).toBeVisible();

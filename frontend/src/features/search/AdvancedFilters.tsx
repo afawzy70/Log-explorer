@@ -199,6 +199,15 @@ export function AdvancedFilters({
           <h2 id={headingId} className={styles.heading} ref={headingRef} tabIndex={-1}>
             More filters
           </h2>
+          {/*
+            * DRIFT-002 remediation: the approved design shows every field group simultaneously in a wide
+            * multi-column layout (Who/customer, Request flow, What happened, Client context,
+            * Classification tags), with Advanced query as its own distinct full-width section below the
+            * grid - restored here. Every field/handler below is unchanged; only the container CSS
+            * (.panel/.groups in AdvancedFilters.module.css) changed from a narrow single-column right
+            * drawer to this wide grid.
+            */}
+          <div className={styles.scrollArea}>
           <div className={styles.groups}>
             {ADVANCED_FILTER_GROUPS.map((group) => (
               <fieldset key={group.id} className={styles.group}>
@@ -266,12 +275,14 @@ export function AdvancedFilters({
                 )}
               </fieldset>
             ) : null}
-
-            <fieldset className={styles.group}>
-              <legend className={styles.groupTitle}>Advanced query</legend>
-              <QueryBuilder value={queryState} onApply={onApplyQuery} rawLogQlSupported={rawLogQlSupported} />
-            </fieldset>
           </div>
+
+          <fieldset className={styles.advancedQueryGroup}>
+            <legend className={styles.groupTitle}>Advanced query</legend>
+            <QueryBuilder value={queryState} onApply={onApplyQuery} rawLogQlSupported={rawLogQlSupported} />
+          </fieldset>
+          </div>
+
           <div className={styles.actions}>
             <Button variant="ghost" onClick={handleReset}>
               Reset

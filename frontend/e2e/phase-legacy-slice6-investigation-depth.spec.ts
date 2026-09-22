@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
 import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, setViewport } from './helpers';
 import { openInspectorTab } from './inspector-helpers';
+import { openSettingsSection } from './settings-helpers';
 
 /*
  * LEGACY REMEDIATION SLICE 6 — INVESTIGATION DEPTH, GAP VISIBILITY & RICHER
@@ -23,7 +24,10 @@ import { openInspectorTab } from './inspector-helpers';
 async function gotoFixture(page: Page) {
   await page.goto('/');
   await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
+  // B2 (Session 4) - the level chips now live behind the Severity field trigger's popover.
+  await page.getByRole('button', { name: /^severity:/i }).click();
   await page.getByRole('button', { name: /^all$/i }).click(); // severity: All
+  await page.keyboard.press('Escape');
 }
 
 async function search(page: Page) {
@@ -202,7 +206,15 @@ test.describe('Legacy Remediation Slice 6 — Investigation depth, gap visibilit
     await openInspectorAndShowContext(page);
 
     await expect(page.getByTestId('gap-row')).toHaveCount(0);
-    expect(await page.getByRole('note', { name: /surrounding-context summary/i }).locator('text=Gaps').locator('xpath=following-sibling::dd[1]').textContent()).toBe('0');
+    // B5 RECOMPOSE - `ContextSummary`'s own `<dl><dt>/<dd>` stat list is now the shared
+    // `InvestigationStatRow` grammar (`<span class="label">`/`<span class="value">`), not `dt`/`dd`.
+    expect(
+      await page
+        .getByRole('note', { name: /surrounding-context summary/i })
+        .locator('text=Gaps')
+        .locator('xpath=following-sibling::*[1]')
+        .textContent(),
+    ).toBe('0');
   });
 
   test('10. a truncated/incomplete context result shows an honest "results may be incomplete" warning', async ({ page }) => {
@@ -222,7 +234,10 @@ test.describe('Legacy Remediation Slice 6 — Investigation depth, gap visibilit
     await gotoFixture(page);
     await search(page);
     // Narrow the toolbar to Errors only BEFORE opening context.
+    // B2 (Session 4) - the level chips now live behind the Severity field trigger's popover.
+    await page.getByRole('button', { name: /^severity:/i }).click();
     await page.getByRole('button', { name: /^errors only$/i }).click();
+    await page.keyboard.press('Escape');
     await mockNextContextResponse(page, [
       baseEvent({ message: 'info-event', severity: 'INFO', timestamp: '2026-01-01T12:00:00.000Z' }),
       baseEvent({ message: 'error-event', severity: 'ERROR', timestamp: '2026-01-01T12:00:01.000Z' }),
@@ -328,8 +343,8 @@ test.describe('Legacy Remediation Slice 6 — Investigation depth, gap visibilit
     await expect(page.getByRole('dialog')).toBeVisible();
     await page.getByRole('button', { name: /^cancel$/i }).click();
 
-    await page.getByRole('button', { name: /docker settings/i }).click();
-    await expect(page.getByRole('dialog', { name: /docker/i })).toBeVisible();
+    await openSettingsSection(page, /docker settings/i);
+    await expect(page.getByTestId('docker-settings-panel')).toBeVisible();
   });
 
   test('16. desktop (1440px): source health badge, context summary, and gap markers all hold together with correct table geometry', async ({ page }) => {

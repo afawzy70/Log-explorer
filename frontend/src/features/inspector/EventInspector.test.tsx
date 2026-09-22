@@ -68,6 +68,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     health: null,
     healthLoading: false,
     retryHealth: vi.fn(),
+    invalidateSearchForScopeChange: vi.fn(),
     searchResult: null,
     searchLoading: false,
     loadingMore: false,
@@ -102,8 +103,13 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     fieldMappingSearchReady: true,
     refreshFieldMappingProfile: vi.fn(),
     mappingWorkspaceOpen: false,
+    mappingWorkspaceOrigin: 'search',
     openMappingWorkspace: vi.fn(),
     closeMappingWorkspace: vi.fn(),
+    settingsWorkspaceOpen: false,
+    settingsTargetSection: 'sources',
+    openSettingsWorkspace: vi.fn(),
+    closeSettingsWorkspace: vi.fn(),
     selectedTags: [],
     setSelectedTags: vi.fn(),
     classificationTags: null,
@@ -113,6 +119,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     classificationWorkspaceOpen: false,
     classificationWorkspaceEvent: null,
     classificationWorkspaceIntent: null,
+    classificationWorkspaceOrigin: 'settings',
     openClassificationExtractionFromEvent: vi.fn(),
     classificationWorkspaceKey: 0,
     openClassificationWorkspace: vi.fn(),
@@ -138,7 +145,10 @@ describe('EventInspector', () => {
     renderWithRegistry(<EventInspector state={baseState({ selectedEvent: fullEvent(), selectedIndex: 0 })} />);
     const tablist = screen.getByRole('tablist', { name: /event detail sections/i });
     const expected: Array<[tabName: RegExp, headingName: RegExp]> = [
-      [/^overview$/i, /overview/i],
+      // DRIFT-008 remediation: Overview no longer shows its own redundant "Overview" heading (the
+      // tabpanel is already named "Overview" via aria-labelledby to the tab itself) - it shows the
+      // "When & where" sub-heading over its grouped fields instead.
+      [/^overview$/i, /when & where/i],
       [/actor & client/i, /actor & client/i],
       [/request flow/i, /request flow/i],
       [/business \/ error/i, /business \/ error/i],

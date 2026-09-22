@@ -55,6 +55,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     health: null,
     healthLoading: false,
     retryHealth: vi.fn(),
+    invalidateSearchForScopeChange: vi.fn(),
     searchResult: null,
     searchLoading: false,
     loadingMore: false,
@@ -89,8 +90,13 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     fieldMappingSearchReady: true,
     refreshFieldMappingProfile: vi.fn(),
     mappingWorkspaceOpen: false,
+    mappingWorkspaceOrigin: 'search',
     openMappingWorkspace: vi.fn(),
     closeMappingWorkspace: vi.fn(),
+    settingsWorkspaceOpen: false,
+    settingsTargetSection: 'sources',
+    openSettingsWorkspace: vi.fn(),
+    closeSettingsWorkspace: vi.fn(),
     selectedTags: [],
     setSelectedTags: vi.fn(),
     classificationTags: null,
@@ -100,6 +106,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     classificationWorkspaceOpen: false,
     classificationWorkspaceEvent: null,
     classificationWorkspaceIntent: null,
+    classificationWorkspaceOrigin: 'settings',
     openClassificationExtractionFromEvent: vi.fn(),
     classificationWorkspaceKey: 0,
     openClassificationWorkspace: vi.fn(),
@@ -200,7 +207,8 @@ describe('JourneyView', () => {
       expect(screen.getByText('Errors').nextElementSibling).toHaveTextContent('1');
       expect(screen.getByText('Warnings').nextElementSibling).toHaveTextContent('1');
       expect(screen.getByText('Gaps').nextElementSibling).toHaveTextContent('0');
-      expect(screen.getByText('First → Last')).toBeInTheDocument();
+      // B5 RECOMPOSE - "First → last" (lowercase "last"), matching the design's own exact stat-row wording verbatim.
+      expect(screen.getByText('First → last')).toBeInTheDocument();
     });
 
     it('renders a gap marker between two entries whose observed interval exceeds the threshold, never a fake event', () => {
@@ -222,10 +230,11 @@ describe('JourneyView', () => {
       expect(marker.textContent).toMatch(/30s/);
       expect(marker.textContent).not.toMatch(/missing|broken|failed/i);
 
-      // The marker is a real, standalone list item - not nested inside a JourneyEntryRow's own <li>.
-      const list = screen.getByRole('list');
-      const items = within(list).getAllByRole('listitem');
-      expect(items).toHaveLength(3); // first entry, gap marker, second entry
+      // B5 RECOMPOSE - the marker is a real, standalone table row (colSpan across every column) - not nested
+      // inside an event row. One real semantic <table> (CLAUDE.md §4), row count = 2 events + 1 gap row.
+      const table = screen.getAllByRole('table').at(-1)!; // the sequence table (last <table> - the timeline plot has no <table>)
+      const rows = within(table).getAllByRole('row');
+      expect(rows).toHaveLength(4); // header + first entry + gap marker + second entry
     });
 
     it('shows no gap marker for a sequence with no detectable gap', () => {
@@ -301,10 +310,15 @@ describe('JourneyView', () => {
           })}
         />,
       );
-      expect(screen.getByText(/selected event: 2 of 3/i)).toBeInTheDocument();
-      const highlighted = screen.getByText('root').closest('li');
+      // B5 RECOMPOSE - "Selected event" (the stat-row label) and its value ("2 of 3") are now adjacent sibling
+      // spans (`InvestigationStatRow`'s own grammar), not one combined "Selected event: 2 of 3" string. The
+      // timeline plot's own trigger flag repeats "Selected event" as its own label too (real text, not colour
+      // alone) - the stat row renders first in the DOM, so it is the first match.
+      const selectedEventMentions = screen.getAllByText('Selected event');
+      expect(selectedEventMentions.length).toBeGreaterThanOrEqual(1);
+      expect(selectedEventMentions[0].nextElementSibling).toHaveTextContent('2 of 3');
+      const highlighted = screen.getByText('root').closest('tr');
       expect(highlighted).toHaveAttribute('aria-current', 'location');
-      expect(screen.getByText('Selected event')).toBeInTheDocument();
     });
 
     it('honestly reports when the root event is not present in this bounded result, rather than highlighting a different one', () => {

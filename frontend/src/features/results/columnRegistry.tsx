@@ -11,7 +11,7 @@ import {
   resolveUserOrCustomer,
 } from './columnMapping';
 import { MessageCell } from './MessageCell';
-import { TagChip, tagColorsOf } from '../../shared/ui/TagChip';
+import { TagChip, TagCountBadge, tagColorsOf } from '../../shared/ui/TagChip';
 import { JOURNEY_ACTION_LABELS } from '../journey/journeyFields';
 import styles from './ResultsTable.module.css';
 
@@ -83,6 +83,13 @@ export interface ColumnDefinition {
   defaultVisible: boolean;
   /** Fixed `<col>` width; `undefined` leaves the column flexible (only "What happened" does). */
   width?: string;
+  /**
+   * COMPONENT_INVENTORY.md's ResultsTable.tsx RESTYLE entry ("identity columns narrow when the Inspector
+   * opens") - only Tags declares this. Used instead of `width` for exactly this one column while the
+   * Inspector is docked beside the table (`ResultsTable`'s own `inspectorOpen` prop), freeing a little
+   * width back to "What happened" (the one flexible column) when every pixel matters most.
+   */
+  narrowWidth?: string;
   /** Applied to the `<td>` itself - see this module's own doc comment for why. */
   cellClassName?: string;
   render: (event: LogEvent, ctx: ColumnRenderContext) => ReactNode;
@@ -124,7 +131,7 @@ function TagsCell({ event }: { event: LogEvent }) {
       <span className={styles.visuallyHidden}>{`Tags: ${all}`}</span>
       <span aria-hidden="true" className={styles.tagsGroup}>
         <TagChip tag={first} color={colors[first]} title={all} />
-        {rest.length > 0 ? <TagChip tag={`+${rest.length}`} color={colors[first]} title={all} /> : null}
+        {rest.length > 0 ? <TagCountBadge count={rest.length} title={all} /> : null}
       </span>
     </span>
   );
@@ -132,6 +139,29 @@ function TagsCell({ event }: { event: LogEvent }) {
 
 function levelColor(severity: string | null): string | undefined {
   return SEVERITY_LEVELS.find((l) => l.id === severity?.toUpperCase())?.colorVar;
+}
+
+const SEVERITY_MARK_CLASS: Record<string, string> = {
+  ERROR: 'sevMarkError',
+  WARN: 'sevMarkWarn',
+  INFO: 'sevMarkInfo',
+  DEBUG: 'sevMarkDebug',
+  TRACE: 'sevMarkTrace',
+};
+
+/**
+ * DESIGN_SYSTEM.md §22 / COMPONENT_INVENTORY.md "severity mark in a 22 px gutter inside the Time cell" -
+ * shape carries the level even without colour (a diamond, triangle, filled dot, ring, or bar), so this is
+ * additive to the Level column's own coloured text, never a replacement for it. Purely decorative
+ * (`aria-hidden`) - the Level cell's text and the row's own `aria-selected`/`aria-current` remain the
+ * accessible source of truth for severity and row state.
+ */
+function severityMark(severity: string | null): ReactNode {
+  const shapeClass = SEVERITY_MARK_CLASS[severity?.toUpperCase() ?? ''];
+  if (!shapeClass) {
+    return null;
+  }
+  return <span className={`${styles.sevMark} ${styles[shapeClass]}`} aria-hidden="true" />;
 }
 
 /** Every optional column below shares this look: monospace, no label prefix (unlike the label:value cells the default columns use) - `cellClassName: styles.idCell` on the owning definition does the actual truncation. */
@@ -153,10 +183,16 @@ export const COLUMN_REGISTRY: ColumnDefinition[] = [
       // repeated calendar date sits behind it. See `splitTimestampCell`.
       const split = splitTimestampCell(event.timestamp);
       if (!split) {
-        return formatTimestampCell(event.timestamp);
+        return (
+          <>
+            {severityMark(event.severity)}
+            {formatTimestampCell(event.timestamp)}
+          </>
+        );
       }
       return (
         <>
+          {severityMark(event.severity)}
           {split.date ? <span className={styles.timeDatePart}>{split.date}</span> : null}
           <span className={styles.timeClockPart}>{split.time}</span>
         </>
@@ -237,13 +273,14 @@ export const COLUMN_REGISTRY: ColumnDefinition[] = [
     label: 'Tags',
     defaultVisible: true,
     width: '150px',
+    narrowWidth: '132px',
     cellClassName: styles.tagsCell,
     sortAccessor: (event) => event.tags?.[0] ?? null,
     render: (event) => <TagsCell event={event} />,
   },
   {
     id: 'userCustomer',
-    label: 'User/Customer',
+    label: 'User / Customer',
     defaultVisible: true,
     width: '160px',
     cellClassName: styles.idCell,
@@ -266,7 +303,7 @@ export const COLUMN_REGISTRY: ColumnDefinition[] = [
   },
   {
     id: 'correlationTrace',
-    label: 'Correlation/Trace',
+    label: 'Correlation / Trace',
     defaultVisible: true,
     width: '170px',
     cellClassName: styles.idCell,

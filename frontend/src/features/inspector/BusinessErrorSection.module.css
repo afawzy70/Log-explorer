@@ -1,9 +1,10 @@
+/* B7 (Session 10) - full v2 tokens, part of the Inspector-body closure. */
 .exception {
   margin: var(--space-3) 0 0 0;
   padding: var(--space-3);
-  background: var(--color-severity-error-bg);
-  color: var(--color-severity-error);
-  border-radius: var(--radius-md);
+  background: var(--v2-danger-tint);
+  color: var(--v2-danger);
+  border-radius: var(--v2-r-md);
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   white-space: pre-wrap;

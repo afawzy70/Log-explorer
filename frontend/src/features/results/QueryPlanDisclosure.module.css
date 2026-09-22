@@ -1,22 +1,79 @@
+/*
+ * B2 (Session 4) - anchored dropdown, matching the other scope-strip
+ * triggers (Columns, Sort). `position: relative` on `.details` is what
+ * lets `.body` (the expanded content) sit as an absolutely-positioned
+ * panel under the trigger instead of pushing the row's own height.
+ *
+ * B7 (Session 10) - full v2 tokens, part of the ScopeStrip closure. Fixed a latent bug found while converting:
+ * `.summary:hover`/`:focus-visible` referenced `--color-text-primary`, a token that has never existed in
+ * `tokens.css` (the real name is `--color-text`) - silently fell back to `inherit`. Now correctly resolves to
+ * `--v2-ink-1`.
+ */
 .details {
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-bg-raised);
-  font-size: var(--font-size-sm);
+  position: relative;
+  display: inline-flex;
 }
 
 .summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  list-style: none;
   cursor: pointer;
-  font-weight: 600;
-  color: var(--color-text-secondary);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--v2-r-md);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--v2-ink-2);
+  white-space: nowrap;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.summary:hover,
+.summary:focus-visible {
+  background: var(--v2-hover);
+  color: var(--v2-ink-1);
+}
+
+/*
+ * B5 (Session 5) fix - a real bug, not merely an overflow nitpick: `.body`'s own `display: flex` was found to
+ * be genuinely ACTIVE (`getComputedStyle(body).display === 'flex'`, real non-zero `getBoundingClientRect()`,
+ * a non-null `offsetParent`) even while the native `<details>` itself reports `open === false`. The browser's
+ * own implicit "hide every non-summary child of a closed <details>" behaviour was expected to make this authored
+ * `display: flex` moot while closed, but does not reliably win here - found via a real 390px page-overflow
+ * measurement in the Surroundings context view (`right: 0` resolves the closed-but-laid-out panel to a real,
+ * far-off-screen position that reached `document.documentElement.scrollWidth`; the plain search view's own
+ * different trigger position happened not to cross the threshold, which is why this went unnoticed there).
+ * Fixed at the source rather than papered over with `contain`/`overflow` tricks (tried both `contain: layout`
+ * and `contain: paint` first - neither changed the measured geometry, confirming the box was never actually
+ * suppressed) - `.details:not([open]) .body` makes the closed state explicit and unconditional, never relying
+ * on the browser's own default behaviour alone again.
+ */
+.details:not([open]) .body {
+  display: none;
 }
 
 .body {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 20;
   margin-top: var(--space-2);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  width: 420px;
+  max-width: calc(100vw - var(--space-6));
+  padding: var(--space-3);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
+  box-shadow: var(--v2-shadow-pop);
+  font-size: var(--font-size-sm);
 }
 
 .row {
@@ -27,7 +84,7 @@
 
 .rowLabel {
   flex: 0 0 160px;
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
   font-size: var(--font-size-xs);
 }
 
@@ -43,8 +100,8 @@
 
 .rawBadge {
   margin-left: var(--space-2);
-  background: var(--color-accent-bg);
-  color: var(--color-accent);
+  background: var(--v2-accent-tint);
+  color: var(--v2-accent-ink);
   border-radius: 999px;
   font-size: var(--font-size-xs);
   font-weight: 600;
@@ -57,5 +114,5 @@
 }
 
 .muted {
-  color: var(--color-text-tertiary);
+  color: var(--v2-ink-3);
 }

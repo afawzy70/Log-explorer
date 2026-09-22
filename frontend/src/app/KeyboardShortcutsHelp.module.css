@@ -1,12 +1,14 @@
+/* B7 (Session 10) - full v2 tokens. Self-contained trigger+popover, single consumer (Shell), no shared blast radius. */
 .wrapper {
   position: relative;
   display: inline-block;
 }
 
 .trigger {
-  border: var(--border-width) solid var(--color-border);
-  background: var(--color-bg-raised);
-  border-radius: var(--radius-md);
+  border: var(--v2-bw) solid var(--v2-line);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
+  border-radius: var(--v2-r-md);
   width: 32px;
   height: 32px;
   line-height: 1;
@@ -15,7 +17,7 @@
 }
 
 .trigger:hover {
-  background: var(--color-bg-hover);
+  background: var(--v2-hover);
 }
 
 .panel {
@@ -23,13 +25,14 @@
   top: calc(100% + var(--space-2));
   right: 0;
   z-index: 30;
-  background: var(--color-bg-raised);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  background: var(--v2-surface-raised);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-lg);
+  box-shadow: var(--v2-shadow-pop);
   padding: var(--space-4);
   width: 340px;
   max-width: calc(100vw - var(--space-6));
+  color: var(--v2-ink-1);
   /* Grouped, registry-derived content (Legacy Remediation Slice 8) can run
      taller than the old flat list - bounded so it never pushes the Close
      button off a short/narrow viewport; only this region scrolls. */
@@ -53,7 +56,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.02em;
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
 }
 
 .list {
@@ -74,22 +77,49 @@
   min-width: 130px;
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
-  background: var(--color-bg-hover);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-sm);
+  color: var(--v2-ink-1);
+  background: var(--v2-surface-sunken);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-sm);
   padding: 2px var(--space-2);
 }
 
 .description {
   margin: 0;
   font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
+  color: var(--v2-ink-2);
 }
 
 .actions {
   margin-top: var(--space-3);
   display: flex;
   justify-content: flex-end;
-  border-top: var(--border-width) solid var(--color-border);
+  border-top: var(--v2-bw) solid var(--v2-line);
   padding-top: var(--space-3);
+}
+
+/*
+ * PR61_OWNER_NAVIGATION_RECOVERY_2 - Settings' own inline rendering (`KeyboardShortcutsInline`). Reuses
+ * `.group`/`.groupTitle`/`.list`/`.row`/`.keys`/`.description` above unchanged; this class only replaces
+ * `.panel`'s popover-specific properties (absolute position, border, shadow, fixed width, scroll clamp) with
+ * plain page flow - Settings' own page scrolls, this never needs its own.
+ */
+.inline {
+  color: var(--v2-ink-1);
+}
+
+/* `.keys`' fixed 130px min-width can crowd a long description at narrow widths inside the popover's own
+   340px-wide, horizontally-unconstrained-by-the-page panel; the inline rendering sits directly in Settings'
+   own page width instead, so `.row` stacks and `.keys` drops its min-width the same way this app's other
+   label/value rows already collapse under the shared 767px breakpoint. */
+@media (max-width: 767px) {
+  .inline .row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+
+  .inline .keys {
+    min-width: 0;
+  }
 }

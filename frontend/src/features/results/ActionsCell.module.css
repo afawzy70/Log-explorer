@@ -1,15 +1,21 @@
+/* B7 (Session 10) - full v2 tokens. Self-contained trigger+menu, single consumer (ResultsTable's Actions column). */
 .wrapper {
   position: relative;
 }
 
 .trigger {
-  border: var(--border-width) solid var(--color-border);
-  background: var(--color-bg-raised);
-  border-radius: var(--radius-sm);
+  border: var(--v2-bw) solid var(--v2-line);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
+  border-radius: var(--v2-r-sm);
   width: 28px;
   height: 28px;
   line-height: 1;
   cursor: pointer;
+}
+
+.trigger:hover {
+  background: var(--v2-hover);
 }
 
 .trigger:disabled {
@@ -22,10 +28,11 @@
   top: calc(100% + var(--space-1));
   right: 0;
   z-index: 20;
-  background: var(--color-bg-raised);
-  border: var(--border-width) solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  background: var(--v2-surface-raised);
+  color: var(--v2-ink-1);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-radius: var(--v2-r-md);
+  box-shadow: var(--v2-shadow-pop);
   padding: var(--space-1);
   min-width: 160px;
 }
@@ -36,14 +43,15 @@
   text-align: left;
   border: none;
   background: transparent;
-  border-radius: var(--radius-sm);
+  color: inherit;
+  border-radius: var(--v2-r-sm);
   padding: var(--space-2);
   font-size: var(--font-size-sm);
   cursor: pointer;
 }
 
 .menuItem:hover {
-  background: var(--color-bg-hover);
+  background: var(--v2-hover);
 }
 
 /*
@@ -56,5 +64,5 @@
 .separator {
   height: 1px;
   margin: var(--space-1) 0;
-  background: var(--color-border);
+  background: var(--v2-line);
 }

@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { eventIdentity, useSearchState } from './useSearchState';
 import { EMPTY_QUERY_PLAN } from '../shared/api/testFixtures';
 import { CUSTOM_RANGE_ID } from '../shared/time/presets';
+import { ALL_SEVERITY_LEVEL_IDS } from '../features/search/severityLevels';
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -627,6 +628,32 @@ describe('useSearchState', () => {
       expect(result.current.selectedServices).toEqual(['audit']);
     });
 
+    it('restoreOriginalSearch restores an explicit, non-default level selection made before the detour', async () => {
+      // PR61_DEFAULT_LOG_LEVELS_SINGLE_JAR_AND_USAGE_DOCS - a level selection the investigator made on
+      // purpose (narrowing away from the "every level selected" default) must survive a Show Surroundings
+      // detour and back, exactly like serviceFilterMode/selectedServices above - never silently widened
+      // back to the default on return.
+      const result = await searchedWithThreeEvents();
+      act(() => result.current.setSelectedLevels(['ERROR']));
+      const rootEvent = result.current.searchResult!.events[0];
+
+      act(() => result.current.showContext(rootEvent));
+      await waitFor(() => expect(contextCalls).toHaveLength(1));
+      contextCalls[0].resolve(
+        jsonResponse({
+          events: [eventWithMessage('surrounding')],
+          counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await waitFor(() => expect(result.current.searchResult?.events[0].message).toBe('surrounding'));
+
+      expect(result.current.selectedLevels).toEqual(['ERROR']);
+
+      act(() => result.current.restoreOriginalSearch());
+      expect(result.current.selectedLevels).toEqual(['ERROR']);
+    });
+
     it('restoreOriginalSearch clears contextRootIdentity and restores the pristine, never-sorted original result', async () => {
       const result = await searchedWithThreeEvents();
       const originalOrder = result.current.searchResult!.events.map((e) => e.message);
@@ -852,7 +879,7 @@ describe('useSearchState', () => {
 
       expect(result.current.searchText).toBe('');
       expect(result.current.selectedServices).toEqual([]);
-      expect(result.current.selectedLevels).toEqual(['INFO', 'WARN', 'ERROR']);
+      expect(result.current.selectedLevels).toEqual(ALL_SEVERITY_LEVEL_IDS);
       expect(result.current.advancedFilters.traceId).toBe('');
       expect(result.current.queryState.mode).toBe('guided');
       expect(result.current.queryState.text).toBe('');
@@ -878,6 +905,65 @@ describe('useSearchState', () => {
 
       act(() => result.current.clearAllFilters());
       expect(result.current.serviceFilterMode).toBe('INCLUDE');
+    });
+  });
+
+  describe('default log levels (PR61_DEFAULT_LOG_LEVELS_SINGLE_JAR_AND_USAGE_DOCS)', () => {
+    it('starts a fresh app state with every level selected', async () => {
+      const result = await renderReady();
+      expect(result.current.selectedLevels).toEqual(ALL_SEVERITY_LEVEL_IDS);
+    });
+
+    it('a manual, narrower selection survives a rerender/refetch - nothing resets it back to the default', async () => {
+      const result = await renderReady();
+      act(() => result.current.setSelectedLevels(['ERROR']));
+
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      searchCalls[0].resolve(
+        jsonResponse({
+          events: [eventWithMessage('first')],
+          counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
+
+      // The search that just completed, and any rerender it caused, must not have reset the manual choice.
+      expect(result.current.selectedLevels).toEqual(['ERROR']);
+    });
+
+    it('omits the level filter from the outgoing request while every level is selected (the default) - the UI state and the effective query agree: no restriction', async () => {
+      const result = await renderReady();
+
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      const body = JSON.parse(searchCalls[0].body);
+      expect(body.levels).toBeUndefined();
+      searchCalls[0].resolve(
+        jsonResponse({
+          events: [],
+          counts: { estimatedTotal: null, returned: 0, visible: 0, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+    });
+
+    it('sends the explicit level list once the investigator narrows the selection', async () => {
+      const result = await renderReady();
+      act(() => result.current.setSelectedLevels(['ERROR']));
+
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      const body = JSON.parse(searchCalls[0].body);
+      expect(body.levels).toEqual(['ERROR']);
+      searchCalls[0].resolve(
+        jsonResponse({
+          events: [],
+          counts: { estimatedTotal: null, returned: 0, visible: 0, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
     });
   });
 
@@ -1287,6 +1373,175 @@ describe('useSearchState', () => {
       act(() => result.current.runSearch());
       await waitFor(() => expect(searchCalls).toHaveLength(2));
       expect(searchCalls[1].body).toContain('"composeProject":"project-a"');
+    });
+  });
+
+  /**
+   * SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1 - `invalidateSearchForScopeChange` is the extracted,
+   * source-agnostic half of the reset the Compose-project-switch tests above already prove for Docker
+   * (`App.tsx` calls it directly after a successful OpenShift Project/Workload/Pod/Container mutation - see
+   * `App.tsx`'s own `handleOpenShiftScopeChangedFromSearch`). These tests exercise the function itself, in
+   * isolation, the same way the Compose-project tests exercise it indirectly through `setSelectedComposeProject`.
+   */
+  describe('invalidateSearchForScopeChange (SOURCE_EXPERIENCE_PARITY_TARGETED_RECOVERY_1)', () => {
+    it('clears the result set and pagination, aborts an in-flight search, and never auto-fires a new one', async () => {
+      const result = await renderReady();
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      const staleCall = searchCalls[0];
+
+      act(() => result.current.invalidateSearchForScopeChange());
+      expect(result.current.searchResult).toBeNull();
+      expect(result.current.selectedIndex).toBeNull();
+
+      // The stale in-flight request must never repopulate the (now newly-scoped) view, even if it resolves late.
+      staleCall.resolve(
+        jsonResponse({
+          events: [eventWithMessage('stale-old-scope-row')],
+          counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await new Promise((r) => setTimeout(r, 20));
+      expect(result.current.searchResult).toBeNull();
+
+      // No new search was fired automatically.
+      expect(searchCalls).toHaveLength(1);
+    });
+
+    it('clears an Inspector selection left over from the old scope', async () => {
+      const result = await searchedWithThreeEvents();
+      act(() => result.current.openInspector(1));
+      expect(result.current.selectedEvent).not.toBeNull();
+
+      act(() => result.current.invalidateSearchForScopeChange());
+      expect(result.current.selectedIndex).toBeNull();
+      expect(result.current.selectedEvent).toBeNull();
+    });
+
+    it('clears context/breadcrumb/original-snapshot state derived from the old scope', async () => {
+      const result = await searchedWithThreeEvents();
+      act(() => result.current.showContext(result.current.searchResult!.events[0]));
+      expect(result.current.breadcrumbLabel).not.toBeNull();
+      expect(result.current.contextRootIdentity).not.toBeNull();
+
+      act(() => result.current.invalidateSearchForScopeChange());
+      expect(result.current.breadcrumbLabel).toBeNull();
+      expect(result.current.contextRootIdentity).toBeNull();
+    });
+
+    it('clears journey/investigation state derived from the old scope', async () => {
+      const result = await renderReady();
+      act(() => result.current.openJourney('traceId', 'trace-old-scope'));
+      await waitFor(() => expect(journeyCalls).toHaveLength(1));
+      journeyCalls[0].resolve(
+        jsonResponse({
+          events: [eventWithMessage('related')],
+          counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await waitFor(() => expect(result.current.journeyResult).not.toBeNull());
+
+      act(() => result.current.invalidateSearchForScopeChange());
+      expect(result.current.journeyQuery).toBeNull();
+      expect(result.current.journeyResult).toBeNull();
+      expect(result.current.journeyError).toBeNull();
+    });
+  });
+
+  describe('workspace navigation origin (PR61_OWNER_NAVIGATION_RECOVERY_2)', () => {
+    it('openMappingWorkspace defaults to settings-origin; closing returns to Settings, positioned on Field mapping', async () => {
+      const result = await renderReady();
+      act(() => result.current.openMappingWorkspace());
+      expect(result.current.mappingWorkspaceOpen).toBe(true);
+      expect(result.current.mappingWorkspaceOrigin).toBe('settings');
+
+      act(() => result.current.closeMappingWorkspace());
+      expect(result.current.mappingWorkspaceOpen).toBe(false);
+      expect(result.current.settingsWorkspaceOpen).toBe(true);
+      expect(result.current.settingsTargetSection).toBe('mapping');
+    });
+
+    it('openMappingWorkspace("search") - Shell\'s own header trigger - closing returns to plain Search, not Settings', async () => {
+      const result = await renderReady();
+      act(() => result.current.openMappingWorkspace('search'));
+      expect(result.current.mappingWorkspaceOrigin).toBe('search');
+
+      act(() => result.current.closeMappingWorkspace());
+      expect(result.current.mappingWorkspaceOpen).toBe(false);
+      expect(result.current.settingsWorkspaceOpen).toBe(false);
+    });
+
+    it('openClassificationWorkspace defaults to settings-origin; closing returns to Settings, positioned on Classification rules', async () => {
+      const result = await renderReady();
+      act(() => result.current.openClassificationWorkspace());
+      expect(result.current.classificationWorkspaceOpen).toBe(true);
+      expect(result.current.classificationWorkspaceOrigin).toBe('settings');
+
+      act(() => result.current.closeClassificationWorkspace());
+      expect(result.current.classificationWorkspaceOpen).toBe(false);
+      expect(result.current.settingsWorkspaceOpen).toBe(true);
+      expect(result.current.settingsTargetSection).toBe('classification');
+    });
+
+    it('openSettingsWorkspace lands deterministically on the requested section, not always the default', async () => {
+      const result = await renderReady();
+      act(() => result.current.openSettingsWorkspace('shortcuts'));
+      expect(result.current.settingsWorkspaceOpen).toBe(true);
+      expect(result.current.settingsTargetSection).toBe('shortcuts');
+    });
+
+    it('openSettingsWorkspace with no argument defaults to sources, same as before this mission', async () => {
+      const result = await renderReady();
+      act(() => result.current.openSettingsWorkspace());
+      expect(result.current.settingsTargetSection).toBe('sources');
+    });
+
+    it('the Inspector\'s "Create tag rule from this event" marks search-origin and remembers the selected event, so closing reopens the Inspector on it - never stranding the user on bare Search results', async () => {
+      const result = await renderReady();
+      act(() => result.current.runSearch());
+      await waitFor(() => expect(searchCalls).toHaveLength(1));
+      searchCalls[0].resolve(
+        jsonResponse({
+          events: [eventWithMessage('first'), eventWithMessage('second')],
+          counts: { estimatedTotal: null, returned: 2, visible: 2, limit: 200, truncated: false },
+          nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+        }),
+      );
+      await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(2));
+
+      act(() => result.current.openInspector(1));
+      expect(result.current.selectedIndex).toBe(1);
+
+      act(() => result.current.openClassificationRuleFromEvent(result.current.searchResult!.events[1]));
+      // Opening the workspace closes the Inspector immediately (existing behavior, unchanged) ...
+      expect(result.current.selectedIndex).toBeNull();
+      expect(result.current.classificationWorkspaceOrigin).toBe('search');
+
+      // ... but closing the workspace restores it, rather than leaving the user on bare Search results.
+      act(() => result.current.closeClassificationWorkspace());
+      expect(result.current.classificationWorkspaceOpen).toBe(false);
+      expect(result.current.settingsWorkspaceOpen).toBe(false);
+      expect(result.current.selectedIndex).toBe(1);
+      expect(result.current.selectedEvent?.message).toBe('second');
+    });
+
+    it('opening the Classification workspace from Settings (not the Inspector) never reopens an Inspector on close - there was nothing to return to', async () => {
+      const result = await renderReady();
+      act(() => result.current.openClassificationWorkspace('settings'));
+      act(() => result.current.closeClassificationWorkspace());
+      expect(result.current.selectedIndex).toBeNull();
+    });
+
+    it('never auto-runs Search on any workspace-navigation transition', async () => {
+      const result = await renderReady();
+      act(() => result.current.openMappingWorkspace());
+      act(() => result.current.closeMappingWorkspace());
+      act(() => result.current.openClassificationWorkspace());
+      act(() => result.current.closeClassificationWorkspace());
+      act(() => result.current.openSettingsWorkspace('appearance'));
+      expect(searchCalls).toHaveLength(0);
     });
   });
 });

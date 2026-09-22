@@ -200,6 +200,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     health: null,
     healthLoading: false,
     retryHealth: vi.fn(),
+    invalidateSearchForScopeChange: vi.fn(),
     searchResult: null,
     searchLoading: false,
     loadingMore: false,
@@ -234,8 +235,13 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     fieldMappingSearchReady: true,
     refreshFieldMappingProfile: vi.fn(),
     mappingWorkspaceOpen: false,
+    mappingWorkspaceOrigin: 'search',
     openMappingWorkspace: vi.fn(),
     closeMappingWorkspace: vi.fn(),
+    settingsWorkspaceOpen: false,
+    settingsTargetSection: 'sources',
+    openSettingsWorkspace: vi.fn(),
+    closeSettingsWorkspace: vi.fn(),
     selectedTags: [],
     setSelectedTags: vi.fn(),
     classificationTags: null,
@@ -245,6 +251,7 @@ function baseState(overrides: Partial<SearchState> = {}): SearchState {
     classificationWorkspaceOpen: false,
     classificationWorkspaceEvent: null,
     classificationWorkspaceIntent: null,
+    classificationWorkspaceOrigin: 'settings',
     classificationWorkspaceKey: 0,
     openClassificationWorkspace: vi.fn(),
     openClassificationRuleFromEvent: vi.fn(),
@@ -262,9 +269,12 @@ function renderWorkspace(sourceEvent: LogEvent) {
     <ClassificationRulesWorkspace
       sourceEvent={sourceEvent}
       intent="addExtraction"
+      origin="search"
       buildScope={buildScope}
       onRulesChanged={onRulesChanged}
       onClose={onClose}
+      onOpenMapping={vi.fn()}
+      onOpenSettings={vi.fn()}
     />,
   );
   return { ...utils, onClose, onRulesChanged, buildScope };

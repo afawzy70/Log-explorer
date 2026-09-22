@@ -1,0 +1,58 @@
+/*
+ * Shapes/colours mirror ResultsTable.module.css's own `.sevMark*` rules (B3) - see this component's own
+ * doc comment for why they're not literally shared. Inline-flow only (no absolute positioning) - a consumer
+ * that needs the Time-cell gutter's own absolute placement keeps using columnRegistry.tsx's private variant.
+ */
+.sevMark {
+  display: inline-block;
+  flex: none;
+}
+
+.sevMarkError {
+  width: 8px;
+  height: 8px;
+  background: var(--v2-sev-error-mark);
+  border-radius: var(--v2-r-xs);
+  transform: rotate(45deg) scale(0.9);
+}
+
+.sevMarkWarn {
+  width: 10px;
+  height: 8px;
+  background: var(--v2-sev-warn-mark);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.sevMarkInfo {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--v2-sev-info-mark);
+}
+
+.sevMarkDebug {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--v2-sev-debug-mark);
+}
+
+.sevMarkTrace {
+  width: 8px;
+  height: 2px;
+  background: var(--v2-sev-trace-mark);
+}
+
+@media (forced-colors: active) {
+  .sevMarkError,
+  .sevMarkWarn,
+  .sevMarkInfo {
+    background: CanvasText;
+  }
+  .sevMarkDebug {
+    box-shadow: inset 0 0 0 1.5px CanvasText;
+  }
+  .sevMarkTrace {
+    background: CanvasText;
+  }
+}

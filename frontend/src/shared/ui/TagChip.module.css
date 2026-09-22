@@ -1,67 +1,123 @@
 /*
- * One classification tag, drawn in its rule's semantic colour.
+ * One classification tag - B1 "Instrument Neutral" chip grammar
+ * (`docs/ux-v2-modern-developer-console/DESIGN_SYSTEM.md` §22.2, §22.11
+ * A4): a light hue TINT, a small hue DOT, and NEUTRAL text - deliberately
+ * a different visual grammar from severity (coloured ink + a level
+ * mark), so a RED tag can never read as an ERROR level. The text always
+ * carries the whole meaning; the dot is redundant identity only.
  *
- * The text is always present - colour never carries meaning on its own (CLAUDE.md §7), so the chip stays
- * readable for colour-blind users, in high contrast, and in print. Height is capped so a tagged results row is
- * exactly as tall as an untagged one.
+ * The text is always present - colour never carries meaning on its own
+ * (CLAUDE.md §7), so the chip stays readable for colour-blind users, in
+ * high contrast, and in print. Height is capped so a tagged results row
+ * is exactly as tall as an untagged one.
  */
 .chip {
   display: inline-flex;
   align-items: center;
+  gap: 5px;
+  min-width: 0;
   max-width: 100%;
   height: 18px;
-  padding: 0 6px;
-  border: 1px solid transparent;
-  border-radius: 3px;
-  background: var(--tag-bg, var(--color-tag-gray-bg));
-  color: var(--tag-fg, var(--color-tag-gray));
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  line-height: 16px;
+  padding: 0 6px 0 5px;
+  border: var(--v2-bw, 1px) solid transparent;
+  border-radius: var(--v2-r-xs, 2px);
+  background: var(--tag-tint, var(--v2-neutral-tint));
+  color: var(--v2-tag-ink, var(--v2-ink-2));
+  font: var(--v2-text-label, 500 12px/16px sans-serif);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.gray {
-  --tag-fg: var(--color-tag-gray);
-  --tag-bg: var(--color-tag-gray-bg);
-}
-.blue {
-  --tag-fg: var(--color-tag-blue);
-  --tag-bg: var(--color-tag-blue-bg);
-}
-.cyan {
-  --tag-fg: var(--color-tag-cyan);
-  --tag-bg: var(--color-tag-cyan-bg);
-}
-.green {
-  --tag-fg: var(--color-tag-green);
-  --tag-bg: var(--color-tag-green-bg);
-}
-.amber {
-  --tag-fg: var(--color-tag-amber);
-  --tag-bg: var(--color-tag-amber-bg);
-}
-.orange {
-  --tag-fg: var(--color-tag-orange);
-  --tag-bg: var(--color-tag-orange-bg);
-}
-.red {
-  --tag-fg: var(--color-tag-red);
-  --tag-bg: var(--color-tag-red-bg);
-}
-.purple {
-  --tag-fg: var(--color-tag-purple);
-  --tag-bg: var(--color-tag-purple-bg);
+/* The hue dot - redundant identity, never the only signal (CLAUDE.md §7). */
+.chip::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--v2-r-xs, 2px);
+  background: var(--tag-hue, var(--v2-tag-gray));
 }
 
-/* High contrast / forced colours: keep the text, drop the tint. */
+.text {
+  /*
+   * `.text` is a flex ITEM of `.chip` (an inline-flex container). Flex items
+   * default to `min-width: auto`, which refuses to shrink below the
+   * content's own intrinsic width - without this override, `overflow`/
+   * `text-overflow` below never actually engage, and the chip (and its
+   * fixed-width table cell) is forced wider than its column, overflowing
+   * the page at narrow widths. This is the fix, not the truncation rules
+   * themselves.
+   */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gray {
+  --tag-hue: var(--v2-tag-gray);
+  --tag-tint: var(--v2-tag-gray-tint);
+}
+.blue {
+  --tag-hue: var(--v2-tag-blue);
+  --tag-tint: var(--v2-tag-blue-tint);
+}
+.cyan {
+  --tag-hue: var(--v2-tag-cyan);
+  --tag-tint: var(--v2-tag-cyan-tint);
+}
+.green {
+  --tag-hue: var(--v2-tag-green);
+  --tag-tint: var(--v2-tag-green-tint);
+}
+.amber {
+  --tag-hue: var(--v2-tag-amber);
+  --tag-tint: var(--v2-tag-amber-tint);
+}
+.orange {
+  --tag-hue: var(--v2-tag-orange);
+  --tag-tint: var(--v2-tag-orange-tint);
+}
+.red {
+  --tag-hue: var(--v2-tag-red);
+  --tag-tint: var(--v2-tag-red-tint);
+}
+.purple {
+  --tag-hue: var(--v2-tag-purple);
+  --tag-tint: var(--v2-tag-purple-tint);
+}
+
+/*
+ * The overflow counter ("+N") is deliberately NOT a second coloured chip
+ * (§22.11 A3): it counts identities, it is not one, so it stays neutral
+ * and quieter than the tag beside it. No dot, no tint - see
+ * `TagCountBadge` in `TagChip.tsx`.
+ */
+.countBadge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 5px;
+  border: var(--v2-bw, 1px) solid var(--v2-line, #d6dbe1);
+  border-radius: var(--v2-r-xs, 2px);
+  background: transparent;
+  font: 500 11px/16px var(--v2-font-ui, sans-serif);
+  color: var(--v2-ink-3, #636b75);
+}
+
+/* High contrast / forced colours: the tint and dot fall away, the text does not. */
 @media (forced-colors: active) {
   .chip {
     border-color: CanvasText;
     background: Canvas;
+    color: CanvasText;
+  }
+  .chip::before {
+    background: CanvasText;
+  }
+  .countBadge {
+    border-color: CanvasText;
     color: CanvasText;
   }
 }

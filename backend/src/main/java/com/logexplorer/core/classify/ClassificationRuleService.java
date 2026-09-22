@@ -58,8 +58,15 @@ public class ClassificationRuleService {
       String storageFile) {
   }
 
+  /**
+   * {@code displayColor} is the pack rule's OWN colour (its
+   * {@link ClassificationRule#effectiveDisplayColor()} - the deterministic default when the pack rule chose none),
+   * never the existing/matched rule's colour: the import preview draws each pack row in the colour that rule
+   * itself would bring, so a reviewer can see it before deciding (owner mission §22.11 A12). {@code null} only for
+   * an {@code INVALID} item whose pack content could not be parsed into a rule at all.
+   */
   public record ImportItem(int index, String id, String name, List<String> tags, Status status, String existingName,
-      List<RuleValidationError> errors) {
+      List<RuleValidationError> errors, TagColor displayColor) {
     public enum Status { NEW, IDENTICAL, CONFLICT, INVALID }
   }
 
@@ -376,19 +383,22 @@ public class ClassificationRuleService {
       List<String> tags = rule == null ? List.of() : rule.tags();
       if (!item.errors().isEmpty()) {
         invalid++;
-        items.add(new ImportItem(item.index(), id, name, tags, ImportItem.Status.INVALID, null, item.errors()));
+        items.add(new ImportItem(item.index(), id, name, tags, ImportItem.Status.INVALID, null, item.errors(),
+            rule == null ? null : rule.effectiveDisplayColor()));
         continue;
       }
       ClassificationRule match = existing.get(id);
       if (match == null) {
         newRules++;
-        items.add(new ImportItem(item.index(), id, name, tags, ImportItem.Status.NEW, null, List.of()));
+        items.add(new ImportItem(item.index(), id, name, tags, ImportItem.Status.NEW, null, List.of(), rule.effectiveDisplayColor()));
       } else if (match.sameContentAs(rule)) {
         identical++;
-        items.add(new ImportItem(item.index(), id, name, tags, ImportItem.Status.IDENTICAL, match.name(), List.of()));
+        items.add(new ImportItem(item.index(), id, name, tags, ImportItem.Status.IDENTICAL, match.name(), List.of(),
+            rule.effectiveDisplayColor()));
       } else {
         conflicts++;
-        items.add(new ImportItem(item.index(), id, name, tags, ImportItem.Status.CONFLICT, match.name(), List.of()));
+        items.add(new ImportItem(item.index(), id, name, tags, ImportItem.Status.CONFLICT, match.name(), List.of(),
+            rule.effectiveDisplayColor()));
       }
     }
     return new ImportPreview(parsed.info(), parsed.items().size(), newRules, identical, conflicts, invalid, items,

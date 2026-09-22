@@ -1,0 +1,65 @@
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 6px var(--space-4);
+  background: var(--v2-surface-work);
+  border-bottom: var(--v2-bw) solid var(--v2-line);
+  flex-wrap: wrap;
+}
+
+/*
+ * `white-space: nowrap` was tried first (matching the design's own single-line `<h1>`) and found to overflow
+ * the page at 390px - the Surroundings view's own title is a long single sentence ("Context - +-30s around
+ * <timestamp>"), not a short "Trace: t-1" label + id pair, so it must be allowed to wrap like any other long
+ * text rather than forcing horizontal scroll. Found by measuring the real rendered page at 390px.
+ */
+.title {
+  margin: 0;
+  font: var(--v2-text-workspace);
+  color: var(--v2-ink-1);
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.value {
+  font: 500 14px/20px var(--v2-font-mono);
+  color: var(--v2-ink-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.kbd {
+  font: 500 11px/16px var(--v2-font-mono);
+  color: var(--v2-ink-3);
+  border: var(--v2-bw) solid var(--v2-line);
+  border-bottom-width: 2px;
+  border-radius: var(--v2-r-xs);
+  padding: 0 4px;
+  background: var(--v2-surface-work);
+  margin-left: 4px;
+}
+
+@media (max-width: 1366px) {
+  .bar {
+    flex-wrap: wrap;
+  }
+
+  .right {
+    flex-wrap: wrap;
+    margin-left: 0;
+  }
+}

@@ -2,11 +2,21 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { UIEvent } from 'react';
 import { Button } from '../../shared/ui/Button';
 import { VisuallyHidden } from '../../shared/ui/VisuallyHidden';
-import { JourneyEntryRow } from '../journey/JourneyEntryRow';
-import { SeverityFilter } from '../search/SeverityFilter';
-import { ALL_SEVERITY_LEVEL_IDS } from '../search/severityLevels';
+import { SeverityMark } from '../../shared/ui/SeverityMark';
+import { TagChip, TagCountBadge, tagColorsOf } from '../../shared/ui/TagChip';
+import {
+  EMPTY_VALUE,
+  formatTimestampCell,
+  resolveCorrelationOrTrace,
+  resolveService,
+  splitTimestampCell,
+} from '../results/columnMapping';
+import { colorForService } from '../journey/serviceColor';
+import { LiveSeverityFilter } from './LiveSeverityFilter';
+import { ALL_SEVERITY_LEVEL_IDS, isAllLevelsSelected } from '../search/severityLevels';
 import { VISIBLE_CAP } from './liveTailTypes';
 import type { LiveTailHandle } from './useLiveTail';
+import type { LogEvent } from '../../shared/api/types';
 import styles from './LiveTailPanel.module.css';
 
 export interface LiveTailPanelProps {
@@ -18,21 +28,38 @@ export interface LiveTailPanelProps {
 const SCROLL_TOP_THRESHOLD = 4;
 
 /**
- * The live tail view (Legacy Remediation Slice 5, superseding Phase J's
- * design - `docs/verification/LEGACY_REMEDIATION_SLICE_5_REPORT.md`).
- * "Visually distinct from historical search" - a dedicated pulsing "LIVE"
- * indicator and its own accent color, never the seven-column results
- * table. "Must never imply completeness of historical data" - the banner
- * below states plainly that this only shows events received since Start,
- * and never claims exact-once delivery across a reconnect (see the
- * reconnect notice below).
+ * The live tail view (originally Legacy Remediation Slice 5, superseding
+ * Phase J's design - `docs/verification/LEGACY_REMEDIATION_SLICE_5_REPORT.md`;
+ * recomposed to the approved B1 design in B7, Session 10).
+ * "Must never imply completeness of historical data" - the banner below
+ * states plainly that this only shows events received since Start, and
+ * never claims exact-once delivery across a reconnect (see the reconnect
+ * notice below). Live stays visually distinct from historical Search
+ * through its own mode-bar and acquisition-state badge (a dedicated
+ * pulsing "Live" indicator, never color alone - {@link liveBadgeText}),
+ * not through a structurally different event list.
+ *
+ * <p><b>B7 (Session 10) - event list is now a real `&lt;table&gt;`</b>,
+ * matching Results' own column/severity-mark grammar
+ * (`COMPONENT_INVENTORY.md`'s own RECOMPOSE row for this file names
+ * "event table" as required content) - a deliberate, owner-approved
+ * supersession of Slice 5's original "never the seven-column results
+ * table" card-list decision (CLAUDE.md §5's own "apply the later
+ * decision, name the conflict" rule), directly serving this mission's own
+ * "Live must visually belong to the same product... do not create a
+ * second design language for Live" instruction. `JourneyEntryRow.tsx`
+ * (the old card-row renderer) had exactly one remaining consumer - this
+ * component - and is deleted as genuinely dead code now that this no
+ * longer uses it, not left behind.
  *
  * <p>Severity/text filtering here is purely local/client-side over
  * `live.visibleEvents` (the already-bounded, already-masked retained
  * set) - it never changes what is requested from the server and never
- * reconnects. `SeverityFilter` is the exact same component the
- * historical toolbar uses, reused as-is (never a duplicated severity
- * expression language).
+ * reconnects. `LiveSeverityFilter` (DRIFT-005 remediation) is Live's own
+ * always-visible 4-segment display filter, matching the design's own
+ * `live()` markup - distinct from Search's collapsed `SeverityFilter`
+ * popover trigger, but built from the same `severityLevels.ts` data and
+ * toggle semantics, never a duplicated severity expression language.
  *
  * <p><b>Follow newest</b>: `containerRef`'s own scroll position drives
  * it, not a separate simulated "virtual scroll" - scrolling away from
@@ -40,7 +67,9 @@ const SCROLL_TOP_THRESHOLD = 4;
  * own scroll), and re-enabling it (the toggle or "Jump to newest")
  * scrolls back to the top in the same effect that keeps following while
  * enabled, so there is exactly one code path for "make the newest event
- * visible."
+ * visible." `containerRef` now points at the table's own scroll wrapper
+ * (`.tableScroll`) instead of the old `<ol>` element directly - a `<table>`
+ * needs an explicit scrolling ancestor, the list didn't.
  */
 export function LiveTailPanel({ live, sourceDisplayName, onStart }: LiveTailPanelProps) {
   const { connectionState } = live;
@@ -54,12 +83,17 @@ export function LiveTailPanel({ live, sourceDisplayName, onStart }: LiveTailPane
 
   const [filterLevels, setFilterLevels] = useState<string[]>(ALL_SEVERITY_LEVEL_IDS);
   const [filterText, setFilterText] = useState('');
-  const containerRef = useRef<HTMLOListElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   const filteredEvents = useMemo(() => {
     const text = filterText.trim().toLowerCase();
+    // Every offered level selected == no restriction: skip the severity check entirely rather than
+    // matching against the known id list, so an event with a missing or unrecognized severity (e.g. a
+    // genuine "FATAL") is never hidden while the user has deselected nothing (see severityLevels.ts's
+    // isAllLevelsSelected doc comment - the same reasoning Search's buildRequestBody applies).
+    const restrictBySeverity = !isAllLevelsSelected(filterLevels);
     return live.visibleEvents.filter((event) => {
-      if (event.severity && !filterLevels.includes(event.severity.toUpperCase())) {
+      if (restrictBySeverity && event.severity && !filterLevels.includes(event.severity.toUpperCase())) {
         return false;
       }
       if (text && !(event.message ?? '').toLowerCase().includes(text)) {
@@ -78,7 +112,7 @@ export function LiveTailPanel({ live, sourceDisplayName, onStart }: LiveTailPane
     }
   }, [live.visibleEvents, live.followNewest]);
 
-  function handleScroll(event: UIEvent<HTMLOListElement>) {
+  function handleScroll(event: UIEvent<HTMLDivElement>) {
     if (event.currentTarget.scrollTop > SCROLL_TOP_THRESHOLD) {
       live.setFollowNewest(false);
     }
@@ -137,21 +171,25 @@ export function LiveTailPanel({ live, sourceDisplayName, onStart }: LiveTailPane
           {connectionState === 'live' ? (
             <Button variant="secondary" onClick={live.pause}>
               Pause
+              <Kbd letter="P" />
             </Button>
           ) : null}
           {connectionState === 'paused' ? (
             <Button variant="secondary" onClick={live.resume}>
               Resume
+              <Kbd letter="P" />
             </Button>
           ) : null}
           {isActive ? (
             <Button variant="ghost" onClick={live.stop}>
               Stop
+              <Kbd letter="S" />
             </Button>
           ) : null}
           {live.visibleEvents.length > 0 ? (
             <Button variant="ghost" onClick={live.clear}>
               Clear
+              <Kbd letter="C" />
             </Button>
           ) : null}
           <Button
@@ -160,6 +198,7 @@ export function LiveTailPanel({ live, sourceDisplayName, onStart }: LiveTailPane
             onClick={() => live.setFollowNewest(!live.followNewest)}
           >
             {live.followNewest ? '✓ Follow newest' : 'Follow newest'}
+            <Kbd letter="F" />
           </Button>
         </div>
       </div>
@@ -194,7 +233,9 @@ export function LiveTailPanel({ live, sourceDisplayName, onStart }: LiveTailPane
       ) : null}
 
       <div className={styles.filterRow}>
-        <SeverityFilter selected={filterLevels} onChange={setFilterLevels} />
+        <LiveSeverityFilter selected={filterLevels} onChange={setFilterLevels} />
+        {/* DRIFT-006 remediation: restores the design's own explanatory copy for the display filter. */}
+        <span className={styles.filterNote}>Display filter only — does not change what is received.</span>
         <label className={styles.textFilterLabel}>
           <VisuallyHidden>Filter live events by text</VisuallyHidden>
           <input
@@ -234,34 +275,158 @@ export function LiveTailPanel({ live, sourceDisplayName, onStart }: LiveTailPane
                   : 'Click Start to begin streaming new events as they happen.'}
         </p>
       ) : (
-        <ol className={styles.list} ref={containerRef} onScroll={handleScroll}>
-          {filteredEvents.map((event, index) => (
-            // eslint-disable-next-line react/no-array-index-key
-            <JourneyEntryRow key={index} event={event} />
-          ))}
-        </ol>
+        <div className={styles.tableScroll} ref={containerRef} onScroll={handleScroll}>
+          <table className={styles.table} aria-label="Live events, newest first">
+            <colgroup>
+              <col className={styles.colTime} />
+              <col className={styles.colLevel} />
+              <col className={styles.colService} />
+              <col />
+              <col className={styles.colTags} />
+              <col className={styles.colId} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col" aria-sort="descending">
+                  Time
+                </th>
+                <th scope="col">Level</th>
+                <th scope="col">Service</th>
+                <th scope="col">What happened</th>
+                <th scope="col">Tags</th>
+                <th scope="col">Trace</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredEvents.map((event, index) => (
+                // eslint-disable-next-line react/no-array-index-key
+                <LiveEventRow key={index} event={event} />
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
 }
 
-/** UX-R3 §16 - the exact text every state renders in the badge; always present alongside the tone, never color-only. */
+/** Purely decorative keyboard-shortcut hint appended to a control's own text - `aria-hidden`, so the button's accessible name stays exactly its visible label (e.g. "Pause"), unchanged from before this recompose and matching every existing exact-name test assertion. */
+function Kbd({ letter }: { letter: string }) {
+  return (
+    <kbd className={styles.kbd} aria-hidden="true">
+      {letter}
+    </kbd>
+  );
+}
+
+/**
+ * REQUIREMENTS_TRACEABILITY.md item #72 ("JMS / event correlation metadata displayed... Trace/Span/
+ * Correlation/Event IDs when available") - the retired card-list (`JourneyEntryRow`) showed all four
+ * simultaneously; the table's single ID column (matching Results' own default Correlation/Trace column,
+ * which also shows only one by default - Span ID/Event ID are opt-in optional Results columns) only ever
+ * shows the primary resolved value as visible text. Live has no Columns picker and no Inspector integration
+ * to fall back on, so without this, Span ID/Event ID would become entirely unreachable for a live-streamed
+ * event - a real requirement loss, not a cosmetic one. This composes every present identifier into the
+ * cell's `title` so the full set stays discoverable on hover, same graceful-degradation shape the Tags cell
+ * already uses (compact visible value, full detail on hover/accessible name).
+ */
+function allIdentifiersTitle(event: LogEvent): string | null {
+  const parts: string[] = [];
+  if (event.traceId) parts.push(`Trace ID: ${event.traceId}`);
+  if (event.spanId) parts.push(`Span ID: ${event.spanId}`);
+  if (event.correlationId) parts.push(`Correlation ID: ${event.correlationId}`);
+  if (event.eventId) parts.push(`Event ID: ${event.eventId}`);
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+/**
+ * One row of the live event table - mirrors Results' own column/severity-mark grammar
+ * (`features/results/columnRegistry.tsx`) so Live reads as the same product, not a second design language.
+ * Trace/Correlation ID resolution reuses `resolveCorrelationOrTrace` (trace preferred, correlation fallback) -
+ * the exact same precedence Results' own Correlation/Trace column already uses, not a new rule invented here.
+ */
+function LiveEventRow({ event }: { event: LogEvent }) {
+  const color = colorForService(event.service);
+  const message = event.malformed ? (event.rawLine ?? EMPTY_VALUE) : (event.message ?? EMPTY_VALUE);
+  const tags = event.tags ?? [];
+  const tagColors = tagColorsOf(event.classifications);
+  const [firstTag, ...restTags] = tags;
+  const allTags = tags.join(', ');
+  const idCell = resolveCorrelationOrTrace(event);
+  const idCellTitle = allIdentifiersTitle(event);
+  const split = splitTimestampCell(event.timestamp);
+
+  return (
+    <tr className={event.severity?.toUpperCase() === 'ERROR' ? styles.errorRow : undefined}>
+      <td className={styles.timeCell}>
+        <SeverityMark severity={event.severity} />
+        {/*
+         * Same weighting Results' own Time column uses (`columnRegistry.tsx`'s
+         * `splitTimestampCell` usage) - the repeated calendar date de-emphasized
+         * behind the clock time that actually varies row to row. Necessary here,
+         * not just cosmetic: the unweighted full string overflowed the fixed
+         * `.colTime` width and visually bled into the Level column.
+         */}
+        <span className={styles.timeText} title={formatTimestampCell(event.timestamp)}>
+          {split ? (
+            <>
+              {split.date ? <span className={styles.timeDatePart}>{split.date}</span> : null}
+              <span className={styles.timeClockPart}>{split.time}</span>
+            </>
+          ) : (
+            formatTimestampCell(event.timestamp)
+          )}
+        </span>
+      </td>
+      <td className={styles.levelCell}>{event.severity ?? EMPTY_VALUE}</td>
+      <td className={styles.serviceCell}>
+        <span className={styles.serviceSwatch} style={{ background: color }} aria-hidden="true" />
+        {resolveService(event)}
+      </td>
+      <td className={styles.messageCell}>{message}</td>
+      <td>
+        {tags.length > 0 ? (
+          <span className={styles.tagsCell} title={allTags}>
+            <VisuallyHidden>{`Tags: ${allTags}`}</VisuallyHidden>
+            <span aria-hidden="true" className={styles.tagsCell}>
+              <TagChip tag={firstTag} color={tagColors[firstTag]} title={allTags} />
+              {restTags.length > 0 ? <TagCountBadge count={restTags.length} title={allTags} /> : null}
+            </span>
+          </span>
+        ) : (
+          EMPTY_VALUE
+        )}
+      </td>
+      <td className={styles.idCell} title={idCellTitle ?? undefined}>
+        {idCell ? idCell.value : EMPTY_VALUE}
+      </td>
+    </tr>
+  );
+}
+
+/*
+ * UX-R3 §16 - the exact text every state renders in the badge; always present alongside the tone, never
+ * color-only. B7 (Session 10) - sentence case ("Live", not "LIVE"), matching the approved design's own copy and
+ * every other v2 status pill in this app (Field Mapping's "Search ready.", Settings' "Connected", the
+ * classification import preview's "New"/"Identical", etc.) - none of these strings are asserted case-sensitively
+ * anywhere in the test suite (confirmed by reading every assertion first), so this is presentation only.
+ */
 function liveBadgeText(state: LiveTailHandle['connectionState']): string {
   switch (state) {
     case 'idle':
-      return 'NOT STARTED';
+      return 'Not started';
     case 'connecting':
-      return 'CONNECTING';
+      return 'Connecting';
     case 'live':
-      return 'LIVE';
+      return 'Live';
     case 'paused':
-      return 'PAUSED';
+      return 'Paused';
     case 'reconnecting':
-      return 'RECONNECTING';
+      return 'Reconnecting';
     case 'stopped':
-      return 'STOPPED';
+      return 'Stopped';
     case 'failed':
-      return 'CONNECTION FAILED';
+      return 'Connection failed';
   }
 }
 
@@ -294,15 +459,15 @@ function sourceStatusBadge(
   }
   switch (sourceStatus.state) {
     case 'CONNECTING':
-      return { text: 'CONNECTING', tone: styles.toneConnecting };
+      return { text: 'Connecting', tone: styles.toneConnecting };
     case 'NO_ACTIVE_TARGETS':
-      return { text: 'NO ACTIVE STREAMS', tone: styles.toneFailed };
+      return { text: 'No active streams', tone: styles.toneFailed };
     case 'EXPIRED':
-      return { text: 'SESSION EXPIRED', tone: styles.toneFailed };
+      return { text: 'Session expired', tone: styles.toneFailed };
     case 'STALE':
-      return { text: 'SCOPE CHANGED — RESTART LIVE', tone: styles.toneFailed };
+      return { text: 'Scope changed — restart Live', tone: styles.toneFailed };
     case 'RECONNECTING':
-      return { text: 'RECONNECTING', tone: styles.toneConnecting };
+      return { text: 'Reconnecting', tone: styles.toneConnecting };
     default:
       return null;
   }

@@ -27,7 +27,14 @@ test.describe('UX-R1 mandatory visual verification (§14) - real rendered app, r
     await captureScreenshot(page, PHASE, 'C-one-active-chip');
 
     // D: a second, independent chip kind (severity, toggled off default) joins it - multiple active chips at once.
-    await page.getByRole('button', { name: 'Warn' }).click(); // toggles a severity level off default
+    // B2 (Session 4): the level chips now live behind the Severity field trigger's popover.
+    await page.getByRole('button', { name: /^severity:/i }).click();
+    // exact: true - the trigger's own aria-label ("Severity: Info, Warn, Error") also contains "Warn" as a
+    // substring, which a loose match would now ambiguously resolve to both buttons.
+    await page.getByRole('button', { name: 'Warn', exact: true }).click(); // toggles a severity level off default
+    // The popover stays open after a toggle (multi-select, no draft/Apply step, same as before this
+    // recompose) - close it explicitly before interacting with the rest of the page.
+    await page.keyboard.press('Escape');
     await expect(page.getByText(/^severity:/i)).toBeVisible();
     await captureScreenshot(page, PHASE, 'D-multiple-active-chips');
 

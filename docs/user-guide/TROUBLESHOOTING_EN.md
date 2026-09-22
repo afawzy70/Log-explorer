@@ -113,9 +113,14 @@ a known, current limitation — see the [Capability Matrix](CAPABILITY_MATRIX.md
 already trust (commonly, an internal/private certificate authority).
 
 **What to do:** for OpenShift, supply the cluster's CA certificate where
-the connection form allows it. Log Explorer never disables certificate
-verification to work around this — the fix is always to supply the
-correct trusted certificate, never to bypass the check.
+the connection form allows it (a `--certificate-authority=<path>` in the
+pasted `oc login` command), or import it once into the truststore of the
+Java installation running Log Explorer — see the README's
+["Export the OpenShift certificate"](../../README.md#2-export-the-openshift-certificate-only-if-your-cluster-uses-a-privateinternal-ca)
+/ ["Import the OpenShift certificate"](../../README.md#3-import-the-openshift-certificate)
+steps for the exact `keytool` command. Log Explorer never disables
+certificate verification to work around this — the fix is always to
+supply the correct trusted certificate, never to bypass the check.
 
 ---
 

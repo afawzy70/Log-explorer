@@ -1,0 +1,137 @@
+{
+  "format": "log-explorer-classification-pack",
+  "schemaVersion": 1,
+  "pack": {
+    "name": "Log Explorer classification rules",
+    "version": "1",
+    "exportedAt": "2026-09-18T16:17:53.546345855Z"
+  },
+  "rules": [
+    {
+      "id": "extend-test-rule-a",
+      "name": "Extend test rule A",
+      "description": "",
+      "tags": [
+        "extend-test-a"
+      ],
+      "displayColor": "PURPLE",
+      "enabled": true,
+      "priority": 100,
+      "matchMode": "ALL",
+      "conditions": [
+        {
+          "field": "message",
+          "matcher": "EXACT",
+          "value": "Payment authorization failed",
+          "ignoreCase": false
+        }
+      ],
+      "extractions": []
+    },
+    {
+      "id": "extend-test-rule-a-2",
+      "name": "Extend test rule A",
+      "description": "",
+      "tags": [
+        "extend-test-a"
+      ],
+      "displayColor": "RED",
+      "enabled": true,
+      "priority": 100,
+      "matchMode": "ALL",
+      "conditions": [
+        {
+          "field": "message",
+          "matcher": "EXACT",
+          "value": "Payment authorization failed",
+          "ignoreCase": false
+        }
+      ],
+      "extractions": []
+    },
+    {
+      "id": "extend-test-rule-a-3",
+      "name": "Extend test rule A",
+      "description": "",
+      "tags": [
+        "extend-test-a"
+      ],
+      "displayColor": "RED",
+      "enabled": true,
+      "priority": 100,
+      "matchMode": "ALL",
+      "conditions": [
+        {
+          "field": "message",
+          "matcher": "EXACT",
+          "value": "Payment authorization failed",
+          "ignoreCase": false
+        }
+      ],
+      "extractions": []
+    },
+    {
+      "id": "extend-test-rule-b",
+      "name": "Extend test rule B",
+      "description": "",
+      "tags": [
+        "extend-test-b"
+      ],
+      "displayColor": "ORANGE",
+      "enabled": true,
+      "priority": 100,
+      "matchMode": "ALL",
+      "conditions": [
+        {
+          "field": "message",
+          "matcher": "EXACT",
+          "value": "Payment authorization failed",
+          "ignoreCase": false
+        }
+      ],
+      "extractions": []
+    },
+    {
+      "id": "extend-test-rule-b-2",
+      "name": "Extend test rule B",
+      "description": "",
+      "tags": [
+        "extend-test-b"
+      ],
+      "displayColor": "ORANGE",
+      "enabled": true,
+      "priority": 100,
+      "matchMode": "ALL",
+      "conditions": [
+        {
+          "field": "message",
+          "matcher": "EXACT",
+          "value": "Payment authorization failed",
+          "ignoreCase": false
+        }
+      ],
+      "extractions": []
+    },
+    {
+      "id": "extend-test-rule-b-3",
+      "name": "Extend test rule B",
+      "description": "",
+      "tags": [
+        "extend-test-b"
+      ],
+      "displayColor": "ORANGE",
+      "enabled": true,
+      "priority": 100,
+      "matchMode": "ALL",
+      "conditions": [
+        {
+          "field": "message",
+          "matcher": "EXACT",
+          "value": "Payment authorization failed",
+          "ignoreCase": false
+        }
+      ],
+      "extractions": []
+    }
+  ]
+}

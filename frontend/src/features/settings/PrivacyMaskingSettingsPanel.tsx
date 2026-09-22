@@ -1,7 +1,5 @@
-import { useId, useRef, useState } from 'react';
-import { Button } from '../../shared/ui/Button';
-import { useDismissableLayer } from '../../shared/ui/useDismissableLayer';
-import { usePopoverTrigger } from '../../shared/ui/usePopoverTrigger';
+import { useEffect, useId, useState } from 'react';
+import { Icon } from '../../shared/ui/Icon';
 import { fetchMaskingSettings, updateMaskingSetting } from '../../shared/api/client';
 import type { MaskingSettings, ProtectedFieldKey } from '../../shared/api/types';
 import styles from './PrivacyMaskingSettingsPanel.module.css';
@@ -15,29 +13,32 @@ const FIELD_LABELS: ReadonlyArray<{ key: ProtectedFieldKey; label: string }> = [
 ];
 
 /**
- * Pre-closure functional recovery (§11/§12/§13/§14): the global, source-
- * independent "Privacy & Masking" settings control - the owner's explicit
- * correction of the prior, incorrect placement of masking information
- * under Docker Settings (masking applies identically to every source:
- * Fixture/Docker/OpenShift/Loki).
+ * The global, source-independent "Privacy & Masking" settings control -
+ * the owner's explicit correction of the prior, incorrect placement of
+ * masking information under Docker Settings (masking applies identically
+ * to every source: Fixture/Docker/OpenShift/Loki).
  *
- * <p><b>Mission "Field Mapping Schema Scan + Masking Policy Extension"
- * §B — SUPERSEDES the paragraph immediately below.</b> The owner has
- * explicitly changed the fresh/default state: all five protected fields
- * (CIF, Username, Customer ID, Device ID, Device IP) start **unmasked**
- * (`MASKED=NO`) on a fresh install / fresh default state. The user may
- * explicitly enable masking per field here. This is a code-level default
- * only — this component itself has no hardcoded assumption about which
- * way the checkboxes start; it always renders exactly what {@link
- * fetchMaskingSettings} returns.
+ * <p>B6.2 (Session 7) recomposed this from a trigger-button popover into a
+ * persistent inline section of the Settings workspace - COMPONENT_
+ * INVENTORY.md's own RECOMPOSE row: "Same move → Privacy &amp; masking,
+ * 'All sources' scope tag, switches with Masked/Unmasked words, warning
+ * banner while any field is unmasked." The per-field control changed from
+ * a plain checkbox to a real `role="switch"` (the design's own required
+ * grammar) - same underlying boolean toggle, same
+ * {@link updateMaskingSetting} call, only the control TYPE changed; state
+ * is still exposed via `aria-checked`, never colour alone (the visible
+ * Masked/Unmasked word carries the same information). The policy now
+ * fetches on mount instead of on trigger-click - this component only
+ * mounts once per Settings-workspace open (`App.tsx`'s own takeover
+ * ternary), which gives the same "always a fresh fetch" guarantee the old
+ * open/close cycle used to provide explicitly.
  *
- * <p><i>Historical (SUPERSEDED) — Pre-closure functional recovery
- * (§11/§12/§13):</i> the five protected fields remained masked by default
- * (`MASKED=YES`) - this SUPERSEDED the historical "permanently masked, no
- * configurability" rule (recorded, with the supersession made explicit,
- * in the requirements register), not a silent removal of it. Preserved
- * here, not deleted, per this project's own "never erase a historical
- * decision" discipline.
+ * <p>Mission "Field Mapping Schema Scan + Masking Policy Extension" §B:
+ * all five protected fields (CIF, Username, Customer ID, Device ID, Device
+ * IP) start **unmasked** (`MASKED=NO`) on a fresh install / fresh default
+ * state. This component itself has no hardcoded assumption about which way
+ * the switches start - it always renders exactly what
+ * {@link fetchMaskingSettings} returns.
  *
  * <p>Unchecking/checking a field calls the real server-side policy
  * endpoint immediately; the server is the sole authority on whether a
@@ -48,16 +49,11 @@ const FIELD_LABELS: ReadonlyArray<{ key: ProtectedFieldKey; label: string }> = [
  * <p>Deliberately NOT a per-row "Reveal" button (§13: "Do NOT implement a
  * casual per-row Reveal button") - this is a policy control that affects
  * NEW results going forward; it never attempts to reconstruct or unmask a
- * value already rendered in the browser from an earlier response (there
- * is nothing to reconstruct from - already-masked values were never
- * anything but the mask marker to begin with, by design). No raw value is
- * ever cached here for a later "reveal" - the panel only ever holds the
- * boolean policy itself, fetched fresh on every open, exactly like {@link
- * DockerSettingsPanel} does for its own settings.
+ * value already rendered in the browser from an earlier response. No raw
+ * value is ever cached here for a later "reveal" - the panel only ever
+ * holds the boolean policy itself.
  */
 export function PrivacyMaskingSettingsPanel() {
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const popover = usePopoverTrigger();
   const headingId = useId();
 
   const [settings, setSettings] = useState<MaskingSettings | null>(null);
@@ -66,22 +62,16 @@ export function PrivacyMaskingSettingsPanel() {
   const [pendingField, setPendingField] = useState<ProtectedFieldKey | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
 
-  useDismissableLayer(wrapperRef, popover.isOpen, close);
-
-  function open() {
-    popover.open();
+  useEffect(() => {
     setLoading(true);
     setLoadError(null);
     fetchMaskingSettings()
       .then(setSettings)
       .catch((error: unknown) => setLoadError(error instanceof Error ? error.message : 'Failed to load masking settings'))
       .finally(() => setLoading(false));
-  }
-
-  function close() {
-    popover.close();
-    setUpdateError(null);
-  }
+    // Mount-once fetch - see the doc comment above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function toggle(field: ProtectedFieldKey, nextMasked: boolean) {
     setPendingField(field);
@@ -95,84 +85,84 @@ export function PrivacyMaskingSettingsPanel() {
   const anyFieldUnmasked = settings != null && FIELD_LABELS.some(({ key }) => settings[key] === false);
 
   return (
-    <div ref={wrapperRef} className={styles.wrapper}>
-      <button
-        ref={popover.triggerRef}
-        type="button"
-        className={styles.trigger}
-        aria-haspopup="true"
-        aria-expanded={popover.isOpen}
-        onClick={() => (popover.isOpen ? close() : open())}
-      >
-        Privacy &amp; masking
-      </button>
+    <section className={styles.panel} aria-labelledby={headingId} data-testid="privacy-masking-settings-panel">
+      <div className={styles.panelHead}>
+        <h2 id={headingId} className={styles.heading}>
+          Privacy &amp; masking
+        </h2>
+        <span className={`${styles.scopeTag} ${styles.scopeTagGlobal}`}>
+          <Icon name="globe" size="sm" />
+          All sources
+        </span>
+        <span className={styles.roTag}>Applies to new requests only</span>
+      </div>
 
-      {popover.isOpen ? (
-        <div className={styles.panel} role="dialog" aria-labelledby={headingId}>
-          <h2 id={headingId} className={styles.heading}>
-            Privacy &amp; masking
-          </h2>
-          <p className={styles.hint}>
-            Applies to every source (Fixture, Docker, OpenShift, Loki). Masked fields are replaced with a safe marker
-            on the server before any response reaches the browser — there is no reveal action for an already-masked
-            value.
-          </p>
-
-          {loading ? <p role="status">Loading…</p> : null}
-          {loadError ? (
-            <p role="alert" className={styles.error}>
-              {loadError}
-            </p>
-          ) : null}
-
-          {settings ? (
-            <>
-              <ul className={styles.fieldList}>
-                {FIELD_LABELS.map(({ key, label }) => {
-                  const masked = settings[key];
-                  const checkboxId = `${headingId}-${key}`;
-                  return (
-                    <li key={key} className={styles.fieldRow}>
-                      <input
-                        id={checkboxId}
-                        type="checkbox"
-                        checked={masked}
-                        disabled={pendingField === key}
-                        onChange={(event) => toggle(key, event.target.checked)}
-                      />
-                      <label htmlFor={checkboxId}>{label}</label>
-                    </li>
-                  );
-                })}
-              </ul>
-
-              {/*
-               * §14 - concise but not obstructive: a single inline notice,
-               * not a blocking modal/confirm dialog, and only shown at all
-               * once at least one field is actually unmasked.
-               */}
-              {anyFieldUnmasked ? (
-                <p role="status" className={styles.warning}>
-                  ⚠ Unmasked fields may show real, unmasked values in new search results and event details. Re-check a
-                  field to mask it again for future results.
-                </p>
-              ) : null}
-
-              {updateError ? (
-                <p role="alert" className={styles.error}>
-                  {updateError}
-                </p>
-              ) : null}
-            </>
-          ) : null}
-
-          <div className={styles.actions}>
-            <Button variant="ghost" onClick={close}>
-              Close
-            </Button>
-          </div>
-        </div>
+      {anyFieldUnmasked ? (
+        <p role="status" className={styles.banner}>
+          <Icon name="triangle-alert" size="sm" />
+          <span>
+            <strong>Some fields are unmasked.</strong> New search results and event details may show real values for
+            them. Re-check a field to mask it again for future results.
+          </span>
+        </p>
       ) : null}
-    </div>
+
+      <div className={styles.panelBody}>
+        <p className={styles.hint}>
+          Applies to every source (Fixture, Docker, OpenShift, Loki). Masked fields are replaced with a safe marker
+          on the server before any response reaches the browser — there is no reveal action for an already-masked
+          value.
+        </p>
+
+        {loading ? <p role="status">Loading…</p> : null}
+        {loadError ? (
+          <p role="alert" className={styles.error}>
+            {loadError}
+          </p>
+        ) : null}
+
+        {settings ? (
+          <>
+            {FIELD_LABELS.map(({ key, label }) => {
+              const masked = settings[key];
+              return (
+                <div key={key} className={styles.switchRow}>
+                  <span className={styles.switchLabel}>{label}</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={masked}
+                    aria-label={`Mask ${label}`}
+                    className={styles.switch}
+                    disabled={pendingField === key}
+                    onClick={() => toggle(key, !masked)}
+                  >
+                    <span className={styles.track} aria-hidden="true" />
+                    <span className={styles.word}>{masked ? 'Masked' : 'Unmasked'}</span>
+                  </button>
+                  <span className={styles.switchDesc}>
+                    {masked
+                      ? 'Masked on the server before any response leaves the backend.'
+                      : 'Off — new responses include this value unmasked.'}
+                  </span>
+                </div>
+              );
+            })}
+
+            {updateError ? (
+              <p role="alert" className={styles.error}>
+                {updateError}
+              </p>
+            ) : null}
+          </>
+        ) : null}
+
+        <p className={styles.footNote}>
+          <Icon name="info" size="sm" />
+          Fresh installations start with masking off for all five fields. There is no per-row reveal action anywhere
+          in Log Explorer.
+        </p>
+      </div>
+    </section>
   );
 }
