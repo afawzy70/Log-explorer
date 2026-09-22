@@ -18,7 +18,6 @@
 
 ## What's new
 
-- (edit this section before tagging the next release)
 - **Event classification rules.** Tag events with your own labels (for
   example `middleware`) and extract structured values such as URL, response
   code, or duration. Start from any event with *Create tag rule from this

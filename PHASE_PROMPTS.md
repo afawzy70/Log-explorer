@@ -1,6 +1,6 @@
 # Phase Prompts for Claude Code
 
-Copy one block per session. Every prompt assumes `CLAUDE.md`, `IMPLEMENTATION_PLAN.md`, `REQUIREMENTS_TRACEABILITY.md`, and `LOG_EXPLORER_CLAUDE_CODE_HANDOVER.md` are in the repo root.
+Copy one block per session. Every prompt assumes `CLAUDE.md`, `IMPLEMENTATION_PLAN.md`, `REQUIREMENTS_TRACEABILITY.md`, and `HANDOVER.md` are in the repo root.
 
 ---
 
@@ -11,7 +11,7 @@ You are taking over the Log Explorer project on this machine.
 
 Setup:
 1. gh repo clone afawzy70/Log-explorer, then cd into it.
-2. Copy LOG_EXPLORER_CLAUDE_CODE_HANDOVER.md, IMPLEMENTATION_PLAN.md, CLAUDE.md, and
+2. Copy HANDOVER.md, IMPLEMENTATION_PLAN.md, CLAUDE.md, and
    REQUIREMENTS_TRACEABILITY.md into the repo root on a branch called phase/a-audit.
 3. Read CLAUDE.md and IMPLEMENTATION_PLAN.md in full, then read the handover in full.
 

@@ -5,6 +5,12 @@
 
 ## 1. تثبيت/تشغيل Log Explorer
 
+- **ملف JAR مستقل (الخيار المُوصى به لمعظم الاستخدامات المحلية):**
+  `java -jar log-explorer-<الإصدار>.jar`، ثم افتح
+  <http://localhost:3434>. راجع قسم
+  [«Quick start — standalone JAR» في `README.md`](../../README.md#quick-start--standalone-jar-recommended)
+  في جذر المستودع لمعرفة المتطلبات، وإعداد شهادة OpenShift، وحلّ
+  المشكلات الشائعة.
 - **تطبيق سطح المكتب (Windows أو macOS):** شغّل ملف التثبيت، ثم افتح
   Log Explorer كأي تطبيق آخر. سيُفتح في متصفّحك الافتراضي.
 - **من المستودع مباشرة (للمطوّرين):** اتّبع `docs/RUN_GUIDE.md`.
