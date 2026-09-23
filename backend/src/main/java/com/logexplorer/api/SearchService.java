@@ -126,6 +126,14 @@ public class SearchService {
       // filtering can never be corrupted by a native-clock value.
       PageCursor cursor = cursorCodec.decodeAndValidate(request);
       SearchRequest scoped = cursor == null ? request : request.withPageBoundary(cursor.boundarySourceTimestamp());
+      // PR65_FRESH_SEARCH_CUSTOM_TIME_AND_BATCH_RECOVERY - the guardrails-
+      // resolved page size, never the raw (frequently null/unclamped)
+      // request.limit(), so a source with its own bounded-scan target
+      // (DockerLogSource's progressive per-container scan) always knows
+      // the real number of matched events worth scanning for - see
+      // SearchRequest#effectiveLimit's own javadoc for why this is a
+      // separate field rather than overloading request.limit() itself.
+      scoped = scoped.withEffectiveLimit(validated.effectiveLimit());
 
       // Query-plan transparency (Legacy Remediation Slice 2) - computed
       // from the same source/request the actual fetch below uses, so the
@@ -147,11 +155,14 @@ public class SearchService {
 
       // Every LogSource implementation already fully materializes its own
       // per-request-bounded result set before this Mono emits anything
-      // (Docker: one blocking read per relevant container, each already
-      // capped at DockerProperties#defaultTailLines; Loki: one query_range
-      // call capped at LokiProperties#maxResultsPerQuery; fixture: its
-      // fixed, small in-memory corpus; OpenShift: one bounded per-target
-      // byte/line fetch fanned out and merged, capped again at
+      // (Docker: a bounded number of per-container reads - PR65_FRESH_
+      // SEARCH_CUSTOM_TIME_AND_BATCH_RECOVERY's progressive scan, each
+      // still capped at DockerProperties#defaultTailLines lines and the
+      // whole scan bounded at DockerProperties#maxHistoricalScanChunks
+      // rounds; Loki: one query_range call capped at
+      // LokiProperties#maxResultsPerQuery; fixture: its fixed, small
+      // in-memory corpus; OpenShift: one bounded per-target byte/line fetch
+      // fanned out and merged, capped again at
       // DirectPodLogProperties#maxEventsOverall) - collecting the whole
       // thing here adds no new unbounded-memory risk beyond what each
       // adapter already accepts today, and is what makes a truthful,

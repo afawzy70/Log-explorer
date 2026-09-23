@@ -62,6 +62,28 @@ public class DockerProperties {
    */
   private int historicalSearchConcurrency = 6;
 
+  /**
+   * PR65_FRESH_SEARCH_CUSTOM_TIME_AND_BATCH_RECOVERY — the bounded number of
+   * progressive per-container read rounds {@code DockerLogSource} will
+   * attempt for one search before giving up and honestly reporting a
+   * partial/truncated result. Round 1 always reads exactly the same
+   * {@code [start, end]} window (narrowed by any page cursor) capped at
+   * {@link #defaultTailLines} lines per container that every prior release
+   * already did — a container whose whole window fits within that cap
+   * needs no further rounds, so this is fully backward-compatible for the
+   * common case. Only a container whose round-1 read was itself capped
+   * (proof that its window may hold more than {@link #defaultTailLines}
+   * lines) gets narrowed further and re-read, up to this many total rounds
+   * — the fix for "a selective Search only ever sees the newest {@link
+   * #defaultTailLines} raw lines per container, never anything genuinely
+   * older within the requested window" (owner mission
+   * PR65_FRESH_SEARCH_CUSTOM_TIME_AND_BATCH_RECOVERY, defect 1). Bounded,
+   * not unbounded: total Docker reads for one search are at most {@code
+   * targetContainerCount * maxHistoricalScanChunks}, each still capped at
+   * {@link #defaultTailLines} lines and the configured request timeout.
+   */
+  private int maxHistoricalScanChunks = 5;
+
   public Mode getMode() {
     return mode;
   }
@@ -156,5 +178,13 @@ public class DockerProperties {
 
   public void setHistoricalSearchConcurrency(int historicalSearchConcurrency) {
     this.historicalSearchConcurrency = historicalSearchConcurrency;
+  }
+
+  public int getMaxHistoricalScanChunks() {
+    return maxHistoricalScanChunks;
+  }
+
+  public void setMaxHistoricalScanChunks(int maxHistoricalScanChunks) {
+    this.maxHistoricalScanChunks = maxHistoricalScanChunks;
   }
 }

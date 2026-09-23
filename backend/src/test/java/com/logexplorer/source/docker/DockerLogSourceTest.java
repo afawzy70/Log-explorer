@@ -1663,4 +1663,245 @@ class DockerLogSourceTest {
     return timestamp + " {\"@timestamp\":\"" + timestamp + "\",\"message\":\"" + message
         + "\",\"application\":\"" + service + "\",\"level\":\"" + level + "\",\"mdc\":{}}\n";
   }
+
+  // ------------------------------------------------------------ PR65_FRESH_SEARCH_CUSTOM_TIME_AND_BATCH_RECOVERY
+  // (defect 1) - progressive per-container scan tests. Real root cause:
+  // every prior release read at most `defaultTailLines` lines ONCE per
+  // container, so a genuine match sitting further back in the same
+  // requested window - even though it is well within `start()`/`end()` -
+  // was structurally unreachable no matter how many times a fresh,
+  // correctly-built Search was issued. These tests prove the fix reads
+  // further when (and only when) a container's own read comes back at the
+  // tail cap, stays bounded by `maxHistoricalScanChunks`, and reports a
+  // truthful runtime warning when the round budget runs out before the
+  // window is provably fully covered.
+
+  private record FakeDockerLine(Instant timestamp, String raw) {
+  }
+
+  /**
+   * A faithful fake of real Docker's own {@code since}/{@code until}/
+   * {@code tail} semantics — built directly from real-Docker verification
+   * during this mission (see {@code DockerLogSource#searchBlocking}'s own
+   * "review recovery" comment): {@code tail}, when set, selects the last N
+   * lines of the container's WHOLE log stream FIRST, and ONLY THEN
+   * intersects that selection with {@code since}/{@code until} — it is
+   * NOT "the last N lines within the requested window". A plain mock that
+   * ignores this (as every other {@code stubLogs*} helper in this file
+   * does, by design, for tests that don't care about it) would let a
+   * progressive-scan test pass for the wrong reason; this one would catch
+   * a regression back to the broken "combine a narrowed until with tail"
+   * design.
+   *
+   * @param linesOldestFirst every raw {@code "<timestamp> {json}"} line
+   *     this container ever logged, in real chronological order (oldest
+   *     first) — exactly how a real container's own log file is ordered.
+   */
+  @SuppressWarnings("unchecked")
+  private void stubLogsLikeRealDocker(String containerId, List<String> linesOldestFirst) {
+    List<FakeDockerLine> all = linesOldestFirst.stream()
+        .map(line -> new FakeDockerLine(Instant.parse(line.substring(0, line.indexOf(' '))), line))
+        .toList();
+    doAnswer(invocation -> {
+      Integer since = invocation.getArgument(4);
+      Integer until = invocation.getArgument(5);
+      Integer tail = invocation.getArgument(6);
+      List<FakeDockerLine> base = tail != null && all.size() > tail
+          ? all.subList(all.size() - tail, all.size())
+          : all;
+      List<String> result = base.stream()
+          .filter(l -> since == null || !l.timestamp().isBefore(Instant.ofEpochSecond(since)))
+          .filter(l -> until == null || l.timestamp().isBefore(Instant.ofEpochSecond(until)))
+          .map(FakeDockerLine::raw)
+          .toList();
+      DockerFrameCollectingCallback callback = invocation.getArgument(7);
+      for (String line : result) {
+        callback.onNext(new com.github.dockerjava.api.model.Frame(
+            com.github.dockerjava.api.model.StreamType.STDOUT,
+            line.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+      }
+      callback.onComplete();
+      return callback;
+    }).when(mockClient).readLogs(eq(containerId), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+  }
+
+  /**
+   * The shared fixture for the next two tests: one container whose real
+   * (chronological, oldest-first) log is a single ERROR marker at the very
+   * start of the window, followed by 60 quiet minutes, followed by a dense
+   * burst of 200 newest INFO lines filling out the tail. A tailCap of 20
+   * means the newest-tail read alone can never reach the ERROR - it sits
+   * far below the absolute-newest 20 lines - so finding it requires
+   * genuinely narrowing further back in time, not just reading once.
+   */
+  private List<String> errorBeyondTailFixtureLines() {
+    List<String> lines = new ArrayList<>();
+    lines.add(severityLine("2025-01-01T00:00:00.000000000Z", "gateway", "the-error", "ERROR"));
+    // 200 lines, one per second, from 02:00:00 through 02:03:19 - all well
+    // inside the request window below and all strictly newer than the
+    // ERROR marker, so the newest-tailCap read can never reach it.
+    Instant base = Instant.parse("2025-01-01T02:00:00Z");
+    for (int i = 0; i < 200; i++) {
+      lines.add(severityLine(base.plusSeconds(i).toString(), "gateway", "recent-" + i, "INFO"));
+    }
+    return lines;
+  }
+
+  @Test
+  void anErrorEventBeyondTheDefaultTailLinesIsDiscoveredByAFreshSelectiveSearch() {
+    // Adversarial reproduction from the owner mission: a broad first
+    // Search's raw tail (the newest tailCap lines) contains no ERROR
+    // event; a real ERROR event exists further back, still inside the
+    // requested [start, end) window. A fresh, ERROR-only Search must find
+    // it - proving this is genuinely a re-scan of the source, not a
+    // client-side filter over whatever the first (INFO-only) raw tail
+    // happened to contain. Uses `stubLogsLikeRealDocker` (a faithful fake
+    // of Docker's own since/until/tail semantics, verified against a real
+    // Docker daemon during this mission) rather than a hand-picked
+    // per-round switch, so this test does not depend on - and cannot be
+    // gamed by - the exact bucket boundaries the progressive scan chooses.
+    properties.setDefaultTailLines(20);
+    properties.setMaxHistoricalScanChunks(10);
+    Container gateway = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(gateway));
+    stubLogsLikeRealDocker("c1", errorBeyondTailFixtureLines());
+
+    SearchRequest request = SearchRequest.builder()
+        .sourceId("local-docker")
+        .start(Instant.parse("2025-01-01T00:00:00Z")).end(Instant.parse("2025-01-01T03:00:00Z"))
+        .levels(List.of("ERROR"))
+        .effectiveLimit(5)
+        .build();
+
+    List<CanonicalLogEvent> events = source.search(request).collectList().block();
+
+    assertThat(events).extracting(CanonicalLogEvent::message).containsExactly("the-error");
+    verify(mockClient, org.mockito.Mockito.atLeast(2))
+        .readLogs(eq("c1"), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+  }
+
+  @Test
+  void theSameAdversarialScenarioFailsWhenTheScanIsForcedBackToOneRoundProvingTheFixIsTheProgressiveScanItself() {
+    // Same exact fixture/request as
+    // anErrorEventBeyondTheDefaultTailLinesIsDiscoveredByAFreshSelectiveSearch
+    // above, except the round budget is forced to 1 - i.e. exactly the
+    // pre-fix behavior (one bounded read per container, no narrowing).
+    // This must reproduce the original defect: the ERROR event is never
+    // found, proving the fix above is genuinely the progressive scan
+    // itself and not some other incidental change.
+    properties.setDefaultTailLines(20);
+    properties.setMaxHistoricalScanChunks(1);
+    Container gateway = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(gateway));
+    stubLogsLikeRealDocker("c1", errorBeyondTailFixtureLines());
+
+    SearchRequest request = SearchRequest.builder()
+        .sourceId("local-docker")
+        .start(Instant.parse("2025-01-01T00:00:00Z")).end(Instant.parse("2025-01-01T03:00:00Z"))
+        .levels(List.of("ERROR"))
+        .effectiveLimit(5)
+        .build();
+
+    com.logexplorer.core.model.SourceSearchOutcome outcome = source.searchWithOutcome(request).block();
+
+    assertThat(outcome.events())
+        .as("with the round budget forced to 1 (the pre-fix shape), the ERROR event beyond the raw tail is invisible - reproducing the original defect")
+        .isEmpty();
+    assertThat(outcome.runtimeWarnings())
+        .as("a single-round scan that never proved the window was fully covered must say so honestly")
+        .isNotEmpty();
+    verify(mockClient, org.mockito.Mockito.times(1))
+        .readLogs(eq("c1"), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+  }
+
+  @Test
+  void aFreshSelectiveSearchReadsTheSourceAgainEvenWhenTheFirstSearchAlreadyRan() {
+    // "Running Search after changing filters must query the source again,
+    // not just filter the previously loaded page" - proven directly: two
+    // independent source.search() calls against the SAME mocked client,
+    // the second with a narrower severity filter, both cause their own
+    // real readLogs invocation - never a cached/reused result.
+    properties.setDefaultTailLines(500);
+    Container gateway = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(gateway));
+    stubLogs("c1",
+        severityLine("2025-06-01T00:00:00.000000000Z", "gateway", "info-event", "INFO"),
+        severityLine("2025-06-01T00:00:01.000000000Z", "gateway", "error-event", "ERROR"));
+
+    List<CanonicalLogEvent> broad = source.search(wideOpenRequest().build()).collectList().block();
+    assertThat(broad).hasSize(2);
+
+    List<CanonicalLogEvent> errorOnly = source.search(wideOpenRequest().levels(List.of("ERROR")).build())
+        .collectList().block();
+    assertThat(errorOnly).extracting(CanonicalLogEvent::message).containsExactly("error-event");
+
+    verify(mockClient, org.mockito.Mockito.times(2)).listContainers(true);
+    verify(mockClient, org.mockito.Mockito.times(2))
+        .readLogs(eq("c1"), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+  }
+
+  @Test
+  void progressiveScanIsBoundedByMaxHistoricalScanChunksAndReportsAPartialWarningWhenTheBudgetRunsOut() {
+    // The container in this test NEVER exhausts on its own (every round
+    // returns exactly tailCap fresh, strictly-older lines, so it always
+    // looks like "may be more") and nothing it returns ever matches the
+    // ERROR filter - proving (a) the scan really does stop at the
+    // configured round budget rather than reading forever, and (b) the
+    // honest result is a runtime warning (never a silent, possibly-wrong
+    // "nothing more to find").
+    properties.setDefaultTailLines(3);
+    properties.setMaxHistoricalScanChunks(2);
+    Container gateway = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(gateway));
+
+    AtomicInteger callCount = new AtomicInteger();
+    doAnswer(invocation -> {
+      int round = callCount.getAndIncrement();
+      DockerFrameCollectingCallback callback = invocation.getArgument(7);
+      for (int i = 0; i < 3; i++) {
+        String ts = String.format("2025-01-01T00:%02d:%02d.000000000Z", 40 - (round * 5), i);
+        callback.onNext(new com.github.dockerjava.api.model.Frame(
+            com.github.dockerjava.api.model.StreamType.STDOUT,
+            severityLine(ts, "gateway", "never-matches-" + round + "-" + i, "INFO")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+      }
+      callback.onComplete();
+      return callback;
+    }).when(mockClient).readLogs(eq("c1"), anyBoolean(), anyBoolean(), anyBoolean(), any(), any(), any(), any());
+
+    SearchRequest request = SearchRequest.builder()
+        .sourceId("local-docker")
+        .start(Instant.parse("2025-01-01T00:00:00Z")).end(Instant.parse("2025-01-01T01:00:00Z"))
+        .levels(List.of("ERROR"))
+        .effectiveLimit(5)
+        .build();
+
+    com.logexplorer.core.model.SourceSearchOutcome outcome = source.searchWithOutcome(request).block();
+
+    assertThat(outcome.events()).isEmpty();
+    assertThat(callCount.get())
+        .as("progressive scan must stop at the configured round budget, never read forever")
+        .isEqualTo(2);
+    assertThat(outcome.runtimeWarnings())
+        .as("the round budget ran out while the container was still capped/active - this must be reported, never silently presented as a complete zero-result answer")
+        .isNotEmpty();
+  }
+
+  @Test
+  void progressiveScanReportsNoWarningWhenTheWholeWindowIsGenuinelyFullyCovered() {
+    // The mirror-image proof: once a container's read comes back UNDER
+    // the tail cap, its window is genuinely, provably fully read - no
+    // runtime warning, and estimatedTotal (api.SearchService's own logic)
+    // is allowed to be exact.
+    properties.setDefaultTailLines(500);
+    Container gateway = container("c1", "proj-gateway-1", "proj", "gateway", "running");
+    when(mockClient.listContainers(true)).thenReturn(List.of(gateway));
+    stubLogs("c1", jsonLine("2025-01-01T00:00:00.000000000Z", "gateway", "only line"));
+
+    com.logexplorer.core.model.SourceSearchOutcome outcome =
+        source.searchWithOutcome(wideOpenRequest().effectiveLimit(500).build()).block();
+
+    assertThat(outcome.events()).hasSize(1);
+    assertThat(outcome.runtimeWarnings()).isEmpty();
+  }
 }
