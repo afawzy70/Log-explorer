@@ -376,6 +376,10 @@ class FixtureLogSourceTest {
     SearchGuardrailsProperties paged = new SearchGuardrailsProperties();
     paged.setDefaultLimit(9); // deliberately not a divisor of the corpus size
     SearchService searchService = searchServiceFor(paged);
+    // FixtureLogSource.CORPUS_SIZE is 640 (PR65_FRESH_SEARCH_CUSTOM_TIME_AND_BATCH_RECOVERY defect 3 raised it
+    // from 250 so the corpus still exceeds one page under the new 500 default limit) - at limit=9 that's up to
+    // ~72 pages, so the infinite-loop guard below is raised from 50 to 100 to keep headroom without hardcoding
+    // the corpus size itself.
 
     // Captured once, exactly like the frontend resends the same committed
     // start/end on every Load More call (`useSearchState.ts#buildRequestBody`)
@@ -397,7 +401,7 @@ class FixtureLogSourceTest {
       }
       cursor = page.nextCursor();
       guardAgainstInfiniteLoop++;
-      assertThat(guardAgainstInfiniteLoop).isLessThan(50);
+      assertThat(guardAgainstInfiniteLoop).isLessThan(100);
     } while (cursor != null);
 
     assertThat(seen).isEqualTo(expected);
@@ -424,6 +428,7 @@ class FixtureLogSourceTest {
     SearchGuardrailsProperties paged = new SearchGuardrailsProperties();
     paged.setDefaultLimit(11);
     SearchService searchService = searchServiceFor(paged);
+    // See the BACKWARD test above for why the guard is 100, not 50.
     SearchRequest.Builder committed = wideOpenRequest().direction(SearchRequest.Direction.FORWARD);
 
     Set<String> seen = new HashSet<>();
@@ -436,7 +441,7 @@ class FixtureLogSourceTest {
       }
       cursor = page.nextCursor();
       guardAgainstInfiniteLoop++;
-      assertThat(guardAgainstInfiniteLoop).isLessThan(50);
+      assertThat(guardAgainstInfiniteLoop).isLessThan(100);
     } while (cursor != null);
 
     assertThat(seen).isEqualTo(expected);

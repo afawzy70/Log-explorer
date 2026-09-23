@@ -100,15 +100,18 @@ public class StartupWarmup {
           + "\"traceId\":\"warmup-trace-2\",\"X-Correlation-id\":\"warmup-corr-2\",\"mdc\":{}}");
 
   private final StartupWarmupProperties properties;
+  private final SearchGuardrailsProperties guardrailsProperties;
   private final LogLineParser parser;
   private final EventMapper eventMapper;
   private final ObjectMapper objectMapper;
   private final DockerLogSource dockerLogSource;
 
   public StartupWarmup(
-      StartupWarmupProperties properties, LogLineParser parser, EventMapper eventMapper, ObjectMapper objectMapper,
+      StartupWarmupProperties properties, SearchGuardrailsProperties guardrailsProperties,
+      LogLineParser parser, EventMapper eventMapper, ObjectMapper objectMapper,
       DockerLogSource dockerLogSource) {
     this.properties = properties;
+    this.guardrailsProperties = guardrailsProperties;
     this.parser = parser;
     this.eventMapper = eventMapper;
     this.objectMapper = objectMapper;
@@ -148,14 +151,15 @@ public class StartupWarmup {
     // just as correct as computing one relative to `now`.
     SearchRequest warmupRequest = SearchRequest.builder()
         .sourceId("warmup").start(Instant.parse("2000-01-01T00:00:00Z")).end(Instant.now().plusSeconds(60)).build();
+    int defaultPageSize = guardrailsProperties.getDefaultLimit();
     int count = 0;
-    List<CanonicalLogEvent> page = new ArrayList<>(200);
+    List<CanonicalLogEvent> page = new ArrayList<>(defaultPageSize);
     for (int i = 0; i < properties.getIterations(); i++) {
       String line = SYNTHETIC_LINES.get(i % SYNTHETIC_LINES.size());
       CanonicalLogEvent event = parser.parse(line, "warmup-service", MappingScopeKey.UNSPECIFIED);
       if (EventFilters.matches(event, warmupRequest)) {
         count++;
-        if (page.size() < 200) {
+        if (page.size() < defaultPageSize) {
           page.add(event);
         }
       }

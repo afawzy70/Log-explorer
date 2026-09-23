@@ -6,7 +6,7 @@ import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, set
  * truthful statistics, Refresh). Browser checks required by the
  * owner-approved plan (docs/LEGACY_TO_NEW_REMEDIATION_PLAN.md §"Slice 1"):
  *
- *   1. Fixture search >200 events.
+ *   1. Fixture search >500 events.
  *   2. Page repeatedly until exhausted.
  *   3. Verify count increases correctly.
  *   4. Verify no duplicate event rows.
@@ -23,10 +23,12 @@ import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, set
  *   9. Refresh and verify paging returns to page 1.
  *
  * Requires the real backend running (`SPRING_PROFILES_ACTIVE=dev`, per
- * `FixtureLogSource`'s corpus, deliberately sized to 250 events so a
- * genuinely un-doctored default-limit (200) search needs "Load more" —
- * see that class's own comment) and the frontend dev server, matching how
- * every other live verification in this project has been done.
+ * `FixtureLogSource`'s corpus, deliberately sized to 640 events so a
+ * genuinely un-doctored default-limit (500 as of
+ * PR65_FRESH_SEARCH_CUSTOM_TIME_AND_BATCH_RECOVERY defect 3, previously
+ * 200) search needs "Load more" — see that class's own comment) and the
+ * frontend dev server, matching how every other live verification in this
+ * project has been done.
  */
 
 async function runFixtureSearchAllLevels(page: import('@playwright/test').Page) {
@@ -57,17 +59,17 @@ async function pageThroughUntilExhausted(page: import('@playwright/test').Page):
   return previousCount;
 }
 
-test('Fixture search exceeds 200 events; paging repeatedly reaches exhaustion with a correctly increasing count and no duplicate rows', async ({
+test('Fixture search exceeds 500 events; paging repeatedly reaches exhaustion with a correctly increasing count and no duplicate rows', async ({
   page,
 }) => {
   await runFixtureSearchAllLevels(page);
 
-  // Check 1: page 1 alone is capped at the default limit (200), and a
+  // Check 1: page 1 alone is capped at the default limit (500), and a
   // real Load more control is present - proof the corpus genuinely
   // exceeds one page, not a doctored/trivial case.
   const page1RowCount = await page.locator('tbody tr').count();
   expect(page1RowCount).toBeGreaterThan(0);
-  expect(page1RowCount).toBeLessThanOrEqual(200);
+  expect(page1RowCount).toBeLessThanOrEqual(500);
   await expect(page.getByRole('button', { name: /^load more$/i })).toBeVisible();
 
   // Check 3 (count increases correctly): the counts summary reflects the
@@ -78,7 +80,7 @@ test('Fixture search exceeds 200 events; paging repeatedly reaches exhaustion wi
   // Checks 2 + 3: page repeatedly until "Load more" itself disappears
   // (real exhaustion, not an arbitrary loop count).
   const finalRowCount = await pageThroughUntilExhausted(page);
-  expect(finalRowCount).toBeGreaterThan(200); // proves real multi-page traversal happened
+  expect(finalRowCount).toBeGreaterThan(500); // proves real multi-page traversal happened
   expect(finalRowCount).toBeGreaterThan(page1RowCount);
 
   const summaryAfter = await page.getByText(/^Showing /i).first().textContent();
@@ -106,7 +108,7 @@ test('opening the inspector before Load More preserves the selected event throug
   const inspectorTimeBefore = await dialog.getByRole('heading', { name: /when & where/i }).locator('..').textContent();
 
   await page.getByRole('button', { name: /^load more$/i }).click();
-  await expect.poll(async () => page.locator('tbody tr').count(), { timeout: 5_000 }).toBeGreaterThan(200);
+  await expect.poll(async () => page.locator('tbody tr').count(), { timeout: 5_000 }).toBeGreaterThan(500);
 
   // The inspector is still open, on the same event, after the page grew.
   await expect(dialog).toBeVisible();
@@ -121,7 +123,7 @@ test('table geometry stays within the 2px invariant, and there is no horizontal 
 }) => {
   await runFixtureSearchAllLevels(page);
   await page.getByRole('button', { name: /^load more$/i }).click();
-  await expect.poll(async () => page.locator('tbody tr').count(), { timeout: 5_000 }).toBeGreaterThan(200);
+  await expect.poll(async () => page.locator('tbody tr').count(), { timeout: 5_000 }).toBeGreaterThan(500);
 
   await assertTableGeometry(page, 'table', 2);
   await assertNoHorizontalOverflow(page);

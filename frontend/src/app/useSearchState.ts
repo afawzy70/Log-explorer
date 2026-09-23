@@ -31,6 +31,7 @@ import type { DetectableIdField } from '../features/search/idDetection';
 import { emptyQueryAuthoringState, resolveQueryText, resolveRawLogQl } from '../features/search/QueryBuilder';
 import type { QueryAuthoringState } from '../features/search/QueryBuilder';
 import { DEFAULT_PRESET_ID, TIME_RANGE_PRESETS, CUSTOM_RANGE_ID } from '../shared/time/presets';
+import { DEFAULT_PAGE_SIZE } from '../shared/api/pageSize';
 import type { CommittedTimeRange } from '../features/timerange/types';
 import { formatUtcTimestamp } from '../features/inspector/timestampFormat';
 import { JOURNEY_FIELD_LABELS } from '../features/journey/journeyFields';
@@ -790,6 +791,12 @@ export function useSearchState() {
         direction: directionOverride ?? sortDirection,
         start: effectiveTimeRange.start,
         end: effectiveTimeRange.end,
+        // PR65_FRESH_SEARCH_CUSTOM_TIME_AND_BATCH_RECOVERY (defect 3) - sent
+        // explicitly on every fresh Search AND every Load More (this same
+        // function builds both), so "the default requested page size is
+        // 500" is a real request-body property, not just a backend
+        // default this UI happens to inherit - see pageSize.ts.
+        limit: DEFAULT_PAGE_SIZE,
         services: selectedServices,
         serviceFilterMode,
         // Every level selected == no restriction: omit the filter entirely so the backend's own

@@ -29,7 +29,7 @@ import { headerLabel } from './inspector-helpers';
  *
  * Requires the real backend running (`SPRING_PROFILES_ACTIVE=dev`, Fixture
  * source) and the frontend dev server, matching every other live
- * verification in this project. The 250-event, >200-default-limit corpus
+ * verification in this project. The 640-event, >500-default-limit corpus
  * (see phase-legacy-slice1-pagination.spec.ts's own comment on
  * `FixtureLogSource`) is reused here to exercise Load More under a
  * customized table.
@@ -51,7 +51,7 @@ async function gotoFixtureAllLevels(page: Page) {
   await page.getByRole('combobox', { name: 'Source', exact: true }).selectOption('fixture');
   // B2 (Session 4) - the level chips now live behind the Severity field trigger's popover.
   await page.getByRole('button', { name: /^severity:/i }).click();
-  await page.getByRole('button', { name: /^all$/i }).click(); // severity: All - the 250-event corpus, exceeds the 200 default page limit
+  await page.getByRole('button', { name: /^all$/i }).click(); // severity: All - the 640-event corpus, exceeds the 500 default page limit
   await page.keyboard.press('Escape');
 }
 

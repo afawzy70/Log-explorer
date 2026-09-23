@@ -82,7 +82,7 @@ logexplorer:
   sources:
     disabled: []
   search:
-    default-limit: 200
+    default-limit: 500
     max-limit: 5000
     max-time-range: 7d
     request-timeout: 30s
@@ -97,6 +97,7 @@ logexplorer:
     request-timeout: 10s
     connect-timeout: 5s
     historical-search-concurrency: 6
+    max-historical-scan-chunks: 5
     remote-allowlist:
       # SSRF/DNS-rebinding policy (Legacy Remediation Slice 3) - empty by
       # default, deny-by-default for loopback/link-local/private-LAN/

@@ -50,13 +50,28 @@ public class FixtureLogSource implements LogSource {
   private static final MappingScopeKey SCOPE = MappingScopeKey.of("fixture", null);
   /**
    * Legacy Remediation Slice 1: large enough to exceed the default search
-   * page size ({@code logexplorer.search.default-limit}, 200) on its own,
-   * so a real, un-doctored browser search against this source genuinely
-   * needs "Load more" - the only way to demonstrate real pagination
-   * end-to-end (backend cursor + frontend append) without a live external
-   * Docker/Loki deployment that happens to have that much history.
+   * page size ({@code logexplorer.search.default-limit}) on its own, so a
+   * real, un-doctored browser search against this source genuinely needs
+   * "Load more" - the only way to demonstrate real pagination end-to-end
+   * (backend cursor + frontend append) without a live external Docker/Loki
+   * deployment that happens to have that much history.
+   *
+   * <p>PR65_FRESH_SEARCH_CUSTOM_TIME_AND_BATCH_RECOVERY (defect 3) raised
+   * the default page size from 200 to 500 ({@code
+   * logexplorer.search.default-limit}, {@code frontend/src/shared/api/
+   * pageSize.ts}'s {@code DEFAULT_PAGE_SIZE}). The old 250-event corpus
+   * was deliberately >200 but is now &lt;500, so it no longer exceeds one
+   * page and "Load more" would never appear - raised to 640 (16 full
+   * 40-record cycles) to keep that same "exceeds one page" property true
+   * against the new default: page 1 returns the newest 500, "Load more"
+   * returns the remaining 140. Every other place this corpus size is
+   * relied on for a specific "exceeds N" assertion (grep {@code
+   * frontend/e2e/*.spec.ts} and {@code backend/src/test} for "250" or
+   * "200" tied to this source) was updated in lockstep - see
+   * `phase-legacy-slice1-pagination.spec.ts` and
+   * `phase-legacy-slice4-table-configurability.spec.ts`.
    */
-  private static final int CORPUS_SIZE = 250;
+  private static final int CORPUS_SIZE = 640;
   private static final SourceCapabilities CAPABILITIES =
       // UX-R4 §11/§19 - `contextView` is `true` because the "Show
       // surrounding logs" (±30s) endpoint demonstrably works for this
