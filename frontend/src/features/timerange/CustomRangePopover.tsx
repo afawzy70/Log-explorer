@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '../../shared/ui/Button';
 import { useDismissableLayer } from '../../shared/ui/useDismissableLayer';
 import {
@@ -6,7 +6,11 @@ import {
   utcIsoFromLocalDateTimeInput,
   validateRange,
 } from '../../shared/time/interval';
+import { clampPopoverLeft } from './popoverPosition';
 import styles from './CustomRangePopover.module.css';
+
+/** Keeps the popover's edges at least this many CSS px clear of the viewport edge. */
+const VIEWPORT_MARGIN_PX = 8;
 
 export interface CustomRangePopoverProps {
   initialStartIso: string;
@@ -26,11 +30,43 @@ export function CustomRangePopover({ initialStartIso, initialEndIso, onApply, on
   const [startValue, setStartValue] = useState(() => localDateTimeInputValue(initialStartIso));
   const [endValue, setEndValue] = useState(() => localDateTimeInputValue(initialEndIso));
   const [error, setError] = useState<string | null>(null);
+  // Viewport-containment clamp (CLAUDE.md §4: the editor "must not overlap
+  // severity" and must stay inside the viewport). The CSS default anchors
+  // this popover's left edge to its trigger's left edge
+  // (`CustomRangePopover.module.css`'s `.popover { left: 0 }`), which is
+  // correct wherever the trigger happens to sit in the toolbar - except
+  // when the trigger sits far enough right (or the viewport is narrow
+  // enough) that the popover's fixed 280px width would then overflow the
+  // right edge. `null` means "use the CSS default, no clamp needed yet".
+  const [leftOverridePx, setLeftOverridePx] = useState<number | null>(null);
   const startId = useId();
   const endId = useId();
   const errorId = useId();
 
   useDismissableLayer(containerRef, true, onCancel);
+
+  useLayoutEffect(() => {
+    function reposition() {
+      const el = containerRef.current;
+      const wrapper = el?.offsetParent as HTMLElement | null;
+      if (!el || !wrapper) {
+        return;
+      }
+      const wrapperRect = wrapper.getBoundingClientRect();
+      const popoverWidth = el.getBoundingClientRect().width;
+      const nextOffset = clampPopoverLeft({
+        wrapperLeft: wrapperRect.left,
+        popoverWidth,
+        viewportWidth: window.innerWidth,
+        marginPx: VIEWPORT_MARGIN_PX,
+      });
+      setLeftOverridePx((prev) => (prev !== null && Math.abs(prev - nextOffset) < 0.5 ? prev : nextOffset));
+    }
+
+    reposition();
+    window.addEventListener('resize', reposition);
+    return () => window.removeEventListener('resize', reposition);
+  }, []);
 
   function handleApply() {
     const startIso = utcIsoFromLocalDateTimeInput(startValue);
@@ -45,7 +81,13 @@ export function CustomRangePopover({ initialStartIso, initialEndIso, onApply, on
   }
 
   return (
-    <div ref={containerRef} className={styles.popover} role="dialog" aria-label="Custom time range">
+    <div
+      ref={containerRef}
+      className={styles.popover}
+      role="dialog"
+      aria-label="Custom time range"
+      style={leftOverridePx !== null ? { left: `${leftOverridePx}px` } : undefined}
+    >
       <div className={styles.fields}>
         <div className={styles.field}>
           <label htmlFor={startId}>Start</label>
