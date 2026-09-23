@@ -211,6 +211,76 @@ describe('useSearchState', () => {
     expect(result.current.searchResult?.events.map((e) => e.message)).toEqual(['page-1', 'page-2']);
   });
 
+  it('PR65: the default requested page size is 500, sent explicitly on a fresh Search and on Load More alike', async () => {
+    const result = await renderReady();
+
+    act(() => result.current.runSearch());
+    await waitFor(() => expect(searchCalls).toHaveLength(1));
+    expect(JSON.parse(searchCalls[0].body).limit).toBe(500);
+    searchCalls[0].resolve(
+      jsonResponse({
+        events: [eventWithMessage('page-1')],
+        counts: { estimatedTotal: null, returned: 500, visible: 500, limit: 500, truncated: true },
+        nextCursor: 'cursor-abc', queryPlan: EMPTY_QUERY_PLAN,
+      }),
+    );
+    await waitFor(() => expect(result.current.searchResult?.events).toHaveLength(1));
+
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(searchCalls).toHaveLength(2));
+    expect(JSON.parse(searchCalls[1].body).limit).toBe(500);
+    searchCalls[1].resolve(
+      jsonResponse({
+        events: [],
+        counts: { estimatedTotal: null, returned: 0, visible: 0, limit: 500, truncated: false },
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+      }),
+    );
+  });
+
+  it('PR65: a changed criterion after a paginated search never reuses the previous page\'s cursor on the next explicit Search', async () => {
+    const result = await renderReady();
+
+    act(() => result.current.runSearch());
+    await waitFor(() => expect(searchCalls).toHaveLength(1));
+    expect(JSON.parse(searchCalls[0].body).cursor).toBeUndefined();
+    searchCalls[0].resolve(
+      jsonResponse({
+        events: [eventWithMessage('page-1')],
+        counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: true },
+        nextCursor: 'cursor-from-old-criteria', queryPlan: EMPTY_QUERY_PLAN,
+      }),
+    );
+    await waitFor(() => expect(result.current.searchResult?.nextCursor).toBe('cursor-from-old-criteria'));
+
+    // A genuinely different criterion, then a fresh explicit Search - never
+    // Load More - must start back at page 1 against the NEW criteria, not
+    // continue paginating the old, now-irrelevant result set.
+    act(() => result.current.setSelectedLevels(['ERROR']));
+    act(() => result.current.runSearch());
+    await waitFor(() => expect(searchCalls).toHaveLength(2));
+    const secondBody = JSON.parse(searchCalls[1].body);
+    expect(secondBody.cursor).toBeUndefined();
+    expect(secondBody.levels).toEqual(['ERROR']);
+    searchCalls[1].resolve(
+      jsonResponse({
+        events: [eventWithMessage('error-page-1')],
+        counts: { estimatedTotal: null, returned: 1, visible: 1, limit: 1, truncated: false },
+        nextCursor: null, queryPlan: EMPTY_QUERY_PLAN,
+      }),
+    );
+
+    // Waits on the actual message content, not just length - both
+    // responses in this test happen to return exactly 1 event, so a
+    // length-only wait would pass even on the stale, pre-second-response
+    // state.
+    await waitFor(() => expect(result.current.searchResult?.events[0]?.message).toBe('error-page-1'));
+    // The previous criteria's result set is not the authoritative dataset
+    // for the new one - it was fully replaced, not filtered in place.
+    expect(result.current.searchResult?.events.map((e) => e.message)).toEqual(['error-page-1']);
+    expect(result.current.searchResult?.nextCursor).toBeNull();
+  });
+
   it('loadMore dedupes defensively when the server response overlaps an already-shown event', async () => {
     const result = await renderReady();
 

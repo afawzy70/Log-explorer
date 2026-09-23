@@ -248,7 +248,11 @@
 
 .table {
   width: 100%;
-  min-width: 760px;
+  /* LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - the five other fixed-width columns now total 766px
+     (colTime 240 + colLevel 70 + colService 180 + colTags 156 + colId 120, colTime widened from 172 -
+     see its own comment); the unnamed message column absorbs the rest. 828px preserves the same ~62px
+     guaranteed minimum the previous 760px/698px pair already gave it. */
+  min-width: 828px;
   border-collapse: collapse;
   table-layout: fixed;
   font: var(--v2-text-body);
@@ -290,11 +294,14 @@
 }
 
 .colTime {
-  /* DRIFT-007 remediation: matches the design's own exact `live()` colgroup spec
-     (prototype/scripts/app.js) rather than Results' own Time column width - the `.timeText` ellipsis
-     safety mechanism below still applies at this narrower width, so a very long formatted timestamp
-     truncates gracefully rather than overflowing the column. */
-  width: 172px;
+  /* LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - was 172px (DRIFT-007's own design-prototype
+     match), which real rendered measurement (Playwright, real fixture Live stream) showed clipping the
+     fully-formatted value every time: .timeText needed ~203px, had only ~143px after the severity mark
+     and its gap. CLAUDE.md §4 ("Time shows date + time + milliseconds") is a hard product requirement
+     the design prototype's own narrower spec did not actually satisfy - widened to make the value
+     genuinely visible, not just design-matched. The `.timeText` ellipsis rule below remains as a
+     defensive fallback only (an unusually long locale string), not the primary fix. */
+  width: 240px;
 }
 
 .colLevel {

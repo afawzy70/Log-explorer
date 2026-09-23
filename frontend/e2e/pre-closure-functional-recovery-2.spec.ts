@@ -35,11 +35,14 @@ function inspector(page: Page) {
   return page.getByRole('dialog', { name: 'Event details' });
 }
 
+// LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - "Business / error" split into a business-only
+// "Business" tab (still one of the five fixed tabs below) and a separate, conditional "Error" tab
+// (present only for an event with real error information - never counted among the fixed five).
 const PRIMARY_TAB_NAMES = [
   /^overview$/i,
   /actor & client/i,
   /request flow/i,
-  /business \/ error/i,
+  /^business$/i,
   /technical.*all fields/i,
 ];
 
@@ -51,7 +54,7 @@ async function expectAllFivePrimaryTabs(page: Page) {
 }
 
 test.describe('PCFR2 Part A - Inspector primary tabs are structurally fixed', () => {
-  test('1. an event with complete data shows all five tabs', async ({ page }) => {
+  test('1. an event with complete data shows all five fixed tabs, plus the conditional Error tab', async ({ page }) => {
     await runRealSearch(page);
     // The ERROR row (payments-api "Payment authorization failed") is this
     // fixture's richest event - has an exception, protected fields, and
@@ -59,6 +62,7 @@ test.describe('PCFR2 Part A - Inspector primary tabs are structurally fixed', ()
     await rows(page).filter({ hasText: 'Payment authorization failed' }).first().click();
     await expect(inspector(page)).toBeVisible();
     await expectAllFivePrimaryTabs(page);
+    await expect(inspector(page).getByRole('tab', { name: /^error$/i })).toBeVisible();
   });
 
   test('2-4. a malformed/sparse event still shows all five tabs, with an honest empty state on the sparse ones', async ({ page }) => {
@@ -74,21 +78,19 @@ test.describe('PCFR2 Part A - Inspector primary tabs are structurally fixed', ()
     await expect(inspector(page).getByText(/no journey, correlation, trace, span, or event id/i)).toBeVisible();
   });
 
-  test('5. the tab set never changes size across the first several loaded events, whatever their content', async ({ page }) => {
+  test('5. the five FIXED tabs are present on every one of the first several loaded events, whatever their content (the conditional Error tab may add a sixth, per event)', async ({ page }) => {
     await runRealSearch(page);
     const visibleRows = await rows(page).count();
     const sampleSize = Math.min(5, visibleRows);
-    let tabCount: number | null = null;
     for (let i = 0; i < sampleSize; i++) {
       await rows(page).nth(i).click();
       await expect(inspector(page)).toBeVisible();
+      await expectAllFivePrimaryTabs(page);
       const count = await inspector(page).getByRole('tab').count();
-      if (tabCount === null) {
-        tabCount = count;
-      } else {
-        expect(count).toBe(tabCount);
-      }
-      expect(count).toBe(5);
+      // Never fewer than the five fixed tabs, and never more than those five plus the one conditional
+      // Error tab - no other tab can ever appear.
+      expect(count).toBeGreaterThanOrEqual(5);
+      expect(count).toBeLessThanOrEqual(6);
       await inspector(page).getByRole('button', { name: /close/i }).click();
     }
   });

@@ -79,14 +79,22 @@ flow through every layer (historical search, Live, context/journey), see
   multi-select, severity filter, universal search (with confirmable ID
   detection), advanced filters grouped by question, and precise time-range
   handling (presets, a custom-range popover, exact interval + zone display).
-- **A truthful, exactly-seven-column results table** — Time, Level, Service,
-  What happened, User/Customer, Correlation/Trace, Actions — newest first,
-  reorderable/hideable/density-adjustable (persisted safely, see below),
-  with honest, non-contradictory counts (total/returned/visible/truncated).
-- **An event inspector** — full detail on any event (overview, actor/client,
-  request flow, business/error, all fields with raw JSON behind a
-  disclosure), a bounded `±30s` context view, and safe copy/find-related
-  actions on non-sensitive IDs only.
+- **A truthful, exactly-eight-column results table** — Time, Level, Service,
+  What happened, Tags, User/Customer, Correlation/Trace, Actions — newest
+  first, reorderable/hideable/density-adjustable (persisted safely, see
+  below), with honest, non-contradictory counts (total/returned/visible/
+  truncated).
+- **An event inspector** — five stable baseline tabs (Overview, Actor &
+  client, Request flow, Business, Technical / all fields) plus a sixth,
+  conditional Error tab that appears only when the event actually carries
+  error information (ERROR/FATAL severity, a real exception, or a real
+  error code). Business holds business-domain data only, never
+  exception/stack-trace content. An event with error information also gets
+  an Error Summary near the top of Overview (severity, error code, exception
+  type/message where available, a readable multiline preview) with a jump to
+  the full Error tab, which holds the complete, readable, preserved-
+  whitespace exception/stack trace. Plus a bounded `±30s` context view, and
+  safe copy/find-related actions on non-sensitive IDs only.
 - **Trace / correlation / journey investigation** — click a non-sensitive ID
   to open an ascending, cross-service timeline, with an explicit "this does
   not indicate causality" disclaimer.
@@ -497,8 +505,17 @@ code-level detail behind each:
 - Live tail: a bounded 1,000-event display cap, bounded server-side buffer,
   batched (never one state update per event) frontend rendering, bounded/
   cancellable reconnect.
-- Historical search: bounded page size/limits, HMAC-signed opaque cursors
-  (no raw offset/query leaked into a cursor), a bounded max time range.
+- Historical search: fresh, re-run against the selected source on every
+  explicit Search click (never a filter over just the previously-loaded
+  page), bounded page size/limits (500 events per page by default,
+  `logexplorer.search.default-limit` / `LOGEXPLORER_SEARCH_DEFAULT_LIMIT`,
+  capped by a hard `max-limit` of 5000), HMAC-signed opaque cursors (no raw
+  offset/query leaked into a cursor), a bounded max time range. For Docker
+  specifically, a bounded per-container progressive scan (up to
+  `logexplorer.docker.max-historical-scan-chunks` rounds, default 5) lets a
+  selective search reach genuinely older matching events beyond the first
+  raw tail read, and honestly reports `truncated` rather than fabricating
+  a total if its round budget runs out first.
 - Frontend delivery: `JourneyView`/`LiveTailPanel` are code-split
   (`React.lazy`) since they're genuinely conditional secondary views; the
   primary Search → scan → inspect path is never lazy-loaded. See

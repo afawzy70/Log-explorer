@@ -1,0 +1,30 @@
+/* LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - carried over unchanged from the former combined
+   Business/error tab's own `.exception` rule (BusinessErrorSection.module.css). */
+.exceptionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.exceptionHeading {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--v2-ink-2);
+}
+
+.exception {
+  margin: var(--space-2) 0 0 0;
+  padding: var(--space-3);
+  background: var(--v2-danger-tint);
+  color: var(--v2-danger);
+  border-radius: var(--v2-r-md);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  max-height: 320px;
+  overflow-y: auto;
+}

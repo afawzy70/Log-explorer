@@ -45,9 +45,14 @@ Click any row in the results table.
 ## 6. Inspect the event
 
 The Inspector opens on the right, showing **Overview**, **Actor &
-client**, **Request flow**, **Business / error**, and **Technical / all
-fields** as five tabs. Click through them — a tab with nothing to show
-still appears and says so honestly, it never just disappears.
+client**, **Request flow**, **Business**, and **Technical / all fields**
+as five stable tabs — click through them; a tab with nothing to show
+still appears and says so honestly, it never just disappears. If the
+event actually contains error information (an ERROR/FATAL severity, or a
+real exception or error code), a sixth **Error** tab appears too, with
+the full readable exception/stack trace; Overview also shows an **Error
+summary** near the top for that event, with a link straight to the Error
+tab.
 
 ## 7. Show surrounding logs
 

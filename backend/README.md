@@ -108,6 +108,20 @@ overridable only via an explicit CIDR/hostname allowlist
 on `Schedulers.boundedElastic()`, never the WebFlux event loop (CLAUDE.md
 §5).
 
+`relevantContainers` is the one shared candidate-selection point for both
+Search and Live — it does *not* filter by container state, since a
+stopped container's own already-written logs must remain fully
+searchable. `DockerLogSource#follow` (Live only) adds its own additional
+`"running".equalsIgnoreCase(container.getState())` filter on top of that
+shared result — a container that isn't running right now can structurally
+never produce a new live event, and including one as a follow target
+(found via real-Docker verification, LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY)
+used to mean its `DockerFollowCallback` completed almost instantly, and if
+it was the only match, the whole live stream ended with zero events, no
+error. `FollowRequest` also now carries `serviceFilterMode` (INCLUDE/
+EXCLUDE, same as `SearchRequest`) — previously Live always resolved the
+selected services as INCLUDE regardless of what the caller actually chose.
+
 ### Loki adapter (`source/loki/`)
 
 `LokiLogSource` — queries an OpenShift LokiStack gateway over HTTPS

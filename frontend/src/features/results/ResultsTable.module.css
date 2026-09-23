@@ -15,15 +15,18 @@
 /*
  * UX-R4 §13/§25 - the floor under the message column.
  *
- * The six other default columns declare fixed widths totalling 826px
- * (190 + 90 + 160 + 160 + 170 + 56); "What happened" declares none, so it
- * absorbs whatever is left. At the previous `min-width: 900px` that left
- * it just 74px of guaranteed space, which is why it - and only it - was
- * crushed whenever the inspector opened. 1266px guarantees it 440px
- * instead, while still letting it take every surplus pixel on a wider
- * viewport (580px at 1440, more at 1920).
+ * The seven other default columns declare fixed widths totalling 1036px
+ * (Time 250 + Level 90 + Service 160 + Tags 150 + User/Customer 160 +
+ * Correlation/Trace 170 + Actions 56 - Tags joined the default set later,
+ * CSX-8, docs/governance/OWNER_REQUIREMENTS_REGISTER.md §27, and this
+ * comment/min-width had drifted out of date with it; LIVE_TIME_INSPECTOR_
+ * AND_DOCUMENTATION_RECOVERY widened Time itself from 190 to 250, see that
+ * column's own comment). "What happened" declares none, so it absorbs
+ * whatever is left. 1476px guarantees it the same 440px this rule has
+ * always intended, while still letting it take every surplus pixel on a
+ * wider viewport.
  *
- * Below 1266px the wrapper scrolls horizontally, which CLAUDE.md §4
+ * Below 1476px the wrapper scrolls horizontally, which CLAUDE.md §4
  * explicitly allows; the page itself still never overflows, and the
  * header/body geometry invariant is unaffected (both live in the same
  * table) - re-verified at 1920/1440/1280/1024/768/390 and at 125%/200%
@@ -31,7 +34,7 @@
  */
 .table {
   width: 100%;
-  min-width: 1266px;
+  min-width: 1476px;
   border-collapse: collapse;
   table-layout: fixed;
   font-size: var(--font-size-sm);

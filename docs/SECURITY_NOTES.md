@@ -1,11 +1,28 @@
 # Security Notes
 
 `IMPLEMENTATION_PLAN.md` "Phase L" deliverable — the security posture of
-this project's two deployment shapes (portable Docker Compose, `deploy/`
-Phase K; OpenShift, `deploy/openshift/`, this phase). See `CLAUDE.md` for
-the non-negotiable rules both of these are built to satisfy, and
-`docs/verification/PHASE_K_REPORT.md` / `docs/verification/PHASE_L_REPORT.md`
-for the real commands that verified each claim below.
+this project's packaging/deployment surfaces. Two are containerized
+(portable Docker Compose, `deploy/`, Phase K; OpenShift,
+`deploy/openshift/`, this phase); three are local, non-containerized
+packaging forms added afterward (standalone executable JAR, Windows
+desktop, macOS desktop — see "Local packaging: standalone JAR and desktop
+apps" below). All five run the identical backend/frontend code and share
+the same masking, TLS-verification, and read-only-source-access
+invariants described throughout this document. The container-specific
+controls in "Non-root, and portable to OpenShift's arbitrary-UID model"
+and "Read-only root filesystem, resource bounds, health probes" below are
+specific to the two containerized shapes — there is no container, no
+`securityContext`, and no Kubernetes SCC involved in the standalone JAR
+or either desktop app, and this document does not claim otherwise. See
+`CLAUDE.md` for the non-negotiable rules all five shapes are built to
+satisfy. `docs/verification/PHASE_K_REPORT.md` /
+`docs/verification/PHASE_L_REPORT.md` hold the real commands that
+verified the two containerized shapes' claims below; the local packaging
+forms are verified by `scripts/jar-packaged-smoke-test.sh`,
+`desktop/packaging/packaged-smoke-test.ps1`
+(`.github/workflows/windows-desktop.yml`), and
+`desktop/packaging-macos/packaged-smoke-test.sh`
+(`.github/workflows/macos-desktop.yml`).
 
 ## Sensitive-field masking
 
@@ -128,9 +145,57 @@ redirects any plain-HTTP request (`insecureEdgeTerminationPolicy:
 Redirect`) — inbound traffic to the app is always HTTPS from outside the
 cluster.
 
+## Local packaging: standalone JAR and desktop apps
+
+The standalone executable JAR (`scripts/build-jar.sh`,
+`java -jar log-explorer-<version>.jar`), the Windows desktop app
+(`desktop/launcher`), and the macOS desktop app (`desktop/launcher-macos`)
+all run the identical backend as an ordinary local OS process under the
+invoking user's own account — no container, no image, no Kubernetes
+manifest, no cluster-level RBAC. Each of the invariants above still holds
+exactly as described: server-side masking at the same single boundary,
+the same read-only Docker/OpenShift access, the same never-trust-all TLS
+verification for OpenShift/Loki, and no application database (sources are
+still queried live; the only server-side persistence is the same
+file-backed classification-rules/field-mapping store used by every
+shape). What differs is the *boundary* around that process, not the
+invariants inside it:
+
+- **Loopback-local by default.** `SERVER_ADDRESS`/`SERVER_PORT` default to
+  `127.0.0.1:3434` for all three — the same default used everywhere else
+  in this project — so the listener is not reachable from another machine
+  unless an operator explicitly overrides the bind address. This is the
+  process's own boundary, not a container network namespace or a
+  Kubernetes `Service`/`NetworkPolicy` (there is neither here).
+- **No container-specific controls apply.** Non-root container
+  enforcement, `readOnlyRootFilesystem`, Kubernetes `securityContext`, and
+  SCC arbitrary-UID handling (see the next two sections) are properties of
+  a container runtime that these three packaging forms do not use; this
+  document does not claim any of them apply here.
+- **Per-user local data directory**, never inside the installed
+  application: the standalone JAR defaults `LOGEXPLORER_DATA_DIR` to a
+  local `./data` directory beside the jar (overridable); the Windows
+  desktop app writes under `%LOCALAPPDATA%\LogExplorer\`; the macOS
+  desktop app writes under `~/Library/Application Support/LogExplorer/`.
+  None of the three ever write inside the installed program directory or
+  the `.app`/install bundle itself.
+- **Verified for real, not assumed**: `scripts/jar-packaged-smoke-test.sh`
+  runs the jar from a directory containing nothing but the jar itself and
+  confirms no Node/Docker/external-file dependency; the Windows and macOS
+  packaged smoke tests each install/launch the real packaged app, confirm
+  the health/API/UI path works, confirm no orphaned backend process
+  survives quitting, and confirm the per-user data directory behaves as
+  described above.
+
 ## Non-root, and portable to OpenShift's arbitrary-UID model
 
-Both deployment shapes run the identical image (`Dockerfile`) as non-root.
+**Applies to the two containerized shapes only** (Docker Compose,
+OpenShift) — there is no image, container runtime, or UID/GID model to
+speak of for the standalone JAR or either desktop app; each of those runs
+as an ordinary local OS process under the invoking user's own account
+(see "Local packaging: standalone JAR and desktop apps" below).
+
+Both containerized shapes run the identical image (`Dockerfile`) as non-root.
 Docker Compose (Phase K) verified this live via `docker exec ... cat
 /proc/1/status`, never assumed from the Dockerfile alone. **This phase
 found and fixed a real gap Phase K's own image had**: OpenShift's default
@@ -148,6 +213,10 @@ deliberately never pins a `runAsUser` — letting the cluster's own SCC
 assign it is the point.
 
 ## Read-only root filesystem, resource bounds, health probes
+
+**Applies to OpenShift only** — this is a Kubernetes `securityContext`
+control; the standalone JAR and desktop apps have no such concept and are
+not claimed to have it.
 
 `deploy/openshift/deployment.yaml`'s container `securityContext` sets
 `readOnlyRootFilesystem: true`, `allowPrivilegeEscalation: false`, and

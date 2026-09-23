@@ -49,7 +49,10 @@ class JourneyApiIntegrationTest {
       StubLogSource stub = new StubLogSource("journey-truncation-test-source", "Journey Truncation Test Source",
           new SourceCapabilities(true, false, false, false, false, false, false, true));
       java.util.List<CanonicalLogEvent> many = new java.util.ArrayList<>();
-      for (int i = 0; i < 201; i++) {
+      // PR65_FRESH_SEARCH_CUSTOM_TIME_AND_BATCH_RECOVERY - one past the
+      // guardrail's own default-limit (now 500, see application.yml),
+      // mirroring the original "one past 200" boundary proof.
+      for (int i = 0; i < 501; i++) {
         many.add(CanonicalLogEvent.builder()
             .timestamp(T1.plusSeconds(i))
             .service("gateway")
@@ -171,14 +174,20 @@ class JourneyApiIntegrationTest {
     String body = """
         {"sourceId":"journey-truncation-test-source","start":"2026-01-01T00:00:00Z","end":"2026-01-02T00:00:00Z","field":"journeyId","value":"j-many"}
         """;
-    webTestClient.post().uri("/api/v1/logs/journey")
+    // PR65_FRESH_SEARCH_CUSTOM_TIME_AND_BATCH_RECOVERY - a 501-event JSON
+    // response comfortably exceeds WebTestClient's own default 256 KiB
+    // in-memory buffer (a test-tooling limit, not a real backend/browser
+    // one - `fetch` has no equivalent cap) now that the guardrail default
+    // this test deliberately exceeds by one is 500, not 200.
+    webTestClient.mutate().codecs(c -> c.defaultCodecs().maxInMemorySize(4 * 1024 * 1024)).build()
+        .post().uri("/api/v1/logs/journey")
         .contentType(MediaType.APPLICATION_JSON)
         .bodyValue(body)
         .exchange()
         .expectStatus().isOk()
         .expectBody()
         .jsonPath("$.counts.truncated").isEqualTo(true)
-        .jsonPath("$.counts.limit").isEqualTo(200);
+        .jsonPath("$.counts.limit").isEqualTo(500);
   }
 
   @Test

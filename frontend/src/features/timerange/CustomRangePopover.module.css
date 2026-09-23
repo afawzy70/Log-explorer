@@ -1,20 +1,62 @@
 /*
- * B7 (Session 10) - full v2 tokens, part of the Toolbar-family closure.
+ * B7 (Session 10) -> PR #65 fix (see TimeRangeControl.module.css's own
+ * `.wrapper`/`.menu` comment for the anchoring contract this now mirrors).
  *
- * Deliberately normal flow, never `position: absolute` (CLAUDE.md §4:
- * "The editor must not overlap severity"). An absolutely positioned
- * popover paints at a fixed offset no matter how much room is actually
- * available, so it can overlap whatever the flex-wrap toolbar reflows
- * beneath it - both at narrow viewports AND under the `zoom` CSS property
- * (which scales rendered content without changing the reported viewport
- * width, so a width-based media-query breakpoint can never detect it -
- * see e2e/helpers.ts's `setZoom`). Normal flow has neither problem: the
- * flex-wrap algorithm compares children's real rendered size against the
- * container's own box width regardless of why that size grew, so it
- * reflows correctly under both a narrow viewport and high zoom alike.
+ * History: this was deliberately normal flow, never `position: absolute`,
+ * because an earlier absolute attempt (a) painted at a fixed offset no
+ * matter how much room was available, overlapping the flex-wrap toolbar
+ * beneath it, and (b) a width-based media query can't detect the CSS
+ * `zoom` property (see e2e/helpers.ts's `setZoom`) so a naive breakpoint
+ * couldn't react to it either. Normal flow "fixed" both - but at the cost
+ * of a worse bug: `.popover` is a normal-flow child of
+ * `TimeRangeControl.module.css`'s `.wrapper` (`display: inline-block`),
+ * so `.wrapper`'s own intrinsic box grows to contain it, and since
+ * `.wrapper` is itself one flex item in the toolbar's own
+ * `display:flex; flex-wrap:wrap` row (`Toolbar.module.css`), growing it
+ * reflows every sibling control - Source, Service, Severity, the search
+ * input, Search itself all jump position the instant Custom opens
+ * (CLAUDE.md §4: "Custom is a temporary popover ... never a permanently
+ * expanded form"; verified empirically - Severity shifted ~170px
+ * horizontally and ~111px vertically before this fix).
+ *
+ * The actual fix: anchor `.popover` the same way `.menu` already anchors
+ * itself off `.wrapper` (which is already `position: relative`) -
+ * `position: absolute`, removed from the toolbar's flex flow entirely, so
+ * opening/closing it can never move a sibling control. This does NOT
+ * reintroduce bug (b): `.fields`' `flex-wrap` below reacts to `.popover`'s
+ * own rendered box width (fixed by the explicit `width: 280px` below)
+ * regardless of whether `.popover` itself is `position: absolute` or
+ * `static` - an absolutely positioned box still has a real layout width,
+ * so the internal field-stacking logic is unaffected by this change and
+ * still reacts correctly to both narrow viewports and high `zoom` (see
+ * `.fields`' own comment below). Bug (a) - overlapping content further
+ * down the toolbar - no longer applies either: the popover now floats
+ * above the toolbar's own content instead of pushing it, so there is
+ * nothing "beneath it" left in flow to overlap; it is kept clear of
+ * Severity specifically by `top: calc(100% + var(--space-2))` (opens
+ * below the trigger, matching `.menu`) and is kept inside the viewport at
+ * narrow widths by `right: 0` (see below) plus `max-width`.
  */
 .popover {
-  margin-top: var(--space-2);
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  /*
+   * `left: 0` matches `.menu`'s own anchor (same trigger, same
+   * containing block) and is correct for wherever `TimeRangeControl`
+   * happens to sit in the toolbar's `flex-wrap` row. It is not sufficient
+   * on its own, though: `TimeRangeControl` sits in the middle of that row
+   * (source -> Compose project -> service select -> time range ->
+   * severity -> search -> Search -> Live), so its trigger's left edge can
+   * in principle land far enough right that a bare `left: 0` would still
+   * push this 280px-wide popover past the right edge of the viewport at
+   * narrow widths. `CustomRangePopover.tsx` measures the trigger's actual
+   * rendered position on open and overrides this `left` with a clamped
+   * pixel value via inline style whenever the unclamped position would
+   * overflow either edge - `left: 0` here is only the pre-JS/no-JS
+   * fallback default.
+   */
+  left: 0;
+  z-index: 20;
   background: var(--v2-surface-raised);
   color: var(--v2-ink-1);
   border: var(--v2-bw) solid var(--v2-line);
@@ -26,9 +68,21 @@
    * has an actual constraint to react to - `max-content` would size this
    * box to fit two unwrapped fields, which means `flex-wrap` could never
    * have a reason to trigger at all, at any width or zoom.
+   *
+   * `max-width` is deliberately NOT a bare `100%` here: now that
+   * `.popover` is `position: absolute`, its containing block for
+   * percentages is `.wrapper` (the nearest positioned ancestor) - and
+   * `.wrapper` is sized to its trigger BUTTON alone (the popover is out
+   * of flow, so it no longer contributes to that size), which is often
+   * narrower than 280px. A bare `100%` would therefore clamp this popover
+   * down to the trigger's own width on every viewport, forcing it to
+   * stack fields even at 1920px - wrong. `100vw` (viewport-relative, not
+   * containing-block-relative) is what actually guards against overflow
+   * at genuinely narrow viewports while leaving normal desktop widths
+   * alone.
    */
   width: 280px;
-  max-width: 100%;
+  max-width: calc(100vw - 2 * var(--space-4));
 }
 
 /*

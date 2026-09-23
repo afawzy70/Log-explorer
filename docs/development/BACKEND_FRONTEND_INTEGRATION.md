@@ -57,6 +57,37 @@ contradictory), `nextCursor` (opaque, see "Pagination" below), and
 `queryPlan` (what was pushed to the source vs. evaluated in-process —
 never echoes a raw sensitive filter value, see `QueryPlanLeakTest`).
 
+Every explicit click of **Search** builds a fresh `SearchRequestBody` from
+the currently *committed* criteria (time range, severity, services/mode,
+advanced filters, tags, query text — see `buildRequestBody` in
+`useSearchState.ts`) and sends it as a new `POST`; a superseded/late
+response can never overwrite a newer search's results
+(`activeRequestRef`/`AbortController`, same file). Draft edits to a filter
+field (typing, toggling a checkbox) only ever change local component
+state — nothing is re-queried until Search is actually clicked. This is
+what makes filtering behave correctly even against a source whose own raw
+data changes between searches (PR65_FRESH_SEARCH_CUSTOM_TIME_AND_BATCH_RECOVERY):
+a "stuck" result was traced to `DockerLogSource` capping every historical
+read at `defaultTailLines` raw lines per container, once, regardless of
+how selective the request was — not to a stale/cached frontend request.
+See that class's `searchBlocking` javadoc for the fix: a bounded,
+per-container progressive scan (`logexplorer.docker.max-historical-scan-chunks`,
+default 5 rounds) that narrows a capped container's window to strictly
+older territory and re-reads it, independently per container, until every
+container's window is provably covered or the round budget runs out. When
+the budget runs out first, `SourceSearchOutcome#runtimeWarnings()` carries
+a warning and `SearchService` sets `counts.truncated = true` while
+withholding a fabricated `estimatedTotal` — the same honest-partial-result
+channel `OpenShiftLogSource` already used for its own bounded-scope case.
+
+Both a fresh Search and every "Load more" (`loadMore` in
+`useSearchState.ts`) request the same explicit page size,
+`DEFAULT_PAGE_SIZE = 500` (`frontend/src/shared/api/pageSize.ts`), which
+mirrors the backend's own `logexplorer.search.default-limit` default (also
+500, independently enforced/clamped server-side by
+`SearchGuardrailsProperties` regardless of what the client sends, up to
+the hard `max-limit` of 5000).
+
 ## Live
 
 ```mermaid

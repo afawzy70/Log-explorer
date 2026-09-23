@@ -175,7 +175,13 @@ export const COLUMN_REGISTRY: ColumnDefinition[] = [
     id: 'time',
     label: 'Time',
     defaultVisible: true,
-    width: '190px',
+    // LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - was 190px, silently clipping the tail of the
+    // cell's own formatted value (milliseconds/AM-PM) on every row: a real rendered measurement
+    // (Playwright, 1920px, real fixture data) showed the fully-formatted "<date>, <time>.<ms> <AM/PM>"
+    // string plus its 22px severity-mark gutter needs ~239px of cell width, against the 190px available
+    // (`scrollWidth: 239` vs `clientWidth: 190`). 250px gives a small safety margin without resorting to
+    // a tooltip/JS-truncation workaround - the full value stays genuinely visible, not just accessible.
+    width: '250px',
     cellClassName: styles.timeCell,
     render: (event) => {
       // UX-R4 §13 - same text as `formatTimestampCell`, weighted so the

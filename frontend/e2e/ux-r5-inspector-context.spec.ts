@@ -114,7 +114,9 @@ test.describe('UX-R5 §8/§9 - inspector information hierarchy', () => {
     for (const [label, name] of [
       ['Actor & client', 'AFTER-E-actor-client'],
       ['Request flow', 'AFTER-F-request-flow'],
-      ['Business / error', 'AFTER-G-business-error'],
+      // LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - "Business / error" renamed "Business"
+      // (business-only now; error data moved to Overview's Error Summary + a separate conditional tab).
+      ['Business', 'AFTER-G-business'],
     ] as const) {
       await openInspectorTab(panel, page, new RegExp(label.replace('/', '\\/'), 'i'));
       const section = panel.locator(`section[aria-label="${label}"]`);
@@ -182,7 +184,9 @@ test.describe('UX-R5 §8/§9 - inspector information hierarchy', () => {
     await expect(inspector(page).getByRole('tab', { name: /^overview$/i })).toBeVisible();
     await expect(inspector(page).getByRole('tab', { name: /actor & client/i })).toBeVisible();
     await expect(inspector(page).getByRole('tab', { name: /request flow/i })).toBeVisible();
-    await expect(inspector(page).getByRole('tab', { name: /business \/ error/i })).toBeVisible();
+    await expect(inspector(page).getByRole('tab', { name: /^business$/i })).toBeVisible();
+    // NOT-JSON is a malformed/sparse row - genuinely no error information, so no Error tab either.
+    await expect(inspector(page).getByRole('tab', { name: /^error$/i })).not.toBeVisible();
     await expect(inspector(page).getByRole('tab', { name: /technical.*all fields/i })).toBeVisible();
 
     await openInspectorTab(inspector(page), page, /actor & client/i);

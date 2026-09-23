@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildActorClientFields,
-  buildBusinessErrorFields,
+  buildBusinessFields,
+  buildErrorFields,
   buildOverviewFields,
   buildRequestFlowIdentifiers,
+  deriveExceptionSummary,
+  eventHasErrorInfo,
+  hasMeaningfulText,
 } from './sections';
 import { fullEvent, sparseEvent } from './testEventFixture';
 
@@ -116,13 +120,106 @@ describe('buildRequestFlowIdentifiers', () => {
   });
 });
 
-describe('buildBusinessErrorFields', () => {
-  it('a full event lists business step, UI identifier, and error code', () => {
-    const fields = buildBusinessErrorFields(fullEvent());
-    expect(fields.map((f) => f.label)).toEqual(['Business step', 'UI identifier', 'Error code']);
+// LIVE_TIME_INSPECTOR_AND_DOCUMENTATION_RECOVERY - split from the former buildBusinessErrorFields,
+// owner decision: error/exception data must never mix into the business tab.
+describe('buildBusinessFields', () => {
+  it('a full event lists business step and UI identifier only - never error code', () => {
+    const fields = buildBusinessFields(fullEvent());
+    expect(fields.map((f) => f.label)).toEqual(['Business step', 'UI identifier']);
   });
 
   it('a sparse event produces no rows', () => {
-    expect(buildBusinessErrorFields(sparseEvent())).toEqual([]);
+    expect(buildBusinessFields(sparseEvent())).toEqual([]);
+  });
+});
+
+describe('buildErrorFields', () => {
+  it('a full event lists error code', () => {
+    const fields = buildErrorFields(fullEvent());
+    expect(fields.map((f) => f.label)).toEqual(['Error code']);
+  });
+
+  it('a sparse event produces no rows', () => {
+    expect(buildErrorFields(sparseEvent())).toEqual([]);
+  });
+
+  // PR65_OWNER_REVIEW_DOCUMENTATION_AND_ERROR_EDGE_RECOVERY
+  it('a whitespace-only error code produces no rows - it is not real error information', () => {
+    expect(buildErrorFields(sparseEvent({ errorCode: '   ' }))).toEqual([]);
+  });
+});
+
+describe('eventHasErrorInfo', () => {
+  it('is true for ERROR severity', () => {
+    expect(eventHasErrorInfo(sparseEvent({ severity: 'ERROR' }))).toBe(true);
+  });
+
+  it('is true for FATAL severity, case-insensitively', () => {
+    expect(eventHasErrorInfo(sparseEvent({ severity: 'fatal' }))).toBe(true);
+  });
+
+  it('is true for a non-empty exception, regardless of severity', () => {
+    expect(eventHasErrorInfo(sparseEvent({ severity: 'INFO', exception: 'boom' }))).toBe(true);
+  });
+
+  it('is true for a non-empty error code, regardless of severity', () => {
+    expect(eventHasErrorInfo(sparseEvent({ severity: 'WARN', errorCode: 'ERR_X' }))).toBe(true);
+  });
+
+  it('is false for a plain INFO event with no exception or error code', () => {
+    expect(eventHasErrorInfo(sparseEvent({ severity: 'INFO' }))).toBe(false);
+  });
+
+  it('is false for a fully sparse event (null severity)', () => {
+    expect(eventHasErrorInfo(sparseEvent())).toBe(false);
+  });
+
+  it('a full event (ERROR + exception + errorCode) is true', () => {
+    expect(eventHasErrorInfo(fullEvent())).toBe(true);
+  });
+
+  // PR65_OWNER_REVIEW_DOCUMENTATION_AND_ERROR_EDGE_RECOVERY - `"   "` is truthy but carries no real
+  // information; it must not manufacture error info that isn't actually there.
+  it('is false for a non-error event with a whitespace-only exception and error code', () => {
+    expect(eventHasErrorInfo(sparseEvent({ severity: 'INFO', exception: '   ', errorCode: '\t\n ' }))).toBe(false);
+  });
+
+  it('is true for ERROR severity even when exception and error code are both whitespace-only', () => {
+    expect(eventHasErrorInfo(sparseEvent({ severity: 'ERROR', exception: '  ', errorCode: ' ' }))).toBe(true);
+  });
+});
+
+describe('hasMeaningfulText', () => {
+  it('is false for null, undefined, empty string and whitespace-only strings', () => {
+    expect(hasMeaningfulText(null)).toBe(false);
+    expect(hasMeaningfulText(undefined)).toBe(false);
+    expect(hasMeaningfulText('')).toBe(false);
+    expect(hasMeaningfulText('   ')).toBe(false);
+    expect(hasMeaningfulText('\t\n  ')).toBe(false);
+  });
+
+  it('is true for any non-blank text', () => {
+    expect(hasMeaningfulText('ERR_X')).toBe(true);
+    expect(hasMeaningfulText('  ERR_X  ')).toBe(true);
+  });
+});
+
+describe('deriveExceptionSummary', () => {
+  it('extracts the exception type from a real Java "pkg.Type: message" shape', () => {
+    const result = deriveExceptionSummary('java.lang.RuntimeException: timeout\n\tat com.example.Foo.bar(Foo.java:1)');
+    expect(result.exceptionType).toBe('java.lang.RuntimeException');
+    expect(result.preview).toBe('timeout');
+  });
+
+  it('never fabricates a type when the first line does not look like that shape', () => {
+    const result = deriveExceptionSummary('something went wrong, no colon-qualified type here');
+    expect(result.exceptionType).toBeNull();
+    expect(result.preview).toBe('something went wrong, no colon-qualified type here');
+  });
+
+  it('uses only the first line as the preview even for a long multiline trace', () => {
+    const result = deriveExceptionSummary('java.io.IOException: disk full\nline2\nline3');
+    expect(result.exceptionType).toBe('java.io.IOException');
+    expect(result.preview).toBe('disk full');
   });
 });

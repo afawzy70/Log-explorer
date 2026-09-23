@@ -83,7 +83,7 @@ test('create a tag rule from an event, detect, test, save, classify, export, del
   /*
    * The sample is the committed search itself (owner mission "Classification real search scope, assisted
    * extraction, and visual tagging"), so this search - narrowed to "Make webhook call to" - samples that
-   * population rather than the newest 200 events of the whole source. Every sampled event is therefore similar,
+   * population rather than the newest 500 events of the whole source. Every sampled event is therefore similar,
    * which is exactly the property the reported defect lacked.
    */
   const detectedText = await detected.innerText();

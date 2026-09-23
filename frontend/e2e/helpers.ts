@@ -25,6 +25,57 @@ export async function setZoom(page: Page, zoomPercent: number): Promise<void> {
   }, zoomPercent);
 }
 
+/**
+ * Waits for the page's own web fonts (`tokensV2.css`'s `@font-face`
+ * `Inter Var`/`JetBrains Mono Var`) to finish loading before a test takes
+ * a layout measurement.
+ *
+ * PR #65 CI regression fix (`pr65-custom-time-toolbar-geometry.spec.ts`):
+ * a geometry snapshot taken immediately after `page.goto('/')` (or
+ * immediately after `setZoom`) can land while these fonts are still
+ * "loading" (`document.fonts.status`) - the browser lays out text with a
+ * fallback font's metrics until the real one swaps in and forces a
+ * relayout. Reproduced live against the exact CI Chromium build: at a
+ * width/zoom where the toolbar's `flex-wrap` row is already close to
+ * wrapping, that one relayout is sometimes enough to change how many
+ * controls fit per row, moving the toolbar's own measured position - not
+ * because anything in the app changed, but because the "before" snapshot
+ * was taken mid-font-swap and the "after" one (taken following a couple
+ * of `click()` round-trips, which cost enough real time for the fonts to
+ * finish) was not. Awaiting `document.fonts.ready` first removes that
+ * race so both snapshots measure the same, final, font-settled layout.
+ */
+export async function waitForFontsReady(page: Page): Promise<void> {
+  await page.evaluate(() => document.fonts.ready);
+}
+
+/**
+ * The `What happened` column's own message text, excluding the "More"/
+ * "Less" expand toggle's own label (`MessageCell.tsx`'s `.toggle` button,
+ * shown whenever a message is long enough to likely be clipped -
+ * `LIKELY_TRUNCATED_THRESHOLD`, 80 characters).
+ *
+ * PR #65 CI regression fix (`phase-ui-gap-closure.spec.ts`): a test that
+ * reads the whole `<td>`'s `innerText`/`textContent` picks up that
+ * button's own label too - `innerText` even inserts a line break before
+ * it (flex items each start a new "line" in `innerText`'s output), so a
+ * cell holding e.g. `"...declined ***"` renders as
+ * `"...declined ***\nMore"`. This wasn't reachable before this same PR's
+ * own fixture-corpus growth (`FixtureLogSource.java`, 250 -> 640 events,
+ * for the new 500-row page-size E2E coverage): whichever fixture event
+ * this test's own row-selection logic now lands on is long enough to
+ * cross that 80-character threshold, where the shorter corpus's
+ * equivalent row wasn't. `MessageCell.tsx` always renders the message
+ * text itself in the FIRST `<span>` inside the cell (the `.badge`/
+ * `.toggle` that can follow it are also elements, but never precede it in
+ * DOM order) - reading that one span's own text, not the whole cell's,
+ * gets exactly the message CLAUDE.md §4 means by "`What happened` =
+ * message only", regardless of whether the toggle happens to be present.
+ */
+export async function messageCellText(cell: import('@playwright/test').Locator): Promise<string> {
+  return cell.locator('span').first().innerText();
+}
+
 interface GeometryMismatch {
   row: number;
   column: number;

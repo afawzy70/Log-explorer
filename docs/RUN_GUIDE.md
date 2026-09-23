@@ -164,10 +164,13 @@ is never typed into `.env` directly — `LOGEXPLORER_LOKI_TOKEN_ENV_VAR`
 names another environment variable that actually holds it (e.g. the
 standard OpenShift/Kubernetes service-account token, injected by the
 platform itself), or `LOGEXPLORER_LOKI_TOKEN_FILE_PATH` points at a
-mounted file (e.g. the standard service-account token path). Applying
-real OpenShift manifests is Phase L's job (`deploy/openshift/`, not yet
-built at the time of writing) — this section only covers pointing the
-same one image at a real gateway from outside a cluster.
+mounted file (e.g. the standard service-account token path). Real
+OpenShift manifests (`Deployment`, `Service`, `Route`, `ConfigMap`,
+`ServiceAccount`, a `PersistentVolumeClaim` for classification rules, an
+example `Role`/`RoleBinding`, and a `kustomization.yaml` tying them
+together) are in `deploy/openshift/` — this section only covers pointing
+the same one image at a real gateway from outside a cluster, without
+applying those manifests.
 
 ## Remote Docker (optional, not required)
 

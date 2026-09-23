@@ -2,7 +2,7 @@
 
 Read this before every work session. These rules override convenience, speed, and any instinct to simplify.
 
-Companion documents: `LOG_EXPLORER_CLAUDE_CODE_HANDOVER.md` (requirements), `IMPLEMENTATION_PLAN.md` (phases), `REQUIREMENTS_TRACEABILITY.md` (coverage), `PHASE_PROMPTS.md` (per-phase kickoff and recovery prompts).
+Companion documents: `HANDOVER.md` (requirements), `IMPLEMENTATION_PLAN.md` (phases), `REQUIREMENTS_TRACEABILITY.md` (coverage), `PHASE_PROMPTS.md` (per-phase kickoff and recovery prompts).
 
 ---
 

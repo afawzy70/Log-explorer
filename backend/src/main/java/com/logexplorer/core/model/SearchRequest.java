@@ -114,7 +114,28 @@ public record SearchRequest(
      * the canonical events each adapter actually retrieved, inside that
      * adapter's own read bounds. Normalized to trimmed lower case.
      */
-    List<String> tags
+    List<String> tags,
+    /**
+     * PR65_FRESH_SEARCH_CUSTOM_TIME_AND_BATCH_RECOVERY — the guardrails-
+     * resolved, already-clamped page size ({@code
+     * core.guard.SearchGuardrails#validate}'s own {@code effectiveLimit}),
+     * threaded through by {@code api.SearchService} onto the {@code scoped}
+     * request it hands a {@link com.logexplorer.source.LogSource}, so a
+     * source that needs to know "how many matched events should a bounded
+     * scan aim to collect" (today: only {@code DockerLogSource}'s
+     * progressive per-container scan) never has to re-derive or guess at
+     * guardrails it has no access to. Deliberately a NEW, separate field
+     * rather than overloading {@link #limit} — {@link #limit} is the raw,
+     * client-supplied (frequently {@code null}) value that {@code
+     * PageCursorCodec}'s own request-binding fingerprint and {@code
+     * source.openshift.DirectPodLogProvider}'s own cap already key off;
+     * changing what it *means* would have silently rippled into both. This
+     * field is {@code null} on every request built by {@link Builder}
+     * directly (every existing caller/test unaffected) and is set exactly
+     * once, only by {@code SearchService}, only on the {@code scoped}
+     * request a source actually receives.
+     */
+    Integer effectiveLimit
 ) {
 
   public SearchRequest {
@@ -157,7 +178,22 @@ public record SearchRequest(
         traceId, spanId, correlationId, journeyId, journeyName, eventId, errorCode,
         businessStep, uiIdentifier, loggerContains, devicePlatform, language,
         containerId, pod, containerName, contextTargetProof, sensitiveFilters, query, rawLogQl, cursor, boundary,
-        composeProject, tags);
+        composeProject, tags, effectiveLimit);
+  }
+
+  /**
+   * See {@link #effectiveLimit}'s own javadoc — used exclusively by {@code
+   * api.SearchService} on the {@code scoped} request handed to a {@link
+   * com.logexplorer.source.LogSource}. Every other field, {@link #limit}
+   * included, stays byte-for-byte identical.
+   */
+  public SearchRequest withEffectiveLimit(Integer resolvedEffectiveLimit) {
+    return new SearchRequest(
+        sourceId, start, end, direction, limit, services, serviceFilterMode, levels, text,
+        traceId, spanId, correlationId, journeyId, journeyName, eventId, errorCode,
+        businessStep, uiIdentifier, loggerContains, devicePlatform, language,
+        containerId, pod, containerName, contextTargetProof, sensitiveFilters, query, rawLogQl, cursor, pageBoundary,
+        composeProject, tags, resolvedEffectiveLimit);
   }
 
   @Override
@@ -194,6 +230,7 @@ public record SearchRequest(
         + ", pageBoundary=" + pageBoundary
         + ", composeProject=" + composeProject
         + ", tags=" + tags
+        + ", effectiveLimit=" + effectiveLimit
         + "]";
   }
 
@@ -234,6 +271,7 @@ public record SearchRequest(
     private Instant pageBoundary;
     private String composeProject;
     private List<String> tags;
+    private Integer effectiveLimit;
 
     public Builder sourceId(String v) { this.sourceId = v; return this; }
     public Builder start(Instant v) { this.start = v; return this; }
@@ -270,6 +308,8 @@ public record SearchRequest(
     public Builder composeProject(String v) { this.composeProject = v; return this; }
     /** Classification tag filter (ANY). */
     public Builder tags(List<String> v) { this.tags = v; return this; }
+    /** Test-only convenience — production callers use {@link SearchRequest#withEffectiveLimit}. */
+    public Builder effectiveLimit(Integer v) { this.effectiveLimit = v; return this; }
 
     /**
      * Builds the raw sensitive-filter holder from plain strings, entirely
@@ -311,7 +351,7 @@ public record SearchRequest(
           traceId, spanId, correlationId, journeyId, journeyName, eventId, errorCode,
           businessStep, uiIdentifier, loggerContains, devicePlatform, language,
           containerId, pod, containerName, contextTargetProof, sensitiveFilters, query, rawLogQl, cursor,
-          pageBoundary, composeProject, tags);
+          pageBoundary, composeProject, tags, effectiveLimit);
     }
   }
 }
