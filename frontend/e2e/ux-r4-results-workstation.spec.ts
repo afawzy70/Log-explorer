@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, setViewport, setZoom } from './helpers';
+import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, messageCellText, setViewport, setZoom } from './helpers';
 import { openSettingsSection } from './settings-helpers';
 
 /*
@@ -29,9 +29,17 @@ function rows(page: Page) {
   return page.locator('tbody tr[data-row-index]');
 }
 
-/** The message text of the row at `index`, used to prove the *right* event opened. */
+/**
+ * The message text of the row at `index`, used to prove the *right*
+ * event opened. `messageCellText` (not the whole cell's `innerText`) -
+ * PR #65 CI regression fix, see its own doc comment: a long enough
+ * message renders a "More" expand toggle inside this same `<td>`, and
+ * several callers below compare this text against the Inspector's own
+ * (never-truncated) rendering of the same message via `toContainText` -
+ * that comparison needs the message alone, not the toggle's own label.
+ */
 async function messageOf(page: Page, index: number) {
-  return (await rows(page).nth(index).locator('td').nth(3).innerText()).trim();
+  return (await messageCellText(rows(page).nth(index).locator('td').nth(3))).trim();
 }
 
 /**

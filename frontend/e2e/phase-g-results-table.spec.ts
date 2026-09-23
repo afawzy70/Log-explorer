@@ -62,21 +62,48 @@ for (const zoom of ZOOM_LEVELS) {
  * rendered measurement (`scrollWidth` vs `clientWidth`), not assumed from the CSS alone. Asserts the
  * DOM-level invariant directly, at every required width and zoom level, not just a screenshot.
  */
+/**
+ * The per-row measurements `Time column shows the complete timestamp with
+ * no clipping` needs - `clientWidth`/`scrollWidth`/text for EVERY row, in
+ * ONE batched browser-side evaluation (`Locator.evaluateAll`) rather than
+ * one `cell.evaluate()` Playwright round-trip per row.
+ *
+ * PR #65 CI regression fix: this page size's own default batch size grew
+ * 200 -> 500 in this same PR (`frontend/src/shared/api/pageSize.ts`), and
+ * the fixture corpus grew alongside it (250 -> 640,
+ * `FixtureLogSource.java`) to actually exercise that new page size in
+ * these E2E specs - so the row count these tests measure here grew right
+ * along with them, up to 2.5x what it used to be. The per-row round-trip
+ * loop this replaced cost one full Playwright IPC round-trip per row (up
+ * to ~500 of them), which is what pushed this test over Playwright's own
+ * 30s test timeout in CI (`Test timeout of 30000ms exceeded` on a
+ * `cell.evaluate()` call around row ~382) - not a real clipping
+ * regression (the companion header/cell geometry test in this same file
+ * still passes at every required viewport). `evaluateAll` measures every
+ * row in a single round-trip; the per-row invariant itself (every row
+ * individually checked for clipping and for the full date/time/ms
+ * format) is unchanged - still every row, not a sample.
+ */
+async function measureTimeCells(
+  page: import('@playwright/test').Page,
+): Promise<Array<{ clientWidth: number; scrollWidth: number; text: string }>> {
+  return page.locator('td[class*="timeCell"]').evaluateAll((cells) =>
+    cells.map((el) => ({
+      clientWidth: (el as HTMLElement).clientWidth,
+      scrollWidth: (el as HTMLElement).scrollWidth,
+      text: el.textContent ?? '',
+    })),
+  );
+}
+
 for (const width of REQUIRED_WIDTHS) {
   test(`Time column shows the complete timestamp with no clipping at ${width}px`, async ({ page }) => {
     await runRealSearch(page);
     await setViewport(page, width);
 
-    const timeCells = page.locator('td[class*="timeCell"]');
-    const count = await timeCells.count();
-    expect(count).toBeGreaterThan(0);
-    for (let i = 0; i < count; i++) {
-      const cell = timeCells.nth(i);
-      const { clientWidth, scrollWidth, text } = await cell.evaluate((el) => ({
-        clientWidth: el.clientWidth,
-        scrollWidth: el.scrollWidth,
-        text: el.textContent ?? '',
-      }));
+    const cells = await measureTimeCells(page);
+    expect(cells.length).toBeGreaterThan(0);
+    cells.forEach(({ clientWidth, scrollWidth, text }, i) => {
       expect(scrollWidth, `Time cell #${i} ("${text}") is clipped: scrollWidth ${scrollWidth} > clientWidth ${clientWidth}`).toBeLessThanOrEqual(clientWidth);
       // Missing/invalid timestamps render the established empty placeholder; every other value shows a
       // calendar date, hh:mm:ss, and exactly three millisecond digits (CLAUDE.md §4 "Time shows date +
@@ -84,7 +111,7 @@ for (const width of REQUIRED_WIDTHS) {
       if (text.trim() !== '—') {
         expect(text).toMatch(/\d{1,2}:\d{2}:\d{2}\.\d{3}/);
       }
-    }
+    });
   });
 }
 
@@ -94,17 +121,11 @@ for (const zoom of ZOOM_LEVELS) {
     await setViewport(page, 1280);
     await setZoom(page, zoom);
 
-    const timeCells = page.locator('td[class*="timeCell"]');
-    const count = await timeCells.count();
-    expect(count).toBeGreaterThan(0);
-    for (let i = 0; i < count; i++) {
-      const cell = timeCells.nth(i);
-      const { clientWidth, scrollWidth } = await cell.evaluate((el) => ({
-        clientWidth: el.clientWidth,
-        scrollWidth: el.scrollWidth,
-      }));
+    const cells = await measureTimeCells(page);
+    expect(cells.length).toBeGreaterThan(0);
+    cells.forEach(({ clientWidth, scrollWidth }) => {
       expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
-    }
+    });
   });
 }
 

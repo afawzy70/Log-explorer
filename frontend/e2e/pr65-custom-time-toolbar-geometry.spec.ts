@@ -5,6 +5,7 @@ import {
   captureScreenshot,
   setViewport,
   setZoom,
+  waitForFontsReady,
 } from './helpers';
 
 /*
@@ -65,7 +66,25 @@ async function rectOfLocator(locator: import('@playwright/test').Locator, label:
   if (!box) {
     throw new Error(`rectOfLocator: "${label}" has no visible box`);
   }
-  return { left: box.x, top: box.y, width: box.width, height: box.height };
+  // Document-relative, not viewport-relative (root cause below) - `boundingBox()`
+  // is viewport-relative (same coordinate space as `getBoundingClientRect()`), so
+  // it moves with the page's own scroll position even when nothing in the DOM
+  // actually reflowed. At 200%/1440px specifically, the "Last 1 day" preset
+  // menu's own "Custom" option renders below the fold (verified live: its own
+  // rect top sat at y=967 against a 900px-tall viewport) - clicking it is a
+  // completely ordinary Playwright (and real-browser) auto-scroll-into-view,
+  // unrelated to `CustomRangePopover`/its CSS entirely, but it moves every
+  // viewport-relative rect captured afterward by the scrolled amount (measured:
+  // exactly the toolbar's own reported "moved by 24px", one-to-one with the
+  // page's own `scrollY` delta between the two snapshots). Adding each
+  // snapshot's own scroll offset back in cancels that out and leaves only a
+  // genuine reflow - CLAUDE.md §4's actual invariant here ("opening Custom does
+  // not move the toolbar") is about the toolbar's position IN THE PAGE, not
+  // relative to whatever the viewport happened to be scrolled to when it was
+  // measured.
+  const page = locator.page();
+  const scroll = await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
+  return { left: box.x + scroll.x, top: box.y + scroll.y, width: box.width, height: box.height };
 }
 
 /** Every rect this spec watches for movement, captured together for one before/after diff. */
@@ -99,6 +118,7 @@ for (const width of REQUIRED_WIDTHS) {
   test(`opening Custom does not move the toolbar or any sibling control at ${width}px`, async ({ page }) => {
     await page.goto('/');
     await setViewport(page, width);
+    await waitForFontsReady(page);
 
     const before = await captureToolbarRects(page);
     await openCustom(page);
@@ -120,6 +140,7 @@ for (const zoom of ZOOM_LEVELS) {
     await page.goto('/');
     await setViewport(page, 1440);
     await setZoom(page, zoom);
+    await waitForFontsReady(page);
 
     const before = await captureToolbarRects(page);
     await openCustom(page);

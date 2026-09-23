@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, setViewport } from './helpers';
+import { assertNoHorizontalOverflow, assertTableGeometry, captureScreenshot, messageCellText, setViewport } from './helpers';
 
 /*
  * UI GAP CLOSURE PASS — browser checks for this pass's own four gaps
@@ -81,7 +81,7 @@ test.describe('UI Gap Closure Pass', () => {
     await gotoFixture(page);
     await search(page); // baseline for restoring afterward
     const originalRowCount = await page.locator('tbody tr').count();
-    const originalFirstMessage = await page.locator('tbody tr').first().locator('td').nth(3).innerText();
+    const originalFirstMessage = await messageCellText(page.locator('tbody tr').first().locator('td').nth(3));
 
     // The fixture corpus includes a malformed line with no timestamp at a
     // fixed cycle position - "Show +-30 seconds" is correctly absent for
@@ -119,7 +119,7 @@ test.describe('UI Gap Closure Pass', () => {
     const rowCount = await rows.count();
     const actualMessages: string[] = [];
     for (let i = 0; i < rowCount; i++) {
-      actualMessages.push(await rows.nth(i).locator('td').nth(3).innerText());
+      actualMessages.push(await messageCellText(rows.nth(i).locator('td').nth(3)));
     }
     expect(actualMessages).toEqual(expectedOrder);
 
@@ -133,7 +133,7 @@ test.describe('UI Gap Closure Pass', () => {
     await page.getByRole('button', { name: /back to original search/i }).click(); // 12. return to original search
     await expect(page.getByText(/back to original search/i)).not.toBeVisible();
     await expect(page.locator('tbody tr')).toHaveCount(originalRowCount);
-    await expect(page.locator('tbody tr').first().locator('td').nth(3)).toHaveText(originalFirstMessage);
+    await expect(page.locator('tbody tr').first().locator('td').nth(3).locator('span').first()).toHaveText(originalFirstMessage);
     // Leaving context view clears the root marker too.
     await expect(page.locator('tbody tr[aria-current="location"]')).toHaveCount(0);
   });
