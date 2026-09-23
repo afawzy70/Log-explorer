@@ -22,13 +22,23 @@ field-mapping issue, not a search issue.
 
 ### Search results look truncated / a warning about counts
 
-**Likely cause:** your search matched more events than Log Explorer will
-load in one go (a safety bound, not a bug).
+**Likely cause:** either (a) your search matched more events than Log
+Explorer will load in one page (a safety bound — 500 events by default,
+not a bug), or (b), for the Docker source specifically, a very busy
+container had more raw log history in your time window than Log
+Explorer's own bounded per-container scan could finish reading through
+before it had to stop and report honestly rather than keep scanning
+indefinitely.
 
 **What to do:** narrow your time range or filters, or use **Load More**
-to fetch the next page. Log Explorer always tells you the true total
-versus how many are currently shown — it never hides the fact that more
-exist.
+to fetch the next page — clicking **Search** again always re-queries the
+source fresh, it never just re-filters whatever was already loaded, so
+narrowing your criteria (or simply searching again) can genuinely surface
+events a broader search's page didn't reach. Log Explorer always tells
+you how many events are currently shown, and whenever it cannot prove
+that's the complete picture — rather than fabricating a total it can't
+back up — it marks the result as partial/truncated instead of silently
+hiding the fact that more may exist.
 
 ---
 

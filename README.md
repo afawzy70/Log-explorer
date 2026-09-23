@@ -505,8 +505,17 @@ code-level detail behind each:
 - Live tail: a bounded 1,000-event display cap, bounded server-side buffer,
   batched (never one state update per event) frontend rendering, bounded/
   cancellable reconnect.
-- Historical search: bounded page size/limits, HMAC-signed opaque cursors
-  (no raw offset/query leaked into a cursor), a bounded max time range.
+- Historical search: fresh, re-run against the selected source on every
+  explicit Search click (never a filter over just the previously-loaded
+  page), bounded page size/limits (500 events per page by default,
+  `logexplorer.search.default-limit` / `LOGEXPLORER_SEARCH_DEFAULT_LIMIT`,
+  capped by a hard `max-limit` of 5000), HMAC-signed opaque cursors (no raw
+  offset/query leaked into a cursor), a bounded max time range. For Docker
+  specifically, a bounded per-container progressive scan (up to
+  `logexplorer.docker.max-historical-scan-chunks` rounds, default 5) lets a
+  selective search reach genuinely older matching events beyond the first
+  raw tail read, and honestly reports `truncated` rather than fabricating
+  a total if its round budget runs out first.
 - Frontend delivery: `JourneyView`/`LiveTailPanel` are code-split
   (`React.lazy`) since they're genuinely conditional secondary views; the
   primary Search → scan → inspect path is never lazy-loaded. See

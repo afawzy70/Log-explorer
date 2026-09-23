@@ -246,10 +246,13 @@ minutes, Last 30 minutes, Last 1 hour, Last 4 hours, Last 1 day, Last 7
 days**, or **Custom**.
 
 Choosing **Custom** opens a small popover with **Start** and **End**
-fields, an **Apply**, and a **Cancel**. Apply commits your range and
-shows you exactly which dates/times and time zone are now active — never
-a vague "Custom range" label. Cancel, pressing Escape, or clicking
-outside the popover closes it without changing anything.
+fields, an **Apply**, and a **Cancel**. It floats above the toolbar as an
+anchored overlay — opening or closing it never shifts or resizes any
+other toolbar control (Source, Service, Severity, search, Search, Live all
+stay exactly where they were). Apply commits your range and shows you
+exactly which dates/times and time zone are now active — never a vague
+"Custom range" label. Cancel, pressing Escape, or clicking outside the
+popover closes it without changing anything.
 
 If a search returns zero results, Log Explorer offers a one-click
 **"Search last 1 day"** shortcut rather than leaving you guessing.
@@ -257,6 +260,18 @@ If a search returns zero results, Log Explorer offers a one-click
 ---
 
 ## 9. Search and filters
+
+Changing a filter — typing in a field, checking a box, picking a
+service — only ever edits your *draft* criteria; nothing is sent to the
+source until you actually click **Search** (or press Enter in the search
+box). There is no search-as-you-type. Every click of **Search** re-runs
+the query against the selected source from scratch, with your full
+current criteria (time range, severity, services, advanced filters, tags,
+query text) — it is never a filter applied only to whatever page of
+results happened to already be loaded, so if a matching event exists
+further back in the source's own history but still inside your time
+window, a fresh Search can find it even if an earlier, broader search's
+results didn't happen to include it.
 
 ### Newest / Oldest
 
@@ -359,15 +374,21 @@ Click any row (or press Enter on a focused row) to open it in the
 Inspector (§15). The selected row stays visibly marked even after you
 resize columns, change density, or load more results.
 
-If more results exist than are currently loaded, a **Load More** action
-appends the next page — your current column/sort/selection state is
-preserved across it.
+Log Explorer loads up to 500 matching events per page by default (an
+administrator can change this bound), and **Load More** requests the same
+page size again — your current column/sort/selection state is preserved
+across it. "500" always means 500 events that actually matched your
+filters, never 500 raw log lines minus whatever got filtered out.
 
 ### If results are cut off
 
-If a search hits its bounds (a very large time range, a very common
-filter), Log Explorer tells you plainly how many results are shown out
-of how many actually matched, rather than silently truncating.
+If a search hits its bounds — more matches exist than fit in one page, or
+(for the Docker source specifically) a very busy container's history
+couldn't be fully scanned within Log Explorer's own bounded search
+effort — Log Explorer tells you plainly that the results are partial
+rather than silently truncating or claiming an exact total it can't
+prove. Narrow your time range or filters, or use **Load More**, to see
+more.
 
 ---
 
