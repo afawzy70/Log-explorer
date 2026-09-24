@@ -43,6 +43,7 @@ function eventWithMessage(message: string) {
     unknownMdcFields: {},
     malformed: false,
     rawLine: null,
+    rawJson: null,
     sourceId: null,
     composeProject: null,
     composeService: null,

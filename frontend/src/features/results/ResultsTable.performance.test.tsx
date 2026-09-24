@@ -50,6 +50,7 @@ function syntheticEvent(index: number): LogEvent {
     unknownMdcFields: {},
     malformed: false,
     rawLine: null,
+    rawJson: null,
     sourceId: 'fixture',
     composeProject: null,
     composeService: null,

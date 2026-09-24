@@ -192,6 +192,52 @@ class SerializationLeakTest {
     assertThat(json).contains("778899");
   }
 
+  // -----------------------------------------------------------------
+  // Owner report - "see the real container JSON" (Inspector). EventDto#rawJson
+  // is built exclusively via MaskingService#maskRawJson (see EventMapper's
+  // own javadoc) - proven end-to-end here, through the exact same real
+  // Jackson ObjectMapper every other test in this file already uses.
+  // -----------------------------------------------------------------
+
+  @Test
+  void serializedEventDtoRawJsonNeverContainsAnyRawSensitiveValueEvenUnderAKeyTheMappingNeverResolved() throws Exception {
+    // The scenario this feature exists to help find must never itself leak:
+    // a real field-mapping bug means event.sensitive() has nothing for this
+    // field (mapping resolved it from nowhere), yet the untouched source
+    // line still genuinely contains it under a plausible key name.
+    CanonicalLogEvent event = CanonicalLogEvent.builder()
+        .message("m")
+        .sensitive(RawSensitiveFields.empty())
+        .originalRawJson("{\"message\":\"m\",\"cif\":\"" + RAW_CIF + "\"}")
+        .build();
+
+    String json = objectMapper.writeValueAsString(eventMapper.toDto(event));
+
+    assertThat(json).doesNotContain(RAW_CIF);
+    assertThat(json).contains("[REDACTED]");
+  }
+
+  @Test
+  void serializedEventDtoRawJsonMasksResolvedValuesConsistentlyWithProtectedFieldsAndKeepsNonSensitiveDataReadable() throws Exception {
+    CanonicalLogEvent event = fullyPopulatedEvent().toBuilder()
+        .originalRawJson("{\"message\":\"payment failed\",\"logger\":\"com.example.Foo\",\"cif\":\"" + RAW_CIF + "\"}")
+        .build();
+
+    EventDto dto = eventMapper.toDto(event);
+    String json = objectMapper.writeValueAsString(dto);
+
+    assertThat(json).doesNotContain(RAW_CIF);
+    assertThat(dto.rawJson()).contains("payment failed", "com.example.Foo"); // real, non-sensitive structure stays legible
+    com.fasterxml.jackson.databind.JsonNode rawJsonTree = objectMapper.readTree(dto.rawJson());
+    assertThat(rawJsonTree.get("cif").asText()).isEqualTo(dto.protectedFields().cif());
+  }
+
+  @Test
+  void serializedEventDtoRawJsonIsNullWhenTheSourceNeverSuppliedOne() {
+    CanonicalLogEvent event = CanonicalLogEvent.builder().message("m").build();
+    assertThat(eventMapper.toDto(event).rawJson()).isNull();
+  }
+
   private CanonicalLogEvent fullyPopulatedEvent() {
     return CanonicalLogEvent.builder()
         .timestamp(Instant.parse("2026-01-01T00:00:00Z"))

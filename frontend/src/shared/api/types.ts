@@ -159,6 +159,17 @@ export interface LogEvent {
   unknownMdcFields: Record<string, unknown>;
   malformed: boolean;
   rawLine: string | null;
+  /**
+   * Owner report — a masked rendering of the untouched source line/JSON
+   * this event was parsed from, for every event (not just malformed ones).
+   * Already masked server-side (see the backend's `EventDto#rawJson`
+   * javadoc) — safe to render as plain text. Deliberately distinct from
+   * this app's own "Canonical Event JSON" disclosure (see
+   * `AllFieldsSection.tsx`'s comment) and from the Field Mapping settings
+   * workflow's genuinely unmasked "Original Source JSON" sample. `null`
+   * when the source never supplied this content at all.
+   */
+  rawJson: string | null;
   sourceId: string | null;
   composeProject: string | null;
   /** Legacy Remediation Slice 3's backend field, mirrored here in Slice 4 so it can be offered as an optional table column - not previously present on this type. */

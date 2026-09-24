@@ -59,6 +59,7 @@ function event(message: string, timestamp: string) {
     unknownMdcFields: {},
     malformed: false,
     rawLine: null,
+    rawJson: null,
     sourceId: 'fixture',
     composeProject: null,
     composeService: null,

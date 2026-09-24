@@ -45,6 +45,22 @@ public record EventDto(
     Map<String, Object> unknownMdcFields,
     boolean malformed,
     String rawLine,
+    /**
+     * Owner report — a masked rendering of the untouched source line/JSON
+     * this event was parsed from ({@code core.model.CanonicalLogEvent
+     * #originalRawJson}), for every event, not just malformed ones. Built
+     * exclusively by {@code core.mask.MaskingService#maskRawJson} (see its
+     * own javadoc) — the same single masking boundary {@link
+     * #protectedFields} already goes through, just applied to the whole
+     * source text rather than to individual resolved fields. Deliberately
+     * distinct from both the frontend's "Canonical Event JSON" (this app's
+     * own re-serialized, already-masked DTO) and the Field Mapping
+     * settings workflow's genuinely unmasked "Original Source JSON"
+     * sample — see {@code AllFieldsSection.tsx}'s own comment for that
+     * three-way distinction. {@code null} when the source never supplied
+     * this content at all.
+     */
+    String rawJson,
     String sourceId,
     String composeProject,
     String composeService,

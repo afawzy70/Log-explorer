@@ -42,6 +42,17 @@ import org.springframework.stereotype.Component;
  * ExtractedValueRedactor} (credential headers, sensitive extraction
  * definitions, policy-masked protected identifiers, {@link TextRedactor})
  * and is bounded in length.
+ *
+ * <p><b>Owner report — "see the real container JSON" (Inspector).</b>
+ * {@link EventDto#rawJson}, unlike {@code core.model.CanonicalLogEvent
+ * #originalRawJson} itself (which an ArchUnit-enforced boundary keeps out
+ * of every DTO), is built here via {@link MaskingService#maskRawJson} —
+ * the SAME single masking boundary already used for {@link
+ * #protectedFields}, applied to the untouched source line/JSON instead of
+ * to individual resolved fields. See that method's own javadoc for why a
+ * plain reuse of {@link #maskingService}'s per-field masked values alone
+ * is not sufficient (a field the active mapping profile never resolved
+ * still needs to be caught by its JSON key name, not its absent value).
  */
 @Component
 public class EventMapper {
@@ -88,6 +99,7 @@ public class EventMapper {
         textRedactor.redactStringValues(event.unknownMdcFields()),
         event.malformed(),
         textRedactor.redact(event.rawLine()),
+        maskingService.maskRawJson(event),
         event.sourceId(),
         event.composeProject(),
         event.composeService(),

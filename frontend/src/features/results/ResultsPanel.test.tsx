@@ -45,6 +45,7 @@ function baseEvent() {
     unknownMdcFields: {},
     malformed: false,
     rawLine: null,
+    rawJson: null,
     sourceId: null,
     composeProject: null,
     composeService: null,

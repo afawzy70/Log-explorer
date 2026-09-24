@@ -211,7 +211,7 @@ describe('persistence: nothing ever written to localStorage/sessionStorage/the U
               eventId: null, businessStep: null, uiIdentifier: null, errorCode: null, correlationId: null,
               protectedFields: { cif: null, userName: null, customerId: null, deviceId: null, deviceIp: null },
               devicePlatformType: null, language: null, serverIp: null, serverHost: null, unknownTopLevelFields: {},
-              unknownMdcFields: {}, malformed: false, rawLine: null, sourceId: null, composeProject: null,
+              unknownMdcFields: {}, malformed: false, rawLine: null, rawJson: null, sourceId: null, composeProject: null,
               composeService: null, containerId: null, containerName: null, stream: null, namespace: null, pod: null,
               contextTargetProof: null,
               tags: [],

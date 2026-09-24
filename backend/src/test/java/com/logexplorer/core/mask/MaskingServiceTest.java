@@ -352,4 +352,127 @@ class MaskingServiceTest {
     freshPolicy.setMasked(ProtectedField.DEVICE_IP, true);
     assertThat(freshService.mask(event).deviceIp()).isEqualTo("10.20.30.***");
   }
+
+  // -----------------------------------------------------------------
+  // Owner report - "see the real container JSON" (Inspector). maskRawJson()
+  // is the single-boundary method that makes CanonicalLogEvent#originalRawJson
+  // safe to add to EventDto (see that field's own javadoc and this method's).
+  // -----------------------------------------------------------------
+
+  @Test
+  void maskRawJsonReplacesAResolvedSensitiveValueWithTheSameMaskedFormAsProtectedFields() throws Exception {
+    forceAllMasked();
+    RawSensitiveFields raw = new RawSensitiveFields("12345678", "jane.doe", "cust-99", "dev-77", "203.0.113.42");
+    CanonicalLogEvent event = CanonicalLogEvent.builder()
+        .sensitive(raw)
+        .originalRawJson("{\"message\":\"hello\",\"cif\":\"12345678\",\"userName\":\"jane.doe\","
+            + "\"customerId\":\"cust-99\",\"deviceId\":\"dev-77\",\"deviceIp\":\"203.0.113.42\"}")
+        .build();
+
+    String masked = service.maskRawJson(event);
+
+    assertThat(masked).doesNotContain("12345678", "jane.doe", "cust-99", "dev-77", "203.0.113.42");
+    com.fasterxml.jackson.databind.JsonNode tree = new com.fasterxml.jackson.databind.ObjectMapper().readTree(masked);
+    assertThat(tree.get("message").asText()).isEqualTo("hello"); // non-sensitive data survives untouched
+    assertThat(tree.get("cif").asText()).isEqualTo(service.mask(event).cif());
+    assertThat(tree.get("userName").asText()).isEqualTo(service.mask(event).userName());
+  }
+
+  @Test
+  void maskRawJsonMasksAKeyNameMatchEvenWhenTheActiveMappingNeverResolvedAValueForIt() {
+    // The scenario this method exists for: a real field-mapping bug (a
+    // typo'd path, a profile that doesn't list this alias) means
+    // event.sensitive() has nothing for this field - the raw value must
+    // still never reach the browser just because the resolver missed it.
+    forceAllMasked();
+    CanonicalLogEvent event = CanonicalLogEvent.builder()
+        .sensitive(RawSensitiveFields.empty()) // mapping resolved nothing
+        .originalRawJson("{\"message\":\"hi\",\"cif\":\"UNRESOLVED-RAW-CIF-99887766\"}")
+        .build();
+
+    String masked = service.maskRawJson(event);
+
+    assertThat(masked).doesNotContain("UNRESOLVED-RAW-CIF-99887766");
+    assertThat(masked).contains("[REDACTED]");
+  }
+
+  @Test
+  void maskRawJsonMasksASensitiveKeyNestedInsideAnMdcOrExtraObjectAtAnyDepth() {
+    forceAllMasked();
+    CanonicalLogEvent event = CanonicalLogEvent.builder()
+        .sensitive(RawSensitiveFields.empty())
+        .originalRawJson("{\"mdc\":{\"deviceId\":\"NESTED-RAW-DEVICE-ID-1234\"},"
+            + "\"extra\":{\"audit\":{\"customerId\":\"NESTED-RAW-CUSTOMER-5678\"}}}")
+        .build();
+
+    String masked = service.maskRawJson(event);
+
+    assertThat(masked).doesNotContain("NESTED-RAW-DEVICE-ID-1234", "NESTED-RAW-CUSTOMER-5678");
+  }
+
+  @Test
+  void maskRawJsonLeavesAFieldWhosePolicyIsUnmaskedAsTheRealValue() {
+    MaskingPolicyService freshPolicy = new MaskingPolicyService(); // fresh default: unmasked
+    MaskingService freshService = new MaskingService(freshPolicy);
+    CanonicalLogEvent event = CanonicalLogEvent.builder()
+        .sensitive(new RawSensitiveFields("12345678", null, null, null, null))
+        .originalRawJson("{\"cif\":\"12345678\"}")
+        .build();
+
+    String masked = freshService.maskRawJson(event);
+
+    assertThat(masked).contains("12345678"); // by explicit owner policy, not a leak - see MaskingPolicyService
+  }
+
+  @Test
+  void maskRawJsonAlsoRunsTheFreeTextScanOnEveryNonSensitiveStringLeaf() {
+    forceAllMasked();
+    CanonicalLogEvent event = CanonicalLogEvent.builder()
+        .sensitive(RawSensitiveFields.empty())
+        .originalRawJson("{\"message\":\"card 4111111111111111 declined\"}")
+        .build();
+
+    String masked = service.maskRawJson(event);
+
+    assertThat(masked).doesNotContain("4111111111111111");
+    assertThat(masked).contains("[REDACTED_CARD]");
+  }
+
+  @Test
+  void maskRawJsonFallsBackToFreeTextRedactionForNonJsonMalformedLines() {
+    forceAllMasked();
+    CanonicalLogEvent event = CanonicalLogEvent.builder()
+        .malformed(true)
+        .sensitive(new RawSensitiveFields("12345678", null, null, null, null))
+        .originalRawJson("NOT VALID JSON cif=12345678")
+        .build();
+
+    String masked = service.maskRawJson(event);
+
+    assertThat(masked).doesNotContain("12345678");
+  }
+
+  @Test
+  void maskRawJsonReturnsNullWhenTheSourceNeverSuppliedOne() {
+    CanonicalLogEvent event = CanonicalLogEvent.builder().build();
+    assertThat(service.maskRawJson(event)).isNull();
+  }
+
+  @Test
+  void maskRawJsonStaysParseableJsonAfterMaskingRatherThanCorruptingSyntax() throws Exception {
+    forceAllMasked();
+    CanonicalLogEvent event = CanonicalLogEvent.builder()
+        .sensitive(new RawSensitiveFields("12345678", "jane.doe", null, null, null))
+        .originalRawJson("{\"a\":1,\"cif\":\"12345678\",\"nested\":{\"userName\":\"jane.doe\",\"b\":true},\"c\":[1,2,3]}")
+        .build();
+
+    String masked = service.maskRawJson(event);
+
+    // Would throw if masking had corrupted the JSON (e.g. a naive whole-string
+    // "label=[REDACTED]" text-redaction pass over real JSON syntax would).
+    com.fasterxml.jackson.databind.JsonNode tree = new com.fasterxml.jackson.databind.ObjectMapper().readTree(masked);
+    assertThat(tree.get("a").asInt()).isEqualTo(1);
+    assertThat(tree.get("nested").get("b").asBoolean()).isTrue();
+    assertThat(tree.get("c").isArray()).isTrue();
+  }
 }

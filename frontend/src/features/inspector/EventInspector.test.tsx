@@ -540,7 +540,11 @@ describe('EventInspector', () => {
       // raw JSON disclosure) is now its own tab - switch to it first.
       await user.click(screen.getByRole('tab', { name: /technical \/ all fields/i }));
       await user.click(screen.getByText('Canonical Event JSON'));
-      const rawJson = screen.getByText(/"message"/).closest('pre')!;
+      // Scoped to the Canonical Event JSON disclosure specifically - the
+      // separate "Raw source JSON (masked)" disclosure also contains a
+      // "message" field and would otherwise make this query ambiguous.
+      const canonicalJsonDetails = screen.getByText('Canonical Event JSON').closest('details')!;
+      const rawJson = within(canonicalJsonDetails).getByText(/"message"/).closest('pre')!;
       expect(rawJson.textContent).toContain('[REDACTED]');
       expect(rawJson.textContent).toContain('[REDACTED_CARD]');
       expect(rawJson.textContent).not.toMatch(/customerId=\d/); // the original digits are gone, never reconstructed client-side

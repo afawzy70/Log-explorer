@@ -35,6 +35,7 @@ function event(overrides: Partial<LogEvent> = {}): LogEvent {
     unknownMdcFields: {},
     malformed: false,
     rawLine: null,
+    rawJson: null,
     sourceId: null,
     composeProject: null,
     composeService: null,

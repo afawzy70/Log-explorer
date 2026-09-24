@@ -56,6 +56,7 @@ function event(message: string, timestamp: string) {
     unknownMdcFields: {},
     malformed: false,
     rawLine: null,
+    rawJson: null,
     sourceId: null,
     composeProject: null,
     composeService: null,

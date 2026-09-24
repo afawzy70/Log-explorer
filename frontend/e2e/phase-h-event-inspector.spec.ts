@@ -280,3 +280,82 @@ test('at the default panel width, every offered tab renders on one row - the def
 
   await assertNoHorizontalOverflow(page);
 });
+
+/*
+ * Owner report - "see the real container JSON" (Inspector) to spot field-
+ * mapping bugs more easily. `AllFieldsSection.tsx`'s new, separate "Raw
+ * source JSON (masked)" disclosure (`EventDto#rawJson`, built by the real
+ * backend's `MaskingService#maskRawJson`) - proven here against the real
+ * fixture backend, not a static mock, per CLAUDE.md §6's debug path (real
+ * API response -> DOM). Masking is explicitly enabled first (the fresh
+ * default is unmasked - see phase-h's own masking test above) so this is
+ * the scenario where a leak would actually be visible if the security
+ * boundary had a gap.
+ */
+test('owner report - the Inspector\'s "Raw source JSON (masked)" disclosure shows the real source text, masked consistently with Actor & client, and reads as plain text', async ({
+  page,
+}) => {
+  const protectedLabels = ['CIF', 'Username', 'Customer ID', 'Device ID', 'Device IP'];
+  await page.goto('/');
+  await openSettingsSection(page, /privacy & masking/i);
+  const maskingDialog = page.getByTestId('privacy-masking-settings-panel');
+  await expect(maskingDialog).toBeVisible();
+  for (const label of protectedLabels) {
+    if (!(await maskingDialog.getByLabel(label).isChecked())) {
+      await maskingDialog.getByLabel(label).click();
+    }
+  }
+  await page.getByRole('button', { name: /back to search results/i }).click();
+
+  await runRealSearch(page);
+  await openInspectorOnRow(page, 0);
+  const dialog = page.getByRole('dialog', { name: /event details/i });
+
+  // The masked CIF value the Actor & client section already shows for
+  // this exact event - both surfaces derive from the same server-side
+  // masked value by design (MaskingService#maskRawJson's own javadoc), so
+  // this is a genuine cross-surface consistency check, not just "some
+  // marker is present somewhere."
+  await openInspectorTab(dialog, page, /actor & client/i);
+  const actorCifValue = (await dialog.locator('dt:text-is("CIF") + dd').innerText()).trim();
+  expect(actorCifValue).toMatch(/\*/); // real fixture events always carry a CIF - confirms masking actually ran
+
+  // "All fields" lives behind its own tab AND, within it, its own
+  // collapsed <details> (UX-R5 §13 / PCFR-1 - see
+  // phase-legacy-slice7-redaction.spec.ts's identical two-clicks-deep
+  // pattern) - the outer heading must be expanded before the inner
+  // "Raw source JSON" disclosure's own summary is even visible.
+  await openInspectorTab(dialog, page, /all fields/i);
+  await dialog.getByRole('heading', { name: /^all fields$/i }).click();
+  const rawJsonSummary = dialog.getByText('Raw source JSON (masked)', { exact: true });
+  await rawJsonSummary.click();
+  // The nearest ancestor <details>, not `dialog.locator('details', {
+  // hasText: ... })` - that would also match the OUTER "All fields"
+  // <details> wrapper (its text content includes this summary's own
+  // text too), giving two elements instead of one.
+  const rawJsonPre = rawJsonSummary.locator('xpath=ancestor::details[1]').locator('pre');
+  await expect(rawJsonPre).toBeVisible();
+  const rawJsonText = await rawJsonPre.innerText();
+  expect(rawJsonText.length).toBeGreaterThan(0);
+
+  // Text rendering only - CLAUDE.md §2 rule 3 ("no dangerouslySetInnerHTML").
+  expect(await rawJsonPre.evaluate((el) => el.children.length)).toBe(0);
+
+  const parsed = JSON.parse(rawJsonText) as Record<string, unknown>;
+  const cifKey = Object.keys(parsed).find((k) => k.toLowerCase() === 'cif');
+  expect(cifKey, 'the real fixture source JSON has a cif key').toBeDefined();
+  expect(parsed[cifKey!]).toBe(actorCifValue); // same masked value, not a raw one and not a mismatched one
+
+  await captureScreenshot(page, 'h', 'inspector-raw-source-json-masked');
+
+  // Restore the fresh default (unmasked) - shared-singleton backend policy.
+  await page.keyboard.press('Escape');
+  await openSettingsSection(page, /privacy & masking/i);
+  const cleanupDialog = page.getByTestId('privacy-masking-settings-panel');
+  await expect(cleanupDialog).toBeVisible();
+  for (const label of protectedLabels) {
+    if (await cleanupDialog.getByLabel(label).isChecked()) {
+      await cleanupDialog.getByLabel(label).click();
+    }
+  }
+});

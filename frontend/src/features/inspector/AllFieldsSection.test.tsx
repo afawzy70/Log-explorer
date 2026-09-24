@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { AllFieldsSection } from './AllFieldsSection';
+import { formatMaskedRawJson } from './rawJsonDisplay';
 import { fullEvent, sparseEvent } from './testEventFixture';
 
 const NO_SOURCES = [] as never[];
@@ -29,6 +30,31 @@ describe('AllFieldsSection', () => {
     // The only children of the <pre> are text nodes - proves this came
     // from `{...}` text interpolation, not dangerouslySetInnerHTML.
     expect(pre?.children.length).toBe(0);
+  });
+
+  it('owner report - a separate, collapsed "Raw source JSON (masked)" disclosure shows the real source text as plain text', () => {
+    const event = fullEvent();
+    render(<AllFieldsSection event={event} sources={NO_SOURCES} />);
+
+    const details = screen.getByText('Raw source JSON (masked)').closest('details');
+    expect(details).not.toBeNull();
+    expect(details?.open).toBe(false); // starts collapsed, same as Canonical Event JSON
+
+    const pres = document.querySelectorAll('pre');
+    expect(pres).toHaveLength(2); // Canonical Event JSON + Raw source JSON, never merged into one
+    const rawJsonPre = pres[1];
+    expect(rawJsonPre.textContent).toBe(formatMaskedRawJson(event.rawJson as string));
+    // Plain text node only - never dangerouslySetInnerHTML (CLAUDE.md §2 rule 3).
+    expect(rawJsonPre.children.length).toBe(0);
+  });
+
+  it('owner report - a null rawJson (no source capture) shows an honest empty state, never an empty <pre>', () => {
+    render(<AllFieldsSection event={sparseEvent()} sources={NO_SOURCES} />);
+
+    const details = screen.getByText('Raw source JSON (masked)').closest('details');
+    expect(details).not.toBeNull();
+    expect(details?.querySelector('pre')).toBeNull();
+    expect(screen.getByText(/no raw source json was captured/i)).toBeInTheDocument();
   });
 
   it('the search box filters both canonical and unknown fields by label or value', async () => {

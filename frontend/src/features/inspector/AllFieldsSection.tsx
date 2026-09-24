@@ -3,6 +3,7 @@ import type { LogEvent, SourceInfo } from '../../shared/api/types';
 import { FieldList } from '../../shared/ui/FieldList';
 import { buildCanonicalFieldEntries, buildUnknownFieldEntries, filterFieldEntries } from './allFields';
 import { CollapsibleInspectorSection, EmptySectionNote } from './InspectorSection';
+import { formatMaskedRawJson } from './rawJsonDisplay';
 import styles from './AllFieldsSection.module.css';
 
 /**
@@ -24,6 +25,17 @@ import styles from './AllFieldsSection.module.css';
  * never masked there by owner design) lives in
  * `features/settings/fieldMapping/` — "Original Source JSON" is that
  * feature's own, deliberately different, term.
+ *
+ * <p><b>A third, separate disclosure (owner report — "see the real
+ * container JSON" to spot mapping bugs more easily):</b> `event.rawJson`
+ * is the untouched source line/JSON this specific event was parsed from,
+ * already masked server-side (`MaskingService#maskRawJson`) — safe to
+ * render as-is. Labeled "Raw source JSON (masked)" below, deliberately a
+ * third term distinct from both of the above: unlike "Canonical Event
+ * JSON" it is the real source text (real key names, any extra/unexpected
+ * field the mapping profile doesn't recognize), and unlike "Original
+ * Source JSON" it is masked and available for every event directly in the
+ * Inspector, not a privileged, unmasked, settings-only sample.
  *
  * <p><b>UX-R5 §13 - starts collapsed.</b> This is the canonical escape
  * hatch, not a primary investigation surface: it was 47% of the
@@ -71,6 +83,14 @@ export function AllFieldsSection({ event, sources }: { event: LogEvent; sources:
       <details className={styles.rawJson}>
         <summary>Canonical Event JSON</summary>
         <pre className={styles.rawJsonBody}>{JSON.stringify(event, null, 2)}</pre>
+      </details>
+      <details className={styles.rawJson}>
+        <summary>Raw source JSON (masked)</summary>
+        {event.rawJson ? (
+          <pre className={styles.rawJsonBody}>{formatMaskedRawJson(event.rawJson)}</pre>
+        ) : (
+          <EmptySectionNote>No raw source JSON was captured for this event.</EmptySectionNote>
+        )}
       </details>
     </CollapsibleInspectorSection>
   );
