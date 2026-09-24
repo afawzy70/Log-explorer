@@ -85,19 +85,27 @@ public final class EventFilters {
     }
     // A real, previously-shipped bug found via Phase M's real-browser UX
     // acceptance testing: a malformed line has no parsed severity by
-    // definition (same as the timestamp case above), but this condition
-    // excluded any null-severity event outright the moment ANY level
-    // filter was active - which is always, since Info/Warn/Error are the
-    // frontend's own default selection. Every malformed event was being
-    // silently dropped from virtually all real searches, the opposite of
-    // "malformed lines... never dropped" (HANDOVER.md §5.4) - the exact
-    // same principle this file already applies to the timestamp filter
-    // just above. A malformed event now passes through this filter
-    // unconditionally (there is no severity to check against), exactly
-    // like it already does for the timestamp bound.
-    if (!request.levels().isEmpty()
-        && event.severity() != null
-        && !containsIgnoreCase(request.levels(), event.severity())) {
+    // definition (same as the timestamp case above), and excluding it
+    // outright the moment ANY level filter was active - which is always,
+    // since Info/Warn/Error are the frontend's own default selection -
+    // silently dropped every malformed event from virtually all real
+    // searches, the opposite of "malformed lines... never dropped"
+    // (HANDOVER.md §5.4). The exemption below is deliberately keyed on
+    // event.malformed(), not "severity is null": a well-formed, validly
+    // parsed JSON event that simply has no recognizable severity/level
+    // field is a different case entirely and must NOT get the same
+    // exemption - it is a real, classifiable event, and letting it bypass
+    // an active level filter means an owner-selected "Error" filter
+    // silently included non-error events (real defect, found live: with
+    // Docker running, filtering to Error-only surfaced unclassified INFO/
+    // DEBUG-level events scattered near the bottom of the result set,
+    // wherever this source happened to place a severity-less line). The
+    // previous version of this condition tested `event.severity() !=
+    // null` as a proxy for "is this malformed", which is wrong precisely
+    // for that well-formed-but-severity-less case; malformed() is the
+    // actual signal HANDOVER.md's "never dropped" guarantee is about.
+    if (!request.levels().isEmpty() && !event.malformed()
+        && (event.severity() == null || !containsIgnoreCase(request.levels(), event.severity()))) {
       return false;
     }
     if (notBlank(request.text()) && (event.message() == null

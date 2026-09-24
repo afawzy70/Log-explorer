@@ -136,6 +136,34 @@ class EventFiltersTest {
   }
 
   @Test
+  void wellFormedEventsWithNoSeverityAreExcludedByAnActiveLevelFilterUnlikeMalformedOnes() {
+    // Real, previously-shipped bug found live (owner report): filtering to
+    // "Error" only surfaced non-error events scattered near the bottom of
+    // the result set. Root cause: the exemption above was keyed on
+    // `event.severity() == null`, which is also true for a perfectly
+    // well-formed, successfully-parsed JSON event whose source just never
+    // set (or the active field mapping never resolved) a severity/level
+    // value - a real, classifiable event, not a parse failure. Reusing the
+    // malformed-only exemption for it meant an "Error"-only filter
+    // silently included every such event regardless of its true severity.
+    // A well-formed event with no severity is not the same case as a
+    // malformed raw-fallback line and must not get the same pass.
+    CanonicalLogEvent wellFormedNoSeverity = baseEvent().severity(null).build();
+    assertThat(EventFilters.matches(wellFormedNoSeverity, baseRequest().levels(List.of("ERROR")).build()))
+        .as("a well-formed event with no severity does not match an active level filter")
+        .isFalse();
+
+    // The malformed exemption itself must still hold unchanged (this is
+    // the same event/assertion as the test above, restated here so the two
+    // "no severity" cases sit side by side and the distinction this fix
+    // depends on is obvious from a single read of this file).
+    CanonicalLogEvent malformed = CanonicalLogEvent.builder().malformed(true).rawLine("garbage").build();
+    assertThat(EventFilters.matches(malformed, baseRequest().levels(List.of("ERROR")).build()))
+        .as("a genuinely malformed line is still exempt from the level filter")
+        .isTrue();
+  }
+
+  @Test
   void emptyLevelsMeansNoRestrictionAndNeverExcludesAnUnrecognizedSeverity() {
     // PR61_DEFAULT_LOG_LEVELS_SINGLE_JAR_AND_USAGE_DOCS - "all levels selected" must behave exactly
     // like "no level restriction," including for a genuine but unlisted severity value (e.g. a
