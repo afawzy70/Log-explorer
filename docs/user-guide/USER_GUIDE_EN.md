@@ -39,8 +39,9 @@ Across the top:
 - **Source** — a dropdown choosing where logs come from (see §4).
 - **Time range** — a preset button (e.g. "Last 1 day") that opens a menu
   of other presets, or a custom start/end you set yourself.
-- Quick severity buttons (**All**, **Errors only**) and a **Trace/Debug**
-  toggle for noisy levels that are hidden by default.
+- A **Severity** field — opens a popover with **All** and **Errors only**
+  quick actions, plus Trace/Debug/Info/Warn/Error and **Unknown** as
+  individually toggleable levels (every one selected by default).
 - **More filters** — opens a drawer with every other filter, grouped by
   question (see §9).
 - **Search** — runs the search with whatever is currently set.
@@ -283,8 +284,14 @@ direction, never two disagreeing controls.
 ### Quick filters (always visible)
 
 - **Service** — pick one or more services/applications.
-- **Severity** — **All** or **Errors only**, plus a separate toggle to
-  include the noisier **Trace/Debug** levels (hidden by default).
+- **Severity** — **All** or **Errors only** quick actions, or pick any
+  combination of Trace/Debug/Info/Warn/Error individually. **Unknown** is
+  a sixth, separate level: a well-formed event whose source (or the
+  active field mapping) never carried a severity value at all - not the
+  same as a malformed/unparseable line, which always stays visible
+  regardless of this filter. Select it to see that bucket on its own, or
+  deselect it to exclude those events - it's included whenever every
+  level is (the default), same as any other level.
 - The search box — free text, and it also recognizes when you paste in
   something that looks like a known identifier (a trace ID, a
   correlation ID, etc.) and offers to search that field specifically.

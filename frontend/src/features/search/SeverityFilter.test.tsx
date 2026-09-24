@@ -58,9 +58,20 @@ describe('SeverityFilter', () => {
       const user = userEvent.setup();
       render(<SeverityFilter selected={DEFAULT_SEVERITY_LEVELS} onChange={vi.fn()} />);
       await openPopover(user);
-      for (const label of ['Trace', 'Debug', 'Info', 'Warn', 'Error']) {
+      for (const label of ['Trace', 'Debug', 'Info', 'Warn', 'Error', 'Unknown']) {
         expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
       }
+    });
+
+    it('owner follow-up - "Unknown" is an ordinary toggleable chip, on the same footing as every real level', async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(<SeverityFilter selected={['ERROR']} onChange={onChange} />);
+      await openPopover(user);
+
+      expect(screen.getByRole('button', { name: 'Unknown' })).toHaveAttribute('aria-pressed', 'false');
+      await user.click(screen.getByRole('button', { name: 'Unknown' }));
+      expect(onChange).toHaveBeenCalledWith(['ERROR', 'UNKNOWN']);
     });
 
     it('marks the active levels with aria-pressed, not color alone', async () => {

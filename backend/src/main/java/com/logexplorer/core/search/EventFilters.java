@@ -36,6 +36,19 @@ import com.logexplorer.core.query.QueryEvaluator;
  */
 public final class EventFilters {
 
+  /**
+   * Owner follow-up to the malformed/no-severity level-filter fix above -
+   * the frontend's severity dropdown's own sentinel id for "this event has
+   * no severity at all" (`frontend/src/features/search/severityLevels.ts`'s
+   * `SEVERITY_LEVELS`). Never a real value {@link
+   * com.logexplorer.core.model.CanonicalLogEvent#severity()} can hold (it
+   * is always either {@code null} or whatever literal string a source's
+   * own severity/level field/mapping produced) - matched case-
+   * insensitively against {@code request.levels()}, exactly like every
+   * other level.
+   */
+  public static final String UNKNOWN_SEVERITY_LEVEL = "UNKNOWN";
+
   private EventFilters() {
   }
 
@@ -104,9 +117,24 @@ public final class EventFilters {
     // null` as a proxy for "is this malformed", which is wrong precisely
     // for that well-formed-but-severity-less case; malformed() is the
     // actual signal HANDOVER.md's "never dropped" guarantee is about.
-    if (!request.levels().isEmpty() && !event.malformed()
-        && (event.severity() == null || !containsIgnoreCase(request.levels(), event.severity()))) {
-      return false;
+    //
+    // Owner follow-up: a well-formed, no-severity event is a real bucket
+    // an investigator may want to look at (or deliberately exclude)
+    // on purpose, not just something the level filter happens to leave
+    // out - so the frontend's severity dropdown now offers it as its own
+    // explicit "Unknown" level (`UNKNOWN_SEVERITY_LEVEL`, never a real
+    // value any source's severity field can genuinely hold, so it can
+    // never collide with one). A null-severity event now matches the
+    // level filter exactly when UNKNOWN is one of the selected levels -
+    // never automatically excluded OR automatically included the way it
+    // was before this level existed.
+    if (!request.levels().isEmpty() && !event.malformed()) {
+      boolean levelSelected = event.severity() == null
+          ? containsIgnoreCase(request.levels(), UNKNOWN_SEVERITY_LEVEL)
+          : containsIgnoreCase(request.levels(), event.severity());
+      if (!levelSelected) {
+        return false;
+      }
     }
     if (notBlank(request.text()) && (event.message() == null
         || !event.message().toLowerCase().contains(request.text().toLowerCase()))) {

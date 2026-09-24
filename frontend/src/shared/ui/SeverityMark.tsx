@@ -6,6 +6,10 @@ const SEVERITY_MARK_CLASS: Record<string, string> = {
   INFO: 'sevMarkInfo',
   DEBUG: 'sevMarkDebug',
   TRACE: 'sevMarkTrace',
+  // The severity dropdown's own "Unknown" level id (never a real event's
+  // `severity()`, which is always either null or an actual source value) -
+  // a hollow square, visually distinct from every real-severity shape.
+  UNKNOWN: 'sevMarkUnknown',
 };
 
 export interface SeverityMarkProps {

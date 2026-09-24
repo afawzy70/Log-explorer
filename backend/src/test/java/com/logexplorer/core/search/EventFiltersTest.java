@@ -164,6 +164,43 @@ class EventFiltersTest {
   }
 
   @Test
+  void selectingTheUnknownLevelMatchesAWellFormedNoSeverityEventButNotOneWithARealSeverity() {
+    // Owner follow-up to the fix above: now that a well-formed no-severity
+    // event is correctly EXCLUDED by an active level filter, the frontend
+    // offers an explicit "Unknown" level so an investigator can choose to
+    // see (or deliberately exclude) that bucket on purpose, rather than it
+    // only ever being an accidental side effect of which other levels
+    // happen to be selected.
+    CanonicalLogEvent wellFormedNoSeverity = baseEvent().severity(null).build();
+    CanonicalLogEvent wellFormedError = baseEvent().severity("ERROR").build();
+
+    assertThat(EventFilters.matches(wellFormedNoSeverity, baseRequest().levels(List.of("UNKNOWN")).build()))
+        .as("Unknown selected -> a no-severity event matches")
+        .isTrue();
+    assertThat(EventFilters.matches(wellFormedError, baseRequest().levels(List.of("UNKNOWN")).build()))
+        .as("Unknown selected -> an event with a real severity does not match")
+        .isFalse();
+    assertThat(EventFilters.matches(wellFormedNoSeverity, baseRequest().levels(List.of("ERROR", "UNKNOWN")).build()))
+        .as("Unknown alongside other levels -> still matches a no-severity event")
+        .isTrue();
+    assertThat(EventFilters.matches(wellFormedNoSeverity, baseRequest().levels(List.of("unknown")).build()))
+        .as("case-insensitive, exactly like every other level")
+        .isTrue();
+  }
+
+  @Test
+  void aMalformedLineStaysExemptFromTheLevelFilterEvenWhenUnknownIsNotSelected() {
+    // The Unknown level is specifically about a well-formed no-severity
+    // event choosing to opt in/out of the level filter - it must not
+    // change the separate, stronger, unconditional "malformed lines are
+    // never dropped by the level filter" guarantee (HANDOVER.md §5.4).
+    CanonicalLogEvent malformed = CanonicalLogEvent.builder().malformed(true).rawLine("garbage").build();
+    assertThat(EventFilters.matches(malformed, baseRequest().levels(List.of("ERROR")).build()))
+        .as("malformed is exempt regardless of whether Unknown was selected")
+        .isTrue();
+  }
+
+  @Test
   void emptyLevelsMeansNoRestrictionAndNeverExcludesAnUnrecognizedSeverity() {
     // PR61_DEFAULT_LOG_LEVELS_SINGLE_JAR_AND_USAGE_DOCS - "all levels selected" must behave exactly
     // like "no level restriction," including for a genuine but unlisted severity value (e.g. a

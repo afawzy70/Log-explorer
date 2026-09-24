@@ -50,6 +50,25 @@ export const SEVERITY_LEVELS: SeverityLevelDef[] = [
     colorVar: 'var(--v2-sev-error)',
     bgVar: 'color-mix(in srgb, var(--v2-sev-error) 14%, transparent)',
   },
+  /**
+   * Owner follow-up to the "Error only surfaced non-error events" fix
+   * (backend's `EventFilters.UNKNOWN_SEVERITY_LEVEL`): not a real severity
+   * a source can ever report - this bucket is a well-formed, successfully-
+   * parsed event whose source simply never carried (or whose active field
+   * mapping never resolved) a severity/level value at all. Offering it as
+   * its own explicit, selectable level lets an investigator choose to see
+   * or exclude that bucket on purpose, rather than its visibility being an
+   * accidental side effect of whichever other levels happen to be
+   * selected. Deliberately last in this list - it is not a point on the
+   * real severity scale, just an honest "we don't know" bucket alongside
+   * it (CLAUDE.md §4 "Missing values render —").
+   */
+  {
+    id: 'UNKNOWN',
+    label: 'Unknown',
+    colorVar: 'var(--v2-sev-unknown)',
+    bgVar: 'color-mix(in srgb, var(--v2-sev-unknown) 14%, transparent)',
+  },
 ];
 
 export const ALL_SEVERITY_LEVEL_IDS: string[] = SEVERITY_LEVELS.map((l) => l.id);

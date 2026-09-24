@@ -173,6 +173,9 @@
   --v2-sev-debug-mark: #8c949c;
   --v2-sev-trace: #6a5a8c;
   --v2-sev-trace-mark: #9d8fbd;
+  /* Not a real severity - the severity dropdown's "Unknown" bucket (a well-formed event with no severity value at all). Deliberately reuses the same muted ink already used for "nothing to say here" elsewhere, rather than inventing a new hue. */
+  --v2-sev-unknown: var(--v2-ink-3);
+  --v2-sev-unknown-mark: var(--v2-ink-3);
 
   --v2-success: #1d7042;
   --v2-success-tint: #e7f3ec;
@@ -270,6 +273,8 @@
   --v2-sev-debug-mark: #6f7881;
   --v2-sev-trace: #b4a6d6;
   --v2-sev-trace-mark: #8e80b3;
+  --v2-sev-unknown: var(--v2-ink-3);
+  --v2-sev-unknown-mark: var(--v2-ink-3);
   --v2-success: #6cc28f;
   --v2-success-tint: #16281f;
   --v2-warning: #e2ad57;

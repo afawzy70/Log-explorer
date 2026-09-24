@@ -43,6 +43,20 @@
   background: var(--v2-sev-trace-mark);
 }
 
+/*
+ * A hollow square - not a real severity on the scale the other five
+ * shapes sit on, just an honest "we don't know" bucket next to them
+ * (CLAUDE.md §4 "Missing values render —"). `border` (not `box-shadow`,
+ * which .sevMarkDebug's hollow ring already uses) keeps the two hollow
+ * shapes visually distinct from each other, not just from the filled ones.
+ */
+.sevMarkUnknown {
+  width: 7px;
+  height: 7px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--v2-sev-unknown-mark);
+}
+
 @media (forced-colors: active) {
   .sevMarkError,
   .sevMarkWarn,
@@ -54,5 +68,8 @@
   }
   .sevMarkTrace {
     background: CanvasText;
+  }
+  .sevMarkUnknown {
+    border-color: CanvasText;
   }
 }
